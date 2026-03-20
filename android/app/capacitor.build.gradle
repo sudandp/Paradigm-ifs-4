@@ -28,7 +28,7 @@ dependencies {
     implementation "com.onesignal:OneSignal:5.7.1"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10"
 }
-apply from: new File(rootDir, "../node_modules/onesignal-cordova-plugin/build-extras-onesignal.gradle").absolutePath
+apply from: "../../node_modules/onesignal-cordova-plugin/build-extras-onesignal.gradle"
 
 if (hasProperty('postBuildExtras')) {
   postBuildExtras()
