@@ -1,0 +1,1 @@
+// This file is no longer needed as PDF generation is now client-side.

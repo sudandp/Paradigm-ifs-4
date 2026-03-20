@@ -1,0 +1,164 @@
+﻿
+services\api.ts:2567:     
+       supabase.from('leav
+e_requests')
+services\api.ts:3038:     
+   await 
+offlineDb.addToOutbox({ 
+table_name: 
+'leave_requests', action: 
+'INSERT', payload: data 
+});
+services\api.ts:3041:     
+   const cached = await of
+flineDb.getCache('leave_re
+quests') || [];
+services\api.ts:3042:     
+   await offlineDb.setCach
+e('leave_requests', 
+[offlineRequest, 
+...cached]);
+services\api.ts:3055:    
+const { data: 
+insertedData, error: 
+insertError } = await supa
+base.from('leave_requests'
+).insert({ 
+services\api.ts:3088:    
+const { data, error } = 
+await supabase.from('leave
+_requests').update(dbData)
+.eq('id', 
+id).select().single();
+services\api.ts:3095:     
+ .from('leave_requests')
+services\api.ts:3134:     
+ .from('leave_requests')
+services\api.ts:3141:    
+const { error } = await su
+pabase.from('leave_request
+s').delete().eq('id', id);
+services\api.ts:3147:     
+   const cached = await of
+flineDb.getCache('leave_re
+quests') || [];
+services\api.ts:3151:    
+let query = supabase.from(
+'leave_requests').select('
+*, users!leave_requests_us
+er_id_fkey(name)', { 
+count: 'exact' });
+services\api.ts:3193:     
+   await offlineDb.setCach
+e('leave_requests', (data 
+|| []).map(toCamelCase));
+services\api.ts:3811:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('approv
+al_history, user_id, 
+leave_type, start_date, 
+end_date, 
+day_option').eq('id', 
+id).single();
+services\api.ts:3840:     
+  const { error } = await 
+supabase.from('leave_reque
+sts').update({ 
+services\api.ts:3866:     
+    const { error } = 
+await supabase.from('leave
+_requests').update({ 
+services\api.ts:3882:     
+   const { error } = 
+await supabase.from('leave
+_requests').update({ 
+services\api.ts:3891:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('approv
+al_history').eq('id', 
+id).single();
+services\api.ts:3897:    
+const { error } = await su
+pabase.from('leave_request
+s').update({ status: 
+'rejected', 
+current_approver_id: 
+null, approval_history: 
+updatedHistory 
+}).eq('id', id);
+services\api.ts:3909:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('approv
+al_history, 
+user_id').eq('id', 
+id).single();
+services\api.ts:3927:    
+const { error } = await su
+pabase.from('leave_request
+s').update({ 
+services\api.ts:3936:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('approv
+al_history, user_id, 
+leave_type').eq('id', 
+id).single();
+services\api.ts:3944:    
+const { error } = await su
+pabase.from('leave_request
+s').update({ status: 
+'cancelled', 
+current_approver_id: 
+null, approval_history: 
+updatedHistory 
+}).eq('id', id);
+services\api.ts:3953:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('user_i
+d, status').eq('id', 
+id).single();
+services\api.ts:3958:    
+const { error } = await su
+pabase.from('leave_request
+s').update({ status: 
+'withdrawn', 
+current_approver_id: null 
+}).eq('id', id);
+services\api.ts:3962:    
+const { data: request, 
+error: fetchError } = 
+await supabase.from('leave
+_requests').select('leave_
+type, user_id, approval_hi
+story').eq('id', 
+id).single();
+services\api.ts:3968:    
+const { error } = await su
+pabase.from('leave_request
+s').update({ status: 
+'approved', 
+current_approver_id: 
+null, approval_history: 
+updatedHistory 
+}).eq('id', id);
+services\api.ts:4056:     
+ 'settings', 
+'leave_requests', 
+'attendance_events', 
+'attendance_approvals',
+services\api.ts:4199:     
+ 'settings', 
+'leave_requests', 
+'attendance_events', 
+'attendance_approvals',
+
+

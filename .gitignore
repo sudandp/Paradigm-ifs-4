@@ -1,0 +1,67 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+# *.local (User requested to include .env.local)
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+status.txt
+tmp/
+Downloads/
+
+# Android build files
+*.apk
+*.aab
+android/app/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/*.iml
+android/.idea/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+ios/App/App/public/
+
+# iOS build files
+ios/App/build/
+ios/App/Pods/
+ios/App/App.xcworkspace/
+ios/App/App/*.xcuserdatad/
+
+# Gradle
+.gradle/
+build/
+
+# Build logs
+build_log*.txt
+build_error.txt
+
+# Debug & analysis artifacts
+**/debug_*.ts
+**/debug_*.js
+*_analysis.json
+*_errors.txt
+tsc_output.txt
+*.pyc
+
+# Backups
+_backups/

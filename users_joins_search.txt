@@ -1,0 +1,75 @@
+﻿E:\onboarding all files\Paradigm Office 2\components\admin\BulkEarnedLeaveModal.tsx:25:             const users = await api.getUsers(); // Get all users
+E:\onboarding all files\Paradigm Office 2\components\attendance\MonthlyHoursReport.tsx:96:       const usersData = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\components\attendance\MonthlyHoursReport.tsx:97:       setUsers(usersData);
+E:\onboarding all files\Paradigm Office 2\components\hr\GrantCompOffModal.tsx:46:             api.getUsers().then(setUsers);
+E:\onboarding all files\Paradigm Office 2\components\support\NewTicketModal.tsx:47:       api.getUsers().then(setUsers);
+E:\onboarding all files\Paradigm Office 2\components\tasks\TaskForm.tsx:70:             api.getUsers().then(setUsers);
+E:\onboarding all files\Paradigm Office 2\node_modules\@supabase\auth-js\dist\main\GoTrueAdminApi.d.ts:63:     listUsers(params?: PageParams): Promise<{
+E:\onboarding all files\Paradigm Office 2\node_modules\@supabase\auth-js\dist\module\GoTrueAdminApi.d.ts:63:     listUsers(params?: PageParams): Promise<{
+E:\onboarding all files\Paradigm Office 2\node_modules\@supabase\auth-js\src\GoTrueAdminApi.ts:201:   async listUsers(
+E:\onboarding all files\Paradigm Office 2\pages\admin\ApprovalWorkflow.tsx:45:             setUsers(sortedUsers);
+E:\onboarding all files\Paradigm Office 2\pages\admin\ApprovalWorkflow.tsx:64:         setUsers(currentUsers =>
+E:\onboarding all files\Paradigm Office 2\pages\admin\BulkEarnedLeavePage.tsx:24:             const users = await api.getUsers(); // Get all users
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:175:                 const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:176:                 setUsers(allUsers);
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:177:                 setTotalUsers(allUsers.length);
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:180:                 const res = await api.getUsers({ 
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:187:                 setUsers(res.data);
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:188:                 setTotalUsers(res.total);
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:204:         fetchUsers();
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:238:             setUsers(prevUsers => 
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:243:             fetchUsers();
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:261:                 setUsers(prevUsers => prevUsers.filter(u => u.id !== userIdToDelete));
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx:264:                 fetchUsers();
+E:\onboarding all files\Paradigm Office 2\pages\admin\WorkflowChartFullScreen.tsx:21:                 setUsers(usersData);
+E:\onboarding all files\Paradigm Office 2\pages\attendance\AttendanceDashboard.tsx:919:             api.getUsers().then(setUsers);
+E:\onboarding all files\Paradigm Office 2\pages\attendance\AttendanceDashboard.tsx:1156:                 currentUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\attendance\AttendanceDashboard.tsx:1157:                 setUsers(currentUsers);
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddTaskPage.tsx:86:                         const fetchedUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddTaskPage.tsx:87:                         setUsers(fetchedUsers);
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddTaskPage.tsx:91:                         setUsers([user, ...team]);
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddUserPage.tsx:105:           const users = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\forms\GrantCompOffPage.tsx:45:                 const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\forms\GrantCompOffPage.tsx:46:                 setUsers(allUsers);
+E:\onboarding all files\Paradigm Office 2\pages\forms\GrantCompOffPage.tsx:51:         fetchUsers();
+E:\onboarding all files\Paradigm Office 2\pages\forms\NewTicketPage.tsx:46:         api.getUsers().then(setUsers);
+E:\onboarding all files\Paradigm Office 2\pages\hr\FieldStaffTracking.tsx:374:                 api.getUsers(),
+E:\onboarding all files\Paradigm Office 2\pages\hr\FieldStaffTracking.tsx:378:             setUsers(usersData);
+E:\onboarding all files\Paradigm Office 2\pages\hr\LeaveManagement.tsx:109:                     users = await api.getUsers({ fetchAll: true });
+E:\onboarding all files\Paradigm Office 2\pages\hr\LeaveManagement.tsx:113:                 setAllUsers(users.map(u => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name)));
+E:\onboarding all files\Paradigm Office 2\pages\hr\LeaveManagement.tsx:120:         fetchUsers();
+E:\onboarding all files\Paradigm Office 2\pages\hr\LocationManagement.tsx:69:         const [locs, usr] = await Promise.all([api.getLocations(), api.getUsers()]);
+E:\onboarding all files\Paradigm Office 2\pages\hr\LocationManagement.tsx:77:         setUsers(usr);
+E:\onboarding all files\Paradigm Office 2\pages\hr\NotificationsControl.tsx:95:                     api.getUsers()
+E:\onboarding all files\Paradigm Office 2\pages\hr\NotificationsControl.tsx:99:                 setUsers(fetchedUsers.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+E:\onboarding all files\Paradigm Office 2\pages\my-team\FieldReports.tsx:262:                     const users = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\my-team\FieldReports.tsx:281:                 setAllUsers(users);
+E:\onboarding all files\Paradigm Office 2\pages\my-team\FieldReports.tsx:304:                     api.getUsers()
+E:\onboarding all files\Paradigm Office 2\pages\my-team\MyTeamPage.tsx:148:         members = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\my-team\ReportingStructure.tsx:44:       const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\my-team\ReportingStructure.tsx:45:       setUsers(allUsers);
+E:\onboarding all files\Paradigm Office 2\pages\operations\TeamActivity.tsx:48:             const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\pages\support\Alerts.tsx:37:                     api.getUsers({ fetchAll: true })
+E:\onboarding all files\Paradigm Office 2\pages\support\Alerts.tsx:40:                 setUsers(fetchedUsers);
+E:\onboarding all files\Paradigm Office 2\pages\support\SupportDashboard.tsx:179:                     api.getNearbyUsers(user.id)
+E:\onboarding all files\Paradigm Office 2\pages\support\SupportDashboard.tsx:183:                 setNearbyUsers(usersData.nearbyOnline);
+E:\onboarding all files\Paradigm Office 2\pages\support\TicketDetail.tsx:62:                     api.getNearbyUsers(user?.id)
+E:\onboarding all files\Paradigm Office 2\pages\support\TicketDetail.tsx:71:                 setNearbyUsers(usersData.nearbyOnline);
+E:\onboarding all files\Paradigm Office 2\pages\tasks\TaskManagement.tsx:107:                     api.getUsers().then(u => setUsers(u as User[]));
+E:\onboarding all files\Paradigm Office 2\pages\tasks\TaskManagement.tsx:110:                     setUsers([user, ...team]);
+E:\onboarding all files\Paradigm Office 2\services\api.ts:1198:     let users = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\services\api.ts:1325:     const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\services\api.ts:3708:       const allUsers = await api.getUsers();
+E:\onboarding all files\Paradigm Office 2\services\api.ts:4079:       .select('*, users(name)')
+E:\onboarding all files\Paradigm Office 2\supabase\functions\run-escalations\index.ts:56:       .select('id, user_id, date, violation_type, violation_details, users(name, photo_url)')
+E:\onboarding all files\Paradigm Office 2\tmp\check_ids.ts:25:   const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+E:\onboarding all files\Paradigm Office 2\tmp\check_sync.ts:14:   const { data: { users }, error: authError } = await supabase.auth.admin.listUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\check_sync_verbose.ts:15:   const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+E:\onboarding all files\Paradigm Office 2\tmp\debug_auth.ts:19:   const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\final_reset.ts:14:   const { data: { users }, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+E:\onboarding all files\Paradigm Office 2\tmp\find_admin.ts:10:   const { data: { users }, error } = await supabase.auth.admin.listUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\list_all_auth.ts:10:   const { data: { users }, error } = await supabase.auth.admin.listUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\list_users.ts:9: async function listAllUsers() {
+E:\onboarding all files\Paradigm Office 2\tmp\list_users.ts:11:   const { data: { users }, error } = await supabase.auth.admin.listUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\list_users.ts:28: listAllUsers();
+E:\onboarding all files\Paradigm Office 2\tmp\list_users_verbose.ts:17:       const { data: { users }, error } = await supabase.auth.admin.listUsers({

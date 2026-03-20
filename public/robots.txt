@@ -1,0 +1,52 @@
+# Deny all AI crawlers and scrapers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Anthropic-AI
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Cohere-AI
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: PiplBot
+Disallow: /
+
+User-agent: spider
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: Rogerbot
+Disallow: /
+
+User-agent: Exabot
+Disallow: /
+
+# General block for all other crawlers if the above are not respected
+User-agent: *
+Disallow: /

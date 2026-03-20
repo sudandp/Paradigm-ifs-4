@@ -1,0 +1,1674 @@
+﻿
+E:\onboarding all files\Paradigm Office 2\App.tsx
+    3:38  warning  'lazy' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+   13:10  warning  'useMediaQuery' is defined but never used                                                                    @typescript-eslint/no-unused-vars
+   20:15  warning  'User' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+   87:7   warning  'TaskManagement' is assigned a value but never used                                                          @typescript-eslint/no-unused-vars
+   95:7   warning  'SiteAttendanceTracker' is assigned a value but never used                                                   @typescript-eslint/no-unused-vars
+   97:7   warning  'SiteFinanceTracker' is assigned a value but never used                                                      @typescript-eslint/no-unused-vars
+  193:28  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  193:44  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  312:11  warning  'isOnline' is assigned a value but never used                                                                @typescript-eslint/no-unused-vars
+  323:16  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  352:47  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  388:20  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  389:18  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  411:34  error    'error' is never reassigned. Use 'const' instead                                                             prefer-const
+  575:11  warning  'appStateSubscription' is assigned a value but never used                                                    @typescript-eslint/no-unused-vars
+  601:35  warning  Unexpected any. Specify a different type                                                                     @typescript-eslint/no-explicit-any
+  617:6   warning  React Hook useEffect has a missing dependency: 'navigate'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  736:9   warning  'isLikelyMobile' is assigned a value but never used                                                          @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\CameraCaptureModal.tsx
+  115:19  warning  Unexpected any. Specify a different type                                                                                                                   @typescript-eslint/no-explicit-any
+  188:19  warning  Unexpected any. Specify a different type                                                                                                                   @typescript-eslint/no-explicit-any
+  195:6   warning  React Hook useCallback has a missing dependency: 'handleCapacitorCapture'. Either include it or remove the dependency array                                react-hooks/exhaustive-deps
+  207:6   warning  React Hook useEffect has missing dependencies: 'capturedImage', 'handleCapture', and 'startWithImage'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  232:19  warning  Unexpected any. Specify a different type                                                                                                                   @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\OfflineStatusBanner.tsx
+  4:19  warning  'RefreshCcw' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\PermissionsPrimer.tsx
+  63:6   warning  React Hook useEffect has a missing dependency: 'verifyPermissions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  70:53  warning  Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  73:30  warning  Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+  90:36  warning  Unexpected any. Specify a different type                                                                              @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\SecurityWrapper.tsx
+    6:10  warning  'isAdmin' is defined but never used                                                                      @typescript-eslint/no-unused-vars
+  130:8   warning  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  148:21  warning  Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+  182:41  warning  Unexpected any. Specify a different type                                                                 @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\UpdateRequiredBanner.tsx
+  8:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+E:\onboarding all files\Paradigm Office 2\components\UploadDocument.tsx
+    1:49   warning  'useEffect' is defined but never used      @typescript-eslint/no-unused-vars
+    4:10   warning  'UploadCloud' is defined but never used    @typescript-eslint/no-unused-vars
+    4:41   warning  'X' is defined but never used              @typescript-eslint/no-unused-vars
+    4:72   warning  'AlertTriangle' is defined but never used  @typescript-eslint/no-unused-vars
+    4:100  warning  'Eye' is defined but never used            @typescript-eslint/no-unused-vars
+    4:113  warning  'BadgeInfo' is defined but never used      @typescript-eslint/no-unused-vars
+    8:10   warning  'useAuthStore' is defined but never used   @typescript-eslint/no-unused-vars
+   22:26   warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+   23:15   warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  118:36   warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  123:21   warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\admin\ApprovalModal.tsx
+  4:8  warning  'Button' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\admin\BulkEarnedLeaveModal.tsx
+  19:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  50:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  91:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\admin\LocationAssignmentModal.tsx
+  36:8   warning  React Hook useEffect has a missing dependency: 'loadLocations'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  63:25  warning  Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+  79:25  warning  Unexpected any. Specify a different type                                                                          @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\admin\ManpowerDetailsModal.tsx
+  98:17  warning  'tempId' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\admin\OrgWorkflowCard.tsx
+  1:27  warning  'useEffect' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\admin\UserForm.tsx
+  132:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\admin\WorkflowChart2D.tsx
+   83:26  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+   84:54  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+   91:26  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+   92:54  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  198:39  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  249:9   warning  'time' is defined but never used                                                                                                 @typescript-eslint/no-unused-vars
+  274:21  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  275:21  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  300:25  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  300:49  warning  Unexpected any. Specify a different type                                                                                         @typescript-eslint/no-explicit-any
+  473:8   warning  React Hook useEffect has a missing dependency: 'autoFit'. Either include it or remove the dependency array                       react-hooks/exhaustive-deps
+  480:8   warning  React Hook useEffect has missing dependencies: 'autoFit' and 'users.length'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  572:8   warning  React Hook useEffect has a missing dependency: 'drawTree'. Either include it or remove the dependency array                      react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\components\admin\WorkflowChart3D.tsx
+   39:11  warning  'animationRef' is assigned a value but never used                                                                                                                          @typescript-eslint/no-unused-vars
+  377:15  warning  'avgZ' is assigned a value but never used                                                                                                                                  @typescript-eslint/no-unused-vars
+  424:36  warning  Unexpected any. Specify a different type                                                                                                                                   @typescript-eslint/no-explicit-any
+  555:8   warning  React Hook useEffect has missing dependencies: 'assignPositions', 'buildHierarchy', 'drawTree', and 'updateParticles'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  591:26  warning  'e' is defined but never used                                                                                                                                              @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\AssignLeaveModal.tsx
+    7:8   warning  'Button' is defined but never used             @typescript-eslint/no-unused-vars
+    9:8   warning  'Select' is defined but never used             @typescript-eslint/no-unused-vars
+   39:11  warning  'isFemale' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  189:23  warning  Unexpected any. Specify a different type       @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\AttendanceAuditReport.tsx
+  13:14  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\BreakTrackingMonitor.tsx
+  24:82  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\ManualAttendanceModal.tsx
+   23:5   warning  'currentUserRole' is defined but never used  @typescript-eslint/no-unused-vars
+  307:23  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\MonthlyHoursReport.tsx
+    2:60   warning  'eachDayOfInterval' is defined but never used                                                                      @typescript-eslint/no-unused-vars
+    5:30   warning  'calculateWorkingHours' is defined but never used                                                                  @typescript-eslint/no-unused-vars
+    5:53   warning  'isLateCheckIn' is defined but never used                                                                          @typescript-eslint/no-unused-vars
+    5:68   warning  'isEarlyCheckOut' is defined but never used                                                                        @typescript-eslint/no-unused-vars
+    7:38   warning  'StaffAttendanceRules' is defined but never used                                                                   @typescript-eslint/no-unused-vars
+   71:10   warning  'users' is assigned a value but never used                                                                         @typescript-eslint/no-unused-vars
+   72:10   warning  'leaves' is assigned a value but never used                                                                        @typescript-eslint/no-unused-vars
+   72:40   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+   73:10   warning  'userHolidaysPool' is assigned a value but never used                                                              @typescript-eslint/no-unused-vars
+   90:6    warning  React Hook useEffect has a missing dependency: 'loadReportData'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  121:58   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  147:84   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  147:105  warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  204:49   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  212:40   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  253:48   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  254:56   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  328:75   warning  Unexpected any. Specify a different type                                                                           @typescript-eslint/no-explicit-any
+  353:15   warning  'lastBreakIn' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+  397:11   warning  'lastBreakIn' is assigned a value but never used                                                                   @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\attendance\SmartFieldReportModal.tsx
+    5:12  warning  'Plus' is defined but never used                                                                                                           @typescript-eslint/no-unused-vars
+    5:26  warning  'FileText' is defined but never used                                                                                                       @typescript-eslint/no-unused-vars
+   11:24  warning  'ChecklistSection' is defined but never used                                                                                               @typescript-eslint/no-unused-vars
+   11:42  warning  'ChecklistItem' is defined but never used                                                                                                  @typescript-eslint/no-unused-vars
+   15:8   warning  'Button' is defined but never used                                                                                                         @typescript-eslint/no-unused-vars
+   36:12  warning  'templates' is assigned a value but never used                                                                                             @typescript-eslint/no-unused-vars
+   71:8   warning  React Hook useEffect has missing dependencies: 'fetchTemplates' and 'lastCheckInTime'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  111:11  warning  'handleResponseRemarks' is assigned a value but never used                                                                                 @typescript-eslint/no-unused-vars
+  139:84  warning  Unexpected any. Specify a different type                                                                                                   @typescript-eslint/no-explicit-any
+  148:50  warning  'mime' is defined but never used                                                                                                           @typescript-eslint/no-unused-vars
+  177:11  warning  'removePhotoFromItem' is assigned a value but never used                                                                                   @typescript-eslint/no-unused-vars
+  257:23  warning  Unexpected any. Specify a different type                                                                                                   @typescript-eslint/no-explicit-any
+  424:72  warning  'sIdx' is defined but never used                                                                                                           @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\auth\BlockedAccessPage.tsx
+   6:3  warning  'ChevronRight' is defined but never used  @typescript-eslint/no-unused-vars
+  13:3  warning  'User' is defined but never used          @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\auth\PermissionGuard.tsx
+   83:17  warning  'nativeFilesGranted' is assigned a value but never used                                                                         @typescript-eslint/no-unused-vars
+  136:11  warning  'requestAllPermissions' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+  140:71  error    Empty block statement                                                                                                           no-empty
+  143:66  error    Empty block statement                                                                                                           no-empty
+  146:77  error    Empty block statement                                                                                                           no-empty
+  149:70  error    Empty block statement                                                                                                           no-empty
+  162:27  error    Empty block statement                                                                                                           no-empty
+  183:8   warning  React Hook useEffect has a missing dependency: 'checkPermissionsAndSecurity'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  233:11  warning  'allGranted' is assigned a value but never used                                                                                 @typescript-eslint/no-unused-vars
+  254:27  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\devices\DeviceWarningDialog.tsx
+   9:39  warning  'Trash2' is defined but never used                                                                                  @typescript-eslint/no-unused-vars
+  46:6   warning  React Hook useEffect has a missing dependency: 'loadUserDevices'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\components\devices\UserDeviceList.tsx
+   25:22  warning  'DeviceType' is defined but never used                                                                                             @typescript-eslint/no-unused-vars
+   54:6   warning  React Hook useEffect has missing dependencies: 'loadDevices' and 'loadLimits'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   92:11  warning  'action' is assigned a value but never used                                                                                        @typescript-eslint/no-unused-vars
+  119:11  warning  'model' is assigned a value but never used                                                                                         @typescript-eslint/no-unused-vars
+  120:11  warning  'name' is assigned a value but never used                                                                                          @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\AgreementForm.tsx
+  44:17  warning  'id' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\AssetConfig.tsx
+    2:46   warning  'useCallback' is defined but never used     @typescript-eslint/no-unused-vars
+    4:36   warning  'UploadedFile' is defined but never used    @typescript-eslint/no-unused-vars
+    4:50   warning  'PhoneAsset' is defined but never used      @typescript-eslint/no-unused-vars
+    4:62   warning  'SimAsset' is defined but never used        @typescript-eslint/no-unused-vars
+    4:72   warning  'ComputerAsset' is defined but never used   @typescript-eslint/no-unused-vars
+    4:87   warning  'IdCardAsset' is defined but never used     @typescript-eslint/no-unused-vars
+    4:100  warning  'PetrocardAsset' is defined but never used  @typescript-eslint/no-unused-vars
+    4:116  warning  'VehicleAsset' is defined but never used    @typescript-eslint/no-unused-vars
+    4:130  warning  'ToolsAsset' is defined but never used      @typescript-eslint/no-unused-vars
+    4:142  warning  'OtherAsset' is defined but never used      @typescript-eslint/no-unused-vars
+    4:154  warning  'ToolAssetItem' is defined but never used   @typescript-eslint/no-unused-vars
+   29:83   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   29:96   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   43:58   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   64:56   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   70:61   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  112:59   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  118:62   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  124:60   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  156:58   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  176:58   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  206:14   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  207:13   warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  252:46   warning  'setToast' is defined but never used        @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\BackofficeHeadsConfig.tsx
+   73:13  warning  'fields' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  156:29  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\hr\CostingResourceConfig.tsx
+   32:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  254:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\hr\GMCSubmissionsTable.tsx
+  1:51   warning  'useRef' is defined but never used             @typescript-eslint/no-unused-vars
+  4:53   warning  'FileText' is defined but never used           @typescript-eslint/no-unused-vars
+  4:98   warning  'Hash' is defined but never used               @typescript-eslint/no-unused-vars
+  4:137  warning  'Info' is defined but never used               @typescript-eslint/no-unused-vars
+  4:146  warning  'ShieldCheck' is defined but never used        @typescript-eslint/no-unused-vars
+  6:18   warning  'differenceInYears' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\GmcPolicyConfig.tsx
+    6:8   warning  'Input' is defined but never used         @typescript-eslint/no-unused-vars
+   51:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   53:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  121:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\hr\GrantCompOffModal.tsx
+  8:8  warning  'Button' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\LadiesUniformChartConfig.tsx
+    3:76   warning  'LadiesUniformDepartmentConfig' is defined but never used   @typescript-eslint/no-unused-vars
+    3:107  warning  'LadiesUniformDesignationConfig' is defined but never used  @typescript-eslint/no-unused-vars
+    9:52   warning  'Shirt' is defined but never used                           @typescript-eslint/no-unused-vars
+   17:14   warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  124:14   warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  189:18   warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  192:14   warning  Unexpected any. Specify a different type                    @typescript-eslint/no-explicit-any
+  200:5    warning  'designation' is defined but never used                     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\RejectClaimModal.tsx
+  2:8  warning  'Button' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\SiteConfigurationForm.tsx
+  132:21  warning  'toolFields' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  132:41  warning  'appendTool' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  132:61  warning  'removeTool' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  133:21  warning  'simFields' is assigned a value but never used        @typescript-eslint/no-unused-vars
+  133:40  warning  'appendSim' is assigned a value but never used        @typescript-eslint/no-unused-vars
+  133:59  warning  'removeSim' is assigned a value but never used        @typescript-eslint/no-unused-vars
+  134:21  warning  'equipmentFields' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  134:46  warning  'appendEquipment' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  134:71  warning  'removeEquipment' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\hr\StaffDesignationConfig.tsx
+   81:13  warning  'fields' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  165:29  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\hr\ToolsListConfig.tsx
+   2:38  warning  'useCallback' is defined but never used   @typescript-eslint/no-unused-vars
+  16:14  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\hr\UniformChartConfig.tsx
+    3:74  warning  'UniformDepartmentConfig' is defined but never used                                                                                                                                                                                                                               @typescript-eslint/no-unused-vars
+    3:99  warning  'UniformDesignationConfig' is defined but never used                                                                                                                                                                                                                              @typescript-eslint/no-unused-vars
+    9:52  warning  'Shirt' is defined but never used                                                                                                                                                                                                                                                 @typescript-eslint/no-unused-vars
+   17:14  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  124:14  warning  Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  168:52  error    React Hook "useMemo" cannot be called inside a callback. React Hooks must be called in a React function component or a custom React Hook function                                                                                                                                 react-hooks/rules-of-hooks
+  170:28  warning  React Hook useMemo has unnecessary dependencies: 'departmentDesignationMap' and 'departmentValue'. Either exclude them or remove the dependency array. Outer scope values like 'departmentValue' aren't valid dependencies because mutating them doesn't re-render the component  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\components\hr\UniformDetailsConfig.tsx
+    4:55  warning  'UniformItem' is defined but never used   @typescript-eslint/no-unused-vars
+   10:52  warning  'Shirt' is defined but never used         @typescript-eslint/no-unused-vars
+   59:14  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  109:14  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\layouts\BottomNav.tsx
+   6:10  warning  'isAdmin' is defined but never used       @typescript-eslint/no-unused-vars
+  35:70  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  41:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  47:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  53:73  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\layouts\Header.tsx
+   3:48  warning  'Menu' is defined but never used                       @typescript-eslint/no-unused-vars
+   3:54  warning  'X' is defined but never used                          @typescript-eslint/no-unused-vars
+   3:57  warning  'ArrowLeft' is defined but never used                  @typescript-eslint/no-unused-vars
+   3:68  warning  'Bell' is defined but never used                       @typescript-eslint/no-unused-vars
+   8:8   warning  'Button' is defined but never used                     @typescript-eslint/no-unused-vars
+   9:8   warning  'Modal' is defined but never used                      @typescript-eslint/no-unused-vars
+  10:10  warning  'useMediaQuery' is defined but never used              @typescript-eslint/no-unused-vars
+  20:19  warning  'logout' is assigned a value but never used            @typescript-eslint/no-unused-vars
+  26:11  warning  'location' is assigned a value but never used          @typescript-eslint/no-unused-vars
+  48:11  warning  'handleMobileExit' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\layouts\MainLayout.tsx
+   13:10   warning  'useMediaQuery' is defined but never used                                                                                       @typescript-eslint/no-unused-vars
+   30:14   warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   70:262  warning  'isMobile' is assigned a value but never used                                                                                   @typescript-eslint/no-unused-vars
+  103:8    warning  React Hook useCallback has an unnecessary dependency: 'onLinkClick'. Either exclude it or remove the dependency array           react-hooks/exhaustive-deps
+  177:13   warning  'permissions' is assigned a value but never used                                                                                @typescript-eslint/no-unused-vars
+  179:11   warning  'location' is assigned a value but never used                                                                                   @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\layouts\MobileNavBar.tsx
+  43:12  warning  'pathD' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  71:84  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\modals\RevisionHistoryModal.tsx
+  27:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\notifications\NotificationBell.tsx
+   1:17  warning  'useState' is defined but never used                   @typescript-eslint/no-unused-vars
+   1:27  warning  'useRef' is defined but never used                     @typescript-eslint/no-unused-vars
+   1:35  warning  'useEffect' is defined but never used                  @typescript-eslint/no-unused-vars
+   1:46  warning  'useMemo' is defined but never used                    @typescript-eslint/no-unused-vars
+   2:10  warning  'createPortal' is defined but never used               @typescript-eslint/no-unused-vars
+   3:10  warning  'useNavigate' is defined but never used                @typescript-eslint/no-unused-vars
+  13:5   warning  'Check' is defined but never used                      @typescript-eslint/no-unused-vars
+  14:5   warning  'MoreHorizontal' is defined but never used             @typescript-eslint/no-unused-vars
+  15:5   warning  'Inbox' is defined but never used                      @typescript-eslint/no-unused-vars
+  16:5   warning  'Clock' is defined but never used                      @typescript-eslint/no-unused-vars
+  17:5   warning  'ArrowLeft' is defined but never used                  @typescript-eslint/no-unused-vars
+  20:10  warning  'formatDistanceToNow' is defined but never used        @typescript-eslint/no-unused-vars
+  20:31  warning  'isToday' is defined but never used                    @typescript-eslint/no-unused-vars
+  20:40  warning  'isYesterday' is defined but never used                @typescript-eslint/no-unused-vars
+  20:53  warning  'parseISO' is defined but never used                   @typescript-eslint/no-unused-vars
+  21:15  warning  'Notification' is defined but never used               @typescript-eslint/no-unused-vars
+  23:7   warning  'NotificationIcon' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\notifications\NotificationPanel.tsx
+  222:106  warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+  223:108  warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+  363:46   warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+  390:8    warning  React Hook useMemo has a missing dependency: 'isManagerRole'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  399:38   warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+  418:42   warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+  684:82   warning  Unexpected any. Specify a different type                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\notifications\PingAlarmOverlay.tsx
+   4:57  warning  'Navigation' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+  23:8   warning  React Hook useMemo has an unnecessary dependency: 'currentTime'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\components\onboarding\AadhaarQrScanner.tsx
+    3:10  warning  'X' is defined but never used                                                                                    @typescript-eslint/no-unused-vars
+    3:13  warning  'Camera' is defined but never used                                                                               @typescript-eslint/no-unused-vars
+   41:8   warning  React Hook useEffect has a missing dependency: 'startScanner'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  147:23  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\onboarding\AvatarUpload.tsx
+  5:8  warning  'Button' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\onboarding\Documents.tsx
+    1:17  warning  'useState' is defined but never used        @typescript-eslint/no-unused-vars
+    1:27  warning  'useEffect' is defined but never used       @typescript-eslint/no-unused-vars
+    3:10  warning  'useForm' is defined but never used         @typescript-eslint/no-unused-vars
+    3:19  warning  'Controller' is defined but never used      @typescript-eslint/no-unused-vars
+    3:31  warning  'useFormContext' is defined but never used  @typescript-eslint/no-unused-vars
+   27:13  warning  'user' is assigned a value but never used   @typescript-eslint/no-unused-vars
+   32:49  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   44:24  error    Empty block statement                       no-empty
+   53:43  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   69:42  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   78:42  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   87:61  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   96:24  error    Empty block statement                       no-empty
+  101:64  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\support\NewTicketModal.tsx
+  87:12  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\support\TicketPost.tsx
+   4:42  warning  'TicketComment' is defined but never used  @typescript-eslint/no-unused-vars
+  16:65  warning  'ticket' is defined but never used         @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\tasks\CompleteTaskForm.tsx
+  31:48  warning  'reset' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\ui\Avatars.tsx
+  3:7  warning  Fast refresh only works when a file only exports components. Move your component(s) to a separate file  react-refresh/only-export-components
+
+E:\onboarding all files\Paradigm Office 2\components\ui\DateRangePicker.tsx
+  52:9  warning  'isDark' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\components\ui\VerifiedInput.tsx
+  21:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\components\violations\ViolationsView.tsx
+   6:8   warning  'Input' is defined but never used                                                                                  @typescript-eslint/no-unused-vars
+   7:41  warning  'User' is defined but never used                                                                                   @typescript-eslint/no-unused-vars
+  26:6   warning  React Hook useEffect has a missing dependency: 'loadViolations'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\hooks\useIdleTimer.ts
+  71:8  warning  React Hook useEffect has a missing dependency: 'events'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\hooks\useSecurityCheck.ts
+  61:23  warning  'spoofingIndicators' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\MobileHome.tsx
+  11:19  warning  'logout' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\OnboardingHome.tsx
+   2:23  warning  'Link' is defined but never used                @typescript-eslint/no-unused-vars
+   7:10  warning  'ProfilePlaceholder' is defined but never used  @typescript-eslint/no-unused-vars
+  13:11  warning  'user' is assigned a value but never used       @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\PendingApproval.tsx
+  9:13  warning  'logout' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\Splash.tsx
+  17:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\VerificationDashboard.tsx
+  7:39  warning  'RefreshCw' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\AdvancedNotificationSettings.tsx
+    4:5    warning  'Settings' is defined but never used      @typescript-eslint/no-unused-vars
+    5:5    warning  'Shield' is defined but never used        @typescript-eslint/no-unused-vars
+    8:5    warning  'Save' is defined but never used          @typescript-eslint/no-unused-vars
+   11:5    warning  'CheckCircle2' is defined but never used  @typescript-eslint/no-unused-vars
+   17:5    warning  'Mail' is defined but never used          @typescript-eslint/no-unused-vars
+  195:138  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\ApprovalWorkflow.tsx
+   5:41  warning  'Maximize2' is defined but never used          @typescript-eslint/no-unused-vars
+  10:8   warning  'WorkflowChart2D' is defined but never used    @typescript-eslint/no-unused-vars
+  22:11  warning  'navigate' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\BulkEarnedLeavePage.tsx
+  16:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  43:31  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  78:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\DeviceApprovals.tsx
+  7:3  warning  'Clock' is defined but never used   @typescript-eslint/no-unused-vars
+  8:3  warning  'Search' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\ManageDevices.tsx
+  14:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  80:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  86:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\ModuleManagement.tsx
+  4:26  warning  'Permission' is defined but never used  @typescript-eslint/no-unused-vars
+  5:30  warning  'Loader2' is defined but never used     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\OrganizationManagement.tsx
+    8:16  warning  'Edit' is defined but never used                     @typescript-eslint/no-unused-vars
+    8:30  warning  'Eye' is defined but never used                      @typescript-eslint/no-unused-vars
+    8:35  warning  'Loader2' is defined but never used                  @typescript-eslint/no-unused-vars
+    8:62  warning  'CheckCircle' is defined but never used              @typescript-eslint/no-unused-vars
+   12:8   warning  'AdminPageHeader' is defined but never used          @typescript-eslint/no-unused-vars
+   20:8   warning  'Input' is defined but never used                    @typescript-eslint/no-unused-vars
+   22:10  warning  'Search' is defined but never used                   @typescript-eslint/no-unused-vars
+   28:37  warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+   84:12  warning  'totalSites' is assigned a value but never used      @typescript-eslint/no-unused-vars
+   85:24  warning  'setSearchTerm' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  101:13  warning  'siteManagement' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  257:29  warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+  395:43  warning  'config' is assigned a value but never used          @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\RoleManagement.tsx
+   6:33  warning  'Loader2' is defined but never used                                                                                             @typescript-eslint/no-unused-vars
+  18:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  72:23  warning  'setIsEditing' is assigned a value but never used                                                                               @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\admin\UserManagement.tsx
+    7:10   warning  'ShieldCheck' is defined but never used             @typescript-eslint/no-unused-vars
+    7:68   warning  'Search' is defined but never used                  @typescript-eslint/no-unused-vars
+    7:102  warning  'X' is defined but never used                       @typescript-eslint/no-unused-vars
+  137:24   warning  'setSearchTerm' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  158:11   warning  'isMobile' is assigned a value but never used       @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\attendance\AttendanceActionPage.tsx
+   8:10  warning  'api' is defined but never used                      @typescript-eslint/no-unused-vars
+  14:34  warning  'isCheckedIn' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  18:12  warning  'settingsLoaded' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\attendance\AttendanceDashboard.tsx
+    14:5    warning  'DailyAttendanceRecord' is defined but never used                                                                                                                                              @typescript-eslint/no-unused-vars
+    15:5    warning  'DailyAttendanceStatus' is defined but never used                                                                                                                                              @typescript-eslint/no-unused-vars
+    19:5    warning  'OnboardingData' is defined but never used                                                                                                                                                     @typescript-eslint/no-unused-vars
+    21:5    warning  'CompOffLog' is defined but never used                                                                                                                                                         @typescript-eslint/no-unused-vars
+    32:5    warning  'getDaysInMonth' is defined but never used                                                                                                                                                     @typescript-eslint/no-unused-vars
+    33:5    warning  'addDays' is defined but never used                                                                                                                                                            @typescript-eslint/no-unused-vars
+    42:5    warning  'differenceInHours' is defined but never used                                                                                                                                                  @typescript-eslint/no-unused-vars
+    43:5    warning  'differenceInMinutes' is defined but never used                                                                                                                                                @typescript-eslint/no-unused-vars
+    44:5    warning  'isSaturday' is defined but never used                                                                                                                                                         @typescript-eslint/no-unused-vars
+    45:5    warning  'isSunday' is defined but never used                                                                                                                                                           @typescript-eslint/no-unused-vars
+    46:5    warning  'isSameDay' is defined but never used                                                                                                                                                          @typescript-eslint/no-unused-vars
+    51:19   warning  'Download' is defined but never used                                                                                                                                                           @typescript-eslint/no-unused-vars
+    54:10   warning  'reverseGeocode' is defined but never used                                                                                                                                                     @typescript-eslint/no-unused-vars
+    57:8    warning  'Select' is defined but never used                                                                                                                                                             @typescript-eslint/no-unused-vars
+    59:8    warning  'DatePicker' is defined but never used                                                                                                                                                         @typescript-eslint/no-unused-vars
+    61:8    warning  'Input' is defined but never used                                                                                                                                                              @typescript-eslint/no-unused-vars
+    62:8    warning  'StatCard' is defined but never used                                                                                                                                                           @typescript-eslint/no-unused-vars
+    66:10   warning  'useThemeStore' is defined but never used                                                                                                                                                      @typescript-eslint/no-unused-vars
+   114:7    warning  'ChartContainer' is assigned a value but never used                                                                                                                                            @typescript-eslint/no-unused-vars
+   261:55   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   336:6    warning  'ReportFormat' is defined but never used                                                                                                                                                       @typescript-eslint/no-unused-vars
+   804:11   warning  'isSmallScreen' is assigned a value but never used                                                                                                                                             @typescript-eslint/no-unused-vars
+   844:48   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   865:37   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   877:40   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   879:58   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   905:54   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   942:92   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+   957:54   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1030:64   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1037:63   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1049:61   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1049:108  warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1147:8    warning  React Hook useEffect has a missing dependency: 'attendance'. Either include it or remove the dependency array                                                                                  react-hooks/exhaustive-deps
+  1301:11   warning  'startDateId' is assigned a value but never used                                                                                                                                               @typescript-eslint/no-unused-vars
+  1302:11   warning  'endDateId' is assigned a value but never used                                                                                                                                                 @typescript-eslint/no-unused-vars
+  1438:58   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1439:60   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1515:96   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1565:8    warning  React Hook useMemo has a missing dependency: 'attendance'. Either include it or remove the dependency array                                                                                    react-hooks/exhaustive-deps
+  1619:8    warning  React Hook useMemo has unnecessary dependencies: 'fieldHolidays', 'leaves', 'officeHolidays', 'recurringHolidays', and 'userHolidaysPool'. Either exclude them or remove the dependency array  react-hooks/exhaustive-deps
+  1665:50   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1688:69   error    Unnecessary escape character: \/                                                                                                                                                               no-useless-escape
+  1737:58   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1738:66   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1785:95   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  1914:8    warning  React Hook useMemo has missing dependencies: 'attendance' and 'selectedStatus'. Either include them or remove the dependency array                                                             react-hooks/exhaustive-deps
+  1934:11   warning  'pdfContent' is assigned a value but never used                                                                                                                                                @typescript-eslint/no-unused-vars
+  2048:35   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  2369:19   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+  2573:78   warning  Unexpected any. Specify a different type                                                                                                                                                       @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\attendance\MyLocations.tsx
+  124:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  156:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  261:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  302:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\attendance\PDFReports.tsx
+     2:57  warning  'Font' is defined but never used          @typescript-eslint/no-unused-vars
+   265:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   353:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   400:59  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   403:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   404:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   405:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   530:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   532:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   572:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   591:62  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   591:81  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   634:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   680:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   680:67  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   710:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   877:11  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   878:13  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   880:27  warning  'logoUrl' is defined but never used       @typescript-eslint/no-unused-vars
+   910:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   915:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   963:8   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  1051:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\auth\ForgotPassword.tsx
+  21:7   warning  'getFriendlyAuthError' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  21:31  warning  'errorCode' is defined but never used                      @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\auth\Login.tsx
+  18:10  warning  'authService' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\auth\LogoutPage.tsx
+  5:18  warning  'ArrowLeft' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\auth\UpdatePassword.tsx
+   6:16  warning  'useLocation' is defined but never used  @typescript-eslint/no-unused-vars
+  10:23  warning  'Loader2' is defined but never used      @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\billing\CostAnalysis.tsx
+  5:59  warning  'VerificationCostSetting' is defined but never used  @typescript-eslint/no-unused-vars
+  9:78  warning  'FileText' is defined but never used                 @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\billing\SiteAttendanceTracker.tsx
+    8:76   warning  'Mail' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+    8:108  warning  'Building' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+   99:8    warning  React Hook useCallback has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  213:34   warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  382:23   warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  804:68   warning  'idx' is defined but never used                                                                            @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\developer\ApiSettings.tsx
+   37:44   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  254:86   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  473:87   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  487:114  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\finance\AddSiteFinanceRecord.tsx
+   5:10  warning  'useAuthStore' is defined but never used     @typescript-eslint/no-unused-vars
+   8:59  warning  'MapPin' is defined but never used           @typescript-eslint/no-unused-vars
+   9:8   warning  'Button' is defined but never used           @typescript-eslint/no-unused-vars
+  30:73  warning  'errors' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  32:35  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  33:42  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  34:33  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  35:40  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\finance\FinanceModule.tsx
+  20:8  warning  React Hook useEffect has a missing dependency: 'queryParams'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\finance\SiteFinanceTracker.tsx
+   8:18   warning  'startOfMonth' is defined but never used  @typescript-eslint/no-unused-vars
+  11:111  warning  'Clock' is defined but never used         @typescript-eslint/no-unused-vars
+  59:56   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddSiteAttendanceRecord.tsx
+    4:10  warning  'supabase' is defined but never used      @typescript-eslint/no-unused-vars
+   11:42  warning  'TrendingUp' is defined but never used    @typescript-eslint/no-unused-vars
+   11:54  warning  'Building' is defined but never used      @typescript-eslint/no-unused-vars
+   11:64  warning  'Calendar' is defined but never used      @typescript-eslint/no-unused-vars
+   74:87  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  129:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  147:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  198:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  227:68  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddSitePage.tsx
+   7:34  warning  'Company' is defined but never used       @typescript-eslint/no-unused-vars
+  44:42  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddTaskPage.tsx
+   3:46  warning  'Resolver' is defined but never used      @typescript-eslint/no-unused-vars
+  68:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\AddUserPage.tsx
+   12:20   warning  'ArrowLeft' is defined but never used                  @typescript-eslint/no-unused-vars
+   28:16   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+   28:39   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+   54:16   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+   54:39   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+   83:10   warning  'initialData' is assigned a value but never used       @typescript-eslint/no-unused-vars
+   90:9    warning  'role' is assigned a value but never used              @typescript-eslint/no-unused-vars
+  136:36   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+  148:17   warning  'password' is assigned a value but never used          @typescript-eslint/no-unused-vars
+  148:27   warning  'noSiteAssignment' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  153:46   warning  'noSiteAssignment' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  187:21   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+  222:147  warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+  230:37   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+  403:143  warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+  411:33   warning  Unexpected any. Specify a different type               @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\NewTicketPage.tsx
+  61:17  error    Unexpected lexical declaration in case block  no-case-declarations
+  83:18  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\NewUniformRequestPage.tsx
+   1:38   warning  'useMemo' is defined but never used       @typescript-eslint/no-unused-vars
+  10:19   warning  'Save' is defined but never used          @typescript-eslint/no-unused-vars
+  10:32   warning  'X' is defined but never used             @typescript-eslint/no-unused-vars
+  25:15   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  71:125  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\forms\QuickAddSitePage.tsx
+   8:10  warning  'Building' is defined but never used      @typescript-eslint/no-unused-vars
+  37:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\AttendanceSettings.tsx
+   14:57   warning  'RecurringHolidayRule' is defined but never used     @typescript-eslint/no-unused-vars
+   58:28   warning  'prev' is defined but never used                     @typescript-eslint/no-unused-vars
+  107:19   warning  'adminAllocated' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  223:78   warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+  817:69   warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+  857:101  warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\EnrollmentRules.tsx
+  11:63  warning  'MapPin' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\EntityManagement.tsx
+    1:55   warning  'useCallback' is defined but never used         @typescript-eslint/no-unused-vars
+    3:10   warning  'useForm' is defined but never used             @typescript-eslint/no-unused-vars
+    4:10   warning  'yupResolver' is defined but never used         @typescript-eslint/no-unused-vars
+    5:13   warning  'yup' is defined but never used                 @typescript-eslint/no-unused-vars
+    7:102  warning  'UploadedFile' is defined but never used        @typescript-eslint/no-unused-vars
+    8:197  warning  'Shirt' is defined but never used               @typescript-eslint/no-unused-vars
+    8:244  warning  'Sun' is defined but never used                 @typescript-eslint/no-unused-vars
+    8:269  warning  'ChevronLeft' is defined but never used         @typescript-eslint/no-unused-vars
+   15:8    warning  'AdminPageHeader' is defined but never used     @typescript-eslint/no-unused-vars
+   18:10   warning  'useUiSettingsStore' is defined but never used  @typescript-eslint/no-unused-vars
+   41:37   warning  Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any
+  581:29   warning  Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any
+  724:17   error    Unexpected lexical declaration in case block    no-case-declarations
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\FamilyVerification.tsx
+   4:40  warning  'User' is defined but never used          @typescript-eslint/no-unused-vars
+   4:46  warning  'Calendar' is defined but never used      @typescript-eslint/no-unused-vars
+  25:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\FieldStaffTracking.tsx
+   9:8  warning  'Button' is defined but never used         @typescript-eslint/no-unused-vars
+  14:8  warning  'LoadingScreen' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\InsuranceManagement.tsx
+  4:22  warning  'Trash2' is defined but never used  @typescript-eslint/no-unused-vars
+  8:8   warning  'Modal' is defined but never used   @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\LeaveManagement.tsx
+    5:96   warning  'Info' is defined but never used                                                                                                @typescript-eslint/no-unused-vars
+   11:8    warning  'Select' is defined but never used                                                                                              @typescript-eslint/no-unused-vars
+   12:8    warning  'TableSkeleton' is defined but never used                                                                                       @typescript-eslint/no-unused-vars
+   13:8    warning  'AdminPageHeader' is defined but never used                                                                                     @typescript-eslint/no-unused-vars
+   15:10   warning  'isAdmin' is defined but never used                                                                                             @typescript-eslint/no-unused-vars
+   20:106  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   72:12   warning  'poolHolidays' is assigned a value but never used                                                                               @typescript-eslint/no-unused-vars
+   72:54   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  121:8    warning  React Hook useEffect has missing dependencies: 'user?.id' and 'user?.role'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  130:32   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  314:32   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  314:73   warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  686:110  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+  686:151  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\LocationManagement.tsx
+  131:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  202:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  260:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\NotificationsControl.tsx
+   6:5   warning  'Shield' is defined but never used          @typescript-eslint/no-unused-vars
+   7:5   warning  'Users' is defined but never used           @typescript-eslint/no-unused-vars
+  10:5   warning  'Save' is defined but never used            @typescript-eslint/no-unused-vars
+  12:13  warning  'UserIcon' is defined but never used        @typescript-eslint/no-unused-vars
+  14:5   warning  'CheckCircle2' is defined but never used    @typescript-eslint/no-unused-vars
+  15:5   warning  'Clock' is defined but never used           @typescript-eslint/no-unused-vars
+  16:5   warning  'Target' is defined but never used          @typescript-eslint/no-unused-vars
+  18:5   warning  'Mail' is defined but never used            @typescript-eslint/no-unused-vars
+  21:5   warning  'Coffee' is defined but never used          @typescript-eslint/no-unused-vars
+  22:15  warning  'LogOutIcon' is defined but never used      @typescript-eslint/no-unused-vars
+  23:5   warning  'ClipboardCheck' is defined but never used  @typescript-eslint/no-unused-vars
+  24:5   warning  'XCircle' is defined but never used         @typescript-eslint/no-unused-vars
+  25:5   warning  'UserCheck' is defined but never used       @typescript-eslint/no-unused-vars
+  26:5   warning  'MessageSquare' is defined but never used   @typescript-eslint/no-unused-vars
+  27:5   warning  'DollarSign' is defined but never used      @typescript-eslint/no-unused-vars
+  28:5   warning  'FileText' is defined but never used        @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\PoliciesAndInsurance.tsx
+  1:27  warning  'useCallback' is defined but never used  @typescript-eslint/no-unused-vars
+  1:40  warning  'useEffect' is defined but never used    @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\hr\PolicyManagement.tsx
+  5:22  warning  'Trash2' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\ApplyLeave.tsx
+  63:12  warning  'isInitialLoading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\AttendanceCalendar.tsx
+    1:17  warning  'useState' is defined but never used             @typescript-eslint/no-unused-vars
+    6:10  warning  'api' is defined but never used                  @typescript-eslint/no-unused-vars
+   10:8   warning  'LoadingScreen' is defined but never used        @typescript-eslint/no-unused-vars
+  103:15  warning  'activePool' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  103:41  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  112:49  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  117:43  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  118:41  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  119:44  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\CompOffCalendar.tsx
+   1:17  warning  'useState' is defined but never used                    @typescript-eslint/no-unused-vars
+   1:36  warning  'useEffect' is defined but never used                   @typescript-eslint/no-unused-vars
+   8:10  warning  'api' is defined but never used                         @typescript-eslint/no-unused-vars
+  10:8   warning  'LoadingScreen' is defined but never used               @typescript-eslint/no-unused-vars
+  33:44  warning  'recurringHolidays' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  54:15  warning  'activePool' is assigned a value but never used         @typescript-eslint/no-unused-vars
+  54:43  warning  Unexpected any. Specify a different type                @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\EmployeeLog.tsx
+    9:8   warning  'LoadingScreen' is defined but never used                                                                                 @typescript-eslint/no-unused-vars
+   33:11  warning  'isMobile' is assigned a value but never used                                                                             @typescript-eslint/no-unused-vars
+   83:8   warning  React Hook useEffect has a missing dependency: 'fetchAttendanceEvents'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  158:17  error    Unexpected lexical declaration in case block                                                                              no-case-declarations
+  159:17  error    Unexpected lexical declaration in case block                                                                              no-case-declarations
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\HolidayCalendar.tsx
+  1:17  warning  'useState' is defined but never used       @typescript-eslint/no-unused-vars
+  7:8   warning  'LoadingScreen' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\HolidaySelectionPage.tsx
+   24:12  warning  'userHolidays' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  122:31  warning  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\LeaveDashboard.tsx
+    7:25   warning  'ArrowLeft' is defined but never used                                                                      @typescript-eslint/no-unused-vars
+    7:117  warning  'XCircle' is defined but never used                                                                        @typescript-eslint/no-unused-vars
+    7:126  warning  'Search' is defined but never used                                                                         @typescript-eslint/no-unused-vars
+    7:144  warning  'Settings' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+    7:154  warning  'Check' is defined but never used                                                                          @typescript-eslint/no-unused-vars
+    8:34   warning  'FIXED_HOLIDAYS' is defined but never used                                                                 @typescript-eslint/no-unused-vars
+   11:8    warning  'Select' is defined but never used                                                                         @typescript-eslint/no-unused-vars
+   12:10   warning  'useForm' is defined but never used                                                                        @typescript-eslint/no-unused-vars
+   12:19   warning  'Controller' is defined but never used                                                                     @typescript-eslint/no-unused-vars
+   12:31   warning  'SubmitHandler' is defined but never used                                                                  @typescript-eslint/no-unused-vars
+   12:46   warning  'Resolver' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+   13:10   warning  'yupResolver' is defined but never used                                                                    @typescript-eslint/no-unused-vars
+   15:44   warning  'isSameDay' is defined but never used                                                                      @typescript-eslint/no-unused-vars
+   15:81   warning  'differenceInMinutes' is defined but never used                                                            @typescript-eslint/no-unused-vars
+   17:8    warning  'DatePicker' is defined but never used                                                                     @typescript-eslint/no-unused-vars
+   20:8    warning  'UploadDocument' is defined but never used                                                                 @typescript-eslint/no-unused-vars
+   26:8    warning  'Modal' is defined but never used                                                                          @typescript-eslint/no-unused-vars
+   73:6    warning  'LeaveRequestFormData' is defined but never used                                                           @typescript-eslint/no-unused-vars
+   82:7    warning  'getLeaveValidationSchema' is assigned a value but never used                                              @typescript-eslint/no-unused-vars
+  118:12   warning  'error' is assigned a value but never used                                                                 @typescript-eslint/no-unused-vars
+  119:38   warning  'setIsCompOffHistoryDisabled' is assigned a value but never used                                           @typescript-eslint/no-unused-vars
+  131:12   warning  'activeHolidayPool' is assigned a value but never used                                                     @typescript-eslint/no-unused-vars
+  153:38   warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  173:97   warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  197:11   warning  'currentYear' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+  274:105  warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  343:23   warning  Unexpected any. Specify a different type                                                                   @typescript-eslint/no-explicit-any
+  358:8    warning  React Hook useCallback has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\OTCalendar.tsx
+   2:104  warning  'isAfter' is defined but never used                                                                          @typescript-eslint/no-unused-vars
+   2:113  warning  'startOfDay' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+   2:125  warning  'differenceInMinutes' is defined but never used                                                              @typescript-eslint/no-unused-vars
+   6:10   warning  'api' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+   9:8    warning  'LoadingScreen' is defined but never used                                                                    @typescript-eslint/no-unused-vars
+  99:8    warning  React Hook useMemo has a missing dependency: 'getDailyOT'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\ShortfallCalendar.tsx
+   1:17  warning  'useState' is defined but never used                                                                                @typescript-eslint/no-unused-vars
+   1:27  warning  'useEffect' is defined but never used                                                                               @typescript-eslint/no-unused-vars
+  17:99  warning  'settings' is defined but never used                                                                                @typescript-eslint/no-unused-vars
+  18:13  warning  'user' is assigned a value but never used                                                                           @typescript-eslint/no-unused-vars
+  73:8   warning  React Hook useMemo has a missing dependency: 'getDailyShortfall'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\leaves\YearlyAttendanceChart.tsx
+    2:42  warning  'getMonth' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+   18:8   warning  'LoadingScreen' is defined but never used                                                                  @typescript-eslint/no-unused-vars
+   92:8   warning  React Hook useEffect has a missing dependency: 'data'. Either include it or remove the dependency array    react-hooks/exhaustive-deps
+  318:8   warning  React Hook useEffect has a missing dependency: 'months'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\my-team\FieldReports.tsx
+    1:38   warning  'useRef' is defined but never used           @typescript-eslint/no-unused-vars
+    4:15   warning  'AttendanceEvent' is defined but never used  @typescript-eslint/no-unused-vars
+    6:66   warning  'Building' is defined but never used         @typescript-eslint/no-unused-vars
+    6:170  warning  'ChevronLeft' is defined but never used      @typescript-eslint/no-unused-vars
+    6:183  warning  'ChevronRight' is defined but never used     @typescript-eslint/no-unused-vars
+   15:8    warning  'LoadingScreen' is defined but never used    @typescript-eslint/no-unused-vars
+  509:101  warning  'sIndex' is defined but never used           @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\my-team\MyTeamPage.tsx
+    2:18  warning  'MapPin' is defined but never used                                                                                                                              @typescript-eslint/no-unused-vars
+   18:16  warning  'AttendanceEvent' is defined but never used                                                                                                                     @typescript-eslint/no-unused-vars
+  117:6   warning  React Hook useEffect has missing dependencies: 'fetchSettings', 'fetchTeamData', and 'fetchUnlockRequests'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\my-team\TeamMemberProfile.tsx
+    2:21  warning  'Link' is defined but never used                                                                                       @typescript-eslint/no-unused-vars
+    4:3   warning  'ArrowLeft' is defined but never used                                                                                  @typescript-eslint/no-unused-vars
+    5:26  warning  'ChevronRight' is defined but never used                                                                               @typescript-eslint/no-unused-vars
+    5:56  warning  'AlertTriangle' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+    5:71  warning  'Monitor' is defined but never used                                                                                    @typescript-eslint/no-unused-vars
+    5:80  warning  'Shield' is defined but never used                                                                                     @typescript-eslint/no-unused-vars
+    5:88  warning  'Globe' is defined but never used                                                                                      @typescript-eslint/no-unused-vars
+    5:95  warning  'Smartphone' is defined but never used                                                                                 @typescript-eslint/no-unused-vars
+   78:9   warning  'navigate' is assigned a value but never used                                                                          @typescript-eslint/no-unused-vars
+   95:9   warning  'isFieldStaff' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+  103:6   warning  React Hook useEffect has a missing dependency: 'fetchMemberDetails'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  122:6   warning  React Hook useEffect has a missing dependency: 'member'. Either include it or remove the dependency array              react-hooks/exhaustive-deps
+  128:6   warning  React Hook useEffect has a missing dependency: 'fetchActivityLog'. Either include it or remove the dependency array    react-hooks/exhaustive-deps
+  253:31  warning  Unexpected any. Specify a different type                                                                               @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\AadhaarScannerPage.tsx
+    5:62  warning  'CheckCircle2' is defined but never used                                                                         @typescript-eslint/no-unused-vars
+    5:76  warning  'XCircle' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+    7:10  warning  'differenceInYears' is defined but never used                                                                    @typescript-eslint/no-unused-vars
+   10:8   warning  'Modal' is defined but never used                                                                                @typescript-eslint/no-unused-vars
+   12:46  warning  'formatGender' is defined but never used                                                                         @typescript-eslint/no-unused-vars
+   64:43  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  152:37  error    Empty block statement                                                                                            no-empty
+  161:54  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  169:23  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  233:34  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  323:23  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  338:18  warning  Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  358:8   warning  React Hook useEffect has a missing dependency: 'startScanner'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\AddEmployee.tsx
+   11:132  warning  'Trash2' is defined but never used                    @typescript-eslint/no-unused-vars
+   11:153  warning  'X' is defined but never used                         @typescript-eslint/no-unused-vars
+   11:156  warning  'ArrowLeft' is defined but never used                 @typescript-eslint/no-unused-vars
+  245:11   warning  'handleClearForm' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\AddressDetails.tsx
+  28:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  45:88  warning  'getValues' is assigned a value but never used                                                                                  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\BankDetails.tsx
+   1:28  warning  'useState' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+   9:28  warning  'UploadedFile' is defined but never used                                                                                        @typescript-eslint/no-unused-vars
+  25:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  45:13  warning  'user' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+  95:47  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\Biometrics.tsx
+   1:17  warning  'useState' is defined but never used         @typescript-eslint/no-unused-vars
+  10:15  warning  'UploadedFile' is defined but never used     @typescript-eslint/no-unused-vars
+  50:13  warning  'user' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  53:49  warning  'errors' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  77:25  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\Documents.tsx
+    1:17  warning  'useState' is defined but never used        @typescript-eslint/no-unused-vars
+    1:27  warning  'useEffect' is defined but never used       @typescript-eslint/no-unused-vars
+    3:10  warning  'useForm' is defined but never used         @typescript-eslint/no-unused-vars
+    3:19  warning  'Controller' is defined but never used      @typescript-eslint/no-unused-vars
+    3:31  warning  'useFormContext' is defined but never used  @typescript-eslint/no-unused-vars
+   27:13  warning  'user' is assigned a value but never used   @typescript-eslint/no-unused-vars
+   32:49  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   44:24  error    Empty block statement                       no-empty
+   53:43  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   69:42  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   78:42  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   87:61  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+   96:24  error    Empty block statement                       no-empty
+  101:64  warning  Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\EducationDetails.tsx
+    3:28  warning  'useNavigate' is defined but never used    @typescript-eslint/no-unused-vars
+   27:13  warning  'user' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  112:66  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\EsiDetails.tsx
+    1:28  warning  'useState' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+    3:19  warning  'useWatch' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+    9:27  warning  'UploadedFile' is defined but never used                                                                                        @typescript-eslint/no-unused-vars
+   21:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   53:13  warning  'user' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+  110:47  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\FamilyDetails.tsx
+    8:29  warning  'UploadedFile' is defined but never used  @typescript-eslint/no-unused-vars
+   17:10  warning  'useAuthStore' is defined but never used  @typescript-eslint/no-unused-vars
+  100:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\GmcDetails.tsx
+    1:37   warning  'useState' is defined but never used       @typescript-eslint/no-unused-vars
+    8:27   warning  'UploadedFile' is defined but never used   @typescript-eslint/no-unused-vars
+   10:8    warning  'Select' is defined but never used         @typescript-eslint/no-unused-vars
+   49:13   warning  'user' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  177:104  warning  'fieldState' is defined but never used     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\InsurancePdfOutput.tsx
+  20:12  warning  'isAccepted' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  20:24  warning  'setIsAccepted' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  71:11  warning  'fullName' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  72:11  warning  'fatherName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  73:11  warning  'spouseName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  74:11  warning  'motherName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\MySubmissions.tsx
+  5:10  warning  'Loader2' is defined but never used  @typescript-eslint/no-unused-vars
+  5:19  warning  'Plus' is defined but never used     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\MyTasks.tsx
+  5:10  warning  'Loader2' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\OnboardingPdfOutput.tsx
+  19:12  warning  'isAccepted' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  19:24  warning  'setIsAccepted' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  70:11  warning  'fullName' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  71:11  warning  'fatherName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  72:11  warning  'spouseName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  73:11  warning  'motherName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\OrganizationDetails.tsx
+  18:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  36:13  warning  'user' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\PersonalDetails.tsx
+  8:32  warning  'UploadedFile' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\PreUpload.tsx
+   13:8    warning  'Toast' is defined but never used                  @typescript-eslint/no-unused-vars
+   18:67   warning  'ArrowRight' is defined but never used             @typescript-eslint/no-unused-vars
+   18:93   warning  'AlertTriangle' is defined but never used          @typescript-eslint/no-unused-vars
+   20:8    warning  'Modal' is defined but never used                  @typescript-eslint/no-unused-vars
+   24:8    warning  'Logo' is defined but never used                   @typescript-eslint/no-unused-vars
+   25:8    warning  'NotificationBell' is defined but never used       @typescript-eslint/no-unused-vars
+  124:12   warning  'toast' is assigned a value but never used         @typescript-eslint/no-unused-vars
+  145:11   warning  'isMobileView' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  154:11   warning  'idProofType' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  199:95   warning  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+  261:166  error    Empty block statement                              no-empty
+  297:140  error    Empty block statement                              no-empty
+  374:43   warning  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\Review.tsx
+    7:41  warning  'AlertTriangle' is defined but never used          @typescript-eslint/no-unused-vars
+    9:15  warning  'VerificationResult' is defined but never used     @typescript-eslint/no-unused-vars
+    9:35  warning  'EducationRecord' is defined but never used        @typescript-eslint/no-unused-vars
+    9:52  warning  'UploadedFile' is defined but never used           @typescript-eslint/no-unused-vars
+   41:23  warning  'isSubmitting' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  120:25  warning  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\SelectOrganization.tsx
+  6:34  warning  'Company' is defined but never used  @typescript-eslint/no-unused-vars
+  6:43  warning  'Entity' is defined but never used   @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\UanDetails.tsx
+   1:28  warning  'useState' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+   3:19  warning  'useWatch' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+   8:27  warning  'UploadedFile' is defined but never used                                                                                        @typescript-eslint/no-unused-vars
+  18:14  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  42:13  warning  'user' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+  84:47  warning  Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\UniformDetails.tsx
+  34:13  warning  'user' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  49:36  warning  'reset' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\onboarding\UniformRequests.tsx
+   1:38   warning  'useMemo' is defined but never used          @typescript-eslint/no-unused-vars
+   2:31   warning  'useWatch' is defined but never used         @typescript-eslint/no-unused-vars
+   9:8    warning  'AdminPageHeader' is defined but never used  @typescript-eslint/no-unused-vars
+  10:46   warning  'X' is defined but never used                @typescript-eslint/no-unused-vars
+  39:14   warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+  73:125  warning  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\operations\OperationsDashboard.tsx
+   6:10  warning  'addDays' is defined but never used  @typescript-eslint/no-unused-vars
+  11:10  warning  'Users' is defined but never used    @typescript-eslint/no-unused-vars
+  11:45  warning  'MapPin' is defined but never used   @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\operations\TeamActivity.tsx
+    6:42  warning  'Navigation2' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+    7:23  warning  'Calendar' is defined but never used                                                                                 @typescript-eslint/no-unused-vars
+    7:33  warning  'TrendingUp' is defined but never used                                                                               @typescript-eslint/no-unused-vars
+   42:8   warning  React Hook useEffect has a missing dependency: 'fetchTeamMembers'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  117:58  warning  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\profile\ProfilePage.tsx
+   13:10   warning  'dispatchNotificationFromRules' is defined but never used                                                @typescript-eslint/no-unused-vars
+   14:105  warning  'AlertTriangle' is defined but never used                                                                @typescript-eslint/no-unused-vars
+   17:8    warning  'Modal' is defined but never used                                                                        @typescript-eslint/no-unused-vars
+   21:35   warning  'getEmployeeScore' is defined but never used                                                             @typescript-eslint/no-unused-vars
+   45:9    warning  'logout' is assigned a value but never used                                                              @typescript-eslint/no-unused-vars
+   49:9    warning  'lastBreakInTime' is assigned a value but never used                                                     @typescript-eslint/no-unused-vars
+   88:11   warning  'approvedUnlockCount' is assigned a value but never used                                                 @typescript-eslint/no-unused-vars
+  165:8    warning  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  175:8    warning  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  211:11   warning  'requestPermissions' is assigned a value but never used                                                  @typescript-eslint/no-unused-vars
+  248:105  warning  'getValues' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+  248:116  warning  'trigger' is assigned a value but never used                                                             @typescript-eslint/no-unused-vars
+  313:11   warning  'handleAttendanceAction' is assigned a value but never used                                              @typescript-eslint/no-unused-vars
+  388:11   warning  'tasksLink' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\public\GMCForm.tsx
+    9:42  warning  'Building2' is defined but never used                                                                                                   @typescript-eslint/no-unused-vars
+    9:53  warning  'MapPin' is defined but never used                                                                                                      @typescript-eslint/no-unused-vars
+   10:5   warning  'Calendar' is defined but never used                                                                                                    @typescript-eslint/no-unused-vars
+   10:22  warning  'Phone' is defined but never used                                                                                                       @typescript-eslint/no-unused-vars
+   10:36  warning  'Plus' is defined but never used                                                                                                        @typescript-eslint/no-unused-vars
+   11:15  warning  'Printer' is defined but never used                                                                                                     @typescript-eslint/no-unused-vars
+   18:8   warning  'SearchableSelect' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+   23:10  warning  'useLogoStore' is defined but never used                                                                                                @typescript-eslint/no-unused-vars
+   82:12  warning  'gmcRates' is assigned a value but never used                                                                                           @typescript-eslint/no-unused-vars
+   82:46  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+   86:58  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+   87:40  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+   88:48  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  112:53  warning  'trigger' is assigned a value but never used                                                                                            @typescript-eslint/no-unused-vars
+  113:52  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  152:11  warning  'getRateForAge' is assigned a value but never used                                                                                      @typescript-eslint/no-unused-vars
+  152:28  warning  'age' is defined but never used                                                                                                         @typescript-eslint/no-unused-vars
+  183:8   warning  React Hook useMemo has missing dependencies: 'watch' and 'watchChildren'. Either include them or remove the dependency array            react-hooks/exhaustive-deps
+  183:22  warning  React Hook useMemo has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked  react-hooks/exhaustive-deps
+  183:46  warning  React Hook useMemo has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked  react-hooks/exhaustive-deps
+  183:66  warning  React Hook useMemo has a complex expression in the dependency array. Extract it to a separate variable so it can be statically checked  react-hooks/exhaustive-deps
+  191:40  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  191:46  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  195:34  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  202:36  warning  'acknowledged' is assigned a value but never used                                                                                       @typescript-eslint/no-unused-vars
+  333:83  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  508:89  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  509:88  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+  510:92  warning  Unexpected any. Specify a different type                                                                                                @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\settings\DeviceManagement.tsx
+  19:10  warning  'currentDeviceIdentifier' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\settings\PermissionsPage.tsx
+  59:111  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\site\OrganizationDashboard.tsx
+  63:8  warning  React Hook useCallback has missing dependencies: 'user?.id' and 'user?.role'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\support\Alerts.tsx
+   11:13  warning  'user' is assigned a value but never used     @typescript-eslint/no-unused-vars
+   97:25  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  111:11  warning  'getIcon' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\support\SupportDashboard.tsx
+    6:79  warning  'Video' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+    6:94  warning  'Filter' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+  151:12  warning  'filterStatus' is assigned a value but never used                                                              @typescript-eslint/no-unused-vars
+  151:26  warning  'setFilterStatus' is assigned a value but never used                                                           @typescript-eslint/no-unused-vars
+  152:12  warning  'filterCategory' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  152:28  warning  'setFilterCategory' is assigned a value but never used                                                         @typescript-eslint/no-unused-vars
+  153:12  warning  'searchQuery' is assigned a value but never used                                                               @typescript-eslint/no-unused-vars
+  153:25  warning  'setSearchQuery' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  154:12  warning  'isSidebarOpen' is assigned a value but never used                                                             @typescript-eslint/no-unused-vars
+  154:27  warning  'setIsSidebarOpen' is assigned a value but never used                                                          @typescript-eslint/no-unused-vars
+  219:8   warning  React Hook useEffect has a missing dependency: 'user?.role'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  222:11  warning  'userIsAdmin' is assigned a value but never used                                                               @typescript-eslint/no-unused-vars
+  300:11  warning  'handleNewTicketSuccess' is assigned a value but never used                                                    @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\support\TicketDetail.tsx
+   1:38  warning  'useRef' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+   4:30  warning  'TicketPost' is defined but never used                                                                       @typescript-eslint/no-unused-vars
+   7:5   warning  'Clock' is defined but never used                                                                            @typescript-eslint/no-unused-vars
+   7:12  warning  'Tag' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+   7:49  warning  'CheckCircle2' is defined but never used                                                                     @typescript-eslint/no-unused-vars
+   7:63  warning  'AlertCircle' is defined but never used                                                                      @typescript-eslint/no-unused-vars
+   7:76  warning  'Clock3' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+   8:5   warning  'Search' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+   8:13  warning  'Filter' is defined but never used                                                                           @typescript-eslint/no-unused-vars
+   8:41  warning  'MoreVertical' is defined but never used                                                                     @typescript-eslint/no-unused-vars
+   8:55  warning  'XCircle' is defined but never used                                                                          @typescript-eslint/no-unused-vars
+   8:78  warning  'Video' is defined but never used                                                                            @typescript-eslint/no-unused-vars
+  53:11  warning  'isMobile' is assigned a value but never used                                                                @typescript-eslint/no-unused-vars
+  79:8   warning  React Hook useEffect has a missing dependency: 'user?.id'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\onboarding all files\Paradigm Office 2\pages\tasks\TaskManagement.tsx
+   14:8   warning  'TableSkeleton' is defined but never used        @typescript-eslint/no-unused-vars
+   67:38  warning  'fetchTasks' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  262:78  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+  277:80  warning  Unexpected any. Specify a different type         @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\pages\uniforms\UniformDashboard.tsx
+    4:154  warning  'UniformRequestItem' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+    8:8    warning  'Select' is defined but never used                                                                                          @typescript-eslint/no-unused-vars
+   11:25   warning  'Shirt' is defined but never used                                                                                           @typescript-eslint/no-unused-vars
+   11:54   warning  'ChevronDown' is defined but never used                                                                                     @typescript-eslint/no-unused-vars
+   11:67   warning  'Save' is defined but never used                                                                                            @typescript-eslint/no-unused-vars
+   32:15   warning  Unexpected any. Specify a different type                                                                                    @typescript-eslint/no-explicit-any
+   78:125  warning  Unexpected any. Specify a different type                                                                                    @typescript-eslint/no-explicit-any
+  113:51   error    React Hook "useMemo" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  167:12   warning  'sites' is assigned a value but never used                                                                                  @typescript-eslint/no-unused-vars
+  171:12   warning  'editingRequest' is assigned a value but never used                                                                         @typescript-eslint/no-unused-vars
+  171:28   warning  'setEditingRequest' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+  206:11   warning  'handleSave' is assigned a value but never used                                                                             @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\pages\verification\VerificationDashboard.tsx
+  8:39  warning  'RefreshCw' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\services\api.ts
+     1:10   warning  'createClient' is defined but never used                      @typescript-eslint/no-unused-vars
+     1:24   warning  'PostgrestResponse' is defined but never used                 @typescript-eslint/no-unused-vars
+     2:20   warning  'supabaseAnonKey' is defined but never used                   @typescript-eslint/no-unused-vars
+     6:68   warning  'MasterTool' is defined but never used                        @typescript-eslint/no-unused-vars
+     8:29   warning  'EnrollmentRules' is defined but never used                   @typescript-eslint/no-unused-vars
+     8:69   warning  'UploadedFile' is defined but never used                      @typescript-eslint/no-unused-vars
+     8:83   warning  'SalaryChangeRequest' is defined but never used               @typescript-eslint/no-unused-vars
+     8:104  warning  'SiteStaff' is defined but never used                         @typescript-eslint/no-unused-vars
+    10:42   warning  'HolidayListItem' is defined but never used                   @typescript-eslint/no-unused-vars
+    10:59   warning  'UniformRequestItem' is defined but never used                @typescript-eslint/no-unused-vars
+    12:75   warning  'GmcPolicySettings' is defined but never used                 @typescript-eslint/no-unused-vars
+    19:88   warning  'addMonths' is defined but never used                         @typescript-eslint/no-unused-vars
+   116:37   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   116:43   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   154:43   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   154:95   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   161:17   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   216:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   216:34   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   221:34   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   233:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   233:34   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   238:38   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   254:43   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   262:39   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   265:11   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   287:100  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   296:19   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   311:24   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   330:52   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   339:17   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   342:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   381:17   warning  'billingDifference' is assigned a value but never used        @typescript-eslint/no-unused-vars
+   381:36   warning  'managementFeeDifference' is assigned a value but never used  @typescript-eslint/no-unused-vars
+   381:61   warning  'variationStatus' is assigned a value but never used          @typescript-eslint/no-unused-vars
+   381:78   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   381:89   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   412:52   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   442:17   warning  'sNo' is assigned a value but never used                      @typescript-eslint/no-unused-vars
+   442:22   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   442:33   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   442:44   warning  'revisionCount' is assigned a value but never used            @typescript-eslint/no-unused-vars
+   625:17   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   625:28   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   643:15   warning  'id' is assigned a value but never used                       @typescript-eslint/no-unused-vars
+   643:19   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   643:30   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   652:15   warning  'id' is assigned a value but never used                       @typescript-eslint/no-unused-vars
+   652:19   warning  'sNo' is assigned a value but never used                      @typescript-eslint/no-unused-vars
+   652:24   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   652:35   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+   682:52   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   739:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   753:37   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   806:21   warning  'role' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+   911:68   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   919:38   warning  'reason' is defined but never used                            @typescript-eslint/no-unused-vars
+   928:68   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+   995:41   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1008:155  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1019:20   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1046:97   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1075:95   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1186:34   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1200:32   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1206:29   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1212:29   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1292:35   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1324:75   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1324:92   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1338:66   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1397:58   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1402:22   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1454:13   warning  'data' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+  1466:19   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1485:84   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1499:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1502:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1546:24   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1547:27   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1548:26   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1550:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1561:37   warning  'companies' is defined but never used                         @typescript-eslint/no-unused-vars
+  1561:48   warning  'locations' is defined but never used                         @typescript-eslint/no-unused-vars
+  1567:42   warning  'entities' is defined but never used                          @typescript-eslint/no-unused-vars
+  1607:13   warning  'entities' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  1613:13   warning  'entities' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  1636:65   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1661:72   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1665:13   warning  'data' is assigned a value but never used                     @typescript-eslint/no-unused-vars
+  1758:49   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1779:37   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1827:42   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1830:13   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1832:19   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1873:50   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1880:35   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1898:20   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1932:73   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1935:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1967:73   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1970:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  1989:11   warning  'today' is assigned a value but never used                    @typescript-eslint/no-unused-vars
+  2042:46   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2070:59   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2073:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2076:50   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2077:45   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2080:34   warning  '_omit' is assigned a value but never used                    @typescript-eslint/no-unused-vars
+  2108:39   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2111:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2114:50   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2162:59   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2196:59   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2231:11   warning  'fileExt' is assigned a value but never used                  @typescript-eslint/no-unused-vars
+  2269:11   warning  'fileExt' is assigned a value but never used                  @typescript-eslint/no-unused-vars
+  2303:101  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2306:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2345:37   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2366:41   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2381:43   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2387:44   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2393:44   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2399:37   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2405:48   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2411:46   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2486:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2487:19   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2507:17   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2510:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2537:90   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2546:11   warning  'emptyRes' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  2547:25   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2548:22   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2549:17   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2550:19   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2551:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2552:21   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2553:27   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2583:17   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2586:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2657:44   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2666:11   warning  'floatingTotal' is assigned a value but never used            @typescript-eslint/no-unused-vars
+  2668:9    warning  'day17Floating' is assigned a value but never used            @typescript-eslint/no-unused-vars
+  2724:11   warning  'startDateStr' is assigned a value but never used             @typescript-eslint/no-unused-vars
+  2813:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2830:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2953:74   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2954:73   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2960:88   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2960:114  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  2977:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3185:58   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3188:11   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3218:76   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3293:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3299:21   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3299:58   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3300:25   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3300:43   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3305:21   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3314:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3355:35   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3356:35   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3357:54   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3367:48   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3369:33   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3371:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3619:177  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3668:54   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3668:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3712:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3757:29   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3758:38   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3759:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3760:42   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3761:32   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3772:27   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3773:36   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3774:38   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3775:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3776:30   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3836:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3896:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3925:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3942:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  3967:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4002:48   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4052:36   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4064:32   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4076:33   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4089:70   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4121:72   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4221:29   warning  'pincode' is defined but never used                           @typescript-eslint/no-unused-vars
+  4256:74   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4256:106  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4280:80   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4284:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4411:46   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4442:46   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4484:42   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4514:46   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4622:67   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4636:70   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4656:111  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4659:15   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4679:129  warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4688:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4688:44   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4692:24   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4701:31   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4719:23   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4719:41   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4723:21   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4731:28   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4746:40   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4832:32   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  4997:66   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5007:47   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5007:62   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5073:53   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5108:44   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5124:20   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5452:13   warning  'startOfMon' is assigned a value but never used               @typescript-eslint/no-unused-vars
+  5453:13   warning  'endOfMon' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  5586:50   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5635:31   warning  'billingMonth' is defined but never used                      @typescript-eslint/no-unused-vars
+  5635:54   warning  'managerId' is defined but never used                         @typescript-eslint/no-unused-vars
+  5677:25   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5712:15   warning  'id' is assigned a value but never used                       @typescript-eslint/no-unused-vars
+  5712:19   warning  'createdAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+  5712:30   warning  'updatedAt' is assigned a value but never used                @typescript-eslint/no-unused-vars
+  5816:50   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5901:26   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5943:26   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5951:98   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5985:47   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  5987:22   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+  6023:65   warning  Unexpected any. Specify a different type                      @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\services\authService.ts
+   6:15   warning  'Session' is defined but never used                        @typescript-eslint/no-unused-vars
+   6:46   warning  'SignUpWithPasswordCredentials' is defined but never used  @typescript-eslint/no-unused-vars
+  47:97   warning  Unexpected any. Specify a different type                   @typescript-eslint/no-explicit-any
+  80:110  warning  Unexpected any. Specify a different type                   @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\services\deviceService.ts
+   17:3  warning  'DeviceStatus' is defined but never used         @typescript-eslint/no-unused-vars
+   18:3  warning  'DeviceRequestStatus' is defined but never used  @typescript-eslint/no-unused-vars
+  815:3  warning  'approvedById' is defined but never used         @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\services\employeeScoring.ts
+   15:102  warning  'differenceInDays' is defined but never used  @typescript-eslint/no-unused-vars
+   16:57   warning  'Task' is defined but never used              @typescript-eslint/no-unused-vars
+   16:63   warning  'AttendanceEvent' is defined but never used   @typescript-eslint/no-unused-vars
+   84:43   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+   90:45   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+   93:53   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  138:40   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  139:30   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  149:67   warning  '_' is defined but never used                 @typescript-eslint/no-unused-vars
+  150:24   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  156:45   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  166:62   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  204:44   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  228:19   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  229:16   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  262:9    warning  'weights' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  383:23   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  416:30   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  454:34   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  460:35   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  461:29   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  464:14   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  487:17   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  552:27   warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\services\notificationService.ts
+   19:16  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  127:58  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\services\offline\database.ts
+   12:12  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  133:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  142:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  153:62  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\services\oneSignalService.ts
+   57:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  135:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  141:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  142:47  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  146:85  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  150:69  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  157:73  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  190:67  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  191:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  192:74  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  193:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  217:60  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  218:51  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  240:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  241:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  242:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  302:60  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  303:64  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\src\api\middleware\error.middleware.ts
+  6:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  6:72  warning  'next' is defined but never used          @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\src\components\PWAInstallPrompt.tsx
+   5:11  warning  'BeforeInstallPromptEvent' is defined but never used  @typescript-eslint/no-unused-vars
+  21:34  warning  Unexpected any. Specify a different type              @typescript-eslint/no-explicit-any
+  27:81  warning  Unexpected any. Specify a different type              @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\src\server.ts
+  1:38  warning  'NextFunction' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\store\authStore.ts
+    5:10  warning  'Geolocation' is defined but never used        @typescript-eslint/no-unused-vars
+   10:15  warning  'RealtimeChannel' is defined but never used    @typescript-eslint/no-unused-vars
+   10:32  warning  'Subscription' is defined but never used       @typescript-eslint/no-unused-vars
+  181:49  warning  'rememberMe' is defined but never used         @typescript-eslint/no-unused-vars
+  230:31  warning  'greetKey' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  514:31  warning  Unexpected any. Specify a different type       @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\store\enrollmentRulesStore.ts
+  3:10  warning  'api' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\store\notificationStore.ts
+  91:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  92:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  93:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  94:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  95:43  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\store\notificationStore_cleaned.ts
+  92:7  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+E:\onboarding all files\Paradigm Office 2\store\onboardingStore.ts
+  3:10  warning  'differenceInYears' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\store\permissionsStore.ts
+  7:10  warning  'api' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\store\pwaStore.ts
+   4:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   6:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  13:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\store\settingsStore.ts
+  8:255  warning  'StaffAttendanceRules' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\admin-approve-user\index.ts
+  7:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\admin-create-user\index.ts
+   3:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\biometric-push\index.ts
+   33:1   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   55:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   57:5   error    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  209:42  warning  '_authError' is assigned a value but never used                                                                      @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\debug-check-log\index.ts
+  16:7  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  18:7  error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\process-notification-rules\index.ts
+    8:27   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    8:33   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   15:14   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   20:14   warning  '_req' is defined but never used          @typescript-eslint/no-unused-vars
+   83:34   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  102:44   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  102:55   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  102:80   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  118:31   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  128:49   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  179:43   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  188:47   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  188:58   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  188:72   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  188:107  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\run-escalations\index.ts
+  15:11  warning  'Violation' is defined but never used           @typescript-eslint/no-unused-vars
+  26:11  warning  'NotificationInsert' is defined but never used  @typescript-eslint/no-unused-vars
+  64:50  warning  Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any
+  86:54  warning  Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\send-email\index.ts
+   1:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  11:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  52:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\supabase\functions\system-backup-manager\index.ts
+   81:38  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  135:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  178:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  197:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  197:62  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\tmp\check_ids.ts
+  16:29  warning  'error' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\tmp\check_sync.ts
+  14:35  warning  'authError' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  43:44  warning  'authIdError' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\tmp\final_reset.ts
+  29:11  warning  'data' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\tmp\list_users_verbose.ts
+  10:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  15:12  error    Unexpected constant condition             no-constant-condition
+
+E:\onboarding all files\Paradigm Office 2\types\index.ts
+     1:15  warning  'ComponentType' is defined but never used  @typescript-eslint/no-unused-vars
+   852:22  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+   904:22  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+   973:18  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1010:18  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1013:23  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1230:14  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1239:14  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1269:20  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1795:14  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1875:31  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  1875:41  warning  Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\aadhaarUtils.ts
+  128:70  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  132:16  error    Unexpected constant condition             no-constant-condition
+  211:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  246:33  error    Empty block statement                     no-empty
+  278:29  error    Empty block statement                     no-empty
+  318:28  error    Empty block statement                     no-empty
+
+E:\onboarding all files\Paradigm Office 2\utils\async.ts
+  6:35  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\attendanceCalculations.ts
+  193:3  warning  'minHoursHalfDay' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\utils\deviceFingerprint.ts
+   65:18  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+   68:17  error    Empty block statement                                    no-empty
+  141:17  error    Empty block statement                                    no-empty
+  211:21  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  211:64  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  213:47  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  245:15  error    Empty block statement                                    no-empty
+  273:17  error    Empty block statement                                    no-empty
+  302:15  error    Empty block statement                                    no-empty
+  324:19  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  325:19  warning  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  334:10  warning  'generateFallbackFingerprint' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\utils\diff.ts
+  5:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  5:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  5:80  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  5:90  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  6:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  6:49  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\excelExport.ts
+   49:11  warning  Unexpected any. Specify a different type              @typescript-eslint/no-explicit-any
+  334:11  warning  'summaryStartCol' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\utils\fieldStaffTracking.ts
+  1:31  warning  'parseISO' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\utils\lazyLoad.ts
+   9:59  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  26:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\locationUtils.ts
+   30:57  warning  'country' is assigned a value but never used  @typescript-eslint/no-unused-vars
+   65:21  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  144:25  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  148:26  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  167:25  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  171:26  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+  198:28  warning  Unexpected any. Specify a different type      @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\nativeBridge.ts
+  18:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  19:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\utils\notificationTypes.ts
+  19:5  warning  'Zap' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\onboarding all files\Paradigm Office 2\utils\permissionUtils.ts
+   25:39   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   83:45   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   90:29   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   90:55   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  100:44   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  104:85   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  104:111  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  201:40   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  205:81   warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  205:107  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+E:\onboarding all files\Paradigm Office 2\vite.config.ts
+  4:10  warning  'VitePWA' is defined but never used  @typescript-eslint/no-unused-vars
+
+Γ£û 1277 problems (36 errors, 1241 warnings)
+

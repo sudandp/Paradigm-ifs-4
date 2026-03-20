@@ -1,0 +1,56 @@
+import { 
+    CheckCircle2, 
+    LogOut, 
+    Coffee, 
+    Clock, 
+    AlertTriangle, 
+    Target, 
+    User, 
+    UserCheck, 
+    XCircle, 
+    Users, 
+    ClipboardCheck, 
+    Mail, 
+    DollarSign, 
+    MessageSquare, 
+    Bell, 
+    FileText, 
+    Shield,
+    Zap
+} from 'lucide-react';
+
+export const APP_EVENT_TYPES = [
+    { id: 'check_in', label: 'Office Punch In (General)', icon: CheckCircle2, category: 'attendance' },
+    { id: 'check_out', label: 'Office Punch Out (General)', icon: LogOut, category: 'attendance' },
+    { id: 'site_check_in', label: 'Site Check-in (Field Activity)', icon: CheckCircle2, category: 'field' },
+    { id: 'site_check_out', label: 'Site Check-out (Field Activity)', icon: LogOut, category: 'field' },
+    { id: 'break_start', label: 'Break Start', icon: Coffee, category: 'attendance' },
+    { id: 'break_end', label: 'Break End', icon: Clock, category: 'attendance' },
+    { id: 'violation', label: 'Geofencing Violation', icon: AlertTriangle, category: 'compliance' },
+    { id: 'field_report', label: 'Field Report Submission', icon: Target, category: 'field' },
+    { id: 'onboarding_submitted', label: 'New Enrollment Submission', icon: User, category: 'hr' },
+    { id: 'onboarding_verified', label: 'Enrollment Verified', icon: UserCheck, category: 'hr' },
+    { id: 'onboarding_rejected', label: 'Enrollment Rejected / Change Request', icon: XCircle, category: 'hr' },
+    { id: 'task_assigned', label: 'Task Assigned', icon: Users, category: 'tasks' },
+    { id: 'task_completed', label: 'Task Completed', icon: ClipboardCheck, category: 'tasks' },
+    { id: 'leave_request', label: 'Leave Request Applied', icon: Mail, category: 'hr' },
+    { id: 'leave_approved', label: 'Leave Approved', icon: CheckCircle2, category: 'hr' },
+    { id: 'leave_rejected', label: 'Leave Rejected', icon: XCircle, category: 'hr' },
+    { id: 'salary_request', label: 'Salary Change Request', icon: DollarSign, category: 'hr' },
+    { id: 'salary_approved', label: 'Salary Change Approved', icon: CheckCircle2, category: 'hr' },
+    { id: 'salary_rejected', label: 'Salary Change Rejected', icon: XCircle, category: 'hr' },
+    { id: 'support_ticket', label: 'New Support Ticket', icon: MessageSquare, category: 'support' },
+    { id: 'support_response', label: 'Support Response Received', icon: Bell, category: 'support' },
+    { id: 'billing_invoice', label: 'Invoice Generated', icon: FileText, category: 'finance' },
+    { id: 'punch_unlock_request', label: 'Punch Unlock Request', icon: Shield, category: 'compliance' },
+    { id: 'ot_punch', label: 'Overtime (OT) Punch', icon: Clock, category: 'attendance' },
+    { id: 'security_alert', label: 'Emergency / Security Alert', icon: Shield, category: 'security' }
+];
+
+export const PROACTIVE_TRIGGER_TYPES = [
+    { id: 'missed_punch_out', label: 'Missed Punch Out Check', description: 'Triggers if employee hasn\'t punched out by a specific time', category: 'attendance' },
+    { id: 'late_arrival', label: 'Late Arrival Check', description: 'Triggers if employee hasn\'t punched in by their shift start', category: 'attendance' },
+    { id: 'shift_reminders', label: 'Pre-Shift Reminder', description: 'Send a reminder before shift start', category: 'attendance' },
+    { id: 'pending_approval_check', label: 'Pending Approval (General)', description: 'Remind managers about items waiting for approval', category: 'management' },
+    { id: 'daily_summary', label: 'Daily Activity Summary', description: 'Send a summary of today\'s events at a specific time', category: 'management' }
+];

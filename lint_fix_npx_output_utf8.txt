@@ -1,0 +1,28 @@
+﻿node.exe : 
+At C:\Program Files\no
+dejs\npx.ps1:29 char:3
++   & $NODE_EXE 
+$NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (:String) [   
+ ], RemoteExceptio    
+n
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+Oops! Something went 
+wrong! :(
+
+ESLint: 8.57.1
+
+No files matching the 
+pattern "." were 
+found.
+Please check for 
+typing mistakes in 
+the pattern.
+

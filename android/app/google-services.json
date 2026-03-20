@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "447552978158",
+    "project_id": "paradigm-ifs",
+    "storage_bucket": "paradigm-ifs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:447552978158:android:3a6cbcd8846bd21d0bc7ff",
+        "android_client_info": {
+          "package_name": "com.paradigm.ifs"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3uJdfu8mN4cCE7YoFC67erEw4HcZqvDE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

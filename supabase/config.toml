@@ -1,0 +1,2 @@
+[functions.biometric-push]
+verify_jwt = false

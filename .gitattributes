@@ -1,0 +1,9 @@
+* text=auto
+*.tsx text
+*.ts text
+*.js text
+*.css text
+*.html text
+*.json text
+*.md text
+*.xml text

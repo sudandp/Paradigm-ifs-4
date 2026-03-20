@@ -1,0 +1,5 @@
+ALTER TABLE gmc_form_submissions
+ADD COLUMN IF NOT EXISTS father_name TEXT,
+ADD COLUMN IF NOT EXISTS father_dob DATE,
+ADD COLUMN IF NOT EXISTS mother_name TEXT,
+ADD COLUMN IF NOT EXISTS mother_dob DATE;

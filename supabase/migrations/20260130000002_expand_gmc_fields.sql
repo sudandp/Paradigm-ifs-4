@@ -1,0 +1,8 @@
+ALTER TABLE gmc_form_submissions
+ADD COLUMN IF NOT EXISTS employee_id TEXT,
+ADD COLUMN IF NOT EXISTS date_of_joining DATE,
+ADD COLUMN IF NOT EXISTS designation TEXT,
+ADD COLUMN IF NOT EXISTS father_gender TEXT,
+ADD COLUMN IF NOT EXISTS mother_gender TEXT,
+ADD COLUMN IF NOT EXISTS spouse_dob DATE,
+ADD COLUMN IF NOT EXISTS spouse_gender TEXT;

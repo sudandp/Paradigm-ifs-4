@@ -1,0 +1,10 @@
+Department,Designation,Cost Centre,Unit Type,Quantity,Billing Rate,Billing Model,Shift Type
+Administrative,Facility Manager,,Manpower,1,56000,Per Month,General
+Housekeeping,Housekeeper/Janitor Heavy Works (Male),,Manpower,1,16418,Per Month,General
+Housekeeping,Housekeeper/Janitor (Female),,Manpower,6,16418,Per Month,General
+Gardening,Gardener,,Manpower,3,18708,Per Month,General
+Plumbing,Plumber Cum Pool Operator,,Manpower,1,29390,Per Month,General
+Electrical,Lead Electrician,,Manpower,1,24226,Per Month,Multi Shift
+Electrical,Lead Electrician,,Manpower,1,24226,Per Month,Multi Shift
+Electrical,Multi Technician,,Manpower,1,27324,Per Month,Multi Shift
+Electrical,Reliever Charges For MEP Staff,,Lumpsum,,17528,Lumpsum,General
