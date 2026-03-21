@@ -92,14 +92,21 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
     }, [user, userPermissions]);
 
     const handleLinkClick = useCallback((e: React.MouseEvent) => {
-        // If collapsed, clicking an icon should expand the sidebar instead of navigating (on all platforms)
+        // Log the click for debugging
+        console.log('[Sidebar] Link clicked');
+
+        // If collapsed, we still want to expand it for visual feedback
         if (isCollapsed && onExpand) {
-            e.preventDefault();
             onExpand();
-            return;
         }
 
-        // Otherwise (expanded), proceed with navigation and trigger onLinkClick (which collapses)
+        // We no longer call e.preventDefault() here. 
+        // This allows the NavLink to navigate immediately on the first click.
+        
+        // On mobile, we also want to close the sidebar overlay after a link is clicked
+        if (onLinkClick) {
+            onLinkClick();
+        }
     }, [isCollapsed, onExpand, onLinkClick]);
 
     return (

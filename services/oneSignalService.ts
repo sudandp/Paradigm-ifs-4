@@ -58,25 +58,39 @@ export const oneSignalService = {
         console.log('[OneSignal] Native login:', userId);
         OneSignalNative.login(userId);
       } else {
-        if (_initialized) {
+        const canLoginNow = _initialized && typeof window !== 'undefined' && !!(window as any).OneSignal;
+        
+        if (canLoginNow) {
           console.log('[OneSignal] Web login:', userId);
-          OneSignalWeb.login(userId).catch(err =>
-            console.warn('[OneSignal] Web login failed:', err)
-          );
+          try {
+            OneSignalWeb.login(userId).catch(err =>
+              console.warn('[OneSignal] Web login failed:', err)
+            );
+          } catch (e) {
+            console.warn('[OneSignal] Synchronous web login error:', e);
+          }
         } else if (_initPromise) {
           // SDK is still initializing — wait for it, then login
           console.log('[OneSignal] Queuing login until init completes:', userId);
           _initPromise.then(() => {
-            OneSignalWeb.login(userId).catch(err =>
-              console.warn('[OneSignal] Deferred web login failed:', err)
-            );
+            try {
+              if (typeof window !== 'undefined' && !!(window as any).OneSignal) {
+                OneSignalWeb.login(userId).catch(err =>
+                  console.warn('[OneSignal] Deferred web login failed:', err)
+                );
+              } else {
+                console.warn('[OneSignal] Deferred login cancelled: SDK still not found in window.');
+              }
+            } catch (e) {
+              console.warn('[OneSignal] Deferred web login error:', e);
+            }
           });
         } else {
           console.warn('[OneSignal] Cannot login — SDK not initialized.');
         }
       }
     } catch (error) {
-      console.error('[OneSignal] Login error:', error);
+      console.error('[OneSignal] Fatal login error:', error);
     }
   },
 
