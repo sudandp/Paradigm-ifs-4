@@ -16,14 +16,12 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const [statusMessage, setStatusMessage] = useState('Verifying security requirements...');
 
     const permissionList = [
-    { id: 'Camera', icon: Camera, label: 'Camera' },
-    { id: 'Location', icon: MapPin, label: 'Location' },
-    { id: 'Nearby devices', icon: Bluetooth, label: 'Nearby Devices' },
-    { id: 'Photos and videos', icon: Image, label: 'Photos & Gallery' },
-    { id: 'Music and audio', icon: Bell, label: 'Music & Audio' },
-    { id: 'Notifications', icon: Bell, label: 'Notifications' },
-    { id: 'Contacts', icon: Users, label: 'Contacts' },
+    { id: 'Camera', icon: Camera, label: 'Camera Access' },
+    { id: 'Location', icon: MapPin, label: 'Location Services' },
+    { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
   ];
+
+  const [currentRequesting, setCurrentRequesting] = useState<string>('');
 
   const verifyPermissions = async () => {
     setIsChecking(true);
@@ -66,7 +64,14 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
     setIsRequesting(true);
     setStatusMessage('Preparing security modules...');
     
-    await requestAllPermissions();
+    await requestAllPermissions((id) => {
+        setCurrentRequesting(id);
+        if (id) {
+            setStatusMessage(`Requesting ${id}...`);
+        }
+    });
+
+    setCurrentRequesting('');
     setIsRequesting(false);
     await verifyPermissions();
   };
@@ -104,27 +109,56 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
         </div>
 
         <h2 className="text-xl font-bold text-gray-900 mb-2">
-          {isRequesting ? 'Requesting Access...' : 'Compliance Check'}
+          {isRequesting ? 'Security Bridge Active' : 'Compliance Check'}
         </h2>
         
         <p className="text-gray-500 text-xs mb-6 px-4">
-          Paradigm IFS requires these <span className="text-emerald-600 font-bold">7 categories</span> to be <span className="text-emerald-600 font-bold">Allowed</span> to operate.
+          Paradigm IFS requires these <span className="text-emerald-600 font-bold">3 primary categories</span> to be <span className="text-emerald-600 font-bold">Allowed</span> to operate.
         </p>
 
         <div className="mb-8 text-left space-y-2">
           {permissionList.map((p) => {
             const isMissing = missingPermissions.includes(p.id);
+            const isActive = currentRequesting === p.id;
+
             return (
-              <div key={p.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-colors ${isMissing ? 'bg-gray-50 border border-transparent' : 'bg-emerald-50/50 border border-emerald-100'}`}>
+              <div 
+                key={p.id} 
+                className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all duration-300 ${
+                  isActive 
+                    ? 'bg-emerald-600 border-emerald-600 shadow-lg scale-[1.02] ring-2 ring-emerald-100' 
+                    : isMissing 
+                      ? 'bg-gray-50 border border-transparent' 
+                      : 'bg-emerald-50/50 border border-emerald-100'
+                }`}
+              >
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${isMissing ? 'bg-white text-gray-300' : 'bg-white text-emerald-600 shadow-sm'}`}>
-                    <p.icon className="h-4 w-4" />
+                  <div className={`p-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-white text-emerald-600'
+                      : isMissing 
+                        ? 'bg-white text-gray-300' 
+                        : 'bg-white text-emerald-600 shadow-sm'
+                  }`}>
+                    {isActive ? (
+                        <div className="h-4 w-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                        <p.icon className="h-4 w-4" />
+                    )}
                   </div>
-                  <span className={`text-[13px] font-semibold ${isMissing ? 'text-gray-500' : 'text-emerald-800'}`}>
+                  <span className={`text-[13px] font-semibold transition-colors ${
+                    isActive
+                      ? 'text-white'
+                      : isMissing 
+                        ? 'text-gray-500' 
+                        : 'text-emerald-800'
+                  }`}>
                     {p.label}
                   </span>
                 </div>
-                {isMissing ? (
+                {isActive ? (
+                   <span className="text-[10px] font-bold text-emerald-50 animate-pulse uppercase">Waiting...</span>
+                ) : isMissing ? (
                    <AlertCircle className="h-4 w-4 text-amber-500" />
                 ) : (
                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -140,7 +174,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
             disabled={isRequesting}
             className={`w-full py-4 rounded-2xl font-bold transition-all shadow-lg ${
               isRequesting 
-                ? 'bg-emerald-100 text-emerald-400 cursor-not-allowed' 
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-emerald-200'
             }`}
           >

@@ -3,34 +3,34 @@ import { Capacitor } from '@capacitor/core';
 import Logo from '../components/ui/Logo';
 import PermissionsPrimer from '../components/PermissionsPrimer';
 
+import { checkRequiredPermissions } from '../utils/permissionUtils';
+
 interface SplashProps {
   onComplete: () => void;
 }
 
 const Splash: React.FC<SplashProps> = ({ onComplete }) => {
   const [showPrimer, setShowPrimer] = useState(false);
-  const isWeb = !Capacitor.isNativePlatform();
 
   useEffect(() => {
-    // Check if we should show the primer on web
-    if (isWeb) {
-      const permission = (window as any).Notification?.permission;
-      if (permission === 'default') {
-        // Wait a bit for the splash animation before showing primer
-        const primerTimer = setTimeout(() => {
-          setShowPrimer(true);
-        }, 2000);
-        return () => clearTimeout(primerTimer);
+    const initializePermissions = async () => {
+      // Check all required permissions (Camera, Location, Notifications)
+      const { allGranted } = await checkRequiredPermissions();
+      
+      if (!allGranted) {
+        // Show the permission bridge if anything is missing
+        setShowPrimer(true);
+      } else {
+        // All set, complete splash after a short animation time
+        const timer = setTimeout(() => {
+          onComplete();
+        }, 2200);
+        return () => clearTimeout(timer);
       }
-    }
+    };
 
-    // Default flow: Complete automatically after timeout (for Native or granted Web)
-    const timer = setTimeout(() => {
-      onComplete();
-    }, 2800);
-
-    return () => clearTimeout(timer);
-  }, [onComplete, isWeb]);
+    initializePermissions();
+  }, [onComplete]);
 
   if (showPrimer) {
     return <PermissionsPrimer onComplete={onComplete} />;
