@@ -126,31 +126,28 @@ export const oneSignalService = {
       }
 
       // Web path
+      console.log('[OneSignal] Requesting web permission...');
+      
+      // 1. Try OneSignal SDK first if initialized
       if (_initialized) {
-        console.log('[OneSignal] Requesting web permission...');
         try {
-          // react-onesignal v3.x exposes Slidedown
-          if (OneSignalWeb.Slidedown && typeof (OneSignalWeb.Slidedown as any).promptPush === 'function') {
-            await (OneSignalWeb.Slidedown as any).promptPush();
-          } else if (OneSignalWeb.Notifications && typeof OneSignalWeb.Notifications.requestPermission === 'function') {
+          if (OneSignalWeb.Notifications && typeof OneSignalWeb.Notifications.requestPermission === 'function') {
             await OneSignalWeb.Notifications.requestPermission();
-          } else {
-            // Last resort: native browser API
-            await Notification.requestPermission();
+            return;
+          } else if (OneSignalWeb.Slidedown && typeof (OneSignalWeb.Slidedown as any).promptPush === 'function') {
+            await (OneSignalWeb.Slidedown as any).promptPush();
+            return;
           }
         } catch (sdkErr) {
-          console.warn('[OneSignal] SDK prompt failed, using browser fallback:', sdkErr);
-          if (typeof Notification !== 'undefined') {
-            await Notification.requestPermission();
-          }
+          console.warn('[OneSignal] SDK prompt failed, falling back:', sdkErr);
         }
-      } else {
-        // OneSignal not initialized (e.g. localhost restrictions) — use browser API
-        console.warn('[OneSignal] Not initialized, using browser notification API.');
-        if (typeof Notification !== 'undefined') {
-          const result = await Notification.requestPermission();
-          console.log('[OneSignal] Browser permission result:', result);
-        }
+      }
+
+      // 2. Fallback to native browser API
+      if (typeof Notification !== 'undefined') {
+        console.log('[OneSignal] Using browser Notification API fallback...');
+        const result = await Notification.requestPermission();
+        console.log('[OneSignal] Browser permission result:', result);
       }
     } catch (error) {
       console.error('[OneSignal] requestPermission error:', error);

@@ -136,7 +136,13 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
             if (notifPermission !== 'granted') {
                 if (onProgress) onProgress('Notifications');
                 console.log('[PermissionUtils] Web: Requesting Notifications');
-                await oneSignalService.requestPermission();
+                
+                // Add a safety timeout to prevent stalling if OneSignal hangs
+                await Promise.race([
+                    oneSignalService.requestPermission(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Notification request timeout')), 12000))
+                ]).catch(e => console.warn('[PermissionUtils] Notification request timed out or failed:', e));
+
             } else {
                 console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
             }
@@ -156,7 +162,10 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         if (cam.camera !== 'granted' || cam.photos !== 'granted') {
             if (onProgress) onProgress('Camera');
             console.log('[PermissionUtils] Native: Requesting Camera/Photos');
-            await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+            await Promise.race([
+                Camera.requestPermissions({ permissions: ['camera', 'photos'] }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Camera timeout')), 15000))
+            ]);
             await delay(reqDelay);
         } else {
             console.log('[PermissionUtils] Native: Camera/Photos already granted.');
@@ -169,9 +178,13 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         if (loc.location !== 'granted' || loc.coarseLocation !== 'granted') {
             if (onProgress) onProgress('Location');
             console.log('[PermissionUtils] Native: Requesting Location');
-            await Geolocation.requestPermissions();
-            // Force a location check to trigger system dialog if pending
-            await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 5000 }).catch(() => {});
+            await Promise.race([
+                (async () => {
+                    await Geolocation.requestPermissions();
+                    await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 5000 }).catch(() => {});
+                })(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Location timeout')), 15000))
+            ]);
             await delay(reqDelay);
         } else {
             console.log('[PermissionUtils] Native: Location already granted.');
@@ -184,7 +197,10 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         if (notif.display !== 'granted') {
             if (onProgress) onProgress('Notifications');
             console.log('[PermissionUtils] Native: Requesting Notifications');
-            await LocalNotifications.requestPermissions();
+            await Promise.race([
+                LocalNotifications.requestPermissions(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Notification timeout')), 15000))
+            ]);
             await delay(reqDelay);
         } else {
             console.log('[PermissionUtils] Native: Notifications already granted.');
