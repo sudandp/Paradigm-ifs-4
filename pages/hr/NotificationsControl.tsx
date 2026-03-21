@@ -172,10 +172,18 @@ const NotificationsControl: React.FC = () => {
         }
         setIsSaving(true);
         try {
-            await api.broadcastNotification(broadcastData);
+            // For true global broadcasts, we ensure the backend knows
+            const isAll = broadcastData.role === 'all' || (broadcastData.role === '' && broadcastData.userIds.length === 0);
+            
+            await api.broadcastNotification({
+                ...broadcastData,
+                role: isAll ? 'all' : broadcastData.role
+            });
+            
             setToast({ message: 'Broadcast sent successfully!', type: 'success' });
             setBroadcastData({ role: '', userIds: [], title: '', message: '', type: 'info' });
         } catch (err) {
+            console.error('[Broadcast] Error:', err);
             setToast({ message: 'Failed to send broadcast.', type: 'error' });
         } finally {
             setIsSaving(false);
@@ -401,10 +409,29 @@ const NotificationsControl: React.FC = () => {
                         </div>
 
                         <div className="space-y-6">
+                            <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                                        <Users className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-emerald-900 leading-tight">Global Broadcast</p>
+                                        <p className="text-xs text-emerald-700">Message every user in the system</p>
+                                    </div>
+                                </div>
+                                <Checkbox 
+                                    label="Send to All" 
+                                    checked={broadcastData.role === 'all'} 
+                                    onChange={(e) => setBroadcastData({ ...broadcastData, role: e.target.checked ? 'all' : '', userIds: [] })}
+                                    className="scale-110"
+                                />
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <Select 
                                     label="Target Audience" 
-                                    value={broadcastData.role} 
+                                    value={broadcastData.role === 'all' ? 'all' : broadcastData.role} 
+                                    disabled={broadcastData.role === 'all'}
                                     onChange={(e) => setBroadcastData({ ...broadcastData, role: e.target.value, userIds: [] })}
                                 >
                                     <option value="">Specific Users</option>

@@ -370,6 +370,22 @@ const App: React.FC = () => {
     }
   }, [user, location.pathname, location.search]);
 
+  // Synchronize badge count when app returns to foreground
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !user) return;
+
+    const handler = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        console.log('[App] App became active, syncing notifications and badge...');
+        useNotificationStore.getState().fetchNotifications();
+      }
+    });
+
+    return () => {
+      handler.then(h => h.remove());
+    };
+  }, [user]);
+
   // Real-time attendance subscription
   useEffect(() => {
     if (user) {

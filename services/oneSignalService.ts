@@ -300,6 +300,17 @@ async function initWeb(appId: string): Promise<void> {
 
 async function initNative(appId: string): Promise<void> {
   try {
+    // Request badge permissions early on native platforms
+    try {
+      const { Badge } = await import('@capawesome/capacitor-badge');
+      const status = await Badge.checkPermissions();
+      if (status.display !== 'granted') {
+        await Badge.requestPermissions();
+      }
+    } catch (badgeErr) {
+      console.warn('[OneSignal] Failed to initialize badge permissions:', badgeErr);
+    }
+
     OneSignalNative.Debug.setLogLevel(6);
     OneSignalNative.initialize(appId);
 

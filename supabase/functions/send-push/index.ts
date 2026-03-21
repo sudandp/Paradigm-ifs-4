@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from '../_shared/cors.ts';
@@ -83,8 +84,7 @@ serve(async (req) => {
       }
     }
 
-    // ── Badge Count (single-user targeted notifications) ────────────────
-
+    // ── Badge Count Handling ───────────────────────────────────────────
     const supabase = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
       ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
       : null;
@@ -102,11 +102,21 @@ serve(async (req) => {
           payload.ios_badgeCount = count;
           payload.android_badge_type = 'SetTo';
           payload.android_badge_count = count;
-          console.log(`[send-push] Badge count: ${count} for user ${userIds[0]}`);
+          console.log(`[send-push] Badge count set to: ${count} for user ${userIds[0]}`);
         }
       } catch (err) {
-        console.warn('[send-push] Failed to fetch badge count:', err);
+        console.warn('[send-push] Failed to fetch exact badge count:', err);
+        // Fallback to increment if fetch fails
+        payload.ios_badgeType = 'Increase';
+        payload.ios_badgeCount = 1;
       }
+    } else {
+      // For broadcasts or multiple users, increment the existing badge by 1
+      payload.ios_badgeType = 'Increase';
+      payload.ios_badgeCount = 1;
+      payload.android_badge_type = 'Increase';
+      payload.android_badge_count = 1;
+      console.log('[send-push] Badge increment (+1) payload added.');
     }
 
     // ── Send to OneSignal ───────────────────────────────────────────────

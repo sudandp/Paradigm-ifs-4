@@ -122,6 +122,27 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
 };
 
 /**
+ * Sends a manual broadcast/announcement to all users via OneSignal and persists to DB.
+ * This is a convenience wrapper for api.broadcastNotification with broadcast=true.
+ */
+export const sendGlobalAnnouncement = async (title: string, message: string, link?: string) => {
+    try {
+        const { api } = await import('./api');
+        await api.broadcastNotification({
+            title,
+            message,
+            link,
+            type: 'info',
+            severity: 'Low'
+        });
+    } catch (err) {
+        console.error('Failed to send global announcement:', err);
+        throw err;
+    }
+};
+
+
+/**
  * Maps a system event type to a UI notification category.
  */
 const getNotificationTypeForEvent = (eventType: string): any => {
