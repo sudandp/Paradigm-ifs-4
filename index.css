@@ -1766,3 +1766,28 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
     padding: initial !important;
 }
 
+/* OneSignal UI Refinement */
+.onesignal-bell-launcher-tooltip {
+    display: none !important;
+}
+
+.onesignal-bell-launcher-dialog-close {
+    width: 28px !important;
+    height: 28px !important;
+    background-color: #f1f5f9 !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    top: 10px !important;
+    right: 10px !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    cursor: pointer !important;
+    z-index: 100 !important;
+}
+
+.onesignal-bell-launcher-dialog-close:hover {
+    background-color: #e2e8f0 !important;
+}
+
+
