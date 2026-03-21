@@ -228,35 +228,40 @@ async function initWeb(appId: string): Promise<void> {
       },
       notifyButton: {
         enable: true,
+        displayPredicate: () => {
+          // If already granted, we don't need to show the floating bell
+          return Promise.resolve(typeof Notification !== 'undefined' && Notification.permission !== 'granted');
+        },
+        size: 'small',
+        theme: 'default',
         position: 'bottom-right',
-        size: 'medium',
         showCredit: false,
         prenotify: true,
         colors: {
-          'circle.background': '#006b3f',
+          'circle.background': '#1e293b', // Slate-800 for a more integrated look
           'circle.foreground': 'white',
-          'badge.background': '#ef4444',
+          'badge.background': '#059669', // Emerald-600
           'badge.foreground': 'white',
           'badge.bordercolor': 'white',
-          'pulse.color': 'white',
+          'pulse.color': '#1e293b',
           'dialog.button.background.hover': '#005632',
           'dialog.button.background.active': '#005632',
           'dialog.button.background': '#006b3f',
           'dialog.button.foreground': 'white',
         },
         text: {
-          'tip.state.unsubscribed': 'Subscribe to notifications',
-          'tip.state.subscribed': "You're subscribed to notifications",
-          'tip.state.blocked': "You've blocked notifications",
-          'message.prenotify': 'Click to subscribe to notifications',
-          'message.action.subscribed': 'Thanks for subscribing!',
-          'message.action.resubscribed': "You're subscribed to notifications",
-          'message.action.unsubscribed': "You won't receive notifications anymore",
-          'dialog.main.title': 'Manage Site Notifications',
+          'tip.state.unsubscribed': 'Enable notifications',
+          'tip.state.subscribed': "You're subscribed",
+          'tip.state.blocked': "Notifications blocked",
+          'message.prenotify': 'Click to subscribe to updates',
+          'message.action.subscribed': 'Subscribed!',
+          'message.action.resubscribed': "Subscribed!",
+          'message.action.unsubscribed': "Unsubscribed",
+          'dialog.main.title': 'Manage Notifications',
           'dialog.main.button.subscribe': 'SUBSCRIBE',
           'dialog.main.button.unsubscribe': 'UNSUBSCRIBE',
           'dialog.blocked.title': 'Unblock Notifications',
-          'dialog.blocked.message': 'Follow these instructions to allow notifications:',
+          'dialog.blocked.message': 'Follow these steps to allow notifications:',
         },
       } as any,
     });
