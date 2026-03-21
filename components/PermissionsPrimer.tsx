@@ -99,7 +99,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
 
   if (isChecking && missingPermissions.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6 text-center">
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white p-6 text-center" style={{ backgroundColor: '#ffffff' }}>
         <div className="animate-pulse mb-8">
           <Logo className="h-16" />
         </div>
@@ -109,126 +109,145 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
-      <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full border border-gray-100">
-        <div className="mb-6 flex justify-center">
-          <div className={`${missingPermissions.length > 0 ? 'bg-amber-50' : 'bg-emerald-50'} p-4 rounded-full`}>
-             <ShieldCheck className={`h-12 w-12 ${missingPermissions.length > 0 ? 'text-amber-600' : 'text-emerald-600'}`} />
-          </div>
-        </div>
-
-        <h2 className="text-xl font-bold text-gray-900 mb-2">
-          {isRequesting ? 'Security Bridge Active' : 'Compliance Check'}
-        </h2>
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gray-200/50 sm:p-6 text-center overflow-auto" style={{ backgroundColor: Capacitor.isNativePlatform() ? 'transparent' : 'rgba(243, 244, 246, 0.5)' }}>
+      {/* Immersive Mobile Content (White) / Centered Desktop Card */}
+      {/* We use inline background color #ffffff to bypass global dark mode CSS overrides with !important */}
+      <div 
+        className="bg-white sm:rounded-[40px] shadow-2xl sm:max-w-md w-full h-full sm:h-auto min-h-screen sm:min-h-0 flex flex-col items-center p-8 sm:p-10 border-none sm:border border-gray-100 overflow-y-auto"
+        style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+      >
         
-        <p className="text-gray-500 text-xs mb-6 px-4">
-          Paradigm IFS requires these <span className="text-emerald-600 font-bold">3 primary categories</span> to be <span className="text-emerald-600 font-bold">Allowed</span> to operate.
-        </p>
-
-        <div className="mb-8 text-left space-y-2">
-          {permissionList.map((p) => {
-            const isMissing = missingPermissions.includes(p.id);
-            const isActive = currentRequesting === p.id;
-
-            return (
-              <div 
-                key={p.id} 
-                className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all duration-300 ${
-                  isActive 
-                    ? 'bg-emerald-600 border-emerald-600 shadow-lg scale-[1.02] ring-2 ring-emerald-100' 
-                    : isMissing 
-                      ? 'bg-gray-50 border border-transparent' 
-                      : 'bg-emerald-50/50 border border-emerald-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-white text-emerald-600'
-                      : isMissing 
-                        ? 'bg-white text-gray-300' 
-                        : 'bg-white text-emerald-600 shadow-sm'
-                  }`}>
-                    {isActive ? (
-                        <div className="h-4 w-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                        <p.icon className="h-4 w-4" />
-                    )}
-                  </div>
-                  <span className={`text-[13px] font-semibold transition-colors ${
-                    isActive
-                      ? 'text-white'
-                      : isMissing 
-                        ? 'text-gray-500' 
-                        : 'text-emerald-800'
-                  }`}>
-                    {p.id === 'Notifications' && isIOSBrowser ? (
-                        <span className="text-[11px] leading-tight">Requires Home Screen App</span>
-                    ) : p.label}
-                  </span>
-                </div>
-                {isActive ? (
-                   <span className="text-[10px] font-bold text-emerald-50 animate-pulse uppercase">Waiting...</span>
-                ) : isMissing ? (
-                   isIOSBrowser && p.id === 'Notifications' ? (
-                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100/50 rounded-full">
-                       <AlertCircle className="h-3 w-3 text-amber-600" />
-                       <span className="text-[9px] font-bold text-amber-700 uppercase">PWA Only</span>
-                     </div>
-                   ) : (
-                     <AlertCircle className="h-4 w-4 text-amber-500" />
-                   )
-                ) : (
-                   <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {isMobileBrowser && (
-          <div className="mb-6 p-4 bg-emerald-900 rounded-2xl text-left border border-emerald-800 shadow-inner">
-             <div className="flex items-start gap-3">
-               <div className="bg-emerald-800 p-2 rounded-lg mt-1">
-                 <Smartphone className="h-4 w-4 text-emerald-400" />
-               </div>
-               <div>
-                 <h3 className="text-[13px] font-bold text-white mb-1">Native App Experience</h3>
-                 <p className="text-[11px] text-emerald-300 leading-relaxed">
-                   To hide the browser bar and get a full-screen experience, tap <span className="text-white font-bold inline-flex items-center gap-1 mx-0.5"><Share className="h-3 w-3" /> (Share)</span> then <span className="text-white font-bold">"Add to Home Screen"</span>.
-                 </p>
-               </div>
-             </div>
+        {/* Top Content Area */}
+        <div className="w-full flex-1 flex flex-col items-center">
+          {/* Logo */}
+          <div className="mb-14 mt-4 text-center">
+            <Logo className="h-14 mx-auto" />
           </div>
-        )}
 
-        <div className="space-y-3">
-          <button
-            onClick={handleStartSetup}
-            disabled={isRequesting}
-            className={`w-full py-4 rounded-2xl font-bold transition-all shadow-lg ${
-              isRequesting 
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-emerald-200'
-            }`}
-          >
-            {isRequesting ? 'Respond to pop-ups...' : 'Grant All Permissions'}
-          </button>
+          {/* Shield Icon */}
+          <div className="mb-10">
+            <div className="bg-orange-50 p-6 rounded-full inline-flex" style={{ backgroundColor: '#fff7ed' }}>
+               <ShieldCheck className="h-16 w-16 text-orange-500" />
+            </div>
+          </div>
 
-          {missingPermissions.length > 0 && !isRequesting && (
-            <button
-              onClick={handleOpenSettings}
-              className="w-full py-3 rounded-2xl text-sm font-bold text-gray-400 hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
-            >
-              <Settings className="h-4 w-4" />
-              Manual Settings
-            </button>
+          {/* Title & Desc */}
+          <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{ color: '#0f172a' }}>
+            Compliance Check
+          </h2>
+          
+          <p className="text-gray-400 text-[14px] leading-relaxed mb-10 px-6" style={{ color: '#9ca3af' }}>
+            Paradigm IFS requires these <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>3 primary categories</span> to<br className="hidden sm:inline" /> be <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>Allowed</span> to operate effectively.
+          </p>
+
+          {/* Permission Items */}
+          <div className="w-full space-y-4 mb-10">
+            {permissionList.map((p) => {
+              const isMissing = missingPermissions.includes(p.id);
+              const isActive = currentRequesting === p.id;
+
+              return (
+                <div 
+                  key={p.id} 
+                  className={`flex items-center justify-between gap-4 p-5 rounded-3xl transition-all duration-300 ${
+                    isActive 
+                      ? 'bg-emerald-50 border border-emerald-100 ring-2 ring-emerald-500/10' 
+                      : 'bg-gray-50 border border-gray-100'
+                  }`}
+                  style={{ backgroundColor: isActive ? '#ecfdf5' : '#f9fafb', borderColor: isActive ? '#d1fae5' : '#f3f4f6' }}
+                >
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className={`p-3 rounded-full ${isActive ? 'bg-emerald-600 text-white' : 'bg-white text-gray-300 shadow-sm'}`}
+                      style={{ backgroundColor: isActive ? '#059669' : '#ffffff', color: isActive ? '#ffffff' : '#d1d5db' }}
+                    >
+                      {isActive ? (
+                          <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                          <p.icon className="h-6 w-6" />
+                      )}
+                    </div>
+                    <div className="flex flex-col items-start text-left">
+                        <span className="text-[15px] font-bold" style={{ color: isMissing ? '#9ca3af' : '#374151' }}>
+                            {p.id === 'Notifications' && isIOSBrowser ? (
+                                <span className="text-[13px] leading-tight">Requires Home Screen App</span>
+                            ) : p.label}
+                        </span>
+                        {isMissing && isIOSBrowser && p.id === 'Notifications' && (
+                             <span className="text-[11px] text-amber-600 font-medium" style={{ color: '#d97706' }}>Bypassed for Web Mode</span>
+                        )}
+                    </div>
+                  </div>
+                  
+                  {isActive ? (
+                     <span className="text-[10px] font-bold text-emerald-600 animate-pulse uppercase tracking-widest" style={{ color: '#059669' }}>Active</span>
+                  ) : isMissing ? (
+                     isIOSBrowser && p.id === 'Notifications' ? (
+                       <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 rounded-full border border-amber-100" style={{ backgroundColor: '#fffbeb', borderColor: '#fef3c7' }}>
+                         <AlertCircle className="h-4 w-4 text-amber-500" />
+                         <span className="text-[11px] font-bold text-amber-600 uppercase" style={{ color: '#d97706' }}>Web</span>
+                       </div>
+                     ) : (
+                       <AlertCircle className="h-5 w-5 text-amber-500" />
+                     )
+                  ) : (
+                     <CheckCircle2 className="h-6 w-6 text-emerald-500" style={{ color: '#10b981' }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* PWA Prompt inside card */}
+          {isMobileBrowser && (
+            <div className="w-full mb-10 p-5 bg-emerald-900 rounded-3xl text-left shadow-lg" style={{ backgroundColor: '#064e3b' }}>
+               <div className="flex items-start gap-4">
+                 <div className="p-2.5 rounded-xl mt-1" style={{ backgroundColor: '#065f46' }}>
+                   <Smartphone className="h-5 w-5 text-emerald-400" />
+                 </div>
+                 <div>
+                   <h3 className="text-sm font-bold text-white mb-1.5 leading-tight" style={{ color: '#ffffff' }}>Native Full Screen Experience</h3>
+                   <p className="text-[12px] text-emerald-100/70 leading-relaxed" style={{ color: 'rgba(209, 250, 229, 0.7)' }}>
+                     To hide browser bar, tap <span className="text-emerald-300 font-bold inline-flex items-center gap-1 mx-0.5" style={{ color: '#6ee7b7' }}><Share className="h-3.5 w-3.5" /> (Share)</span> then <span className="text-white font-bold" style={{ color: '#ffffff' }}>"Add to Home Screen"</span>.
+                   </p>
+                 </div>
+               </div>
+            </div>
           )}
         </div>
 
-        <p className="text-[10px] text-gray-400 mt-6 leading-relaxed uppercase tracking-[0.1em] font-bold">
-          Required for App Operation
-        </p>
+        {/* Bottom Actions Area */}
+        <div className="w-full space-y-6 pt-2 pb-6">
+          <button
+            onClick={handleStartSetup}
+            disabled={isRequesting}
+            className={`w-full py-5 rounded-[22px] font-bold transition-all text-lg shadow-xl ${
+              isRequesting 
+                ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98]'
+            }`}
+            style={{ 
+                backgroundColor: isRequesting ? '#f3f4f6' : '#059669', 
+                color: isRequesting ? '#d1d5db' : '#ffffff',
+                boxShadow: isRequesting ? 'none' : '0 20px 25px -5px rgba(16, 185, 129, 0.2)' 
+            }}
+          >
+            {isRequesting ? 'Respond to system prompts...' : 'Grant All Permissions'}
+          </button>
+
+          <button
+            onClick={handleOpenSettings}
+            className="w-full py-2 flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"
+            style={{ color: '#9ca3af' }}
+          >
+            <Settings className="h-4 w-4" />
+            Manual Security Settings
+          </button>
+
+          <p className="text-[10px] text-gray-300 text-center leading-relaxed uppercase tracking-[0.2em] font-bold mt-4" style={{ color: '#d1d5db' }}>
+            PROTOCOL V2.1 • REQUIRED FOR SECURE OPERATION
+          </p>
+        </div>
       </div>
     </div>
   );
