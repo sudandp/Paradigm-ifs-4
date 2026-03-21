@@ -1,0 +1,1 @@
+import{j as t}from"./react-vendor-iY98ENoA.js";const r=({title:e,subtitle:s})=>t.jsxs("div",{className:"mb-6",children:[t.jsx("h3",{className:"text-xl font-bold text-primary-text form-header-title",children:e}),t.jsx("p",{className:"mt-2 text-sm text-muted",children:s})]});export{r as F};

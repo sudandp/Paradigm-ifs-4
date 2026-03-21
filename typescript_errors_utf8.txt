@@ -1,1 +1,0 @@
-﻿pages/attendance/AttendanceDashboard.tsx(2499,14): error TS2741: Property 'currentUserId' is missing in type '{ isOpen: boolean; onClose: () => void; onSuccess: () => void; users: User[]; }' but required in type 'AssignLeaveModalProps'.
