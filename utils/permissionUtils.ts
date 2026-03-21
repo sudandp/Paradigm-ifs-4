@@ -50,20 +50,18 @@ export const checkRequiredPermissions = async () => {
         // 3. Notifications check (Unified)
         const notifPermission = (window as any).Notification?.permission || 'default';
         
-        // Special Case: iOS Browser (Non-Standalone)
-        // iOS blocks push notifications in regular browser tabs. 
-        // We catch this here and do NOT mark it as a hard block for app entry.
-        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-        const isStandalone = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
-        const isIOSBrowser = isIOS && !isStandalone && !Capacitor.isNativePlatform();
-
-        if (notifPermission !== 'granted' && !isIOSBrowser) {
+        // Notifications are NON-BLOCKING on Web (Browsers/PWA)
+        // because browsers often suppress prompts in Incognito or specific contexts.
+        if (notifPermission !== 'granted') {
             missing.push('Notifications');
         }
 
-        console.log('[PermissionUtils] Web Permissions Missing:', missing, isIOSBrowser ? '(iOS Browser detected: Notifications optional)' : '');
+        const isNative = Capacitor.isNativePlatform();
+        const criticalMissing = missing.filter(p => isNative || p !== 'Notifications');
+
+        console.log('[PermissionUtils] Web Permissions Status:', { missing, criticalMissing });
         return { 
-            allGranted: missing.length === 0, 
+            allGranted: criticalMissing.length === 0, 
             missing: missing 
         };
     }
@@ -100,25 +98,36 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const webReqDelay = isSafari ? 400 : 800;
 
-        // 1. Notifications (ONE-SIGNAL) - Request FIRST to ensure direct user gesture association
-        // This is the most sensitive permission on Web.
+        // 1. Notifications (ONE-SIGNAL)
         try {
             const notifPermission = (window as any).Notification?.permission || 'default';
-            if (notifPermission !== 'granted') {
+            
+            // If already denied, SKIP requesting to avoid SDK errors/crashes in Incognito
+            if (notifPermission === 'denied') {
+                console.warn('[PermissionUtils] Web: Notifications already DENIED by browser. Skipping request.');
+            } else if (notifPermission !== 'granted') {
                 if (onProgress) onProgress('Notifications');
                 console.log('[PermissionUtils] Web: Requesting Notifications FIRST');
                 
-                // Add a safety timeout to prevent stalling if OneSignal hangs
-                await Promise.race([
-                    oneSignalService.requestPermission(true),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Notification request timeout')), 10000))
-                ]).catch(e => console.warn('[PermissionUtils] Notification request timed out or failed:', e));
+                // Extremely safe wrapper for OneSignal
+                try {
+                    await Promise.race([
+                        oneSignalService.requestPermission(true).catch(err => {
+                            console.warn('[PermissionUtils] OneSignal inner error:', err);
+                        }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+                    ]);
+                } catch (e) {
+                    console.warn('[PermissionUtils] Notification request suppressed or timed out:', e);
+                }
                 
                 await delay(webReqDelay);
             } else {
                 console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
             }
-        } catch (e) { console.error('[PermissionUtils] Web OneSignal req FAILED:', e); }
+        } catch (e) { 
+            console.error('[PermissionUtils] Web OneSignal req FAILED:', e); 
+        }
         
         // 2. Camera
         try {
@@ -349,7 +358,7 @@ export const requestMusicAudioPermissions = async () => {
     
     const isAndroid = Capacitor.getPlatform() === 'android';
     if (!isAndroid) return;
-
+ 
     try {
         const permissions = (window as any).plugins?.permissions;
         if (permissions && permissions.READ_MEDIA_AUDIO) {
@@ -362,20 +371,17 @@ export const requestMusicAudioPermissions = async () => {
         console.error('Error requesting music/audio permissions:', error);
     }
 };
-
-
-
-
+ 
 /**
  * Schedule a "Shift End" reminder.
  */
 export const scheduleShiftEndReminder = async (startTime: Date, shiftDurationHours: number = 9) => {
     if (!Capacitor.isNativePlatform()) return;
-
+ 
     try {
         const endTime = new Date(startTime.getTime() + shiftDurationHours * 60 * 60 * 1000);
         if (endTime <= new Date()) return;
-
+ 
         await LocalNotifications.schedule({
             notifications: [
                 {
@@ -395,17 +401,17 @@ export const scheduleShiftEndReminder = async (startTime: Date, shiftDurationHou
         console.error('Failed to schedule shift end reminder:', error);
     }
 };
-
+ 
 /**
  * Schedule a "Break Over" reminder.
  */
 export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurationMinutes: number = 60) => {
     if (!Capacitor.isNativePlatform()) return;
-
+ 
     try {
         const endTime = new Date(breakStartTime.getTime() + breakDurationMinutes * 60 * 1000);
         if (endTime <= new Date()) return;
-
+ 
         await LocalNotifications.schedule({
             notifications: [
                 {
@@ -425,13 +431,13 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
         console.error('Failed to schedule break end reminder:', error);
     }
 };
-
+ 
 /**
  * Cancel a specific notification by type.
  */
 export const cancelNotification = async (type: 'SHIFT_END' | 'BREAK_END') => {
     if (!Capacitor.isNativePlatform()) return;
-
+ 
     try {
         const id = NOTIFICATION_IDS[type];
         await LocalNotifications.cancel({ notifications: [{ id }] });

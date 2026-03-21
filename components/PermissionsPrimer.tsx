@@ -16,7 +16,6 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const [statusMessage, setStatusMessage] = useState('Verifying security requirements...');
   const [currentRequesting, setCurrentRequesting] = useState<string>('');
   const [isMobileBrowser, setIsMobileBrowser] = useState(false);
-  const [isIOSBrowser, setIsIOSBrowser] = useState(false);
 
   const permissionList = [
     { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
@@ -45,7 +44,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
     setMissingPermissions(missing);
     setIsChecking(false);
     
-    if (allGranted && missing.length === 0) {
+    if (allGranted) {
       setStatusMessage('Security check passed!');
       setTimeout(() => {
         onComplete();
@@ -57,10 +56,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
     // Check if running in standalone mode (PWA)
     const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone || document.referrer.includes('android-app://');
     const isMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    
     setIsMobileBrowser(isMobileUA && !isStandaloneMode && !Capacitor.isNativePlatform());
-    setIsIOSBrowser(isIOS && !isStandaloneMode && !Capacitor.isNativePlatform());
 
     // Hide splash screen immediately so it doesn't cover system dialogs
     SplashScreen.hide().catch(() => {});
@@ -169,12 +165,12 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                     </div>
                     <div className="flex flex-col items-start text-left">
                         <span className="text-[15px] font-bold" style={{ color: isMissing ? '#9ca3af' : '#374151' }}>
-                            {p.id === 'Notifications' && isIOSBrowser ? (
-                                <span className="text-[13px] leading-tight">Requires Home Screen App</span>
+                            {p.id === 'Notifications' && !Capacitor.isNativePlatform() ? (
+                                <span className="text-[13px] leading-tight">Push Notifications (Web)</span>
                             ) : p.label}
                         </span>
-                        {isMissing && isIOSBrowser && p.id === 'Notifications' && (
-                             <span className="text-[11px] text-amber-600 font-medium" style={{ color: '#d97706' }}>Bypassed for Web Mode</span>
+                        {isMissing && !Capacitor.isNativePlatform() && p.id === 'Notifications' && (
+                             <span className="text-[11px] text-amber-600 font-medium" style={{ color: '#d97706' }}>Non-blocking for Web Mode</span>
                         )}
                     </div>
                   </div>
@@ -182,10 +178,10 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                   {isActive ? (
                      <span className="text-[10px] font-bold text-emerald-600 animate-pulse uppercase tracking-widest" style={{ color: '#059669' }}>Active</span>
                   ) : isMissing ? (
-                     isIOSBrowser && p.id === 'Notifications' ? (
+                     !Capacitor.isNativePlatform() && p.id === 'Notifications' ? (
                        <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 rounded-full border border-amber-100" style={{ backgroundColor: '#fffbeb', borderColor: '#fef3c7' }}>
                          <AlertCircle className="h-4 w-4 text-amber-500" />
-                         <span className="text-[11px] font-bold text-amber-600 uppercase" style={{ color: '#d97706' }}>Web</span>
+                         <span className="text-[11px] font-bold text-amber-600 uppercase" style={{ color: '#d97706' }}>WEB</span>
                        </div>
                      ) : (
                        <AlertCircle className="h-5 w-5 text-amber-500" />
