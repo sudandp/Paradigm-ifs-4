@@ -250,7 +250,7 @@ async function initWeb(appId: string): Promise<void> {
         theme: 'default',
         position: 'bottom-right',
         showCredit: false,
-        prenotify: true,
+        prenotify: false,
         colors: {
           'circle.background': '#1e293b', // Slate-800 for a more integrated look
           'circle.foreground': 'white',

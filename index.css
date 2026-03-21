@@ -1752,42 +1752,31 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
 }
 
 
-/* OneSignal UI Protection */
-.onesignal-reset, 
-.onesignal-reset *,
-[class*="onesignal-"],
-[id*="onesignal-"],
-#onesignal-bell-container,
-#onesignal-bell-container * {
-    border: initial !important;
-    opacity: 1 !important;
-    animation: none !important;
-    transform: none !important;
-    padding: initial !important;
-}
-
-/* OneSignal UI Refinement */
-.onesignal-bell-launcher-tooltip {
+/* OneSignal UI Refinement v2 */
+.onesignal-bell-launcher-tooltip,
+.onesignal-bell-launcher-message {
     display: none !important;
 }
 
+/* Ensure the Close button in the dialog is visible and accessible */
 .onesignal-bell-launcher-dialog-close {
-    width: 28px !important;
-    height: 28px !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 24px !important;
+    height: 24px !important;
     background-color: #f1f5f9 !important;
     border-radius: 50% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
     top: 10px !important;
     right: 10px !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
     cursor: pointer !important;
-    z-index: 100 !important;
+    z-index: 999999 !important;
+    border: 1px solid #e2e8f0 !important;
 }
 
 .onesignal-bell-launcher-dialog-close:hover {
     background-color: #e2e8f0 !important;
 }
+
 
 
