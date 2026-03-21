@@ -1778,5 +1778,16 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
     background-color: #e2e8f0 !important;
 }
 
+/* Hide OneSignal Bell on Mobile App View */
+@media (max-width: 767px) {
+    #onesignal-bell-container,
+    .onesignal-bell-launcher-button,
+    .onesignal-bell-launcher-badge,
+    .onesignal-bell-launcher-message,
+    .onesignal-bell-launcher-tooltip {
+        display: none !important;
+    }
+}
+
 
 
