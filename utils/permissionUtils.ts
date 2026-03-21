@@ -89,8 +89,28 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         // Detect Safari for tighter timing requirements
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const webReqDelay = isSafari ? 400 : 800;
+
+        // 1. Notifications (ONE-SIGNAL) - Request FIRST to ensure direct user gesture association
+        // This is the most sensitive permission on Web.
+        try {
+            const notifPermission = (window as any).Notification?.permission || 'default';
+            if (notifPermission !== 'granted') {
+                if (onProgress) onProgress('Notifications');
+                console.log('[PermissionUtils] Web: Requesting Notifications FIRST');
+                
+                // Add a safety timeout to prevent stalling if OneSignal hangs
+                await Promise.race([
+                    oneSignalService.requestPermission(true),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Notification request timeout')), 10000))
+                ]).catch(e => console.warn('[PermissionUtils] Notification request timed out or failed:', e));
+                
+                await delay(webReqDelay);
+            } else {
+                console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
+            }
+        } catch (e) { console.error('[PermissionUtils] Web OneSignal req FAILED:', e); }
         
-        // 1. Camera
+        // 2. Camera
         try {
             let camStatus = 'prompt';
             if (navigator.permissions && (navigator.permissions as any).query) {
@@ -109,7 +129,7 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
             console.error('[PermissionUtils] Web Camera request failed/unsupported:', e); 
         }
 
-        // 2. Location
+        // 3. Location
         try {
             let locStatus = 'prompt';
             if (navigator.permissions && (navigator.permissions as any).query) {
@@ -131,24 +151,6 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         } catch (e) { 
             console.error('[PermissionUtils] Web Location request failed/unsupported:', e); 
         }
-
-        // 3. Notifications (OneSignal)
-        try {
-            const notifPermission = (window as any).Notification?.permission;
-            if (notifPermission !== 'granted') {
-                if (onProgress) onProgress('Notifications');
-                console.log('[PermissionUtils] Web: Requesting Notifications');
-                
-                // Add a safety timeout to prevent stalling if OneSignal hangs
-                await Promise.race([
-                    oneSignalService.requestPermission(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Notification request timeout')), 12000))
-                ]).catch(e => console.warn('[PermissionUtils] Notification request timed out or failed:', e));
-
-            } else {
-                console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
-            }
-        } catch (e) { console.error('[PermissionUtils] Web OneSignal req FAILED:', e); }
 
         if (onProgress) onProgress(''); // Clear progress
         return;

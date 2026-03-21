@@ -16,9 +16,9 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const [statusMessage, setStatusMessage] = useState('Verifying security requirements...');
 
     const permissionList = [
+    { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
     { id: 'Camera', icon: Camera, label: 'Camera Access' },
     { id: 'Location', icon: MapPin, label: 'Location Services' },
-    { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
   ];
 
   const [currentRequesting, setCurrentRequesting] = useState<string>('');

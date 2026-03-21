@@ -117,7 +117,7 @@ export const oneSignalService = {
    * On Web: shows the OneSignal Slidedown or falls back to browser prompt.
    * On Native: requests via the OS dialog.
    */
-  requestPermission: async () => {
+  requestPermission: async (forceNative = false) => {
     try {
       if (Capacitor.isNativePlatform()) {
         console.log('[OneSignal] Requesting native permission...');
@@ -126,10 +126,10 @@ export const oneSignalService = {
       }
 
       // Web path
-      console.log('[OneSignal] Requesting web permission...');
+      console.log('[OneSignal] Requesting web permission (forceNative:', forceNative, ')...');
       
-      // 1. Try OneSignal SDK first if initialized
-      if (_initialized) {
+      // 1. If not forcing native and SDK is initialized, try SDK prompts
+      if (!forceNative && _initialized) {
         try {
           if (OneSignalWeb.Notifications && typeof OneSignalWeb.Notifications.requestPermission === 'function') {
             await OneSignalWeb.Notifications.requestPermission();
@@ -143,11 +143,16 @@ export const oneSignalService = {
         }
       }
 
-      // 2. Fallback to native browser API
+      // 2. Default/Fallback: Direct native browser API
       if (typeof Notification !== 'undefined') {
-        console.log('[OneSignal] Using browser Notification API fallback...');
+        console.log('[OneSignal] Using DIRECT browser Notification API...');
         const result = await Notification.requestPermission();
         console.log('[OneSignal] Browser permission result:', result);
+        
+        // If granted, let OneSignal know if possible
+        if (result === 'granted' && _initialized && (OneSignalWeb as any).Notifications) {
+           await (OneSignalWeb as any).Notifications.requestPermission().catch(() => {});
+        }
       }
     } catch (error) {
       console.error('[OneSignal] requestPermission error:', error);
