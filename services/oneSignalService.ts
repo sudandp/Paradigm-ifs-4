@@ -271,7 +271,7 @@ async function initWeb(appId: string): Promise<void> {
           'message.action.subscribed': 'Subscribed!',
           'message.action.resubscribed': "Subscribed!",
           'message.action.unsubscribed': "Unsubscribed",
-          'dialog.main.title': 'Manage Notifications',
+          'dialog.main.title': 'Notifications (Click Bell to Close)',
           'dialog.main.button.subscribe': 'SUBSCRIBE',
           'dialog.main.button.unsubscribe': 'UNSUBSCRIBE',
           'dialog.blocked.title': 'Unblock Notifications',
