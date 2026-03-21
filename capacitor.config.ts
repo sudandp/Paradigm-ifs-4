@@ -6,9 +6,14 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     // Mask the local bundle to look like the production domain
-    // This allows Auth redirects to https://paradigm-ifs.vercel.app to be caught by the app
+    // This allows Auth redirects to https://app.paradigmfms.com to be caught by the app
     androidScheme: 'https',
-    hostname: 'paradigm-ifs.vercel.app'
+    url: 'https://app.paradigmfms.com',
+    allowNavigation: [
+      'app.paradigmfms.com',
+      '*.supabase.co',
+      '*.onesignal.com'
+    ]
   },
   android: {
     allowMixedContent: true

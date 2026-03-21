@@ -32,7 +32,7 @@ export const useAppUpdate = () => {
 
       // 2. Fetch the latest version info from our public version.json
       // Cache buster included to ensure we get the latest file
-      const response = await fetch(`https://paradigm-ifs.vercel.app/version.json?t=${new Date().getTime()}`);
+      const response = await fetch(`https://app.paradigmfms.com/version.json?t=${new Date().getTime()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch version info');
       }

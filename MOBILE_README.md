@@ -115,7 +115,7 @@ The `Info.plist` includes permissions for:
 ### **WebView White Screen?**
 
 - Ensure your computer/device has internet access.
-- The app is configured to load `https://paradigm-ifs.vercel.app`. Verify this
+- The app is configured to load `https://app.paradigmfms.com`. Verify this
   URL is accessible.
 
 ---

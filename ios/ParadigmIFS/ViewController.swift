@@ -5,7 +5,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKSc
 
     var webView: WKWebView!
     var activityIndicator: UIActivityIndicatorView!
-    let targetURL = URL(string: "https://paradigm-ifs.vercel.app")!
+    let targetURL = URL(string: "https://app.paradigmfms.com")!
 
     override func viewDidLoad() {
         super.viewDidLoad()
