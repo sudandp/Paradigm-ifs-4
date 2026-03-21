@@ -243,8 +243,8 @@ async function initWeb(appId: string): Promise<void> {
       notifyButton: {
         enable: true,
         displayPredicate: () => {
-          // If already granted, we don't need to show the floating bell
-          return Promise.resolve(typeof Notification !== 'undefined' && Notification.permission !== 'granted');
+          // Always show the floating bell so users can check status or manage notifications
+          return Promise.resolve(true);
         },
         size: 'small',
         theme: 'default',
