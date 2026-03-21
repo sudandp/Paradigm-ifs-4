@@ -19,42 +19,47 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  * Categories: Camera, Location, Notifications, Nearby Devices, Photos/Videos, Contacts, Music/Audio
  */
 export const checkRequiredPermissions = async () => {
-    // On web, we check for notification and other permissions specifically
+    // ─── Web Platform ────────────────────────────────────────────────────────
     if (!Capacitor.isNativePlatform()) {
-        const results: string[] = [];
+        const missing: string[] = [];
         
-        // 1. Notifications
-        const notificationPermission = (window as any).Notification?.permission;
-        if (notificationPermission !== 'granted') {
-            results.push('Notifications');
+        // 1. Camera check
+        let camStatus = 'prompt';
+        try {
+            if (navigator.permissions && (navigator.permissions as any).query) {
+                const res = await navigator.permissions.query({ name: 'camera' as any }).catch(() => null);
+                if (res) camStatus = res.state;
+            }
+        } catch (e) {
+            console.warn('[PermissionUtils] Web: Camera permission query UNSUPPORTED');
         }
+        if (camStatus !== 'granted') missing.push('Camera');
 
-        // 2. Geolocation
+        // 2. Location check
+        let locStatus = 'prompt';
         try {
-            const geoStatus = await navigator.permissions.query({ name: 'geolocation' as any });
-            if (geoStatus.state !== 'granted') {
-                results.push('Location');
+            if (navigator.permissions && (navigator.permissions as any).query) {
+                const res = await navigator.permissions.query({ name: 'geolocation' as any }).catch(() => null);
+                if (res) locStatus = res.state;
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[PermissionUtils] Web: Location permission query UNSUPPORTED');
+        }
+        if (locStatus !== 'granted') missing.push('Location');
 
-        // 3. Camera
-        try {
-            const cameraStatus = await navigator.permissions.query({ name: 'camera' as any });
-            if (cameraStatus.state !== 'granted') {
-                results.push('Camera');
-            }
-        } catch (e) {}
+        // 3. Notifications check (Unified)
+        const notifPermission = (window as any).Notification?.permission || 'default';
+        if (notifPermission !== 'granted') missing.push('Notifications');
 
-        console.log('[PermissionUtils] Web Permissions Missing:', results);
+        console.log('[PermissionUtils] Web Permissions Missing:', missing);
         return { 
-            allGranted: results.length === 0, 
-            missing: results 
+            allGranted: missing.length === 0, 
+            missing: missing 
         };
     }
 
-    // NATIVE PLATFORM: Check individual plugins
+    // ─── Native Platform ─────────────────────────────────────────────────────
     const missing: string[] = [];
-    
     try {
         const cam = await Camera.checkPermissions();
         if (cam.camera !== 'granted') missing.push('Camera');
@@ -80,34 +85,39 @@ export const checkRequiredPermissions = async () => {
 export const requestAllPermissions = async (onProgress?: (id: string) => void) => {
     if (!Capacitor.isNativePlatform()) {
         console.log('[PermissionUtils] Requesting permissions on Web (Optimized Flow)...');
-        const webReqDelay = 800;
+        
+        // Detect Safari for tighter timing requirements
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const webReqDelay = isSafari ? 400 : 800;
         
         // 1. Camera
         try {
-            const cameraStatus = await navigator.permissions.query({ name: 'camera' as any });
-            if (cameraStatus.state !== 'granted') {
+            let camStatus = 'prompt';
+            if (navigator.permissions && (navigator.permissions as any).query) {
+                const query = await navigator.permissions.query({ name: 'camera' as any }).catch(() => null);
+                if (query) camStatus = query.state;
+            }
+            
+            if (camStatus !== 'granted') {
                 if (onProgress) onProgress('Camera');
                 console.log('[PermissionUtils] Web: Requesting Camera');
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 stream.getTracks().forEach(track => track.stop());
                 await delay(webReqDelay);
-            } else {
-                console.log('[PermissionUtils] Web: Camera already granted, skipping.');
             }
         } catch (e) { 
-            console.error('[PermissionUtils] Web Camera req FAILED:', e); 
-            // Fallback for browsers that don't support camera query
-            try {
-                if (onProgress) onProgress('Camera');
-                await navigator.mediaDevices.getUserMedia({ video: true }).then(s => s.getTracks().forEach(t => t.stop()));
-                await delay(webReqDelay);
-            } catch(e2) {}
+            console.error('[PermissionUtils] Web Camera request failed/unsupported:', e); 
         }
 
         // 2. Location
         try {
-            const geoStatus = await navigator.permissions.query({ name: 'geolocation' as any });
-            if (geoStatus.state !== 'granted') {
+            let locStatus = 'prompt';
+            if (navigator.permissions && (navigator.permissions as any).query) {
+                const query = await navigator.permissions.query({ name: 'geolocation' as any }).catch(() => null);
+                if (query) locStatus = query.state;
+            }
+            
+            if (locStatus !== 'granted') {
                 if (onProgress) onProgress('Location');
                 console.log('[PermissionUtils] Web: Requesting Location');
                 await new Promise((resolve, reject) => {
@@ -117,17 +127,9 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
                     });
                 });
                 await delay(webReqDelay);
-            } else {
-                console.log('[PermissionUtils] Web: Location already granted, skipping.');
             }
         } catch (e) { 
-            console.error('[PermissionUtils] Web Location req FAILED:', e); 
-            // Fallback
-            try {
-                if (onProgress) onProgress('Location');
-                await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
-                await delay(webReqDelay);
-            } catch(e2) {}
+            console.error('[PermissionUtils] Web Location request failed/unsupported:', e); 
         }
 
         // 3. Notifications (OneSignal)
