@@ -243,7 +243,11 @@ async function initWeb(appId: string): Promise<void> {
       notifyButton: {
         enable: true,
         displayPredicate: () => {
-          // Always show the floating bell so users can check status or manage notifications
+          // Hide on mobile screens (less than 768px)
+          if (typeof window !== 'undefined' && window.innerWidth < 768) {
+            return Promise.resolve(false);
+          }
+          // Always show on desktop so users can check status or manage notifications
           return Promise.resolve(true);
         },
         size: 'small',
