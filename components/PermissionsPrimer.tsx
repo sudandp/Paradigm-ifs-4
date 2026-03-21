@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
 import Logo from './ui/Logo';
 import { checkRequiredPermissions, requestAllPermissions } from '../utils/permissionUtils';
-import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, Bluetooth, Users, Image, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Share } from 'lucide-react';
 
 interface PermissionsPrimerProps {
   onComplete: () => void;
@@ -14,14 +14,15 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const [isRequesting, setIsRequesting] = useState(false);
   const [missingPermissions, setMissingPermissions] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState('Verifying security requirements...');
+  const [currentRequesting, setCurrentRequesting] = useState<string>('');
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+  const [isIOSBrowser, setIsIOSBrowser] = useState(false);
 
-    const permissionList = [
+  const permissionList = [
     { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
     { id: 'Camera', icon: Camera, label: 'Camera Access' },
     { id: 'Location', icon: MapPin, label: 'Location Services' },
   ];
-
-  const [currentRequesting, setCurrentRequesting] = useState<string>('');
 
   const verifyPermissions = async () => {
     setIsChecking(true);
@@ -53,6 +54,14 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   };
 
   useEffect(() => {
+    // Check if running in standalone mode (PWA)
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone || document.referrer.includes('android-app://');
+    const isMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    setIsMobileBrowser(isMobileUA && !isStandaloneMode && !Capacitor.isNativePlatform());
+    setIsIOSBrowser(isIOS && !isStandaloneMode && !Capacitor.isNativePlatform());
+
     // Hide splash screen immediately so it doesn't cover system dialogs
     SplashScreen.hide().catch(() => {});
     
@@ -153,13 +162,22 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                         ? 'text-gray-500' 
                         : 'text-emerald-800'
                   }`}>
-                    {p.label}
+                    {p.id === 'Notifications' && isIOSBrowser ? (
+                        <span className="text-[11px] leading-tight">Requires Home Screen App</span>
+                    ) : p.label}
                   </span>
                 </div>
                 {isActive ? (
                    <span className="text-[10px] font-bold text-emerald-50 animate-pulse uppercase">Waiting...</span>
                 ) : isMissing ? (
-                   <AlertCircle className="h-4 w-4 text-amber-500" />
+                   isIOSBrowser && p.id === 'Notifications' ? (
+                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100/50 rounded-full">
+                       <AlertCircle className="h-3 w-3 text-amber-600" />
+                       <span className="text-[9px] font-bold text-amber-700 uppercase">PWA Only</span>
+                     </div>
+                   ) : (
+                     <AlertCircle className="h-4 w-4 text-amber-500" />
+                   )
                 ) : (
                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                 )}
@@ -167,6 +185,22 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
             );
           })}
         </div>
+
+        {isMobileBrowser && (
+          <div className="mb-6 p-4 bg-emerald-900 rounded-2xl text-left border border-emerald-800 shadow-inner">
+             <div className="flex items-start gap-3">
+               <div className="bg-emerald-800 p-2 rounded-lg mt-1">
+                 <Smartphone className="h-4 w-4 text-emerald-400" />
+               </div>
+               <div>
+                 <h3 className="text-[13px] font-bold text-white mb-1">Native App Experience</h3>
+                 <p className="text-[11px] text-emerald-300 leading-relaxed">
+                   To hide the browser bar and get a full-screen experience, tap <span className="text-white font-bold inline-flex items-center gap-1 mx-0.5"><Share className="h-3 w-3" /> (Share)</span> then <span className="text-white font-bold">"Add to Home Screen"</span>.
+                 </p>
+               </div>
+             </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <button

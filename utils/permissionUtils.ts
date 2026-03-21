@@ -49,9 +49,19 @@ export const checkRequiredPermissions = async () => {
 
         // 3. Notifications check (Unified)
         const notifPermission = (window as any).Notification?.permission || 'default';
-        if (notifPermission !== 'granted') missing.push('Notifications');
+        
+        // Special Case: iOS Browser (Non-Standalone)
+        // iOS blocks push notifications in regular browser tabs. 
+        // We catch this here and do NOT mark it as a hard block for app entry.
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isStandalone = (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone);
+        const isIOSBrowser = isIOS && !isStandalone && !Capacitor.isNativePlatform();
 
-        console.log('[PermissionUtils] Web Permissions Missing:', missing);
+        if (notifPermission !== 'granted' && !isIOSBrowser) {
+            missing.push('Notifications');
+        }
+
+        console.log('[PermissionUtils] Web Permissions Missing:', missing, isIOSBrowser ? '(iOS Browser detected: Notifications optional)' : '');
         return { 
             allGranted: missing.length === 0, 
             missing: missing 

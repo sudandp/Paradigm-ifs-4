@@ -398,13 +398,25 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Android Notification Sync
-  const unreadCount = useNotificationStore(state => state.unreadCount);
+  // Android Native Badge Sync (Capacitor)
+  // We sync the total count (Notifications + Approvals) to the app icon badge.
+  const totalUnreadCount = useNotificationStore(state => state.totalUnreadCount);
   useEffect(() => {
-    if ((window as any).Android?.updateNotificationCount) {
-      (window as any).Android.updateNotificationCount(unreadCount);
-    }
-  }, [unreadCount]);
+    if (!Capacitor.isNativePlatform() || !user) return;
+    
+    const syncBadge = async () => {
+      try {
+        const { Badge } = await import('@capawesome/capacitor-badge');
+        const badgeCount = isNaN(totalUnreadCount) ? 0 : Math.max(0, totalUnreadCount);
+        console.log(`[App] Syncing global badge count: ${badgeCount}`);
+        await Badge.set({ count: badgeCount });
+      } catch (err) {
+        console.warn('[App] Failed to sync badge count:', err);
+      }
+    };
+
+    syncBadge();
+  }, [totalUnreadCount, user]);
 
   // Initialization & Supabase session management
   useEffect(() => {

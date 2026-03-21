@@ -5,8 +5,10 @@
   "theme_color": "#006B3F",
   "background_color": "#ffffff",
   "display": "standalone",
+  "id": "/?source=pwa",
+  "scope": "/",
   "orientation": "portrait",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
