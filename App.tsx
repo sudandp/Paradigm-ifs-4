@@ -375,14 +375,19 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-  // Real-time attendance subscription
+  // Initialize notifications and real-time subscription when user is available
   useEffect(() => {
     if (user) {
-      const unsubscribe = useAuthStore.getState().subscribeToAttendance();
-      // Pre-fetch geofencing settings for faster attendance actions
+      console.log('[App] Initializing Notifications for user:', user.id);
+      useNotificationStore.getState().fetchNotifications();
+      const unsubscribe = useNotificationStore.getState().subscribeToNotifications();
+      
+      const authUnsubscribe = useAuthStore.getState().subscribeToAttendance();
       useAuthStore.getState().fetchGeofencingSettings();
+      
       return () => {
         if (typeof unsubscribe === 'function') unsubscribe();
+        if (typeof authUnsubscribe === 'function') authUnsubscribe();
       };
     }
   }, [user]);

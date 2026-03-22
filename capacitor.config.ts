@@ -11,8 +11,7 @@ const config: CapacitorConfig = {
     url: 'https://app.paradigmfms.com',
     allowNavigation: [
       'app.paradigmfms.com',
-      '*.supabase.co',
-      '*.onesignal.com'
+      '*.supabase.co'
     ]
   },
   android: {

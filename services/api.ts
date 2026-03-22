@@ -3389,8 +3389,8 @@ export const api = {
       });
       if (error) throw error;
     
-    // Trigger real push broadcast via OneSignal Edge Function
-    supabase.functions.invoke('send-push', {
+    // Trigger real push broadcast via FCM Edge Function
+    supabase.functions.invoke('send-notification', {
       body: {
         broadcast: true,
         title: 'Important Alert',
@@ -3411,6 +3411,20 @@ export const api = {
 
     const { data: inserted, error } = await supabase.from('notifications').insert(toSnakeCase(validData)).select().single();
     if (error) throw error;
+
+    // Trigger real push notification via FCM Edge Function
+    supabase.functions.invoke('send-notification', {
+      body: {
+        user_id: validData.userId,
+        title: title || (validData as any).type || 'Notification',
+        message: validData.message,
+        data: {
+          link: validData.linkTo || (validData as any).link || '',
+          ...(validData as any).metadata
+        }
+      }
+    }).catch(err => console.warn('Failed to trigger FCM push for individual notification:', err));
+
     return toCamelCase(inserted);
   },
   markNotificationAsRead: async (id: string): Promise<void> => {
@@ -3509,9 +3523,9 @@ export const api = {
         throw error;
       }
 
-      // Trigger real push broadcast via OneSignal Edge Function
+      // Trigger real push broadcast via FCM Edge Function
       try {
-        const { error: pushError } = await supabase.functions.invoke('send-push', {
+        const { error: pushError } = await supabase.functions.invoke('send-notification', {
           body: {
             broadcast: true,
             title: data.title || 'Important Alert',
@@ -3563,7 +3577,7 @@ export const api = {
     });
 
     try {
-      const { error: pushError } = await supabase.functions.invoke('send-push', {
+      const { error: pushError } = await supabase.functions.invoke('send-notification', {
         body: {
           userIds: finalUserIds,
           title: data.title || 'Important Alert',

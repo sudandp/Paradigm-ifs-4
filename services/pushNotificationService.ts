@@ -70,10 +70,19 @@ async function initWeb() {
   if (!messaging) return;
 
   try {
+    // Manually register to ensure it's fully active before requesting a token
+    // Using a timestamp to absolutely FORCE the browser to ignore its cache of the old broken file
+    let registration;
+    if ('serviceWorker' in navigator) {
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=' + new Date().getTime());
+      await navigator.serviceWorker.ready;
+    }
+
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       const token = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: registration,
       });
 
       if (token) {
@@ -83,7 +92,7 @@ async function initWeb() {
         console.warn('[Push] No registration token available. Request permission to generate one.');
       }
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Push] Web initialization error:', err);
   }
 }
@@ -93,7 +102,10 @@ async function initWeb() {
  */
 async function saveTokenToDatabase(token: string, platform: string) {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  if (!user) {
+    console.warn('[Push] Save token failed: No user logged in.');
+    return;
+  }
 
   const { error } = await supabase
     .from('fcm_tokens')

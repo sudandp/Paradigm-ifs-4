@@ -1,8 +1,12 @@
 // deno-lint-ignore-file no-explicit-any
+// @ts-ignore - Deno environment
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore - Deno environment
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// @ts-ignore - Deno global
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+// @ts-ignore - Deno global
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
 const toCamelCase = (obj: any): any => {
@@ -17,7 +21,7 @@ const toCamelCase = (obj: any): any => {
   return obj;
 };
 
-serve(async (_req) => {
+serve(async (_req: Request) => {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return new Response(JSON.stringify({ error: 'Missing environment variables' }), { status: 500 });
   }
@@ -64,7 +68,7 @@ serve(async (_req) => {
         // Handle Chaining
         if (rule.config?.chained_rule_id || rule.config?.chainedRuleId) {
           const chainedRuleId = rule.config.chained_rule_id || rule.config.chainedRuleId;
-          const chainedRule = allRules.find(r => r.id === chainedRuleId);
+          const chainedRule = allRules.find((r: any) => r.id === chainedRuleId);
           if (chainedRule) {
              console.log(`[Chain] Rule ${rule.name} triggered follow-up: ${chainedRule.name}`);
              await processNotifications(supabase, chainedRule, targets, rule.config?.time || '', results);
@@ -195,7 +199,7 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
     const smsMsg = (rule.sms_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
     
     // Notify Employee
-    const pushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+    const pushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
       body: JSON.stringify({ 
@@ -233,7 +237,7 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
        const managerBody = `Manager Copy [${userName}]: ${body}`;
        const managerSmsMsg = `Manager Copy [${userName}]: ${smsMsg}`;
        
-       const managerPushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+       const managerPushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
           body: JSON.stringify({ 

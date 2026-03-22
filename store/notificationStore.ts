@@ -184,9 +184,14 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       const count = get().totalUnreadCount;
       console.log(`[NotificationStore] Updating badge count to: ${count}`);
       
-      // Ensure the count is valid
-      const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
-      await Badge.set({ count: badgeCount });
+      // Request permissions explicitly (required on some Android launchers)
+      const perm = await Badge.requestPermissions();
+      if (perm.display === 'granted') {
+        const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
+        await Badge.set({ count: badgeCount });
+      } else {
+        console.warn('[NotificationStore] Badge permission denied');
+      }
     } catch (err) {
       console.warn('[NotificationStore] Badge update failed:', err);
     }

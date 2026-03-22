@@ -105,20 +105,18 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
                 .map(n => n.user_id);
 
             if (pushRecipients.length > 0) {
-                // Trigger real push notification via the new FCM-based Edge Function
-                for (const recipientId of pushRecipients) {
-                    supabase.functions.invoke('send-notification', {
-                        body: {
-                            user_id: recipientId,
-                            title: data.title || 'Paradigm Office',
-                            body: message,
-                            data: {
-                                link: data.link || '',
-                                ...data.metadata
-                            }
+                // Trigger real push notification via the new FCM-based Edge Function in bulk
+                supabase.functions.invoke('send-notification', {
+                    body: {
+                        userIds: pushRecipients,
+                        title: data.title || 'Paradigm Office',
+                        message,
+                        data: {
+                            link: data.link || '',
+                            ...data.metadata
                         }
-                    }).catch(err => console.warn(`Failed to trigger FCM push for ${recipientId}:`, err));
-                }
+                    }
+                }).catch(err => console.warn('Failed to trigger bulk FCM push:', err));
             }
         }
 
