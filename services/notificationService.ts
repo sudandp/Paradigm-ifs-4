@@ -98,21 +98,27 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
             
             await supabase.from('notifications').insert(notifications);
 
-            // Trigger real push notification via OneSignal Edge Function for specific types
+            // Trigger real push notification via FCM Edge Function for specific types
             const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast'];
             const pushRecipients = notifications
                 .filter(n => triggerPushTypes.includes(n.type))
                 .map(n => n.user_id);
 
             if (pushRecipients.length > 0) {
-                supabase.functions.invoke('send-push', {
-                    body: {
-                        userIds: pushRecipients,
-                        title: data.title || 'Paradigm Office',
-                        message,
-                        url: data.link
-                    }
-                }).catch(err => console.warn('Failed to trigger push notification:', err));
+                // Trigger real push notification via the new FCM-based Edge Function
+                for (const recipientId of pushRecipients) {
+                    supabase.functions.invoke('send-notification', {
+                        body: {
+                            user_id: recipientId,
+                            title: data.title || 'Paradigm Office',
+                            body: message,
+                            data: {
+                                link: data.link || '',
+                                ...data.metadata
+                            }
+                        }
+                    }).catch(err => console.warn(`Failed to trigger FCM push for ${recipientId}:`, err));
+                }
             }
         }
 

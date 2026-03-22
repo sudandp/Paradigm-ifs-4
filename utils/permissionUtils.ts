@@ -4,7 +4,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { Contacts } from '@capacitor-community/contacts';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
-import { oneSignalService } from '../services/oneSignalService';
+import { pushNotificationService } from '../services/pushNotificationService';
 
 // Notification IDs to ensure we can cancel them specifically
 const NOTIFICATION_IDS = {
@@ -109,11 +109,11 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
                 if (onProgress) onProgress('Notifications');
                 console.log('[PermissionUtils] Web: Requesting Notifications FIRST');
                 
-                // Extremely safe wrapper for OneSignal
+                // Extremely safe wrapper for Push Notification Service
                 try {
                     await Promise.race([
-                        oneSignalService.requestPermission(true).catch(err => {
-                            console.warn('[PermissionUtils] OneSignal inner error:', err);
+                        pushNotificationService.init().catch(err => {
+                            console.warn('[PermissionUtils] Push service init error:', err);
                         }),
                         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
                     ]);

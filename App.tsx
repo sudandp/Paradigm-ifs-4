@@ -23,7 +23,7 @@ import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
 import { syncService } from './services/offline/syncService';
 import OfflineStatusBanner from './components/OfflineStatusBanner';
-import { oneSignalService } from './services/oneSignalService';
+import { pushNotificationService } from './services/pushNotificationService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 
 
@@ -326,26 +326,15 @@ const App: React.FC = () => {
     CapacitorUpdater.notifyAppReady();
   }, []);
 
-  // Subscribe reactively to OneSignal App ID from settings store
-  const oneSignalAppId = useSettingsStore(state => state.apiSettings.oneSignalAppId);
-
-  // Initialize/Update OneSignal when App ID changes and app is past splash
+  // Initialize Push Notifications when app is initialized
   useEffect(() => {
-    // Splash and permissions sequence.
-    // On native mobile, we MUST wait for the splash screen and its mandatory permission bridge
-    // to complete before initializing OneSignal.
-    // On Web, we can initialize OneSignal immediately because it handles the notification
-    // permission prompt itself and doesn't block the UI with native modal dialogs.
     const isWeb = !Capacitor.isNativePlatform();
     if (!isInitialized || (!permissionsComplete && !isWeb)) return;
 
-    const effectiveAppId = oneSignalAppId || import.meta.env.VITE_ONESIGNAL_APP_ID;
-    
-    if (effectiveAppId && effectiveAppId !== 'YOUR_ONESIGNAL_APP_ID' && effectiveAppId !== '') {
-      console.log('[App] Initializing OneSignal with ID:', effectiveAppId);
-      oneSignalService.init(effectiveAppId);
-    }
-  }, [oneSignalAppId, isInitialized, permissionsComplete]);
+    console.log('[App] Initializing Push Notification Service');
+    pushNotificationService.init();
+    pushNotificationService.listen();
+  }, [isInitialized, permissionsComplete]);
 
 
     useEffect(() => {
@@ -485,7 +474,8 @@ const App: React.FC = () => {
             if (isMounted) {
               setUser(appUser);
               // Tag user for OneSignal push on initial session load
-              oneSignalService.login(appUser.id);
+              // Initialize push notifications on initial session load
+              pushNotificationService.init();
             }
           } catch (e) {
             console.error('Failed to fetch user profile during initialization:', e);
@@ -580,7 +570,8 @@ const App: React.FC = () => {
                 }
 
                 // Tag user for OneSignal push notifications
-                oneSignalService.login(appUser.id);
+                // Initialize push notifications on initial session load
+              pushNotificationService.init();
               }
             } catch (err) {
               console.error('Failed to fetch user profile after auth change:', err);
@@ -594,7 +585,7 @@ const App: React.FC = () => {
           resetAttendance();
           useOnboardingStore.getState().reset();
           Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
-          oneSignalService.logout();
+          // pushNotificationService.logout(); // Implement if needed, though tokens are per-device
         }
       }
     });
