@@ -55,6 +55,17 @@ async function testPush() {
 
     if (invokeError) {
         console.error("❌ Failed to invoke Edge Function:", invokeError.message);
+        try {
+            // supabase-js v2 error objects might have context that can be used to extract the response
+            if ((invokeError as any).context && typeof (invokeError as any).context.json === 'function') {
+                const errorData = await (invokeError as any).context.json();
+                console.error("Error Detail (from response):", JSON.stringify(errorData, null, 2));
+            } else {
+                 console.error("Full error object:", JSON.stringify(invokeError, null, 2));
+            }
+        } catch (e) {
+            console.error("Could not parse error response body.");
+        }
     } else {
         console.log("🎉 Edge Function responded successfully!", data);
         console.log("Check your device/browser for the push notification!");

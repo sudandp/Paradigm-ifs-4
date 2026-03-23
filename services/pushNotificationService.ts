@@ -86,6 +86,15 @@ export const pushNotificationService = {
     } else if (messaging) {
       onMessage(messaging, (payload) => {
         console.log('[Push] Web message received:', payload);
+        // Show browser notification for foreground messages
+        if (Notification.permission === 'granted') {
+          const title = payload.notification?.title || payload.data?.title || 'Paradigm Office';
+          const body = payload.notification?.body || payload.data?.body || '';
+          new Notification(title, {
+            body,
+            icon: '/icons/icon-192x192.png',
+          });
+        }
       });
     }
   },
@@ -180,7 +189,7 @@ async function initWeb() {
   try {
     let registration;
     if ('serviceWorker' in navigator) {
-      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js?v=' + new Date().getTime());
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
       await navigator.serviceWorker.ready;
     }
 

@@ -2,7 +2,7 @@
 // Node.js IDEs will report "errors" for URL imports and the Deno global.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { JWT } from "https://esm.sh/google-auth-library@9"
+import { JWT } from "npm:google-auth-library@9.4.1"
 
 let SERVICE_ACCOUNT_JSON = {};
 try {
@@ -18,6 +18,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
+
+console.log("[SendNotification] Edge Function loaded or restarted.");
+console.log(`[SendNotification] Service Account project_id: ${SERVICE_ACCOUNT_JSON.project_id || 'NOT_FOUND'}`);
 
 serve(async (req: Request) => {
   // Handle CORS
@@ -103,7 +106,9 @@ serve(async (req: Request) => {
     }
 
     // 3. Get Access Token for FCM v1
+    console.log(`[SendNotification] Retrieving access token for project ${SERVICE_ACCOUNT_JSON.project_id}...`);
     const accessToken = await getAccessToken(SERVICE_ACCOUNT_JSON)
+    console.log("[SendNotification] Access token retrieved successfully.");
 
     // 4. Send to each token
     console.log(`[SendNotification] Sending to ${tokens.length} tokens...`);
@@ -141,8 +146,8 @@ serve(async (req: Request) => {
             },
             webpush: {
               notification: { 
-                icon: "/icon-192x192.png",
-                badge: "/icon-192x192.png" // Web specific badge icon
+                icon: "/icons/icon-192x192.png",
+                badge: "/icons/icon-192x192.png"
               }
             }
           }
@@ -155,8 +160,18 @@ serve(async (req: Request) => {
     })
 
   } catch (err: any) {
-    console.error("[SendNotification] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), { 
+    const errorMsg = err.message || JSON.stringify(err);
+    console.error("[SendNotification] CRITICAL ERROR:", errorMsg);
+    if (err.stack) console.error(err.stack);
+
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: errorMsg,
+      debug: {
+        step: "Execution failed",
+        hasServiceAccount: !!SERVICE_ACCOUNT_JSON.project_id
+      }
+    }), { 
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500 
     })

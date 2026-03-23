@@ -23,7 +23,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || payload.data?.title || 'New Notification';
   const notificationOptions = {
     body: payload.notification?.body || payload.data?.body || 'You have a new message.',
-    icon: '/vite.svg'
+    icon: '/icons/icon-192x192.png'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
