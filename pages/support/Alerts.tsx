@@ -164,8 +164,10 @@ const Alerts: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
-                                <label className={`block text-xs font-bold uppercase tracking-tight ml-1 ${isMobile ? 'text-white/40' : 'text-gray-500'}`}>Role</label>
+                                <label htmlFor="role-select" className={`block text-xs font-bold uppercase tracking-tight ml-1 ${isMobile ? 'text-white/40' : 'text-gray-500'}`}>Role</label>
                                 <select
+                                    id="role-select"
+                                    name="role"
                                     value={selectedRole}
                                     onChange={(e) => {
                                         setSelectedRole(e.target.value);
@@ -184,8 +186,9 @@ const Alerts: React.FC = () => {
                             </div>
                             
                             <div className="space-y-1.5">
-                                <label className={`block text-xs font-bold uppercase tracking-tight ml-1 ${isMobile ? 'text-white/40' : 'text-gray-500'}`}>Specific Member (Optional)</label>
+                                <label htmlFor="specific-member-select" className={`block text-xs font-bold uppercase tracking-tight ml-1 ${isMobile ? 'text-white/40' : 'text-gray-500'}`}>Specific Member (Optional)</label>
                                 <SearchableSelect
+                                    id="specific-member-select"
                                     placeholder="Select specific user"
                                     options={userOptions}
                                     value={selectedUserId || (selectedRole === 'all' && !selectedUserId ? 'all' : '')}
@@ -212,8 +215,10 @@ const Alerts: React.FC = () => {
 
                                 <div className="space-y-5">
                                     <div className="space-y-1.5">
-                                        <label className={`block text-sm font-semibold ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>Alert Title</label>
+                                        <label htmlFor="alert-title" className={`block text-sm font-semibold ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>Alert Title</label>
                                         <input
+                                            id="alert-title"
+                                            name="title"
                                             type="text"
                                             value={title}
                                             onChange={(e) => setTitle(e.target.value)}
@@ -227,8 +232,10 @@ const Alerts: React.FC = () => {
                                     </div>
 
                                     <div className="space-y-1.5">
-                                        <label className={`block text-sm font-semibold ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>Detailed Message</label>
+                                        <label htmlFor="alert-message" className={`block text-sm font-semibold ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>Detailed Message</label>
                                         <textarea
+                                            id="alert-message"
+                                            name="message"
                                             value={message}
                                             onChange={(e) => setMessage(e.target.value)}
                                             placeholder="Enter the full alert details here..."

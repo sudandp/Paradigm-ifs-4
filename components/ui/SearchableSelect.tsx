@@ -13,6 +13,7 @@ interface SearchableSelectProps {
   isMobile?: boolean;
   isLoading?: boolean;
   allowCustom?: boolean;
+  id?: string;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -26,12 +27,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   labelClassName = "",
   isMobile = false,
   isLoading = false,
-  allowCustom = false
+  allowCustom = false,
+  id
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(value || "");
   const containerRef = useRef<HTMLDivElement>(null);
-  const id = useId();
+  const generatedId = useId();
+  const inputId = id || generatedId;
 
   useEffect(() => {
     const selectedOption = options.find(o => o.id.toString() === value.toString());
@@ -95,7 +98,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
       style={{ zIndex: isOpen ? 100 : 0 }}
     >
       {label && (
-        <label htmlFor={id} className={`block text-sm font-semibold mb-2 ${labelClassName}`}>
+        <label htmlFor={inputId} className={`block text-sm font-semibold mb-2 ${labelClassName}`}>
           {label}
         </label>
       )}
@@ -104,7 +107,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             <Search className="h-4 w-4" />
           </div>
           <input
-            id={id}
+            id={inputId}
             type="text"
             className={`w-full bg-transparent border-none focus:ring-0 pl-11 pr-10 py-[14px] text-sm outline-none transition-all duration-200 ${
               isMobile 

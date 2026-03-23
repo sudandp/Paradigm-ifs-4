@@ -32,6 +32,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         approval_request: ClipboardCheck,
         emergency_broadcast: AlertTriangle,
         direct_ping: MessageSquare,
+        emergency: AlertTriangle,
     };
 
     const bgMap: Record<NotificationType, string> = {
@@ -45,6 +46,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         approval_request: 'bg-orange-50 text-orange-600 border-orange-100',
         emergency_broadcast: 'bg-red-50 text-red-600 border-red-100',
         direct_ping: 'bg-blue-50 text-blue-600 border-blue-100',
+        emergency: 'bg-red-50 text-red-600 border-red-100',
     };
 
     const Icon = iconMap[type] || Bell;
@@ -72,7 +74,7 @@ const NotificationBell: React.FC<{ className?: string }> = ({ className = '' }) 
             >
                 <Bell className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} />
                 {totalUnreadCount > 0 && (
-                    <span className="absolute top-1 right-1 flex">
+                    <span className="absolute -top-1 left-1/2 -translate-x-1/2 flex">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
                         <span className={`relative inline-flex rounded-full ${totalUnreadCount > 9 ? 'px-1.5 h-4 min-w-[1rem]' : 'h-4 w-4'} bg-red-600 text-[10px] items-center justify-center font-bold text-white shadow-lg border border-white`}>
                             {totalUnreadCount}
