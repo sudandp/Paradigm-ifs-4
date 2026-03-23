@@ -253,14 +253,9 @@ const AddSiteAttendanceRecord: React.FC = () => {
                             label="Select Site"
                             placeholder="Select or type site name..."
                             options={sites.map(s => ({ id: s.id, name: s.shortName }))}
-                            value={record.siteName || ''}
-                            onChange={(val) => {
-                                const matchedSite = sites.find(s => s.shortName === val);
-                                if (matchedSite) {
-                                    handleInputChange('siteId', matchedSite.id);
-                                } else {
-                                    handleInputChange('siteId', val);
-                                }
+                            value={record.siteId || record.siteName || ''}
+                            onChange={(id) => {
+                                handleInputChange('siteId', id);
                             }}
                             allowCustom
                         />

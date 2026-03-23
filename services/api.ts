@@ -3511,43 +3511,58 @@ export const api = {
     
     // Check for "all" role or no specific targets
     if (isBroadcast) {
+      const broadcastTitle = data.title || 'Important Alert';
       const { error } = await supabase.rpc('broadcast_notification', {
         p_message: data.message,
         p_type: data.type || 'info',
         p_severity: data.severity || 'Low',
-        p_metadata: {},
+        p_metadata: {
+          title: broadcastTitle,
+          isBroadcast: true,
+          sender_id: useAuthStore.getState().user?.id,
+          sentAt: new Date().toISOString()
+        },
         p_link_to: data.link || null
       });
       if (error) {
         console.error('[API] broadcast_notification RPC failed:', error);
         throw error;
       }
+      console.log('[API] Broadcast DB insert succeeded via RPC.');
+
+      // Also manually refresh the notification store so the UI updates immediately
+      // (In case Realtime is delayed or not enabled for the notifications table)
+      try {
+        const { useNotificationStore } = await import('../store/notificationStore');
+        setTimeout(() => useNotificationStore.getState().fetchNotifications(), 1000);
+      } catch (e) {
+        // Non-critical, store may not be available in all contexts
+      }
 
       // Trigger real push broadcast via FCM Edge Function
       try {
-        const { error: pushError } = await supabase.functions.invoke('send-notification', {
+        const { data: pushData, error: pushError } = await supabase.functions.invoke('send-notification', {
           body: {
             broadcast: true,
-            title: data.title || 'Important Alert',
+            title: broadcastTitle,
+            body: data.message,
             message: data.message,
-            url: data.link || null,
-            type: data.type || 'info',
-            severity: data.severity || 'Low',
-            metadata: {
-              isBroadcast: true,
-              sentAt: new Date().toISOString()
+            data: {
+              type: data.type || 'info',
+              severity: data.severity || 'Low',
+              isBroadcast: 'true',
+              link: data.link || ''
             }
           }
         });
         
         if (pushError) {
-          console.warn('[API] Warning: Broadcast database insert succeeded, but Push Notification Edge Function failed:', pushError);
-          // We intentionally DO NOT throw here. The broadcast exists in the DB, so it's a partial success.
+          console.warn('[API] Warning: Push Edge Function failed:', pushError);
         } else {
-          console.log('[API] Broadcast sent successfully (DB + Push).');
+          console.log('[API] Broadcast sent successfully (DB + Push). Response:', pushData);
         }
       } catch (err) {
-        console.warn('[API] Warning: Broadcast DB insert succeeded, but Push threw an exception:', err);
+        console.warn('[API] Warning: Push threw an exception:', err);
       }
       
       return;
@@ -3566,8 +3581,32 @@ export const api = {
 
     if (finalUserIds.length === 0) return;
 
+    // Insert into notifications table directly to bypass early aborts in the Edge Function
+    try {
+      console.log(`[API] Inserting ${finalUserIds.length} targeted notifications into DB...`);
+      const notificationsToInsert = finalUserIds.map(uid => ({
+          user_id: uid,
+          message: data.message,
+          type: data.type || 'info',
+          severity: data.severity || 'Low',
+          link_to: data.link || null,
+          metadata: {
+              title: data.title || 'Important Alert',
+              originalRole: data.role,
+              sender_id: useAuthStore.getState().user?.id,
+              sentAt: new Date().toISOString()
+          }
+      }));
+      
+      const { error: dbInsertError } = await supabase.from('notifications').insert(notificationsToInsert);
+      if (dbInsertError) throw dbInsertError;
+      console.log('[API] Targeted DB insert succeeded.');
+    } catch (insertError) {
+      console.error('[API] Failed to insert targeted notifications into DB:', insertError);
+      throw insertError; // Throw so the UI can show an error toast
+    }
+
     // Trigger real push notification via OneSignal Edge Function for specific recipients
-    // The edge function will handle inserting the notifications into the database natively to bypass RLS.
     console.log("Sending push notification payload:", {
       userIds: finalUserIds,
       title: data.title || 'Important Alert',
@@ -3582,10 +3621,11 @@ export const api = {
           userIds: finalUserIds,
           title: data.title || 'Important Alert',
           message: data.message,
-          url: data.link || null,
-          type: data.type || 'info',
-          severity: data.severity || 'Low',
-          metadata: {
+          data: {
+            url: data.link || null,
+            sender_id: useAuthStore.getState().user?.id,
+            type: data.type || 'info',
+            severity: data.severity || 'Low',
             originalRole: data.role,
             sentAt: new Date().toISOString()
           }

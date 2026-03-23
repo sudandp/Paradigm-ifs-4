@@ -3,7 +3,7 @@ import { SQLiteConnection, SQLiteDBConnection, CapacitorSQLite } from '@capacito
 import { Capacitor } from '@capacitor/core';
 
 const DB_NAME = 'paradigm_offline_db';
-const DB_VERSION = 4;
+const DB_VERSION = 6;
 
 export interface OutboxItem {
   id?: number;
@@ -33,10 +33,16 @@ class OfflineDatabase {
 
   private async initIDB() {
     this.idb = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion, newVersion, transaction) {
         // Create outbox store
+        let outboxStore;
         if (!db.objectStoreNames.contains('outbox')) {
-          const outboxStore = db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
+          outboxStore = db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
+        } else {
+          outboxStore = transaction.objectStore('outbox');
+        }
+
+        if (!outboxStore.indexNames.contains('status')) {
           outboxStore.createIndex('status', 'status');
         }
 

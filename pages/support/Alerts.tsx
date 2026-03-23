@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
+import Modal from '../../components/ui/Modal';
 import SearchableSelect from '../../components/ui/SearchableSelect';
 import type { User, Role } from '../../types';
 
@@ -21,6 +22,8 @@ const Alerts: React.FC = () => {
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const [isLoadingData, setIsLoadingData] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmConfig, setConfirmConfig] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -73,10 +76,16 @@ const Alerts: React.FC = () => {
                 ? `Are you sure you want to broadcast this alert to all users with the role "${selectedRole}"?`
                 : "Are you sure you want to broadcast this message to ALL users? This action cannot be undone.";
 
-        if (!window.confirm(confirmMessage)) {
-            return;
-        }
+        setConfirmConfig({
+            title: 'Confirm Alert Broadcast',
+            message: confirmMessage,
+            onConfirm: performSend
+        });
+        setShowConfirmModal(true);
+    };
 
+    const performSend = async () => {
+        setShowConfirmModal(false);
         setIsSending(true);
         try {
             await api.broadcastNotification({
@@ -179,10 +188,9 @@ const Alerts: React.FC = () => {
                                 <SearchableSelect
                                     placeholder="Select specific user"
                                     options={userOptions}
-                                    value={users.find(u => u.id === selectedUserId)?.name || (selectedUserId === 'all' ? 'All Users' : '')}
-                                    onChange={(val) => {
-                                        const found = userOptions.find(o => o.name === val);
-                                        setSelectedUserId(found?.id === 'all' ? '' : (found?.id || ''));
+                                    value={selectedUserId || (selectedRole === 'all' && !selectedUserId ? 'all' : '')}
+                                    onChange={(id) => {
+                                        setSelectedUserId(id === 'all' ? '' : id);
                                     }}
                                     isLoading={isLoadingData}
                                     className={`w-full ${isMobile ? 'bg-white/10 text-white border-white/20' : 'bg-white'}`}
@@ -314,6 +322,34 @@ const Alerts: React.FC = () => {
                     </div>
                 </form>
             </div>
+
+            {confirmConfig && (
+                <Modal
+                    isOpen={showConfirmModal}
+                    onClose={() => setShowConfirmModal(false)}
+                    title={confirmConfig.title}
+                >
+                    <div className="space-y-4">
+                        <p className="text-gray-600 font-medium">{confirmConfig.message}</p>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowConfirmModal(false)}
+                                disabled={isSending}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={confirmConfig.onConfirm}
+                                isLoading={isSending}
+                                className={alertLevel === 'critical' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+                            >
+                                Confirm & Send
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

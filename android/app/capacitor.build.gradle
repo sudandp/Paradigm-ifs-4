@@ -2,12 +2,12 @@
 
 android {
   compileOptions {
-      sourceCompatibility JavaVersion.VERSION_17
-      targetCompatibility JavaVersion.VERSION_17
+      sourceCompatibility JavaVersion.VERSION_21
+      targetCompatibility JavaVersion.VERSION_21
   }
 }
 
-
+apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
     implementation project(':capacitor-community-bluetooth-le')
     implementation project(':capacitor-community-contacts')
@@ -25,7 +25,7 @@ dependencies {
     implementation project(':capacitor-status-bar')
     implementation project(':capawesome-capacitor-badge')
     implementation project(':capgo-capacitor-updater')
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10"
+
 }
 
 

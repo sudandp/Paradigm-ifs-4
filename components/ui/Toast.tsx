@@ -12,7 +12,7 @@ const Toast: React.FC<ToastProps> = ({ message, type, onDismiss }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss();
-    }, 5000);
+    }, 2000);
 
     return () => {
       clearTimeout(timer);

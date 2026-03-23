@@ -8,10 +8,16 @@ const SERVICE_ACCOUNT_JSON = JSON.parse(Deno.env.get("FIREBASE_SERVICE_ACCOUNT")
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? ""
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
 serve(async (req: Request) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "*" } })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
@@ -36,8 +42,11 @@ serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     if (!SERVICE_ACCOUNT_JSON.project_id) {
-      console.error("[SendNotification] FIREBASE_SERVICE_ACCOUNT secret is missing!");
-      return new Response(JSON.stringify({ error: "Server configuration error" }), { status: 500 })
+      console.warn("[SendNotification] FIREBASE_SERVICE_ACCOUNT secret is missing! Skipping push notification.");
+      return new Response(JSON.stringify({ success: false, warning: "Firebase not configured" }), { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200 
+      })
     }
 
     // 1. Fetch tokens
@@ -59,32 +68,43 @@ serve(async (req: Request) => {
 
     if (tokens.length === 0) {
       console.log("[SendNotification] No FCM tokens found for targets.");
-      return new Response(JSON.stringify({ success: true, message: "No tokens found, nothing to send" }), { status: 200 })
+      // Even if no tokens, we should still insert to DB for targeted users so they see it when they login on web
     }
 
-    // 2. Get Access Token for FCM v1
+    // 2. Database insertion is now handled exclusively by the client applications (e.g., api.ts & notificationService.ts)
+    // to bypass early aborts and ensure reliable event delivery.
+
+    // 3. Fetch unread counts for all relevant users in one batch
+    const distinctUserIds = [...new Set(tokens.map(t => t.user_id).filter(Boolean))];
+    const unreadMap = new Map();
+    
+    if (distinctUserIds.length > 0) {
+      try {
+        const { data: counts, error: countsError } = await supabase
+          .from("notifications")
+          .select("user_id")
+          .in("user_id", distinctUserIds)
+          .eq("is_read", false);
+        
+        if (!countsError && counts) {
+          counts.forEach(row => {
+            const current = unreadMap.get(row.user_id) || 0;
+            unreadMap.set(row.user_id, current + 1);
+          });
+        }
+      } catch (e) {
+        console.warn("[SendNotification] Failed to batch fetch unread counts:", e);
+      }
+    }
+
+    // 3. Get Access Token for FCM v1
     const accessToken = await getAccessToken(SERVICE_ACCOUNT_JSON)
 
-    // 3. Send to each token
+    // 4. Send to each token
     console.log(`[SendNotification] Sending to ${tokens.length} tokens...`);
     const results = await Promise.all(tokens.map(async (t: { token: string, user_id?: string }) => {
-      let unreadCount = 0;
+      const userUnreadCount = t.user_id ? (unreadMap.get(t.user_id) || 0) : 0;
       
-      // If we have a user_id, fetch their actual unread count to show on the app icon badge
-      if (t.user_id && !broadcast) {
-        try {
-          const { count, error } = await supabase
-            .from("notifications")
-            .select("*", { count: "exact", head: true })
-            .eq("user_id", t.user_id)
-            .eq("is_read", false);
-          
-          if (!error) unreadCount = count || 0;
-        } catch (e) {
-          console.warn(`Failed to fetch unread count for user ${t.user_id}:`, e);
-        }
-      }
-
       return fetch(`https://fcm.googleapis.com/v1/projects/${SERVICE_ACCOUNT_JSON.project_id}/messages:send`, {
         method: "POST",
         headers: {
@@ -95,18 +115,30 @@ serve(async (req: Request) => {
           message: {
             token: t.token,
             notification: { title: finalTitle, body: finalMessage },
-            data: data || {},
+            data: {
+              ...data,
+              title: finalTitle,
+              body: finalMessage,
+              notification_count: userUnreadCount.toString(), 
+              badge: userUnreadCount.toString(),
+              type: data?.type || 'info', 
+            },
             android: {
+              priority: "high",
               notification: { 
                 icon: "notification_icon", 
-                color: "#10b981", 
-                click_action: "FLUTTER_NOTIFICATION_CLICK",
-                // This updates the launcher badge on Android
-                notification_count: unreadCount > 0 ? unreadCount : undefined
+                color: "#1d4ed8", 
+                channel_id: "default",
+                notification_count: userUnreadCount > 0 ? userUnreadCount : undefined,
+                default_sound: true,
+                default_vibrate_timings: true
               }
             },
             webpush: {
-              notification: { icon: "/icon-192x192.png" }
+              notification: { 
+                icon: "/icon-192x192.png",
+                badge: "/icon-192x192.png" // Web specific badge icon
+              }
             }
           }
         })
@@ -114,12 +146,15 @@ serve(async (req: Request) => {
     }))
 
     return new Response(JSON.stringify({ success: true, tokenCount: tokens.length, results }), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
 
   } catch (err: any) {
     console.error("[SendNotification] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 })
+    return new Response(JSON.stringify({ error: err.message }), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500 
+    })
   }
 })
 

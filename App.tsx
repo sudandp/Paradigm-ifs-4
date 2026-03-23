@@ -25,6 +25,7 @@ import { syncService } from './services/offline/syncService';
 import OfflineStatusBanner from './components/OfflineStatusBanner';
 import { pushNotificationService } from './services/pushNotificationService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { Toaster } from 'react-hot-toast';
 
 
 import { AlertTriangle } from 'lucide-react';
@@ -401,9 +402,12 @@ const App: React.FC = () => {
     const syncBadge = async () => {
       try {
         const { Badge } = await import('@capawesome/capacitor-badge');
-        const badgeCount = isNaN(totalUnreadCount) ? 0 : Math.max(0, totalUnreadCount);
-        console.log(`[App] Syncing global badge count: ${badgeCount}`);
-        await Badge.set({ count: badgeCount });
+        const perm = await Badge.requestPermissions();
+        if (perm.display === 'granted') {
+          const badgeCount = isNaN(totalUnreadCount) ? 0 : Math.max(0, totalUnreadCount);
+          console.log(`[App] Syncing global badge count: ${badgeCount}`);
+          await Badge.set({ count: badgeCount });
+        }
       } catch (err) {
         console.warn('[App] Failed to sync badge count:', err);
       }
@@ -1000,6 +1004,7 @@ const App: React.FC = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
+      <Toaster position="top-right" reverseOrder={false} gutter={8} />
     </>
   );
 };

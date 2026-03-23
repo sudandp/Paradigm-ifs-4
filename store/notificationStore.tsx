@@ -1,3 +1,4 @@
+import React from 'react';
 import { create } from 'zustand';
 import { api } from '../services/api';
 import type { Notification } from '../types';
@@ -6,6 +7,7 @@ import { supabase } from '../services/supabase';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
+import toast from 'react-hot-toast';
 
 interface NotificationState {
   notifications: Notification[];
@@ -222,15 +224,48 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
               totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
             };
           });
+          
+          // Trigger web toast for real-time feedback
+          if (!Capacitor.isNativePlatform()) {
+            const toastTitle = newNotif.title || newNotif.metadata?.title || 'New Alert';
+            const isEmergency = newNotif.type === 'emergency' || newNotif.type === 'emergency_broadcast' || newNotif.severity === 'High';
+            
+
+
+            toast(
+              (t) => (
+                <div className="flex flex-col gap-1">
+                  <div className="font-bold text-sm flex items-center gap-2">
+                    {isEmergency && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+                    {toastTitle}
+                  </div>
+                  <div className="text-xs opacity-90 line-clamp-2">{newNotif.message}</div>
+                </div>
+              ),
+              {
+                duration: isEmergency ? 10000 : 5000,
+                position: 'top-right',
+                style: {
+                  background: isEmergency ? '#7f1d1d' : '#1e293b',
+                  color: '#fff',
+                  border: isEmergency ? '1px solid #dc2626' : '1px solid #334155',
+                  borderRadius: '12px',
+                  padding: '12px'
+                },
+                icon: isEmergency ? '🚨' : '🔔'
+              }
+            );
+          }
 
           if (Capacitor.isNativePlatform()) {
             try {
               await LocalNotifications.schedule({
                 notifications: [
                   {
-                    title: newNotif.title || 'New Notification',
+                    title: newNotif.title || newNotif.metadata?.title || 'New Notification',
                     body: newNotif.message,
-                    id: Math.floor(Math.random() * 10000),
+                    id: Math.floor(Math.random() * 100000),
+                    channelId: 'default',
                     extra: { link: newNotif.linkTo },
                     sound: 'beep.wav'
                   }

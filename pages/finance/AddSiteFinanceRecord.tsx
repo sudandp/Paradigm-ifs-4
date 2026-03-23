@@ -311,14 +311,10 @@ const AddSiteFinanceRecord: React.FC = () => {
                                 label="Select Site"
                                 placeholder="Select or type site name..."
                                 options={mergedSiteOptions.map(s => ({ id: s.id, name: s.name }))}
-                                value={watch('siteName') || ''}
-                                onChange={(val) => {
-                                    const matched = mergedSiteOptions.find(opt => opt.name === val);
-                                    if (matched) {
-                                        handleSiteSelection(matched.id, matched.name);
-                                    } else {
-                                        handleSiteSelection(val, val);
-                                    }
+                                value={watch('siteId') || watch('siteName') || ''}
+                                onChange={(id) => {
+                                    const matched = mergedSiteOptions.find(opt => opt.id === id);
+                                    handleSiteSelection(id, matched ? matched.name : id);
                                 }}
                                 allowCustom
                                 labelClassName="text-emerald-500 uppercase tracking-wider ml-1"

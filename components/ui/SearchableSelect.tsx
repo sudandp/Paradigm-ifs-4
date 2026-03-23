@@ -34,8 +34,15 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const id = useId();
 
   useEffect(() => {
-    setSearchTerm(value || "");
-  }, [value]);
+    const selectedOption = options.find(o => o.id.toString() === value.toString());
+    if (selectedOption) {
+      setSearchTerm(selectedOption.name);
+    } else if (allowCustom) {
+      setSearchTerm(value);
+    } else if (!value) {
+      setSearchTerm("");
+    }
+  }, [value, options, allowCustom]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -60,9 +67,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     option.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleSelect = (optionName: string) => {
-    onChange(optionName);
-    setSearchTerm(optionName);
+  const handleSelect = (option: { id: string | number; name: string }) => {
+    onChange(option.id.toString());
+    setSearchTerm(option.name);
     setIsOpen(false);
   };
 
@@ -159,10 +166,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     isMobile
                       ? 'text-gray-300 hover:bg-white/10 hover:text-white'
                       : 'text-primary-text hover:bg-page'
-                  } ${value === option.name 
+                  } ${value === option.id.toString() 
                     ? (isMobile ? 'bg-accent/30 text-accent-light font-extrabold border-accent' : 'bg-accent/5 text-accent font-bold border-accent') 
                     : 'border-transparent'}`}
-                  onClick={() => handleSelect(option.name)}
+                  onClick={() => handleSelect(option)}
                 >
                   {option.name}
                 </button>
@@ -185,5 +192,6 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
     </div>
   );
 };
+
 
 export default SearchableSelect;

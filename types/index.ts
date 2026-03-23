@@ -1379,6 +1379,7 @@ export type NotificationType =
   | 'greeting'
   | 'approval_request'
   | 'emergency_broadcast'
+  | 'emergency'
   | 'direct_ping';
 
 export interface Notification {
