@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
     // Mask the local bundle to look like the production domain
     // This allows Auth redirects to https://app.paradigmfms.com to be caught by the app
     androidScheme: 'https',
-    url: 'https://app.paradigmfms.com',
+    // url: 'https://app.paradigmfms.com',
     allowNavigation: [
       'app.paradigmfms.com',
       '*.supabase.co'
@@ -41,8 +41,10 @@ const config: CapacitorConfig = {
       resizeOnFullScreen: true
     },
     CapacitorSocialLogin: {
-      webClientId: "YOUR_WEB_CLIENT_ID",
-      androidClientId: "YOUR_WEB_CLIENT_ID"
+      google: {
+        webClientId: "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com",
+        androidClientId: "447552978158-gr21dshgv2qqg2dfsg7ojqs9fcqk4vrq.apps.googleusercontent.com"
+      }
     }
   }
 };

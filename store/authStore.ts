@@ -296,14 +296,18 @@ export const useAuthStore = create<AuthState>()(
             const { error } = await authService.signInWithGoogle();
 
             if (error) {
-                const friendlyError = getFriendlyAuthError(error.message);
-                set({ error: friendlyError, loading: false });
-                return { error: { message: friendlyError } };
+                // If it's explicitly our custom Native Auth Error, pass it through directly
+                const finalError = (error.message && error.message.includes('Native Auth Error')) 
+                    ? error.message 
+                    : getFriendlyAuthError(error.message);
+                
+                set({ error: finalError, loading: false });
+                return { error: { message: finalError } };
             }
 
             // With redirect flow, the user is not returned immediately.
             // The onAuthStateChange listener will handle the session.
-            set({ loading: false }); // Set loading to false after initiating redirect
+            set({ loading: false }); 
             return { error: null };
         },
 

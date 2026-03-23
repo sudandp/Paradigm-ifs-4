@@ -5,9 +5,14 @@ import type { Notification } from '../types';
 import { useAuthStore } from './authStore';
 import { supabase } from '../services/supabase';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
 import toast from 'react-hot-toast';
+
+export interface BadgeHelperPlugin {
+  setBadgeWithNotification(options: { count: number }): Promise<void>;
+}
+const BadgeHelper = registerPlugin<BadgeHelperPlugin>('BadgeHelper');
 
 interface NotificationState {
   notifications: Notification[];
@@ -47,11 +52,16 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     try {
       const notifications = await api.getNotifications(user.id);
       const unreadCount = notifications.filter(n => !n.isRead).length;
-
+      console.log(`[NotificationStore] Fetched ${notifications.length} notifications, ${unreadCount} unread.`);
+      
       // Also fetch pending approvals count for admins/managers
       let pendingApprovalsCount = 0;
       const role = (user.role || '').toLowerCase();
-      const isManagerRole = !['field_staff', 'unverified'].includes(role);
+      // Expanded manager roles list
+      const isManagerRole = !['field_staff', 'unverified', 'office_staff', 'back_office_staff'].includes(role) || 
+                            ['admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'developer', 'operation_manager'].includes(role);
+
+      console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
 
       if (isManagerRole) {
         try {
@@ -77,14 +87,14 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           }
 
           const [unlocks, leaves, claims, finance, invoices] = await Promise.all([
-              api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id),
-              leavesPromise,
+              api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id).catch(() => []),
+              leavesPromise.catch(() => ({ data: [] })),
               api.getExtraWorkLogs({ 
                   status: 'Pending', 
                   managerId: isSuperAdmin ? undefined : user.id 
-              }),
-              api.getPendingFinanceRecords(user.id),
-              api.getSiteInvoiceRecords(user.id)
+              }).catch(() => ({ data: [] })),
+              api.getPendingFinanceRecords(user.id).catch(() => []),
+              api.getSiteInvoiceRecords(user.id).catch(() => [])
           ]);
 
           const today = new Date().toISOString().split('T')[0];
@@ -100,19 +110,27 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           ];
           
           pendingApprovalsCount = counts.reduce((a, b) => a + b, 0);
+          console.log(`[NotificationStore] Pending approvals count: ${pendingApprovalsCount} (Unlocks: ${counts[0]}, Leaves: ${counts[1]}, Claims: ${counts[2]}, Finance: ${counts[3]}, Invoices: ${counts[4]})`);
         } catch (approvalErr) {
-          console.warn('Failed to fetch pending approvals count:', approvalErr);
+          console.warn('[NotificationStore] Failed to fetch pending approvals count:', approvalErr);
         }
       }
+
+      const totalUnreadCount = unreadCount + pendingApprovalsCount;
+      console.log(`[NotificationStore] Final total unread count: ${totalUnreadCount}`);
 
       set({ 
         notifications, 
         unreadCount, 
         pendingApprovalsCount,
-        totalUnreadCount: unreadCount + pendingApprovalsCount,
+        totalUnreadCount,
         isLoading: false 
       });
-      get().updateBadgeCount();
+      
+      // Update global app icon badge count
+      if (Capacitor.isNativePlatform()) {
+        get().updateBadgeCount();
+      }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
       set({ error: 'Failed to fetch notifications.', isLoading: false });
@@ -184,15 +202,27 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     if (!Capacitor.isNativePlatform()) return;
     try {
       const count = get().totalUnreadCount;
-      console.log(`[NotificationStore] Updating badge count to: ${count}`);
+      const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
+      console.log(`[NotificationStore] Syncing system badge count: ${badgeCount}`);
       
-      // Request permissions explicitly (required on some Android launchers)
+      // Request permissions explicitly (required on many Android launchers to show the number)
       const perm = await Badge.requestPermissions();
       if (perm.display === 'granted') {
-        const badgeCount = isNaN(count) ? 0 : Math.max(0, count);
         await Badge.set({ count: badgeCount });
+        console.log(`[NotificationStore] Badge.set({ count: ${badgeCount} }) called successfully`);
+        
+        // For strict Android launchers (like Samsung OneUI) that ignore Badge.set,
+        // we use our custom BadgeHelper plugin to post a silent notification that holds the badge count.
+        if (Capacitor.getPlatform() === 'android') {
+          try {
+            await BadgeHelper.setBadgeWithNotification({ count: badgeCount });
+            console.log(`[NotificationStore] BadgeHelper setBadgeWithNotification called with count: ${badgeCount}`);
+          } catch (e) {
+            console.warn('[NotificationStore] BadgeHelper failed:', e);
+          }
+        }
       } else {
-        console.warn('[NotificationStore] Badge permission denied');
+        console.warn(`[NotificationStore] Badge permission state: ${perm.display}`);
       }
     } catch (err) {
       console.warn('[NotificationStore] Badge update failed:', err);

@@ -29,6 +29,14 @@ android {
     }
 }
 
+// Force androidx.browser to a version compatible with compileSdk 35 and AGP 8.6.1
+// @capacitor/browser pulls in 1.9.0 which requires compileSdk 36 + AGP 8.9.1
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.browser:browser:1.8.0'
+    }
+}
+
 // Repositories are now handled via the root project or implementation fileTree below
 
 dependencies {

@@ -383,11 +383,16 @@ const App: React.FC = () => {
     
     // Initialize Native Google Sign-In
     if (Capacitor.isNativePlatform()) {
-      SocialLogin.initialize({
-        google: {
-          webClientId: 'YOUR_WEB_CLIENT_ID', 
-        }
-      }).catch(err => console.warn('SocialLogin failed to initialize:', err));
+      const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+      if (webClientId && !webClientId.includes('your-web-id')) {
+        SocialLogin.initialize({
+          google: {
+            webClientId: webClientId, 
+          }
+        }).catch(err => console.warn('SocialLogin failed to initialize:', err));
+      } else {
+        console.warn('Native Google Sign-In: Web Client ID is missing or using placeholder.');
+      }
     }
   }, []);
 
@@ -457,10 +462,24 @@ const App: React.FC = () => {
       
       const authUnsubscribe = useAuthStore.getState().subscribeToAttendance();
       useAuthStore.getState().fetchGeofencingSettings();
+
+      // Refresh notifications when app returns to foreground
+      const setupAppStateListener = async () => {
+        const { App } = await import('@capacitor/app');
+        return App.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            console.log('[App] Resumed, refreshing notifications...');
+            useNotificationStore.getState().fetchNotifications();
+          }
+        });
+      };
+      
+      const appStateListenerPromise = setupAppStateListener();
       
       return () => {
         if (typeof unsubscribe === 'function') unsubscribe();
         if (typeof authUnsubscribe === 'function') authUnsubscribe();
+        appStateListenerPromise.then(l => l.remove());
       };
     }
   }, [user]);
@@ -469,23 +488,10 @@ const App: React.FC = () => {
   // We sync the total count (Notifications + Approvals) to the app icon badge.
   const totalUnreadCount = useNotificationStore(state => state.totalUnreadCount);
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !user) return;
-    
-    const syncBadge = async () => {
-      try {
-        const { Badge } = await import('@capawesome/capacitor-badge');
-        const perm = await Badge.requestPermissions();
-        if (perm.display === 'granted') {
-          const badgeCount = isNaN(totalUnreadCount) ? 0 : Math.max(0, totalUnreadCount);
-          console.log(`[App] Syncing global badge count: ${badgeCount}`);
-          await Badge.set({ count: badgeCount });
-        }
-      } catch (err) {
-        console.warn('[App] Failed to sync badge count:', err);
-      }
-    };
-
-    syncBadge();
+    // Sync system badge count when total unread count changes
+    if (Capacitor.isNativePlatform() && user) {
+      useNotificationStore.getState().updateBadgeCount();
+    }
   }, [totalUnreadCount, user]);
 
   // Initialization & Supabase session management
