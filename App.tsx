@@ -599,6 +599,33 @@ const App: React.FC = () => {
       }
     });
 
+    // Listen for deep links (Custom URL Scheme from OAuth Google Sign in)
+    const appUrlOpenSubscription = CapacitorApp.addListener('appUrlOpen', async (data) => {
+      console.log('[App] Received appUrlOpen event with URL:', data.url);
+      
+      // Handle the custom OAuth redirect from Supabase
+      if (data.url.includes('google-callback')) {
+          try {
+              // Extract the query parameters. Supabase v2 uses PKCE by default, 
+              // which returns a ?code=... in the URL.
+              const url = new URL(data.url);
+              const code = url.searchParams.get('code');
+              
+              if (code) {
+                  // Exchange the PKCE code for a session
+                  const { error } = await supabase.auth.exchangeCodeForSession(code);
+                  if (error) {
+                      console.error('[App] Failed to exchange code for session:', error.message);
+                  } else {
+                      console.log('[App] Successfully exchanged OAuth code for session.');
+                  }
+              }
+          } catch (e) {
+              console.error('[App] Error processing OAuth deep link:', e);
+          }
+      }
+    });
+
     // Check session when app returns to foreground
     const appStateSubscription = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
@@ -639,6 +666,7 @@ const App: React.FC = () => {
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
+      appUrlOpenSubscription.then(sub => sub.remove());
       window.removeEventListener('supabase-auth-failure', handleAuthFailure);
       clearTimeout(fallbackTimeout);
     };

@@ -2,6 +2,7 @@
 
 
 import { supabase } from './supabase';
+import { Capacitor } from '@capacitor/core';
 import type { User as AppUser } from "../types";
 import type { Session, User as SupabaseUser, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
@@ -99,7 +100,14 @@ const signInWithGoogle = async () => {
     // configured authorized redirect URI in the Supabase/Google console.
     // For local development, we use window.location.origin.
     const origin = window.location.origin;
-    const redirectUrl = origin.endsWith('/') ? origin : `${origin}/`;
+    let redirectUrl = origin.endsWith('/') ? origin : `${origin}/`;
+    
+    // IMPORTANT: On native mobile (Android/iOS via Capacitor), we must use our registered 
+    // custom URL scheme so the OS knows to redirect from Chrome back to the app.
+    // This value 'com.paradigm.ifs://google-callback' MUST be configured in your Supabase Auth Redirect URLs.
+    if (Capacitor.isNativePlatform()) {
+        redirectUrl = 'com.paradigm.ifs://google-callback';
+    }
     
     console.log("Initiating Google Sign-In...");
     console.log("Current Origin:", origin);
