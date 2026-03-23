@@ -126,7 +126,7 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
 };
 
 /**
- * Sends a manual broadcast/announcement to all users via OneSignal and persists to DB.
+ * Sends a manual broadcast/announcement to all users via FCM and persists to DB.
  * This is a convenience wrapper for api.broadcastNotification with broadcast=true.
  */
 export const sendGlobalAnnouncement = async (title: string, message: string, link?: string) => {

@@ -126,7 +126,7 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
                 console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
             }
         } catch (e) { 
-            console.error('[PermissionUtils] Web OneSignal req FAILED:', e); 
+            console.error('[PermissionUtils] Web push notification req FAILED:', e); 
         }
         
         // 2. Camera
@@ -214,7 +214,7 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         }
     } catch (e) { console.error('[PermissionUtils] Location req FAILED:', e); }
 
-    // 3. Notifications (Essential for OneSignal)
+    // 3. Notifications (Essential for FCM push)
     try {
         const notif = await LocalNotifications.checkPermissions();
         if (notif.display !== 'granted') {

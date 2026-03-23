@@ -2347,11 +2347,7 @@ export const api = {
     }
   },
   saveApiSettings: async (settings: any): Promise<void> => {
-    // Sanitize OneSignal App ID if present
     const processedSettings = { ...settings };
-    if (processedSettings.oneSignalAppId) {
-      processedSettings.oneSignalAppId = processedSettings.oneSignalAppId.toLowerCase().trim().replace(/['"]/g, '');
-    }
 
     const { error } = await supabase
       .from('settings')

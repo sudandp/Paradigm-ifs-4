@@ -4,6 +4,7 @@ import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
@@ -26,6 +27,8 @@ import OfflineStatusBanner from './components/OfflineStatusBanner';
 import { pushNotificationService } from './services/pushNotificationService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { Toaster } from 'react-hot-toast';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { useScreenOrientation } from './hooks/useScreenOrientation';
 
 
 import { AlertTriangle } from 'lucide-react';
@@ -314,9 +317,78 @@ const App: React.FC = () => {
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
 
-  // Initialize offline sync service
+  // Lock screen orientation to portrait on native
+  useScreenOrientation();
+
+  // Configure StatusBar on native
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: '#041b0f' }).catch(() => {});
+  }, []);
+
+  // Handle Android hardware back button
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handler = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      if (canGoBack) {
+        window.history.back();
+      } else {
+        CapacitorApp.minimizeApp();
+      }
+    });
+    return () => { handler.then(h => h.remove()); };
+  }, []);
+
+  // Deep link handling — push notification taps + native URL opens (universal links)
+  useEffect(() => {
+    // 1. Handle notification tap deep links (dispatched by pushNotificationService)
+    const handlePushDeeplink = (e: Event) => {
+      const url = (e as CustomEvent).detail?.url;
+      if (url) {
+        console.log('[App] Push deep link:', url);
+        // If it's a full URL, extract the path. If it's a relative path, use as-is.
+        const path = url.startsWith('http') ? new URL(url).pathname : url;
+        navigate(path, { replace: true });
+      }
+    };
+    window.addEventListener('push-deeplink', handlePushDeeplink);
+
+    // 2. Handle native app URL opens (universal links)
+    let appUrlListener: any;
+    if (Capacitor.isNativePlatform()) {
+      appUrlListener = CapacitorApp.addListener('appUrlOpen', (data) => {
+        console.log('[App] App URL opened:', data.url);
+        try {
+          const url = new URL(data.url);
+          const path = url.pathname + url.search;
+          if (path && path !== '/') {
+            navigate(path, { replace: true });
+          }
+        } catch (err) {
+          console.warn('[App] Failed to parse deep link URL:', err);
+        }
+      });
+    }
+
+    return () => {
+      window.removeEventListener('push-deeplink', handlePushDeeplink);
+      if (appUrlListener) appUrlListener.then((h: any) => h.remove());
+    };
+  }, [navigate]);
+
+  // Initialize offline sync service & Native Social Login
   useEffect(() => {
     syncService.init().catch(err => console.error('Failed to initialize sync service:', err));
+    
+    // Initialize Native Google Sign-In
+    if (Capacitor.isNativePlatform()) {
+      SocialLogin.initialize({
+        google: {
+          webClientId: 'YOUR_WEB_CLIENT_ID', 
+        }
+      }).catch(err => console.warn('SocialLogin failed to initialize:', err));
+    }
   }, []);
 
   // Expose API for testing
@@ -482,7 +554,6 @@ const App: React.FC = () => {
             const appUser = await authService.getAppUserProfile(session.user);
             if (isMounted) {
               setUser(appUser);
-              // Tag user for OneSignal push on initial session load
               // Initialize push notifications on initial session load
               pushNotificationService.init();
             }
@@ -578,7 +649,6 @@ const App: React.FC = () => {
                   localStorage.setItem(greetKey, '1');
                 }
 
-                // Tag user for OneSignal push notifications
                 // Initialize push notifications on initial session load
               pushNotificationService.init();
               }
@@ -599,32 +669,6 @@ const App: React.FC = () => {
       }
     });
 
-    // Listen for deep links (Custom URL Scheme from OAuth Google Sign in)
-    const appUrlOpenSubscription = CapacitorApp.addListener('appUrlOpen', async (data) => {
-      console.log('[App] Received appUrlOpen event with URL:', data.url);
-      
-      // Handle the custom OAuth redirect from Supabase
-      if (data.url.includes('google-callback')) {
-          try {
-              // Extract the query parameters. Supabase v2 uses PKCE by default, 
-              // which returns a ?code=... in the URL.
-              const url = new URL(data.url);
-              const code = url.searchParams.get('code');
-              
-              if (code) {
-                  // Exchange the PKCE code for a session
-                  const { error } = await supabase.auth.exchangeCodeForSession(code);
-                  if (error) {
-                      console.error('[App] Failed to exchange code for session:', error.message);
-                  } else {
-                      console.log('[App] Successfully exchanged OAuth code for session.');
-                  }
-              }
-          } catch (e) {
-              console.error('[App] Error processing OAuth deep link:', e);
-          }
-      }
-    });
 
     // Check session when app returns to foreground
     const appStateSubscription = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
@@ -666,7 +710,6 @@ const App: React.FC = () => {
     return () => {
       isMounted = false;
       subscription?.unsubscribe();
-      appUrlOpenSubscription.then(sub => sub.remove());
       window.removeEventListener('supabase-auth-failure', handleAuthFailure);
       clearTimeout(fallbackTimeout);
     };
@@ -793,7 +836,7 @@ const App: React.FC = () => {
 
   // While the initial authentication check OR the permissions check is running, show the splash screen.
   // This prevents the router from rendering and making incorrect navigation decisions
-  // and ensures OneSignal and other dependent services have the required state to initialize.
+  // and ensures push notification and other dependent services have the required state to initialize.
   if (!isInitialized || !permissionsComplete) {
     return (
       <Splash 

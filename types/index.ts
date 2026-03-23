@@ -446,7 +446,6 @@ export interface ApiSettings {
   autoBackupEnabled: boolean;
   backupSchedule?: BackupSchedule;
   appVersion?: string;
-  oneSignalAppId?: string;
 }
 
 

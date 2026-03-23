@@ -24,6 +24,25 @@ const config: CapacitorConfig = {
     Badge: {
       persist: true,
       autoClear: false
+    },
+    SplashScreen: {
+      launchAutoHide: true,
+      launchShowDuration: 2000,
+      launchFadeOutDuration: 500,
+      backgroundColor: "#041b0f",
+      showSpinner: false,
+    },
+    StatusBar: {
+      style: "DARK",
+      backgroundColor: "#041b0f"
+    },
+    Keyboard: {
+      resize: "body",
+      resizeOnFullScreen: true
+    },
+    CapacitorSocialLogin: {
+      webClientId: "YOUR_WEB_CLIENT_ID",
+      androidClientId: "YOUR_WEB_CLIENT_ID"
     }
   }
 };

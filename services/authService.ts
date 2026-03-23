@@ -3,6 +3,7 @@
 
 import { supabase } from './supabase';
 import { Capacitor } from '@capacitor/core';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 import type { User as AppUser } from "../types";
 import type { Session, User as SupabaseUser, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
@@ -95,21 +96,43 @@ const approveUser = async (userId: string, newRole: string) => {
 };
 
 const signInWithGoogle = async () => {
-    // Determine the redirect URL.  In a production environment (such as a deployed
-    // web app or a Capacitor app using a custom scheme), this should match the
-    // configured authorized redirect URI in the Supabase/Google console.
-    // For local development, we use window.location.origin.
+    // Determine the redirect URL.
     const origin = window.location.origin;
     let redirectUrl = origin.endsWith('/') ? origin : `${origin}/`;
     
-    // IMPORTANT: On native mobile (Android/iOS via Capacitor), we must use our registered 
-    // custom URL scheme so the OS knows to redirect from Chrome back to the app.
-    // This value 'com.paradigm.ifs://google-callback' MUST be configured in your Supabase Auth Redirect URLs.
+    console.log("Initiating Google Sign-In...");
+    
+    // Check if running on native mobile via Capacitor to use Native Google Auth
     if (Capacitor.isNativePlatform()) {
-        redirectUrl = 'com.paradigm.ifs://google-callback';
+        console.log("Using Native Google Auth via CapacitorSocialLogin...");
+        try {
+            const res = await SocialLogin.login({
+                provider: 'google',
+                options: {
+                    scopes: ['email', 'profile'],
+                },
+            });
+            
+            // Note: res.result.idToken contains the ID token from Google
+            if (res.result && res.result.responseType === 'online' && res.result.idToken) {
+                return await supabase.auth.signInWithIdToken({
+                    provider: 'google',
+                    token: res.result.idToken,
+                });
+            } else {
+                throw new Error("No idToken received from native Google login.");
+            }
+        } catch (error: any) {
+            console.error("Native Google Login Exception:", error);
+            // Translate common user cancellations to friendly message
+            if (error.message && error.message.includes('canceled')) {
+               return { error: { message: 'Google Sign-In was canceled.' } };
+            }
+            return { error };
+        }
     }
     
-    console.log("Initiating Google Sign-In...");
+    // FALLBACK TO WEB BROWSER OAUTH
     console.log("Current Origin:", origin);
     console.log("Target Redirect URL:", redirectUrl);
 

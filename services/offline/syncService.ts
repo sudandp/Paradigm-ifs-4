@@ -23,6 +23,8 @@ class SyncService {
     this.syncInterval = window.setInterval(() => this.sync(), intervalMs);
   }
 
+  private static readonly MAX_RETRIES = 5;
+
   async sync() {
     if (this.isSyncing) return;
     
@@ -33,9 +35,25 @@ class SyncService {
     console.log('[SyncService] Starting sync...');
 
     try {
-      // 1. Push pending changes (Outbox)
+      // 1. Push pending changes (Outbox) — skip items that have exceeded max retries
       const pendingItems = await offlineDb.getPendingOutbox();
       for (const item of pendingItems) {
+        const retryCount = (item as any).retry_count || 0;
+        if (retryCount >= SyncService.MAX_RETRIES) {
+          console.warn(`[SyncService] Item ${item.id} exceeded max retries (${retryCount}), marking permanently failed`);
+          await offlineDb.updateOutboxStatus(item.id!, 'failed');
+          continue;
+        }
+        
+        // Exponential backoff: skip if item was recently retried
+        if (retryCount > 0) {
+          const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 60000); // max 60s
+          const lastAttempt = (item as any).last_attempt || 0;
+          if (Date.now() - lastAttempt < backoffMs) {
+            continue; // Skip — not enough time has passed since last retry
+          }
+        }
+        
         await this.processItem(item);
       }
 

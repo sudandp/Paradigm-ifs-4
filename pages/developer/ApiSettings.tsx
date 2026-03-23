@@ -214,20 +214,7 @@ export const ApiSettings: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
-                                <label htmlFor="onesignal-app-id" className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isMobile ? 'text-white/70' : 'text-muted'}`}>OneSignal App ID</label>
-                                <div className="flex flex-col gap-4">
-                                    <Input 
-                                        id="onesignal-app-id"
-                                        placeholder="e.g., 550e8400-e29b-41d4-a716-446655440000" 
-                                        className="w-full"
-                                        value={store.apiSettings.oneSignalAppId || ''} 
-                                        onChange={e => store.updateApiSettings({ oneSignalAppId: e.target.value })}
-                                        autoCapitalizeCustom={false}
-                                    />
-                                    <p className="text-xs text-muted">Used for native push notifications. Get this from your OneSignal Dashboard Settings.</p>
-                                </div>
-                            </div>
+
 
                             <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
 

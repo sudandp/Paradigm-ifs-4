@@ -137,9 +137,6 @@
                 );
               }
               localStorage.setItem(FIX_KEY, "true");
-              // Clear any OneSignal specific flags that might prevent re-registration
-              localStorage.removeItem("onesignal-notification-prompt");
-              localStorage.removeItem("isPushNotificationsEnabled");
               
               console.log("Cleanup complete. Reloading...");
               // Reload to ensure clean registration

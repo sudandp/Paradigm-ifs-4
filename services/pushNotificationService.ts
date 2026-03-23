@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { LocalNotifications } from '@capacitor/local-notifications';
+import { LocalNotifications, type Channel } from '@capacitor/local-notifications';
 import { getToken, onMessage } from 'firebase/messaging';
 import { messaging } from '../config/firebase';
 import { supabase } from './supabase';
@@ -77,6 +77,11 @@ export const pushNotificationService = {
       
       PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
         console.log('[Push] Native notification action performed:', action);
+        const data = action.notification?.data || {};
+        // Route to the target page if a link is provided in the notification payload
+        if (data.link) {
+          window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: data.link } }));
+        }
       });
     } else if (messaging) {
       onMessage(messaging, (payload) => {
@@ -90,23 +95,58 @@ export const pushNotificationService = {
  * Native-specific initialization (Android/iOS)
  */
 async function initNative() {
-  // Create notification channel FIRST (required for Android 8+)
-  // This ensures the "default" channel exists with badges enabled
-  try {
-    await LocalNotifications.createChannel({
-      id: 'default',
-      name: 'General Notifications',
-      description: 'All app notifications',
-      importance: 5, // IMPORTANCE_HIGH
-      visibility: 1, // PUBLIC
+  // Create notification channels (required for Android 8+)
+  // Each channel groups notifications by type with different priority levels
+  const channels: Channel[] = [
+    {
+      id: 'alerts',
+      name: 'Alerts & Security',
+      description: 'Security alerts and emergency broadcasts',
+      importance: 5 as Channel['importance'],
+      visibility: 1,
       sound: 'beep.wav',
       vibration: true,
       lights: true,
-    });
-    console.log('[Push] Notification channel "default" created with badges enabled');
-  } catch (err) {
-    console.warn('[Push] Channel creation failed (may already exist):', err);
+    },
+    {
+      id: 'approvals',
+      name: 'Approvals',
+      description: 'Leave requests, device approvals, and workflow actions',
+      importance: 4 as Channel['importance'],
+      visibility: 1,
+      sound: 'beep.wav',
+      vibration: true,
+      lights: true,
+    },
+    {
+      id: 'default',
+      name: 'General Notifications',
+      description: 'General app notifications and updates',
+      importance: 3 as Channel['importance'],
+      visibility: 1,
+      sound: 'beep.wav',
+      vibration: true,
+      lights: true,
+    },
+    {
+      id: 'reminders',
+      name: 'Reminders',
+      description: 'Shift reminders, break alerts, and scheduled notifications',
+      importance: 2 as Channel['importance'],
+      visibility: 1,
+      vibration: false,
+      lights: false,
+    },
+  ];
+
+  for (const channel of channels) {
+    try {
+      await LocalNotifications.createChannel(channel);
+    } catch (err) {
+      console.warn(`[Push] Channel "${channel.id}" creation failed:`, err);
+    }
   }
+  console.log('[Push] Notification channels created');
 
   let permStatus = await PushNotifications.checkPermissions();
 

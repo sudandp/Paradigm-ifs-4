@@ -187,7 +187,7 @@ const initialApiSettings: ApiSettings = {
     monthOfYear: 1,
   },
   appVersion: '1.0.0',
-  oneSignalAppId: ''
+
 };
 
 
