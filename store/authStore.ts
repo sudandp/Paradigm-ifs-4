@@ -233,6 +233,7 @@ export const useAuthStore = create<AuthState>()(
                         const greeting = getTimeBasedGreeting();
                         await api.createNotification({
                             userId: appUser.id,
+                            title: 'Paradigm Services',
                             message: `${greeting}, ${appUser.name || 'there'}! Welcome back to Paradigm Services.`,
                             type: 'greeting',
                         });
@@ -330,6 +331,7 @@ export const useAuthStore = create<AuthState>()(
 
                     await api.createNotification({
                         userId: currentUser.id,
+                        title: 'Paradigm Services',
                         message: `${farewell}, ${currentUser.name || 'there'}! Thanks for your hard work today.`,
                         type: 'greeting',
                     });

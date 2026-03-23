@@ -3412,7 +3412,7 @@ export const api = {
     supabase.functions.invoke('send-notification', {
       body: {
         user_id: validData.userId,
-        title: title || (validData as any).type || 'Notification',
+        title: title || 'Paradigm Services',
         message: validData.message,
         data: {
           link: validData.linkTo || (validData as any).link || '',

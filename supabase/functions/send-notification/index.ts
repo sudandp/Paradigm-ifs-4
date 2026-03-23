@@ -136,12 +136,13 @@ serve(async (req: Request) => {
             android: {
               priority: "high",
               notification: { 
-                icon: "notification_icon", 
+                icon: "ic_launcher", 
                 color: "#1d4ed8", 
                 channel_id: "default",
                 notification_count: userUnreadCount > 0 ? userUnreadCount : undefined,
                 default_sound: true,
-                default_vibrate_timings: true
+                default_vibrate_timings: true,
+                click_action: "TOP_STORY_ACTIVITY" // Standard boilerplate for Capacitor
               }
             },
             webpush: {
