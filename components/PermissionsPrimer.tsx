@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
 import Logo from './ui/Logo';
 import { checkRequiredPermissions, requestAllPermissions } from '../utils/permissionUtils';
-import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Share } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Share, Users, Bluetooth, Image, Music } from 'lucide-react';
 
 interface PermissionsPrimerProps {
   onComplete: () => void;
@@ -18,9 +18,13 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const [isMobileBrowser, setIsMobileBrowser] = useState(false);
 
   const permissionList = [
-    { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
     { id: 'Camera', icon: Camera, label: 'Camera Access' },
     { id: 'Location', icon: MapPin, label: 'Location Services' },
+    { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
+    { id: 'Contacts', icon: Users, label: 'Contacts' },
+    { id: 'Bluetooth', icon: Bluetooth, label: 'Nearby Devices' },
+    { id: 'Photos/Videos', icon: Image, label: 'Photos & Videos' },
+    { id: 'Music', icon: Music, label: 'Music & Audio' },
   ];
 
   const verifyPermissions = async () => {
@@ -133,7 +137,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
           </h2>
           
           <p className="text-gray-400 text-[14px] leading-relaxed mb-10 px-6" style={{ color: '#9ca3af' }}>
-            Paradigm IFS requires these <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>3 primary categories</span> to<br className="hidden sm:inline" /> be <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>Allowed</span> to operate effectively.
+            Paradigm IFS requires these <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>7 primary categories</span> to<br className="hidden sm:inline" /> be <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>Allowed</span> to operate effectively.
           </p>
 
           {/* Permission Items */}
@@ -154,14 +158,15 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
                 >
                   <div className="flex items-center gap-4">
                     <div 
-                      className={`p-3 rounded-full ${isActive ? 'bg-emerald-600 text-white' : 'bg-white text-gray-300 shadow-sm'}`}
+                      className={`p-3 rounded-full flex items-center justify-center ${isActive ? 'bg-emerald-600 text-white' : 'bg-white text-gray-300 shadow-sm'}`}
                       style={{ backgroundColor: isActive ? '#059669' : '#ffffff', color: isActive ? '#ffffff' : '#d1d5db' }}
                     >
-                      {isActive ? (
-                          <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                          <p.icon className="h-6 w-6" />
-                      )}
+                      <div className="relative h-6 w-6 flex items-center justify-center">
+                        <p.icon className={`h-6 w-6 ${isActive ? 'opacity-40' : ''}`} />
+                        {isActive && (
+                          <div className="absolute inset-0 h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-col items-start text-left">
                         <span className="text-[15px] font-bold" style={{ color: isMissing ? '#9ca3af' : '#374151' }}>

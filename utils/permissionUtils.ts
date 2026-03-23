@@ -68,15 +68,49 @@ export const checkRequiredPermissions = async () => {
 
     // ─── Native Platform ─────────────────────────────────────────────────────
     const missing: string[] = [];
+    const isAndroid = Capacitor.getPlatform() === 'android';
+
     try {
+        // 1. Camera
         const cam = await Camera.checkPermissions();
         if (cam.camera !== 'granted') missing.push('Camera');
         
+        // 2. Photos & Videos
+        if (cam.photos !== 'granted') missing.push('Photos/Videos');
+        
+        // 3. Location
         const loc = await Geolocation.checkPermissions();
         if (loc.location !== 'granted') missing.push('Location');
         
+        // 4. Notifications
         const notif = await LocalNotifications.checkPermissions();
         if (notif.display !== 'granted') missing.push('Notifications');
+
+        // 5. Contacts
+        const cont = await Contacts.checkPermissions();
+        if (cont.contacts !== 'granted') missing.push('Contacts');
+
+        // 6. Bluetooth (Nearby Devices)
+        if (isAndroid) {
+            const permissions = (window as any).plugins?.permissions;
+            if (permissions) {
+                const results = await new Promise<any>((resolve) => {
+                    permissions.hasPermission(permissions.BLUETOOTH_SCAN, (status: any) => resolve(status));
+                });
+                if (!results?.hasPermission) missing.push('Bluetooth');
+            }
+        }
+
+        // 7. Music & Audio (Android 13+)
+        if (isAndroid) {
+            const permissions = (window as any).plugins?.permissions;
+            if (permissions && permissions.READ_MEDIA_AUDIO) {
+                const results = await new Promise<any>((resolve) => {
+                    permissions.hasPermission(permissions.READ_MEDIA_AUDIO, (status: any) => resolve(status));
+                });
+                if (!results?.hasPermission) missing.push('Music');
+            }
+        }
     } catch (e) {
         console.error('[PermissionUtils] Native check error:', e);
     }
@@ -179,23 +213,29 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
     const isAndroid = Capacitor.getPlatform() === 'android';
     const reqDelay = 1500; // Slightly longer for native system transitions
 
-    // 1. Camera & Photos
+    // 1. Camera
     try {
         const cam = await Camera.checkPermissions();
-        if (cam.camera !== 'granted' || cam.photos !== 'granted') {
+        if (cam.camera !== 'granted') {
             if (onProgress) onProgress('Camera');
-            console.log('[PermissionUtils] Native: Requesting Camera/Photos');
-            await Promise.race([
-                Camera.requestPermissions({ permissions: ['camera', 'photos'] }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Camera timeout')), 15000))
-            ]);
+            console.log('[PermissionUtils] Native: Requesting Camera');
+            await Camera.requestPermissions({ permissions: ['camera'] });
             await delay(reqDelay);
-        } else {
-            console.log('[PermissionUtils] Native: Camera/Photos already granted.');
         }
-    } catch (e) { console.error('[PermissionUtils] Camera/Photos req FAILED:', e); }
+    } catch (e) { console.error('[PermissionUtils] Camera req FAILED:', e); }
 
-    // 2. Location
+    // 2. Photos & Videos
+    try {
+        const cam = await Camera.checkPermissions();
+        if (cam.photos !== 'granted') {
+            if (onProgress) onProgress('Photos/Videos');
+            console.log('[PermissionUtils] Native: Requesting Photos');
+            await Camera.requestPermissions({ permissions: ['photos'] });
+            await delay(reqDelay);
+        }
+    } catch (e) { console.error('[PermissionUtils] Photos/Videos req FAILED:', e); }
+
+    // 3. Location
     try {
         const loc = await Geolocation.checkPermissions();
         if (loc.location !== 'granted' || loc.coarseLocation !== 'granted') {
@@ -209,28 +249,21 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Location timeout')), 15000))
             ]);
             await delay(reqDelay);
-        } else {
-            console.log('[PermissionUtils] Native: Location already granted.');
         }
     } catch (e) { console.error('[PermissionUtils] Location req FAILED:', e); }
 
-    // 3. Notifications (Essential for FCM push)
+    // 4. Notifications
     try {
         const notif = await LocalNotifications.checkPermissions();
         if (notif.display !== 'granted') {
             if (onProgress) onProgress('Notifications');
             console.log('[PermissionUtils] Native: Requesting Notifications');
-            await Promise.race([
-                LocalNotifications.requestPermissions(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Notification timeout')), 15000))
-            ]);
+            await LocalNotifications.requestPermissions();
             await delay(reqDelay);
-        } else {
-            console.log('[PermissionUtils] Native: Notifications already granted.');
         }
     } catch (e) { console.error('[PermissionUtils] Notification req FAILED:', e); }
 
-    // 4. Contacts (Secondary)
+    // 5. Contacts
     try {
         const cont = await Contacts.checkPermissions();
         if (cont.contacts !== 'granted') {
@@ -241,37 +274,43 @@ export const requestAllPermissions = async (onProgress?: (id: string) => void) =
         }
     } catch (e) { console.error('[PermissionUtils] Contacts req FAILED:', e); }
 
-    // 5. Bluetooth (Secondary)
+    // 6. Bluetooth (Nearby Devices)
     try {
         await BleClient.initialize().catch(() => {});
         if (isAndroid) {
-             if (onProgress) onProgress('Bluetooth');
-             console.log('[PermissionUtils] Native: Requesting Bluetooth (Android)');
              const permissions = (window as any).plugins?.permissions;
              if (permissions) {
-                 await new Promise((resolve) => {
-                     permissions.requestPermissions([
-                         permissions.BLUETOOTH_SCAN,
-                         permissions.BLUETOOTH_CONNECT,
-                         permissions.BLUETOOTH_ADVERTISE
-                     ], (s: any) => resolve(s), (err: any) => resolve(err));
-                 });
-                 await delay(reqDelay);
+                 const res = await new Promise<any>((resolve) => permissions.hasPermission(permissions.BLUETOOTH_SCAN, (s: any) => resolve(s)));
+                 if (!res?.hasPermission) {
+                     if (onProgress) onProgress('Bluetooth');
+                     console.log('[PermissionUtils] Native: Requesting Bluetooth (Android)');
+                     await new Promise((resolve) => {
+                         permissions.requestPermissions([
+                             permissions.BLUETOOTH_SCAN,
+                             permissions.BLUETOOTH_CONNECT,
+                             permissions.BLUETOOTH_ADVERTISE
+                         ], (s: any) => resolve(s), (err: any) => resolve(err));
+                     });
+                     await delay(reqDelay);
+                 }
              }
         }
     } catch (e) { console.error('[PermissionUtils] Bluetooth req FAILED:', e); }
 
-    // 6. Media Audio (Android 13+, Secondary)
+    // 7. Music & Audio (Android 13+)
     if (isAndroid) {
         try {
             const permissions = (window as any).plugins?.permissions;
             if (permissions && permissions.READ_MEDIA_AUDIO) {
-                if (onProgress) onProgress('Media Audio');
-                console.log('[PermissionUtils] Native: Requesting Media Audio');
-                await new Promise((resolve) => {
-                    permissions.requestPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s), (err: any) => resolve(err));
-                });
-                await delay(reqDelay);
+                const res = await new Promise<any>((resolve) => permissions.hasPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s)));
+                if (!res?.hasPermission) {
+                    if (onProgress) onProgress('Music');
+                    console.log('[PermissionUtils] Native: Requesting Media Audio');
+                    await new Promise((resolve) => {
+                        permissions.requestPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s), (err: any) => resolve(err));
+                    });
+                    await delay(reqDelay);
+                }
             }
         } catch (e) { console.error('[PermissionUtils] Media req FAILED:', e); }
     }
