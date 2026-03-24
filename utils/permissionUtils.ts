@@ -124,199 +124,166 @@ export const checkRequiredPermissions = async () => {
 /**
  * Request ALL required device permissions using a unified sequence of modern Capacitor calls.
  */
-export const requestAllPermissions = async (onProgress?: (id: string) => void) => {
+export const requestAllPermissions = async (onProgress?: (id: string, missing: string[]) => void) => {
+    const reCheck = async (currentId: string) => {
+        const { missing } = await checkRequiredPermissions();
+        if (onProgress) onProgress(currentId, missing);
+        return missing;
+    };
+
     if (!Capacitor.isNativePlatform()) {
         console.log('[PermissionUtils] Requesting permissions on Web (Optimized Flow)...');
         
-        // Detect Safari for tighter timing requirements
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const webReqDelay = isSafari ? 400 : 800;
 
-        // 1. Notifications (ONE-SIGNAL)
+        // 1. Notifications
         try {
             const notifPermission = (window as any).Notification?.permission || 'default';
-            
-            // If already denied, SKIP requesting to avoid SDK errors/crashes in Incognito
-            if (notifPermission === 'denied') {
-                console.warn('[PermissionUtils] Web: Notifications already DENIED by browser. Skipping request.');
-            } else if (notifPermission !== 'granted') {
-                if (onProgress) onProgress('Notifications');
-                console.log('[PermissionUtils] Web: Requesting Notifications FIRST');
-                
-                // Extremely safe wrapper for Push Notification Service
+            if (notifPermission !== 'granted' && notifPermission !== 'denied') {
+                if (onProgress) onProgress('Notifications', (await checkRequiredPermissions()).missing);
                 try {
                     await Promise.race([
-                        pushNotificationService.init().catch(err => {
-                            console.warn('[PermissionUtils] Push service init error:', err);
-                        }),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+                        pushNotificationService.init(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
                     ]);
                 } catch (e) {
-                    console.warn('[PermissionUtils] Notification request suppressed or timed out:', e);
+                    console.warn('[PermissionUtils] Notification request suppressed or timed out');
                 }
-                
+                await reCheck('Notifications');
                 await delay(webReqDelay);
-            } else {
-                console.log('[PermissionUtils] Web: Notifications already granted, skipping.');
             }
-        } catch (e) { 
-            console.error('[PermissionUtils] Web push notification req FAILED:', e); 
-        }
+        } catch (e) { console.error('Web notif req failed', e); }
         
         // 2. Camera
         try {
-            let camStatus = 'prompt';
-            if (navigator.permissions && (navigator.permissions as any).query) {
-                const query = await navigator.permissions.query({ name: 'camera' as any }).catch(() => null);
-                if (query) camStatus = query.state;
-            }
-            
-            if (camStatus !== 'granted') {
-                if (onProgress) onProgress('Camera');
-                console.log('[PermissionUtils] Web: Requesting Camera');
+            let { missing } = await checkRequiredPermissions();
+            if (missing.includes('Camera')) {
+                if (onProgress) onProgress('Camera', missing);
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 stream.getTracks().forEach(track => track.stop());
+                await reCheck('Camera');
                 await delay(webReqDelay);
             }
-        } catch (e) { 
-            console.error('[PermissionUtils] Web Camera request failed/unsupported:', e); 
-        }
+        } catch (e) { console.error('Web Camera req failed', e); }
 
         // 3. Location
         try {
-            let locStatus = 'prompt';
-            if (navigator.permissions && (navigator.permissions as any).query) {
-                const query = await navigator.permissions.query({ name: 'geolocation' as any }).catch(() => null);
-                if (query) locStatus = query.state;
-            }
-            
-            if (locStatus !== 'granted') {
-                if (onProgress) onProgress('Location');
-                console.log('[PermissionUtils] Web: Requesting Location');
+            let { missing } = await checkRequiredPermissions();
+            if (missing.includes('Location')) {
+                if (onProgress) onProgress('Location', missing);
                 await new Promise((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, { 
                         enableHighAccuracy: false, 
                         timeout: 10000
                     });
                 });
+                await reCheck('Location');
                 await delay(webReqDelay);
             }
-        } catch (e) { 
-            console.error('[PermissionUtils] Web Location request failed/unsupported:', e); 
-        }
+        } catch (e) { console.error('Web Location req failed', e); }
 
-        if (onProgress) onProgress(''); // Clear progress
+        if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
         return;
     }
 
-    console.log('[PermissionUtils] Starting OPTIMIZED SEQUENTIAL permission request sequence (Native)...');
-    const isAndroid = Capacitor.getPlatform() === 'android';
-    const reqDelay = 1500; // Slightly longer for native system transitions
+    console.log('[PermissionUtils] Starting Native sequential request sequence...');
+    const reqDelay = 1000;
 
     // 1. Camera
     try {
-        const cam = await Camera.checkPermissions();
-        if (cam.camera !== 'granted') {
-            if (onProgress) onProgress('Camera');
-            console.log('[PermissionUtils] Native: Requesting Camera');
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Camera')) {
+            if (onProgress) onProgress('Camera', missing);
             await Camera.requestPermissions({ permissions: ['camera'] });
+            await reCheck('Camera');
             await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Camera req FAILED:', e); }
+    } catch (e) { console.error('Camera req failed', e); }
 
     // 2. Photos & Videos
     try {
-        const cam = await Camera.checkPermissions();
-        if (cam.photos !== 'granted') {
-            if (onProgress) onProgress('Photos/Videos');
-            console.log('[PermissionUtils] Native: Requesting Photos');
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Photos/Videos')) {
+            if (onProgress) onProgress('Photos/Videos', missing);
             await Camera.requestPermissions({ permissions: ['photos'] });
+            await reCheck('Photos/Videos');
             await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Photos/Videos req FAILED:', e); }
+    } catch (e) { console.error('Photos req failed', e); }
 
     // 3. Location
     try {
-        const loc = await Geolocation.checkPermissions();
-        if (loc.location !== 'granted' || loc.coarseLocation !== 'granted') {
-            if (onProgress) onProgress('Location');
-            console.log('[PermissionUtils] Native: Requesting Location');
-            await Promise.race([
-                (async () => {
-                    await Geolocation.requestPermissions();
-                    await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 5000 }).catch(() => {});
-                })(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Location timeout')), 15000))
-            ]);
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Location')) {
+            if (onProgress) onProgress('Location', missing);
+            await Geolocation.requestPermissions();
+            // Trigger a single-shot check to ensure state updates
+            await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 3000 }).catch(() => {});
+            await reCheck('Location');
             await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Location req FAILED:', e); }
+    } catch (e) { console.error('Location req failed', e); }
 
     // 4. Notifications
     try {
-        const notif = await LocalNotifications.checkPermissions();
-        if (notif.display !== 'granted') {
-            if (onProgress) onProgress('Notifications');
-            console.log('[PermissionUtils] Native: Requesting Notifications');
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Notifications')) {
+            if (onProgress) onProgress('Notifications', missing);
             await LocalNotifications.requestPermissions();
+            await reCheck('Notifications');
             await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Notification req FAILED:', e); }
+    } catch (e) { console.error('Notification req failed', e); }
 
     // 5. Contacts
     try {
-        const cont = await Contacts.checkPermissions();
-        if (cont.contacts !== 'granted') {
-            if (onProgress) onProgress('Contacts');
-            console.log('[PermissionUtils] Native: Requesting Contacts');
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Contacts')) {
+            if (onProgress) onProgress('Contacts', missing);
             await Contacts.requestPermissions();
+            await reCheck('Contacts');
             await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Contacts req FAILED:', e); }
+    } catch (e) { console.error('Contacts req failed', e); }
 
-    // 6. Bluetooth (Nearby Devices)
+    // 6. Bluetooth
     try {
-        await BleClient.initialize().catch(() => {});
-        if (isAndroid) {
-             const permissions = (window as any).plugins?.permissions;
-             if (permissions) {
-                 const res = await new Promise<any>((resolve) => permissions.hasPermission(permissions.BLUETOOTH_SCAN, (s: any) => resolve(s)));
-                 if (!res?.hasPermission) {
-                     if (onProgress) onProgress('Bluetooth');
-                     console.log('[PermissionUtils] Native: Requesting Bluetooth (Android)');
-                     await new Promise((resolve) => {
-                         permissions.requestPermissions([
-                             permissions.BLUETOOTH_SCAN,
-                             permissions.BLUETOOTH_CONNECT,
-                             permissions.BLUETOOTH_ADVERTISE
-                         ], (s: any) => resolve(s), (err: any) => resolve(err));
-                     });
-                     await delay(reqDelay);
-                 }
-             }
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Bluetooth')) {
+            if (onProgress) onProgress('Bluetooth', missing);
+            const permissions = (window as any).plugins?.permissions;
+            if (permissions) {
+                await new Promise((resolve) => {
+                    permissions.requestPermissions([
+                        permissions.BLUETOOTH_SCAN,
+                        permissions.BLUETOOTH_CONNECT,
+                        permissions.BLUETOOTH_ADVERTISE
+                    ], resolve, resolve);
+                });
+            }
+            await reCheck('Bluetooth');
+            await delay(reqDelay);
         }
-    } catch (e) { console.error('[PermissionUtils] Bluetooth req FAILED:', e); }
+    } catch (e) { console.error('Bluetooth req failed', e); }
 
-    // 7. Music & Audio (Android 13+)
-    if (isAndroid) {
-        try {
+    // 7. Music
+    try {
+        let { missing } = await checkRequiredPermissions();
+        if (missing.includes('Music')) {
+            if (onProgress) onProgress('Music', missing);
             const permissions = (window as any).plugins?.permissions;
             if (permissions && permissions.READ_MEDIA_AUDIO) {
-                const res = await new Promise<any>((resolve) => permissions.hasPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s)));
-                if (!res?.hasPermission) {
-                    if (onProgress) onProgress('Music');
-                    console.log('[PermissionUtils] Native: Requesting Media Audio');
-                    await new Promise((resolve) => {
-                        permissions.requestPermission(permissions.READ_MEDIA_AUDIO, (s: any) => resolve(s), (err: any) => resolve(err));
-                    });
-                    await delay(reqDelay);
-                }
+                await new Promise((resolve) => {
+                    permissions.requestPermission(permissions.READ_MEDIA_AUDIO, resolve, resolve);
+                });
             }
-        } catch (e) { console.error('[PermissionUtils] Media req FAILED:', e); }
-    }
+            await reCheck('Music');
+            await delay(reqDelay);
+        }
+    } catch (e) { console.error('Music req failed', e); }
 
-    if (onProgress) onProgress('');
-    console.log('[PermissionUtils] Native SEQUENTIAL permission request finished.');
+    if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
 };
 
 /**

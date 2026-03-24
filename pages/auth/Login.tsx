@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, type SubmitHandler, type Resolver } from 'react-hook-form';
@@ -212,7 +213,7 @@ const Login: React.FC = () => {
 
             </form>
 
-            <div style={{ transform: 'translateY(-22%)' }}>
+            <div style={{ transform: Capacitor.isNativePlatform() ? 'translateY(-22%)' : 'translateY(-12%)' }}>
                 <div className="flex items-center my-6">
                     <div className="flex-1 border-t border-white/10"></div>
                     <span className="px-4 text-sm text-gray-400 font-medium">OR</span>

@@ -117,7 +117,6 @@ const signInWithGoogle = async () => {
             const res = await SocialLogin.login({
                 provider: 'google',
                 options: {
-                    scopes: ['email', 'profile'],
                     filterByAuthorizedAccounts: false,
                     style: 'bottom'
                 }

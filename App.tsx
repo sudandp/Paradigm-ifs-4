@@ -406,8 +406,7 @@ const App: React.FC = () => {
 
   // Initialize Push Notifications when app is initialized
   useEffect(() => {
-    const isWeb = !Capacitor.isNativePlatform();
-    if (!isInitialized || (!permissionsComplete && !isWeb)) return;
+    if (!isInitialized || !permissionsComplete) return;
 
     console.log('[App] Initializing Push Notification Service');
     pushNotificationService.init();

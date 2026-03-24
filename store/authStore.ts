@@ -50,8 +50,14 @@ const getFriendlyAuthError = (errorMessage: string): string => {
         return 'Password is too weak. Please use a stronger password.';
     }
 
-    // Log the actual error for debugging but show a friendly message to the user
+    // Log the actual error for debugging
     console.error("Unhandled auth error:", errorMessage);
+    
+    // If it's a native auth error or contains technical details, show it to help debugging
+    if (msg.includes('error') || msg.includes('fail') || msg.includes('exception') || msg.includes('native')) {
+        return errorMessage;
+    }
+
     return 'Something went wrong. Please try again or contact support.';
 };
 
