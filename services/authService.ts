@@ -107,6 +107,7 @@ const signInWithGoogle = async () => {
         console.log("Using Native Google Auth via CapacitorSocialLogin...");
         
         const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+        
         if (!webClientId || webClientId.includes('your-web-id')) {
             console.error("Native Google Login: Web Client ID is missing. Cannot proceed without browser.");
             return { error: { message: 'Google Sign-In is not configured for this app. Please contact support.' } };
@@ -115,7 +116,11 @@ const signInWithGoogle = async () => {
         try {
             const res = await SocialLogin.login({
                 provider: 'google',
-                options: {}
+                options: {
+                    scopes: ['email', 'profile'],
+                    filterByAuthorizedAccounts: false,
+                    style: 'bottom'
+                }
             });
             
             // Note: res.result.idToken contains the ID token from Google
@@ -131,7 +136,7 @@ const signInWithGoogle = async () => {
             console.error("Native Google Login Exception:", error);
             const errorMessage = error.message || (typeof error === 'string' ? error : JSON.stringify(error));
             
-            if (errorMessage.includes('canceled')) {
+            if (errorMessage.toLowerCase().includes('cancel')) {
                return { error: { message: 'Google Sign-In was canceled.' } };
             }
             

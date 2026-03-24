@@ -46,7 +46,6 @@ import AuthLayout from './components/layouts/AuthLayout';
 import SecurityWrapper from './components/SecurityWrapper';
 
 // Pages
-import Splash from './pages/Splash';
 import Login from './pages/auth/Login';
 
 const MobileHome = lazyWithRetry(() => import('./pages/MobileHome'));
@@ -314,7 +313,7 @@ const App: React.FC = () => {
   const { setDeferredPrompt } = usePWAStore();
   const { isUpdateRequired, updateInfo } = useAppUpdate();
   const { isOnline } = useNetworkStatus();
-  const [permissionsComplete, setPermissionsComplete] = useState(false);
+  const [permissionsComplete, setPermissionsComplete] = useState(true);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
 
   // Lock screen orientation to portrait on native
@@ -840,18 +839,9 @@ const App: React.FC = () => {
   const isIOSUA = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isLikelyMobile = isAndroidUA || isIOSUA || Capacitor.isNativePlatform();
 
-  // While the initial authentication check OR the permissions check is running, show the splash screen.
-  // This prevents the router from rendering and making incorrect navigation decisions
-  // and ensures push notification and other dependent services have the required state to initialize.
-  if (!isInitialized || !permissionsComplete) {
-    return (
-      <Splash 
-        onComplete={() => {
-          console.log('[App] Splash sequence complete.');
-          setPermissionsComplete(true);
-        }} 
-      />
-    );
+  // While the initial authentication check is running, prevent rendering the app routes.
+  if (!isInitialized) {
+    return null;
   }
 
   // Once initialized, render the main application structure.

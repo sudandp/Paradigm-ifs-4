@@ -212,7 +212,7 @@ const Login: React.FC = () => {
 
             </form>
 
-            <div style={{ transform: 'translateY(-5%)' }}>
+            <div style={{ transform: 'translateY(-22%)' }}>
                 <div className="flex items-center my-6">
                     <div className="flex-1 border-t border-white/10"></div>
                     <span className="px-4 text-sm text-gray-400 font-medium">OR</span>

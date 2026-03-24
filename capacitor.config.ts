@@ -40,10 +40,9 @@ const config: CapacitorConfig = {
       resize: "body",
       resizeOnFullScreen: true
     },
-    CapacitorSocialLogin: {
+    SocialLogin: {
       google: {
         webClientId: "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com",
-        androidClientId: "447552978158-gr21dshgv2qqg2dfsg7ojqs9fcqk4vrq.apps.googleusercontent.com"
       }
     }
   }

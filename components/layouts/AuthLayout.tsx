@@ -96,8 +96,8 @@ const AuthLayout: React.FC = () => {
                     </div>
 
                     {/* Right Form Column with Glassmorphism effect */}
-                    <div className="p-6 lg:p-10 xl:p-16 flex flex-col justify-center bg-[#050505]/85 backdrop-blur-xl border-l border-white/10">
-                        <div className="w-full max-w-md mx-auto">
+                    <div className="p-6 lg:p-10 xl:p-16 flex flex-col justify-center bg-[#050505]/90 backdrop-blur-xl border-l border-white/10">
+                        <div className="w-full max-w-md mx-auto transform scale-[0.95]">
                             {/* Mobile Logo Visibility Fix */}
                             <div className="flex justify-center mb-6">
                                 <Logo className="h-10 lg:h-12" />
@@ -110,20 +110,6 @@ const AuthLayout: React.FC = () => {
                 </div>
             </div>
 
-            {/* Floating Download Button */}
-            <button 
-                onClick={() => setIsDownloadModalOpen(true)}
-                className="fixed bottom-6 left-6 w-16 h-16 bg-emerald-500 text-white rounded-2xl shadow-xl shadow-emerald-500/20 hover:bg-emerald-600 hover:scale-105 active:scale-95 transition-all duration-300 flex items-center justify-center z-50 group border border-white/20"
-                title="Download App"
-            >
-                <Download className="w-8 h-8 group-hover:bounce text-white" />
-            </button>
-
-            {/* Download Modal */}
-            <AppDownloadModal 
-                isOpen={isDownloadModalOpen} 
-                onClose={() => setIsDownloadModalOpen(false)} 
-            />
         </div>
     );
 };
