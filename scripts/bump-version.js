@@ -52,11 +52,17 @@ if (explicitVersion) {
   // User provided an explicit version
   newName = explicitVersion;
 } else {
-  // Auto-increment: bump major version (e.g., 6.0.0 → 7.0.0)
+  // Auto-increment: bump minor version first, rollover to major after .9
   const parts = oldName.split('.').map(Number);
-  parts[0] += 1;  // increment major
-  parts[1] = 0;   // reset minor
-  parts[2] = 0;   // reset patch
+  
+  if (parts[1] >= 9) {
+    parts[0] += 1; // Major bump (e.g., 7.9.x -> 8.0.0)
+    parts[1] = 0;   // Reset minor
+  } else {
+    parts[1] += 1; // Minor bump (e.g., 7.1.x -> 7.2.0)
+  }
+  
+  parts[2] = 0;   // Always reset patch for this project's convention
   newName = parts.join('.');
 }
 
