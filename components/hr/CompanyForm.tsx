@@ -7,13 +7,15 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
+import MultiUploadDocument from '../MultiUploadDocument';
+import Toast from '../ui/Toast';
 import { Plus, Trash2, Calendar, FileText } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
 
 interface CompanyFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<Company>, pendingFiles: Record<string, File>) => void;
+  onSave: (data: Partial<Company>, pendingFiles: Record<string, File | File[]>) => void;
   initialData: Partial<Company> | null;
   groupName: string;
   existingLocations: string[];
@@ -26,10 +28,16 @@ const companySchema = yup.object({
   address: yup.string().required('Registered Address is required'),
   
   // Basic Details
-  registrationType: yup.string<RegistrationType>().optional(),
-  registrationNumber: yup.string().optional(),
-  gstNumber: yup.string().optional().nullable(),
-  panNumber: yup.string().optional().nullable(),
+  registrationType: yup.string<RegistrationType>().required('Registration Type is required'),
+  registrationNumber: yup.string().required('Registration Number is required'),
+  gstNumber: yup.string()
+    .required('GST Number is required')
+    .matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Invalid GST format (15 characters)')
+    .nullable(),
+  panNumber: yup.string()
+    .required('PAN Number is required')
+    .matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Invalid PAN format (e.g. ABCDE1234F)')
+    .nullable(),
   logoUrl: yup.string().optional().nullable(),
   
   // Arrays & Nested
@@ -43,8 +51,12 @@ const companySchema = yup.object({
   complianceCodes: yup.object({
     eShramNumber: yup.string().optional(),
     shopAndEstablishmentCode: yup.string().optional(),
-    epfoCode: yup.string().optional(),
-    esicCode: yup.string().optional(),
+    epfoCode: yup.string()
+        .required('EPFO Code is required')
+        .matches(/^[A-Z]{2}[A-Z]{2}[0-9]{7}[0-9]{3}[0-9]{7}$/, 'Invalid EPFO format (22 characters)'),
+    esicCode: yup.string()
+        .required('ESIC Code is required')
+        .matches(/^[0-9]{17}$/, 'Invalid ESIC format (17 digits)'),
     psaraLicenseNumber: yup.string().optional(),
     psaraValidTill: yup.string().optional().nullable(),
   }).optional(),
@@ -53,7 +65,7 @@ const companySchema = yup.object({
     yup.object({
       id: yup.string().required(),
       type: yup.string().required(),
-      documentUrl: yup.string().optional().nullable(),
+      documentUrls: yup.array().of(yup.string()).optional().nullable(),
       expiryDate: yup.string().optional().nullable(),
     })
   ).optional(),
@@ -70,26 +82,28 @@ const companySchema = yup.object({
   insurances: yup.array().of(
     yup.object({
       id: yup.string().required(),
-      name: yup.string().required('Insurance Name is required'),
-      documentUrl: yup.string().optional().nullable(),
+      name: yup.string().required(),
+      documentUrls: yup.array().of(yup.string()).optional().nullable(),
     })
   ).optional(),
   
   policies: yup.array().of(
     yup.object({
       id: yup.string().required(),
-      name: yup.string().required('Policy Name is required'),
-      documentUrl: yup.string().optional().nullable(),
-      level: yup.string().oneOf(['BO', 'Site', 'Both']).required('Level is required')
+      name: yup.string().required(),
+      level: yup.string().oneOf(['BO', 'Site', 'Both']).required(),
+      documentUrls: yup.array().of(yup.string()).optional().nullable(),
+      description: yup.string().optional(),
     })
   ).optional(),
 }).defined();
 
-type Tab = 'Details' | 'Contacts' | 'Compliance' | 'Documents' | 'Holidays' | 'Ins./Policies' | 'Preview';
+type Tab = 'Details' | 'Contacts' | 'Compliance' | 'Documents' | 'Holidays' | 'Policies' | 'Preview';
 
 const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, initialData, groupName, existingLocations }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Details');
-  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File | File[]>>({});
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   
   const { register, handleSubmit, formState: { errors }, reset, control, watch } = useForm<Partial<Company>>({
     resolver: yupResolver(companySchema) as any,
@@ -143,12 +157,16 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
 
   const formData = watch();
   
-  const logoPreview = pendingFiles['logo'] 
-    ? URL.createObjectURL(pendingFiles['logo']) 
+  const logoPreview = pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) 
+    ? URL.createObjectURL(pendingFiles['logo'] as File) 
     : formData.logoUrl;
 
   const onSubmit: SubmitHandler<Partial<Company>> = (data) => {
     onSave(data, pendingFiles);
+  };
+
+  const onInvalid = () => {
+    setToast({ message: 'Please complete all mandatory fields with correct data.', type: 'error' });
   };
 
   const setFile = (key: string, file: UploadedFile | null) => {
@@ -163,22 +181,60 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
     });
   };
 
+  const setFiles = (key: string, uploadedFiles: UploadedFile[]) => {
+    setPendingFiles(prev => {
+        const next = { ...prev };
+        const files = uploadedFiles.map(uf => uf.file).filter(Boolean) as File[];
+        if (files.length > 0) {
+            next[key] = files;
+        } else {
+            delete next[key];
+        }
+        return next;
+    });
+  };
+
   if (!isOpen) return null;
 
-  const TabButton = ({ tabName }: { tabName: Tab }) => (
-    <button
-      type="button"
-      onClick={() => setActiveTab(tabName)}
-      className={`whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${activeTab === tabName ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-primary-text'}`}
-    >
-      {tabName}
-    </button>
-  );
+  const hasTabError = (tab: Tab) => {
+    switch (tab) {
+      case 'Details':
+        return !!(errors.name || errors.location || errors.address || errors.registrationType || errors.registrationNumber || errors.gstNumber || errors.panNumber);
+      case 'Contacts':
+        return !!errors.emails;
+      case 'Compliance':
+        return !!errors.complianceCodes;
+      case 'Documents':
+        return !!errors.complianceDocuments;
+      case 'Holidays':
+        return !!errors.holidays;
+      case 'Policies':
+        return !!(errors.insurances || errors.policies);
+      default:
+        return false;
+    }
+  };
+
+  const TabButton = ({ tabName }: { tabName: Tab }) => {
+    const hasError = hasTabError(tabName);
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveTab(tabName)}
+        className={`relative whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${activeTab === tabName ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-primary-text'}`}
+      >
+        {tabName}
+        {hasError && (
+          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white shadow-sm animate-pulse" />
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full animate-fade-in relative">
         <form 
-          onSubmit={handleSubmit(onSubmit)} 
+          onSubmit={handleSubmit(onSubmit, onInvalid)} 
           className="flex flex-col w-full bg-card overflow-visible"
         >
           <div className="pb-0 flex-shrink-0">
@@ -189,6 +245,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
               </div>
               <div className="flex items-center gap-3">
                  <Button type="button" onClick={onClose} variant="secondary" className="px-6">Cancel</Button>
+                 <Button type="button" onClick={() => onSave(watch(), pendingFiles)} variant="outline" className="px-6 border-accent text-accent hover:bg-accent/10">Save Draft</Button>
                  <Button type="submit" variant="primary" className="px-8 shadow-lg shadow-emerald-500/20">{isEditing ? 'Save Changes' : 'Create Profile'}</Button>
               </div>
             </div>
@@ -200,7 +257,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                   <TabButton tabName="Compliance" />
                   <TabButton tabName="Documents" />
                   <TabButton tabName="Holidays" />
-                  <TabButton tabName="Ins./Policies" />
+                  <TabButton tabName="Policies" />
                   <TabButton tabName="Preview" />
               </nav>
             </div>
@@ -229,7 +286,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                        <Controller name="logoUrl" control={control} render={({ field }) => (
                            <UploadDocument 
                              label="Company Logo" 
-                             file={pendingFiles['logo'] ? { file: pendingFiles['logo'], preview: URL.createObjectURL(pendingFiles['logo']), name: 'New Image', type: 'image/jpeg', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'image/jpeg', size: 0 } as UploadedFile : null)}
+                             file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: URL.createObjectURL(pendingFiles['logo'] as File), name: 'New Image', type: 'image/jpeg', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'image/jpeg', size: 0 } as UploadedFile : null)}
                              onFileChange={(f) => {
                                  setFile('logo', f);
                                  if (!f) field.onChange(''); // clear string
@@ -271,9 +328,9 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
             {activeTab === 'Compliance' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                     <Input label="E-Shram Number" id="shram" registration={register('complianceCodes.eShramNumber')} error={errors.complianceCodes?.eShramNumber?.message} />
-                    <Input label="Shop & Establishment Code" id="shop" registration={register('complianceCodes.shopAndEstablishmentCode')} />
-                    <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} />
-                    <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} />
+                    <Input label="Shop & Establishment Code" id="shop" registration={register('complianceCodes.shopAndEstablishmentCode')} error={errors.complianceCodes?.shopAndEstablishmentCode?.message} />
+                    <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} error={errors.complianceCodes?.epfoCode?.message} />
+                    <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} error={errors.complianceCodes?.esicCode?.message} />
                     <Input label="PSARA License Number" id="psara" registration={register('complianceCodes.psaraLicenseNumber')} />
                     <Input label="PSARA Valid Till" id="psaradate" type="date" registration={register('complianceCodes.psaraValidTill')} />
                 </div>
@@ -287,7 +344,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                             <h4 className="text-lg font-semibold text-primary-text">Compliance Notifications & Circulars</h4>
                             <p className="text-sm text-muted">Upload minimum wages, PT, or PF & ESI related documents.</p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => appendDoc({ id: `doc_${Date.now()}`, type: 'Minimum Wages Notifications', documentUrl: '', expiryDate: '' })}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => appendDoc({ id: `doc_${Date.now()}`, type: 'Minimum Wages Notifications', documentUrls: [], expiryDate: '' })}>
                             <Plus className="w-4 h-4 mr-2" /> Add Document
                         </Button>
                     </div>
@@ -303,16 +360,31 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                    </Select>
                                    <Input label="Valid Till" id={`docs.${index}.expiry`} type="date" registration={register(`complianceDocuments.${index}.expiryDate` as const)} />
                                    <div className="md:col-span-2 mt-2">
-                                      <Controller name={`complianceDocuments.${index}.documentUrl` as const} control={control} render={({ field: f }) => (
-                                           <UploadDocument 
-                                               label="Upload Document Capture" 
-                                               file={pendingFiles[`doc_${field.id}`] ? { file: pendingFiles[`doc_${field.id}`], preview: '', name: 'Selected File', type: 'application/pdf', size: 0 } : (f.value ? { preview: f.value, name: 'Current Attachment', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                               onFileChange={(uf) => {
-                                                   setFile(`doc_${field.id}`, uf);
-                                                   if (!uf) f.onChange('');
-                                               }}
-                                           />
-                                      )} />
+                                      <Controller name={`complianceDocuments.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                           const pendingList = pendingFiles[`doc_${field.id}`] as File[];
+                                           const existingUrls = f.value || [];
+                                           
+                                           // Create UploadedFile list from both pending files and existing URLs
+                                           const displayFiles: UploadedFile[] = [
+                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url })),
+                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                           ];
+
+                                           return (
+                                               <MultiUploadDocument 
+                                                   label="Upload Document Capture" 
+                                                   files={displayFiles}
+                                                   onFilesChange={(newFileList) => {
+                                                       // Separate actual Files for pendingFiles state and URLs for form state
+                                                       const filesOnly = newFileList.map(nf => nf.file).filter(Boolean) as File[];
+                                                       const urlsOnly = newFileList.map(nf => nf.url).filter(Boolean) as string[];
+                                                       
+                                                       setFiles(`doc_${field.id}`, newFileList);
+                                                       f.onChange(urlsOnly);
+                                                   }}
+                                               />
+                                           );
+                                      }} />
                                    </div>
                                 </div>
                                 <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removeDoc(index)}>
@@ -351,24 +423,40 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                 </div>
             )}
 
-            {/* Insurances & Policies Tab */}
-            {activeTab === 'Ins./Policies' && (
+            {/* Policies Tab */}
+            {activeTab === 'Policies' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                    {/* Insurances Sequence */}
+                    {/* Policies (formerly Insurances) Sequence */}
                     <div className="space-y-6">
                         <div className="flex justify-between items-center">
-                            <h4 className="text-lg font-semibold text-primary-text">Insurances</h4>
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendIns({ id: `ins_${Date.now()}`, name: '', documentUrl: '' })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
+                            <h4 className="text-lg font-semibold text-primary-text">Policies</h4>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendIns({ id: `ins_${Date.now()}`, name: '', documentUrls: [] })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
                         </div>
                         <div className="space-y-6">
                            {insFields.map((item, index) => (
                                <div key={item.id} className="p-6 border border-border rounded-2xl bg-page/40 relative shadow-sm">
-                                   <Input label="Insurance Policy Name" id={`ins_${index}`} registration={register(`insurances.${index}.name` as const)} error={errors.insurances?.[index]?.name?.message} />
+                                   <Input label="Policy Name" id={`ins_${index}`} registration={register(`insurances.${index}.name` as const)} error={errors.insurances?.[index]?.name?.message} />
                                    <div className="mt-4">
-                                       <Controller name={`insurances.${index}.documentUrl` as const} control={control} render={({ field: f }) => (
-                                           <UploadDocument label="Upload Policy Master Copy" file={pendingFiles[`ins_${item.id}`] ? { file: pendingFiles[`ins_${item.id}`], preview: '', name: 'Pending Upload', type: 'application/pdf', size: 0 } : (f.value ? { preview: f.value, name: 'Current Master', type: 'application/pdf', size: 0 } as UploadedFile : null)} 
-                                           onFileChange={uf => { setFile(`ins_${item.id}`, uf); if (!uf) f.onChange(''); }} />
-                                       )} />
+                                       <Controller name={`insurances.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                           const pendingList = pendingFiles[`ins_${item.id}`] as File[];
+                                           const existingUrls = f.value || [];
+                                           
+                                           const displayFiles: UploadedFile[] = [
+                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
+                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                           ];
+
+                                           return (
+                                               <MultiUploadDocument 
+                                                   label="Upload Policy Documents" 
+                                                   files={displayFiles}
+                                                   onFilesChange={(newFileList) => {
+                                                       setFiles(`ins_${item.id}`, newFileList);
+                                                       f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
+                                                   }}
+                                               />
+                                           );
+                                       }} />
                                    </div>
                                    <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removeIns(index)}><Trash2 className="w-4 h-4" /></Button>
                                </div>
@@ -377,10 +465,10 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                     </div>
 
                     {/* Policies Sequence */}
-                    <div className="space-y-6">
+                     <div className="space-y-6">
                         <div className="flex justify-between items-center">
-                            <h4 className="text-lg font-semibold text-primary-text">Internal Policies</h4>
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendPol({ id: `pol_${Date.now()}`, name: '', level: 'Both', documentUrl: '' })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
+                            <h4 className="text-lg font-semibold text-primary-text">Company Policies</h4>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendPol({ id: `pol_${Date.now()}`, name: '', level: 'Both', documentUrls: [] })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
                         </div>
                         <div className="space-y-6">
                            {polFields.map((item, index) => (
@@ -388,10 +476,26 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                    <Input label="Global/Local Policy Name" id={`pol_${index}`} registration={register(`policies.${index}.name` as const)} error={errors.policies?.[index]?.name?.message} />
                                    <div className="mt-3"><Select label="Deployment Level" id={`lvl_${index}`} registration={register(`policies.${index}.level` as const)}><option value="Both">Both BO & Site</option><option value="BO">BO Level Only</option><option value="Site">Site Level Only</option></Select></div>
                                    <div className="mt-4">
-                                       <Controller name={`policies.${index}.documentUrl` as const} control={control} render={({ field: f }) => (
-                                           <UploadDocument label="Upload Policy Directive" file={pendingFiles[`pol_${item.id}`] ? { file: pendingFiles[`pol_${item.id}`], preview: '', name: 'Pending Upload', type: 'application/pdf', size: 0 } : (f.value ? { preview: f.value, name: 'Attached Directive', type: 'application/pdf', size: 0 } as UploadedFile : null)} 
-                                           onFileChange={uf => { setFile(`pol_${item.id}`, uf); if (!uf) f.onChange(''); }} />
-                                       )} />
+                                       <Controller name={`policies.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                           const pendingList = pendingFiles[`pol_${item.id}`] as File[];
+                                           const existingUrls = f.value || [];
+                                           
+                                           const displayFiles: UploadedFile[] = [
+                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
+                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                           ];
+
+                                           return (
+                                               <MultiUploadDocument 
+                                                   label="Upload Policy Documents" 
+                                                   files={displayFiles}
+                                                   onFilesChange={(newFileList) => {
+                                                       setFiles(`pol_${item.id}`, newFileList);
+                                                       f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
+                                                   }}
+                                               />
+                                           );
+                                       }} />
                                    </div>
                                    <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removePol(index)}><Trash2 className="w-4 h-4" /></Button>
                                </div>
@@ -409,6 +513,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
             )}
           </div>
         </form>
+        {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       </div>
   );
 };

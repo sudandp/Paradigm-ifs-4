@@ -35,9 +35,6 @@ import SalaryTemplateConfig from '../../components/hr/SalaryTemplateConfig';
 import SalaryLineItemConfig from '../../components/hr/SalaryLineItemConfig';
 
 
-
-
-
 const NameInputModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
@@ -329,7 +326,7 @@ const EntityManagement: React.FC = () => {
         setDeleteModalState({ isOpen: false, type: 'group', id: '', name: '' });
     };
 
-    const handleSaveCompanyData = async (data: Partial<Company>, pendingFiles: Record<string, File> = {}) => {
+    const handleSaveCompanyData = async (data: Partial<Company>, pendingFiles: Record<string, File | File[]> = {}) => {
         try {
             const { mode, groupId } = companyFormState;
             const newGroups = [...groups];
@@ -340,17 +337,26 @@ const EntityManagement: React.FC = () => {
             let updatedData = { ...data };
             
             // 1. Upload Logo if present
-            if (pendingFiles['logo']) {
-                const logoUrl = await api.uploadLogo(pendingFiles['logo']);
+            if (pendingFiles['logo'] && !Array.isArray(pendingFiles['logo'])) {
+                const logoUrl = await api.uploadLogo(pendingFiles['logo'] as File);
                 updatedData.logoUrl = logoUrl;
             }
 
             // 2. Upload Compliance Documents
             if (updatedData.complianceDocuments) {
                 for (const doc of updatedData.complianceDocuments) {
-                    if (pendingFiles[`doc_${doc.id}`]) {
-                        const { url } = await api.uploadDocument(pendingFiles[`doc_${doc.id}`]);
-                        doc.documentUrl = url;
+                    const pendingForDoc = pendingFiles[`doc_${doc.id}`];
+                    if (pendingForDoc) {
+                        if (Array.isArray(pendingForDoc)) {
+                            // Upload multiple files
+                            const uploadPromises = pendingForDoc.map(file => api.uploadDocument(file));
+                            const results = await Promise.all(uploadPromises);
+                            doc.documentUrls = [...(doc.documentUrls || []), ...results.map(r => r.url)];
+                        } else {
+                            // Single file fallback
+                            const { url } = await api.uploadDocument(pendingForDoc as File);
+                            doc.documentUrls = [...(doc.documentUrls || []), url];
+                        }
                     }
                 }
             }
@@ -358,9 +364,16 @@ const EntityManagement: React.FC = () => {
             // 3. Upload Insurances
             if (updatedData.insurances) {
                 for (const ins of updatedData.insurances) {
-                    if (pendingFiles[`ins_${ins.id}`]) {
-                        const { url } = await api.uploadDocument(pendingFiles[`ins_${ins.id}`]);
-                        ins.documentUrl = url;
+                    const pendingForIns = pendingFiles[`ins_${ins.id}`];
+                    if (pendingForIns) {
+                        if (Array.isArray(pendingForIns)) {
+                            const uploadPromises = pendingForIns.map(file => api.uploadDocument(file));
+                            const results = await Promise.all(uploadPromises);
+                            ins.documentUrls = [...(ins.documentUrls || []), ...results.map(r => r.url)];
+                        } else {
+                            const { url } = await api.uploadDocument(pendingForIns as File);
+                            ins.documentUrls = [...(ins.documentUrls || []), url];
+                        }
                     }
                 }
             }
@@ -368,9 +381,16 @@ const EntityManagement: React.FC = () => {
             // 4. Upload Policies
             if (updatedData.policies) {
                 for (const pol of updatedData.policies) {
-                    if (pendingFiles[`pol_${pol.id}`]) {
-                        const { url } = await api.uploadDocument(pendingFiles[`pol_${pol.id}`]);
-                        pol.documentUrl = url;
+                    const pendingForPol = pendingFiles[`pol_${pol.id}`];
+                    if (pendingForPol) {
+                        if (Array.isArray(pendingForPol)) {
+                            const uploadPromises = pendingForPol.map(file => api.uploadDocument(file));
+                            const results = await Promise.all(uploadPromises);
+                            pol.documentUrls = [...(pol.documentUrls || []), ...results.map(r => r.url)];
+                        } else {
+                            const { url } = await api.uploadDocument(pendingForPol as File);
+                            pol.documentUrls = [...(pol.documentUrls || []), url];
+                        }
                     }
                 }
             }

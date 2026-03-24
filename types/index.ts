@@ -582,7 +582,7 @@ export interface ComplianceCodes {
 export interface ComplianceDocument {
   id: string;
   type: string;
-  documentUrl?: string | null;
+  documentUrls?: string[] | null;
   expiryDate?: string | null;
 }
 
@@ -596,7 +596,7 @@ export interface CompanyHoliday {
 export interface CompanyInsurance {
   id: string;
   name: string;
-  documentUrl?: string | null;
+  documentUrls?: string[] | null;
 }
 
 export interface SiteInsurance {
@@ -612,13 +612,13 @@ export interface SitePolicy {
   id: string;
   name: string;
   level: 'BO' | 'Site' | 'Both';
-  documentUrl?: string | null;
+  documentUrls?: string[] | null;
 }
 
 export interface CompanyPolicy {
   id: string;
   name: string;
-  documentUrl?: string | null;
+  documentUrls?: string[] | null;
   level: 'BO' | 'Site' | 'Both';
   description?: string;
 }

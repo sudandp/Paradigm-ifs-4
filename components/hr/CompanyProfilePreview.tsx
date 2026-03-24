@@ -84,15 +84,21 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
           <div className="col-span-1">
             <h2 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-2 mb-4 uppercase tracking-wider">Compliance Docs</h2>
             <div className="space-y-3">
-              {data.complianceDocuments && data.complianceDocuments.length > 0 ? data.complianceDocuments.map((doc) => (
-                <div key={doc.id} className="flex flex-col border-b border-border pb-2 last:border-0">
-                  <span className="text-sm font-medium">{doc.type}</span>
-                  <div className="flex items-center gap-4 text-xs text-muted mt-1">
-                    <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {doc.documentUrl ? 'Attached' : 'Missing'}</span>
-                    {doc.expiryDate && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Exp: {doc.expiryDate}</span>}
+              {data.complianceDocuments && data.complianceDocuments.length > 0 ? data.complianceDocuments.map((doc) => {
+                const docCount = doc.documentUrls?.length || 0;
+                return (
+                  <div key={doc.id} className="flex flex-col border-b border-border pb-2 last:border-0">
+                    <span className="text-sm font-medium">{doc.type}</span>
+                    <div className="flex items-center gap-4 text-xs text-muted mt-1">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3 h-3" /> 
+                        {docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'Missing'}
+                      </span>
+                      {doc.expiryDate && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Exp: {doc.expiryDate}</span>}
+                    </div>
                   </div>
-                </div>
-              )) : <p className="text-sm text-muted">No compliance documents listed</p>}
+                );
+              }) : <p className="text-sm text-muted">No compliance documents listed</p>}
             </div>
           </div>
 
@@ -120,27 +126,39 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
             <h2 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-2 mb-4 uppercase tracking-wider">Insurance & Policies</h2>
             <div className="grid grid-cols-2 gap-8">
               <div>
-                <h3 className="text-sm font-bold text-muted mb-3 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Active Insurances</h3>
+                <h3 className="text-sm font-bold text-muted mb-3 flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Policies</h3>
                 <ul className="space-y-2">
-                  {data.insurances && data.insurances.length > 0 ? data.insurances.map(ins => (
-                    <li key={ins.id} className="text-sm flex items-center justify-between p-2 hover:bg-page/40 rounded transition-colors border-b border-border last:border-0">
-                      <span>{ins.name}</span>
-                      {ins.documentUrl && <FileText className="w-3 h-3 text-muted" />}
-                    </li>
-                  )) : <p className="text-sm text-muted">No insurance records</p>}
+                  {data.insurances && data.insurances.length > 0 ? data.insurances.map(ins => {
+                    const docCount = ins.documentUrls?.length || 0;
+                    return (
+                      <li key={ins.id} className="text-sm flex flex-col p-2 hover:bg-page/40 rounded transition-colors border-b border-border last:border-0">
+                        <div className="flex justify-between items-center">
+                          <span>{ins.name}</span>
+                          {docCount > 0 && <span className="text-[10px] text-muted flex items-center gap-1"><FileText className="w-3 h-3" /> {docCount} attachment{docCount > 1 ? 's' : ''}</span>}
+                        </div>
+                      </li>
+                    );
+                  }) : <p className="text-sm text-muted">No policy records</p>}
                 </ul>
               </div>
               <div>
-                <h3 className="text-sm font-bold text-muted mb-3 flex items-center gap-2"><Award className="w-4 h-4" /> Company Directives</h3>
+                <h3 className="text-sm font-bold text-muted mb-3 flex items-center gap-2"><Award className="w-4 h-4" /> Company Policies</h3>
                 <ul className="space-y-2">
-                  {data.policies && data.policies.length > 0 ? data.policies.map(pol => (
-                    <li key={pol.id} className="text-sm flex flex-col p-2 hover:bg-page/40 rounded transition-colors border-b border-border last:border-0">
-                      <div className="flex justify-between">
-                        <span className="font-medium">{pol.name}</span>
-                        <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded uppercase font-bold">{pol.level} Level</span>
-                      </div>
-                    </li>
-                  )) : <p className="text-sm text-muted">No policy directives</p>}
+                  {data.policies && data.policies.length > 0 ? data.policies.map(pol => {
+                    const docCount = pol.documentUrls?.length || 0;
+                    return (
+                      <li key={pol.id} className="text-sm flex flex-col p-2 hover:bg-page/40 rounded transition-colors border-b border-border last:border-0">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{pol.name}</span>
+                          <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded uppercase font-bold">{pol.level} Level</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted mt-1">
+                          <FileText className="w-3 h-3" />
+                          <span>{docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'No document'}</span>
+                        </div>
+                      </li>
+                    );
+                  }) : <p className="text-sm text-muted">No company policies</p>}
                 </ul>
               </div>
             </div>
