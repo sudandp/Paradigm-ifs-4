@@ -12,7 +12,12 @@
           "package_name": "com.paradigm.ifs"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD3uJdfu8mN4cCE7YoFC67erEw4HcZqvDE"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -1,0 +1,35 @@
+﻿
+The Kotlin Gradle plugin was loaded multiple times in different subprojects, which is not supported and may break the build. 
+This might happen in subprojects that apply the Kotlin plugins with the Gradle 'plugins { ... }' DSL if they specify explicit versions, even if the versions are equal.
+Please add the Kotlin plugin to the common parent project or the root project, then remove the versions in the subprojects.
+If the parent project does not need the plugin, add 'apply false' to the plugin line.
+See: https://docs.gradle.org/current/userguide/plugins.html#sec:subprojects_plugins_dsl
+The Kotlin plugin was loaded in the following projects: ':capacitor-community-bluetooth-le', ':capacitor-filesystem'
+
+> Task :app:signingReport
+Variant: debug
+Config: debug
+Store: C:\Users\sudhan\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 58:4D:C3:C1:34:13:16:20:BD:DE:25:B5:AB:4A:DD:55
+SHA1: D4:C0:41:20:6C:52:DF:F5:5A:34:40:04:61:F2:59:E4:FF:A1:B1:5A
+SHA-256: 9F:48:08:65:B0:2F:3B:DA:A2:8B:5E:74:3A:EC:D7:2B:EC:EC:8A:00:EE:CE:91:FD:53:5D:C3:3D:01:DA:BF:95
+Valid until: Wednesday, 24 November, 2055
+----------
+Variant: release
+Config: null
+Store: null
+Alias: null
+----------
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\sudhan\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 58:4D:C3:C1:34:13:16:20:BD:DE:25:B5:AB:4A:DD:55
+SHA1: D4:C0:41:20:6C:52:DF:F5:5A:34:40:04:61:F2:59:E4:FF:A1:B1:5A
+SHA-256: 9F:48:08:65:B0:2F:3B:DA:A2:8B:5E:74:3A:EC:D7:2B:EC:EC:8A:00:EE:CE:91:FD:53:5D:C3:3D:01:DA:BF:95
+Valid until: Wednesday, 24 November, 2055
+----------
+
+BUILD SUCCESSFUL in 4s
+1 actionable task: 1 executed
