@@ -30,9 +30,12 @@ serve(async (req: Request) => {
 
   try {
     const body = await req.json()
-    const { user_id, userIds, title, body: msgBody, message, data, broadcast } = body
+    const { user_id, userIds, title, body: msgBody, message, data, broadcast, metadata } = body
     const finalMessage = msgBody || message
     const finalTitle = title || "Paradigm Office"
+    
+    const ruleId = metadata?.rule_id
+    const isTestMode = metadata?.test_mode
     
     // Normalize target users into an array
     let targetUserIds = []
@@ -135,7 +138,9 @@ serve(async (req: Request) => {
             },
             android: {
               priority: "high",
+              collapse_key: ruleId ? `rule_${ruleId}` : undefined,
               notification: { 
+                tag: ruleId ? `rule_${ruleId}` : undefined,
                 icon: "ic_launcher", 
                 color: "#1d4ed8", 
                 channel_id: "default",

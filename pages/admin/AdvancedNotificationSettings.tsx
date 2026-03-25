@@ -52,6 +52,8 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
         isActive: true,
         enablePush: true,
         enableSms: false,
+        maxAlerts: 1,
+        cooldownMinutes: 60,
         config: { time: '21:00', notifyManager: false },
         pushTitleTemplate: 'Reminder: Punch Out Required',
         pushBodyTemplate: 'Hi {name}, it looks like you haven\'t punched out yet. Please punch out to avoid attendance violations.',
@@ -129,6 +131,8 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
             isActive: true,
             enablePush: true,
             enableSms: false,
+            maxAlerts: 1,
+            cooldownMinutes: 60,
             config: { time: '21:00', notifyManager: false },
             pushTitleTemplate: 'Reminder: Punch Out Required',
             pushBodyTemplate: 'Hi {name}, it looks like you haven\'t punched out yet. Please punch out to avoid attendance violations.',
@@ -251,6 +255,26 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
                                     onChange={e => setFormData({ ...formData, config: { ...formData.config, dayOfMonth: parseInt(e.target.value) } })}
                                 />
                             )}
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input 
+                                    label="Repeat Every (Mins)"
+                                    type="number"
+                                    min="0"
+                                    placeholder="0 = Once only"
+                                    value={formData.cooldownMinutes}
+                                    onChange={e => setFormData({ ...formData, cooldownMinutes: parseInt(e.target.value) || 0 })}
+                                    description="Wait time between alerts"
+                                />
+                                <Input 
+                                    label="Max Daily Alerts"
+                                    type="number"
+                                    min="1"
+                                    value={formData.maxAlerts}
+                                    onChange={e => setFormData({ ...formData, maxAlerts: parseInt(e.target.value) || 1 })}
+                                    description="Total cap per day"
+                                />
+                            </div>
 
                             <Input 
                                 label="Duration Threshold (Minutes)"
@@ -501,6 +525,24 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
                                                     title="Edit Rule"
                                                 >
                                                     <Pencil className="h-5 w-5" />
+                                                </Button>
+                                                <Button 
+                                                    type="button"
+                                                    variant="secondary" 
+                                                    onClick={async (e) => { 
+                                                        e.stopPropagation(); 
+                                                        try {
+                                                            setToast({ message: 'Sending test notification...', type: 'success' });
+                                                            await api.testAutomatedRule(rule.id);
+                                                            setToast({ message: 'Test sent successfully!', type: 'success' });
+                                                        } catch (err: any) {
+                                                            setToast({ message: `Test failed: ${err.message}`, type: 'error' });
+                                                        }
+                                                    }} 
+                                                    className="h-10 px-3 text-xs font-bold"
+                                                    title="Send a sample to your phone now"
+                                                >
+                                                    TEST
                                                 </Button>
                                                 <button 
                                                     type="button"

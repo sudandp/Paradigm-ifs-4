@@ -1443,6 +1443,8 @@ export interface AutomatedNotificationRule {
   smsTemplate?: string;
   enablePush: boolean;
   enableSms: boolean;
+  maxAlerts?: number;
+  cooldownMinutes?: number;
   createdAt: string;
   updatedAt: string;
 }

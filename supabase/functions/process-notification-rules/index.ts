@@ -29,8 +29,16 @@ serve(async (_req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
+    const body = await _req.json().catch(() => ({}));
+    const { rule_id, test_mode } = body;
+    const isTestMode = !!test_mode;
+
+    console.log(`[DEBUG] Request Params: rule_id=${rule_id}, test_mode=${isTestMode}`);
+
     const [rulesRes, settingsRes] = await Promise.all([
-      supabase.from('automated_notification_rules').select('*').eq('is_active', true),
+      rule_id 
+        ? supabase.from('automated_notification_rules').select('*').eq('id', rule_id)
+        : supabase.from('automated_notification_rules').select('*').eq('is_active', true),
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single()
     ]);
 
@@ -38,7 +46,7 @@ serve(async (_req: Request) => {
     const allRules = rulesRes.data;
     const attendanceSettings = settingsRes.data ? toCamelCase(settingsRes.data.attendance_settings) : {};
     
-    console.log(`[DEBUG] Found ${allRules.length} active rules`);
+    console.log(`[DEBUG] Found ${allRules.length} rules to process`);
     allRules.forEach((r: any) => console.log(`[DEBUG]   Rule: "${r.name}" | trigger=${r.trigger_type} | time=${r.config?.time} | category=${r.target_category}`));
     
     // Map roles to categories (office, field, site)
@@ -66,15 +74,15 @@ serve(async (_req: Request) => {
     const monthOfYear = nowIST.getUTCMonth() + 1;
 
     for (const rule of allRules) {
-      const shouldProcess = shouldProcessRule(rule, nowIST, dayOfWeek, dayOfMonth, monthOfYear);
+      const shouldProcess = isTestMode || shouldProcessRule(rule, nowIST, dayOfWeek, dayOfMonth, monthOfYear);
       console.log(`[DEBUG] Rule "${rule.name}" shouldProcess=${shouldProcess}`);
       if (!shouldProcess) continue;
 
-      const targets = await getTargetsForRule(supabase, rule, attendanceSettings, categoryByRoleId, now, nowIST, istOffset);
+      const targets = await getTargetsForRule(supabase, rule, attendanceSettings, categoryByRoleId, now, nowIST, istOffset, isTestMode);
       console.log(`[DEBUG] Rule "${rule.name}" found ${targets.length} targets`);
       
       if (targets.length > 0) {
-        await processNotifications(supabase, rule, targets, rule.config?.time || '', results);
+        await processNotifications(supabase, rule, targets, rule.config?.time || '', results, isTestMode);
         
         // Handle Chaining
         if (rule.config?.chained_rule_id || rule.config?.chainedRuleId) {
@@ -115,7 +123,7 @@ function shouldProcessRule(rule: any, nowIST: Date, dow: number, dom: number, mo
   return true;
 }
 
-async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: any, categoryByRoleId: Map<string, string>, _nowUTC: Date, nowIST: Date, istOffset: number) {
+async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: any, categoryByRoleId: Map<string, string>, _nowUTC: Date, nowIST: Date, istOffset: number, isTestMode: boolean) {
   // Proper IST Midnight converted back to actual UTC string for database queries
   const midnightIST = new Date(nowIST);
   midnightIST.setUTCHours(0, 0, 0, 0);
@@ -160,9 +168,9 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
           continue;
         }
 
-        const notLogged = await isNotLoggedToday(supabase, rule.id, userId, startOfTodayUTC.toISOString());
-        console.log(`[DEBUG]   notLoggedToday=${notLogged}`);
-        if (notLogged) {
+        const shouldNotify = await shouldNotifyUser(supabase, rule, userId, startOfTodayUTC.toISOString(), isTestMode);
+        console.log(`[DEBUG]   shouldNotifyUser=${shouldNotify}`);
+        if (shouldNotify) {
           targets.push({ userId, site: event.location_name });
           console.log(`[DEBUG]   TARGET ADDED: ${userId}`);
         }
@@ -193,7 +201,7 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
         
         // If current time is past their allowed window
         if (nowIST.getTime() >= shiftStartIST.getTime()) {
-            if (await isNotLoggedToday(supabase, rule.id, user.id, startOfTodayUTC.toISOString())) {
+            if (await shouldNotifyUser(supabase, rule, user.id, startOfTodayUTC.toISOString(), isTestMode)) {
                 targets.push({ userId: user.id, site: 'Scheduled Shift (Late)' });
             }
         }
@@ -207,7 +215,7 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
     if ((leaves.count || 0) + (salary.count || 0) > 0) {
       const { data: managers } = await supabase.from('users').select('id').in('role_id', ['admin_id', 'management_id']);
       for (const m of managers || []) {
-        if (await isNotLoggedToday(supabase, rule.id, m.id, startOfTodayUTC.toISOString())) {
+        if (await shouldNotifyUser(supabase, rule, m.id, startOfTodayUTC.toISOString(), isTestMode)) {
             targets.push({ userId: m.id, site: 'System Approvals' });
         }
       }
@@ -219,7 +227,7 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
          const category = categoryByRoleId.get(user.role_id) || 'office';
          if (targetCategory !== 'all' && category !== targetCategory) continue;
 
-         if (await isNotLoggedToday(supabase, rule.id, user.id, startOfTodayUTC.toISOString())) {
+         if (await shouldNotifyUser(supabase, rule, user.id, startOfTodayUTC.toISOString(), isTestMode)) {
            targets.push({ userId: user.id });
          }
       }
@@ -231,17 +239,47 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
   return targets;
 }
 
-// Ensure we only log once per day per rule per user.
-async function isNotLoggedToday(supabase: any, ruleId: string, userId: string, startOfTodayUTCStr: string) {
-  const { count } = await supabase.from('automated_notification_logs')
-    .select('*', { count: 'exact', head: true })
-    .eq('rule_id', ruleId)
+// Ensure we respect max alerts and cooldowns
+async function shouldNotifyUser(supabase: any, rule: any, userId: string, startOfTodayUTCStr: string, isTestMode: boolean) {
+  if (isTestMode) return true;
+
+  const maxAlerts = rule.max_alerts || 1;
+  const cooldownMinutes = rule.cooldown_minutes || 0;
+
+  const { data: logs, error } = await supabase.from('automated_notification_logs')
+    .select('created_at')
+    .eq('rule_id', rule.id)
     .eq('user_id', userId)
-    .gt('created_at', startOfTodayUTCStr);
-  return count === 0;
+    .gt('created_at', startOfTodayUTCStr)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error(`[shouldNotifyUser] Error fetching logs:`, error.message);
+    return false;
+  }
+
+  // 1. Max Alerts check
+  if (logs && logs.length >= maxAlerts) {
+    console.log(`[shouldNotifyUser] User ${userId} reached max alerts (${maxAlerts}) for rule ${rule.id}`);
+    return false;
+  }
+
+  // 2. Cooldown check
+  if (logs && logs.length > 0 && cooldownMinutes > 0) {
+    const lastLogTime = new Date(logs[0].created_at).getTime();
+    const now = new Date().getTime();
+    const diffMinutes = (now - lastLogTime) / (1000 * 60);
+    
+    if (diffMinutes < cooldownMinutes) {
+      console.log(`[shouldNotifyUser] Cooldown active for user ${userId} (diff=${diffMinutes.toFixed(1)}m, cooldown=${cooldownMinutes}m)`);
+      return false;
+    }
+  }
+
+  return true;
 }
 
-async function processNotifications(supabase: any, rule: any, targets: any[], checkTime: string, results: any[]) {
+async function processNotifications(supabase: any, rule: any, targets: any[], checkTime: string, results: any[], isTestMode: boolean = false) {
   if (targets.length === 0) return;
   
   for (const target of targets) {
@@ -276,7 +314,11 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
           message: body,
           enable_sms: rule.enable_sms,
           sms_message: smsMsg,
-          metadata: { rule_id: rule.id, source: 'automation_engine' }
+          metadata: { 
+            rule_id: rule.id, 
+            source: 'automation_engine',
+            test_mode: isTestMode 
+          }
       })
     });
 

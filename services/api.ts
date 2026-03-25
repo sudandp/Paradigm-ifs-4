@@ -3508,9 +3508,19 @@ export const api = {
   },
 
   deleteAutomatedRule: async (id: string | number): Promise<void> => {
-    // Determine if the ID is a number or a UUID
     const targetId = (typeof id === 'string' && !id.includes('-')) ? parseInt(id) : id;
     const { error } = await supabase.from('automated_notification_rules').delete().eq('id', targetId);
+    if (error) throw error;
+  },
+
+  testAutomatedRule: async (id: string | number): Promise<void> => {
+    const targetId = (typeof id === 'string' && !id.includes('-')) ? parseInt(id) : id;
+    const { error } = await supabase.functions.invoke('process-notification-rules', {
+        body: { 
+            rule_id: targetId,
+            test_mode: true 
+        }
+    });
     if (error) throw error;
   },
   
