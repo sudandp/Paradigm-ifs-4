@@ -1415,6 +1415,7 @@ export interface NotificationRule {
   recipientUserId?: string;
   isEnabled: boolean;
   sendAlert: boolean;
+  sendPush: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1424,6 +1425,7 @@ export interface AutomatedNotificationRule {
   name: string;
   description?: string;
   triggerType: 'missed_punch_out' | 'late_arrival' | string;
+  targetCategory?: string;
   isActive: boolean;
   config: {
     time?: string;
@@ -1443,6 +1445,20 @@ export interface AutomatedNotificationRule {
   enableSms: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ScheduledNotification {
+  id: string;
+  title?: string;
+  message: string;
+  type?: string;
+  targetRole?: string;
+  targetUserIds?: string[];
+  scheduledAt: string;
+  isSent: boolean;
+  createdAt: string;
+  createdBy?: string;
+  processedAt?: string;
 }
 
 // Manpower Details Type

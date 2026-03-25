@@ -226,6 +226,13 @@ export const useAuthStore = create<AuthState>()(
                 await Preferences.set({ key: 'rememberedEmail', value: email });
                 await Preferences.set({ key: 'supabase.auth.rememberMe', value: data.session.refresh_token });
                 
+                // USER REQUEST: Optionally remember password for convenience (Web App)
+                if (rememberMe) {
+                    await Preferences.set({ key: 'rememberedPassword', value: password });
+                } else {
+                    await Preferences.remove({ key: 'rememberedPassword' });
+                }
+                
                 const appUser = await authService.getAppUserProfile(data.user);
 
                 if (appUser) {
@@ -348,6 +355,7 @@ export const useAuthStore = create<AuthState>()(
             // Clear all persistent tokens on logout
             await Preferences.remove({ key: 'supabase.auth.rememberMe' });
             await Preferences.remove({ key: 'rememberedEmail' });
+            await Preferences.remove({ key: 'rememberedPassword' });
             
             // Trigger the actual sign out
             await authService.signOut();

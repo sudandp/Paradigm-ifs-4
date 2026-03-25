@@ -29,7 +29,7 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
         // Fetch rules directly instead of using api.getNotificationRules
         const { data: rulesData, error: rulesError } = await supabase
             .from('notification_rules')
-            .select('*, send_alert')
+            .select('*')
             .order('created_at', { ascending: false });
             
         if (rulesError) throw rulesError;
@@ -39,18 +39,22 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
             recipientRole: r.recipient_role,
             recipientUserId: r.recipient_user_id,
             isEnabled: r.is_enabled,
-            sendAlert: r.send_alert
+            sendAlert: r.send_alert,
+            sendPush: r.send_push
         }));
 
         const activeRules = rules.filter(r => r.eventType === eventType && r.isEnabled);
         
-        // userId -> shouldSendAlert
-        const recipients: Map<string, boolean> = new Map();
+        // userId -> { shouldSendAlert, shouldSendPush }
+        const recipients: Map<string, { sendAlert: boolean, sendPush: boolean }> = new Map();
         
         for (const rule of activeRules) {
             const runner = async (userId: string) => {
-                const existing = recipients.get(userId);
-                recipients.set(userId, existing || rule.sendAlert || false);
+                const existing = recipients.get(userId) || { sendAlert: false, sendPush: false };
+                recipients.set(userId, {
+                    sendAlert: existing.sendAlert || rule.sendAlert || false,
+                    sendPush: existing.sendPush || rule.sendPush || false
+                });
             };
 
             if (rule.recipientUserId) {
@@ -81,12 +85,12 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
 
         if (recipients.size > 0) {
             const message = `${data.actorName} ${data.actionText}${data.locString}`;
-            const notifications = Array.from(recipients.entries()).map(([userId, sendAlert]) => ({
+            const notifications = Array.from(recipients.entries()).map(([userId, flags]) => ({
                 user_id: userId,
                 message,
-                type: sendAlert ? 'security' : getNotificationTypeForEvent(eventType),
+                type: flags.sendAlert ? 'security' : getNotificationTypeForEvent(eventType),
                 link_to: data.link,
-                severity: data.severity || (sendAlert ? 'High' : (eventType === 'violation' ? 'Medium' : 'Low')),
+                severity: data.severity || (flags.sendAlert ? 'High' : (eventType === 'violation' ? 'Medium' : 'Low')),
                 metadata: {
                     ...data.metadata,
                     employeeName: data.actor.name,
@@ -98,10 +102,13 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
             
             await supabase.from('notifications').insert(notifications);
 
-            // Trigger real push notification via FCM Edge Function for specific types
+            // Trigger real push notification via FCM Edge Function for specific types or explicit rules
             const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast'];
             const pushRecipients = notifications
-                .filter(n => triggerPushTypes.includes(n.type))
+                .filter((n) => {
+                    const flags = recipients.get(n.user_id);
+                    return triggerPushTypes.includes(n.type) || (flags?.sendPush === true);
+                })
                 .map(n => n.user_id);
 
             if (pushRecipients.length > 0) {

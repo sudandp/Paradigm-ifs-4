@@ -97,8 +97,14 @@ const Login: React.FC = () => {
     useEffect(() => {
         const checkRememberedEmail = async () => {
             const { value: rememberedEmail } = await Preferences.get({ key: 'rememberedEmail' });
+            const { value: rememberedPassword } = await Preferences.get({ key: 'rememberedPassword' });
+            
             if (rememberedEmail) {
                 setValue('email', rememberedEmail);
+                setValue('rememberMe', true);
+            }
+            if (rememberedPassword) {
+                setValue('password', rememberedPassword);
                 setValue('rememberMe', true);
             }
         };

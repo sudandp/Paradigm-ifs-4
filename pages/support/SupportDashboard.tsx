@@ -495,8 +495,10 @@ const SupportDashboard: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                         <div className="flex items-center gap-2 mr-2">
-                            <label className="text-sm font-medium text-muted cursor-pointer flex items-center gap-2">
+                            <label htmlFor="show-all-scores" className="text-sm font-medium text-muted cursor-pointer flex items-center gap-2">
                                 <input
+                                    id="show-all-scores"
+                                    name="show-all-scores"
                                     type="checkbox"
                                     checked={showAllScores}
                                     onChange={(e) => setShowAllScores(e.target.checked)}
@@ -506,6 +508,9 @@ const SupportDashboard: React.FC = () => {
                             </label>
                         </div>
                         <select
+                            id="role-filter"
+                            name="role-filter"
+                            aria-label="Filter by role"
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
                             className="px-3 py-2 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/30"
@@ -618,6 +623,8 @@ const SupportDashboard: React.FC = () => {
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                 <Input
                                     id="search"
+                                    name="search"
+                                    aria-label="Search tickets"
                                     placeholder="Search tickets..."
                                     className="!pl-10 bg-gray-50 border-gray-200"
                                     value={filters.searchTerm}
@@ -627,6 +634,9 @@ const SupportDashboard: React.FC = () => {
                             <div className="flex gap-2">
                                 <div className="w-32 sm:w-40">
                                     <Select
+                                        id="status-filter"
+                                        name="status-filter"
+                                        aria-label="Filter by status"
                                         value={filters.status}
                                         onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
                                         className="bg-gray-50 border-gray-200"
@@ -641,6 +651,9 @@ const SupportDashboard: React.FC = () => {
                                 </div>
                                 <div className="w-32 sm:w-40">
                                     <Select
+                                        id="priority-filter"
+                                        name="priority-filter"
+                                        aria-label="Filter by priority"
                                         value={filters.priority}
                                         onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
                                         className="bg-gray-50 border-gray-200"

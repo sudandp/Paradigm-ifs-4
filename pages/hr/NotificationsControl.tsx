@@ -36,8 +36,10 @@ import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import { api } from '../../services/api';
 import type { NotificationRule, NotificationType, User as AppUser, Role } from '../../types';
+import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import AdvancedNotificationSettings from '../admin/AdvancedNotificationSettings';
+import NotificationPlanner from './NotificationPlannerUI';
 import { APP_EVENT_TYPES } from '../../utils/notificationTypes';
 
 
@@ -60,7 +62,8 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
 ];
 
 const NotificationsControl: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated'>('rules');
+    const { user } = useAuthStore();
+    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner'>('rules');
     const [rules, setRules] = useState<NotificationRule[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
@@ -68,13 +71,17 @@ const NotificationsControl: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    
+    const role = (user?.role || '').toLowerCase();
+    const isNotificationManager = ['admin', 'super_admin', 'management', 'hr', 'hr_ops', 'notification_manager', 'developer'].includes(role);
 
     // New Rule Form State
     const [newRule, setNewRule] = useState<Partial<NotificationRule>>({
         eventType: 'check_in',
         recipientRole: 'direct_manager',
         isEnabled: true,
-        sendAlert: false
+        sendAlert: false,
+        sendPush: false
     });
 
     // Broadcast Form State
@@ -131,7 +138,9 @@ const NotificationsControl: React.FC = () => {
             eventType: rule.eventType,
             recipientRole: rule.recipientRole,
             recipientUserId: rule.recipientUserId,
-            isEnabled: rule.isEnabled
+            isEnabled: rule.isEnabled,
+            sendPush: rule.sendPush,
+            sendAlert: rule.sendAlert
         });
         setIsEditing(true);
         // Scroll to form on mobile
@@ -141,7 +150,7 @@ const NotificationsControl: React.FC = () => {
     };
 
     const cancelEdit = () => {
-        setNewRule({ eventType: 'check_in', recipientRole: 'direct_manager', isEnabled: true, sendAlert: false });
+        setNewRule({ eventType: 'check_in', recipientRole: 'direct_manager', isEnabled: true, sendAlert: false, sendPush: false });
         setIsEditing(false);
     };
 
@@ -191,14 +200,6 @@ const NotificationsControl: React.FC = () => {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-            </div>
-        );
-    }
-
-    if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
     }
 
@@ -207,16 +208,35 @@ const NotificationsControl: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <AdminPageHeader title="Notification Management">
-                <div className="flex gap-2">
-                    <Button variant="secondary" onClick={() => setActiveTab('rules')} className={activeTab === 'rules' ? 'bg-accent text-white' : ''}>
-                        <Settings className="mr-2 h-4 w-4" /> Rules
-                    </Button>
-                    <Button variant="secondary" onClick={() => setActiveTab('broadcast')} className={activeTab === 'broadcast' ? 'bg-accent text-white' : ''}>
-                        <Send className="mr-2 h-4 w-4" /> Broadcast
-                    </Button>
-                    <Button variant="secondary" onClick={() => setActiveTab('automated')} className={activeTab === 'automated' ? 'bg-accent text-white' : ''}>
-                        <Zap className="mr-2 h-4 w-4" /> Automated Alerts
-                    </Button>
+                <div className="flex p-1 bg-slate-100/50 rounded-xl border border-slate-200/50 backdrop-blur-sm">
+                    <button 
+                        onClick={() => setActiveTab('rules')} 
+                        className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'rules' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        <Settings className="mr-2 h-3.5 w-3.5" /> Rules
+                    </button>
+                    {isNotificationManager && (
+                        <>
+                            <button 
+                                onClick={() => setActiveTab('broadcast')} 
+                                className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'broadcast' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Send className="mr-2 h-3.5 w-3.5" /> Broadcast
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('automated')} 
+                                className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'automated' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Zap className="mr-2 h-3.5 w-3.5" /> Automated
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('planner')} 
+                                className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'planner' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Clock className="mr-2 h-3.5 w-3.5" /> Planner
+                            </button>
+                        </>
+                    )}
                 </div>
             </AdminPageHeader>
 
@@ -281,6 +301,12 @@ const NotificationsControl: React.FC = () => {
                                         label="Trigger standard Alert / Warning UI"
                                         checked={newRule.sendAlert}
                                         onChange={(e) => setNewRule({ ...newRule, sendAlert: e.target.checked })}
+                                    />
+                                    <Checkbox 
+                                        id="newRuleSendPush"
+                                        label="Trigger Real-time Push Notification"
+                                        checked={newRule.sendPush}
+                                        onChange={(e) => setNewRule({ ...newRule, sendPush: e.target.checked })}
                                     />
                                     <Button className="w-full" onClick={handleAddRule} isLoading={isSaving}>
                                         {isEditing ? 'Update Rule' : 'Create Rule'}
@@ -362,6 +388,22 @@ const NotificationsControl: React.FC = () => {
                                                     />
                                                 </div>
                                                 <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-muted uppercase font-bold tracking-wider">Push</span>
+                                                    <Checkbox 
+                                                        id={`push-${rule.id}`} 
+                                                        label=""
+                                                        checked={rule.sendPush} 
+                                                        onChange={async () => {
+                                                            try {
+                                                                const updated = await api.saveNotificationRule({ ...rule, sendPush: !rule.sendPush });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {
+                                                                setToast({ message: 'Failed to update push setting.', type: 'error' });
+                                                            }
+                                                        }} 
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2">
                                                     <span className="text-[10px] text-muted uppercase font-bold tracking-wider">Active</span>
                                                     <Checkbox 
                                                         id={`rule-${rule.id}`} 
@@ -395,6 +437,8 @@ const NotificationsControl: React.FC = () => {
                 </div>
             ) : activeTab === 'automated' ? (
                 <AdvancedNotificationSettings hideHeader={true} />
+            ) : activeTab === 'planner' ? (
+                <NotificationPlanner />
             ) : (
                 <div className="space-y-6">
                     <section className="bg-card p-8 rounded-2xl border border-border shadow-lg">

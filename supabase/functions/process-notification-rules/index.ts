@@ -38,19 +38,27 @@ serve(async (_req: Request) => {
     const allRules = rulesRes.data;
     const attendanceSettings = settingsRes.data ? toCamelCase(settingsRes.data.attendance_settings) : {};
     
+    console.log(`[DEBUG] Found ${allRules.length} active rules`);
+    allRules.forEach((r: any) => console.log(`[DEBUG]   Rule: "${r.name}" | trigger=${r.trigger_type} | time=${r.config?.time} | category=${r.target_category}`));
+    
     // Map roles to categories (office, field, site)
     const roleMapping = attendanceSettings.missedCheckoutConfig?.roleMapping || {};
+    console.log(`[DEBUG] roleMapping from settings: ${JSON.stringify(roleMapping)}`);
+    
     const categoryByRoleId = new Map<string, string>();
     Object.entries(roleMapping).forEach(([category, roleIds]) => {
       if (Array.isArray(roleIds)) {
         roleIds.forEach(id => categoryByRoleId.set(id, category));
       }
     });
+    console.log(`[DEBUG] categoryByRoleId map has ${categoryByRoleId.size} entries`);
 
     const results: Array<{user: string, rule: string}> = [];
     const now = new Date(); // Original UTC Time
     const istOffset = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(now.getTime() + istOffset);
+    
+    console.log(`[DEBUG] Current IST: ${nowIST.getUTCHours()}:${String(nowIST.getUTCMinutes()).padStart(2, '0')}`);
     
     // Day/Month variables need to be evaluated based on the IST date
     const dayOfWeek = nowIST.getUTCDay();
@@ -58,9 +66,12 @@ serve(async (_req: Request) => {
     const monthOfYear = nowIST.getUTCMonth() + 1;
 
     for (const rule of allRules) {
-      if (!shouldProcessRule(rule, nowIST, dayOfWeek, dayOfMonth, monthOfYear)) continue;
+      const shouldProcess = shouldProcessRule(rule, nowIST, dayOfWeek, dayOfMonth, monthOfYear);
+      console.log(`[DEBUG] Rule "${rule.name}" shouldProcess=${shouldProcess}`);
+      if (!shouldProcess) continue;
 
       const targets = await getTargetsForRule(supabase, rule, attendanceSettings, categoryByRoleId, now, nowIST, istOffset);
+      console.log(`[DEBUG] Rule "${rule.name}" found ${targets.length} targets`);
       
       if (targets.length > 0) {
         await processNotifications(supabase, rule, targets, rule.config?.time || '', results);
@@ -77,6 +88,7 @@ serve(async (_req: Request) => {
       }
     }
 
+    console.log(`[DEBUG] Final results: ${results.length} notifications sent`);
     return new Response(JSON.stringify({ success: true, processedCount: results.length }), { headers: { "Content-Type": "application/json" } });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -109,20 +121,51 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
   midnightIST.setUTCHours(0, 0, 0, 0);
   const startOfTodayUTC = new Date(midnightIST.getTime() - istOffset);
   
+  const targetCategory = rule.target_category || rule.targetCategory || 'all';
   const targets = [];
   
-
   // Duration offset in minutes (e.g. late by 30 mins)
   const durationOffset = rule.config?.durationMinutes || 0;
 
   if (rule.trigger_type === 'missed_punch_out') {
     // Has a user punched in but not punched out?
     const { data: latestEvents } = await supabase.from('attendance_events').select('user_id, type, location_name').gt('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: false });
+    
+    console.log(`[DEBUG] missed_punch_out: Found ${latestEvents?.length || 0} events today (since ${startOfTodayUTC.toISOString()})`);
+    
+    // Get unique latest event per user
     const userLatest = new Map();
     latestEvents?.forEach((e: any) => { if(!userLatest.has(e.user_id)) userLatest.set(e.user_id, e); });
+    
+    console.log(`[DEBUG] missed_punch_out: ${userLatest.size} unique users with events today`);
+    
+    // Fetch user details for category filtering
+    const userIds = Array.from(userLatest.keys());
+    const { data: userData } = await supabase.from('users').select('id, name, role_id').in('id', userIds);
+    const userCategoryMap = new Map();
+    userData?.forEach((u: any) => {
+      const cat = categoryByRoleId.get(u.role_id) || 'office';
+      userCategoryMap.set(u.id, cat);
+      console.log(`[DEBUG]   User "${u.name}" role=${u.role_id} → category=${cat}`);
+    });
+
     for (const [userId, event] of userLatest.entries()) {
+      const userCat = userCategoryMap.get(userId);
+      console.log(`[DEBUG]   Checking user ${userId}: lastEvent=${event.type}, category=${userCat}, targetCategory=${targetCategory}`);
+      
       if (event.type === 'punch-in') {
-        if (await isNotLoggedToday(supabase, rule.id, userId, startOfTodayUTC.toISOString())) targets.push({ userId, site: event.location_name });
+        // Filter by category if not 'all'
+        if (targetCategory !== 'all' && userCat !== targetCategory) {
+          console.log(`[DEBUG]   SKIPPED: category mismatch (user=${userCat}, target=${targetCategory})`);
+          continue;
+        }
+
+        const notLogged = await isNotLoggedToday(supabase, rule.id, userId, startOfTodayUTC.toISOString());
+        console.log(`[DEBUG]   notLoggedToday=${notLogged}`);
+        if (notLogged) {
+          targets.push({ userId, site: event.location_name });
+          console.log(`[DEBUG]   TARGET ADDED: ${userId}`);
+        }
       }
     }
   } else if (rule.trigger_type === 'late_arrival') {
@@ -135,6 +178,10 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
       if (!punchedIds.has(user.id)) {
         // Calculate expected shift time based on user role
         const category = categoryByRoleId.get(user.role_id) || 'office';
+        
+        // Filter by category if not 'all'
+        if (targetCategory !== 'all' && category !== targetCategory) continue;
+
         const ruleSet = attendanceSettings[category];
         const expectedCheckInStr = ruleSet?.fixedOfficeHours?.checkInTime || '09:00';
         
@@ -167,9 +214,14 @@ async function getTargetsForRule(supabase: any, rule: any, attendanceSettings: a
     }
   } else if (rule.trigger_type === 'daily_summary') {
     // Proactive system-wide messages (like Daily Summaries)
-    const { data: users } = await supabase.from('users').select('id').eq('is_active', true);
+    const { data: users } = await supabase.from('users').select('id, role_id').eq('is_active', true);
       for (const user of users || []) {
-         if (await isNotLoggedToday(supabase, rule.id, user.id, startOfTodayUTC.toISOString())) targets.push({ userId: user.id });
+         const category = categoryByRoleId.get(user.role_id) || 'office';
+         if (targetCategory !== 'all' && category !== targetCategory) continue;
+
+         if (await isNotLoggedToday(supabase, rule.id, user.id, startOfTodayUTC.toISOString())) {
+           targets.push({ userId: user.id });
+         }
       }
     } else {
       // Unrecognized event-driven rules should not blast everyone blindly.
@@ -185,6 +237,7 @@ async function isNotLoggedToday(supabase: any, ruleId: string, userId: string, s
     .select('*', { count: 'exact', head: true })
     .eq('rule_id', ruleId)
     .eq('user_id', userId)
+    .eq('status', 'sent')
     .gt('created_at', startOfTodayUTCStr);
   return count === 0;
 }
@@ -195,16 +248,32 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
   for (const target of targets) {
     const { data: user } = await supabase.from('users').select('name, reporting_manager_id').eq('id', target.userId).single();
     const userName = user?.name || 'User';
+    const title = rule.push_title_template || 'System Alert';
     const body = (rule.push_body_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
     const smsMsg = (rule.sms_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
     
-    // Notify Employee
+    // Step 1: Insert into notifications table so the alert is visible in-app
+    try {
+      await supabase.from('notifications').insert({
+        user_id: target.userId,
+        message: `${title}: ${body}`,
+        type: 'warning',
+        is_read: false,
+        link_to: '/attendance',
+        metadata: { rule_id: rule.id, source: 'automation_engine', trigger_type: rule.trigger_type }
+      });
+      console.log(`[ProcessRules] DB notification inserted for user ${userName}`);
+    } catch (dbErr: any) {
+      console.error(`[ProcessRules] Failed to insert DB notification for ${userName}:`, dbErr.message);
+    }
+
+    // Step 2: Send FCM push notification to web & Android
     const pushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
       body: JSON.stringify({ 
           userIds: [target.userId], 
-          title: rule.push_title_template || 'System Alert', 
+          title: title, 
           message: body,
           enable_sms: rule.enable_sms,
           sms_message: smsMsg,
@@ -212,6 +281,7 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
       })
     });
 
+    // Step 3: Log result
     if (pushResp.ok) {
       await supabase.from('automated_notification_logs').insert({ 
           rule_id: rule.id, 
@@ -222,13 +292,15 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
       });
       results.push({ user: userName, rule: rule.name });
     } else {
+        const errBody = await pushResp.text();
+        console.error(`[ProcessRules] Push failed for ${userName}:`, errBody);
         await supabase.from('automated_notification_logs').insert({ 
           rule_id: rule.id, 
           user_id: target.userId, 
           trigger_type: rule.trigger_type, 
           channel: rule.enable_push ? 'push' : 'sms', 
           status: 'failed',
-          metadata: { error: await pushResp.text() }
+          metadata: { error: errBody }
       });
     }
 
@@ -237,12 +309,26 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
        const managerBody = `Manager Copy [${userName}]: ${body}`;
        const managerSmsMsg = `Manager Copy [${userName}]: ${smsMsg}`;
        
+       // Insert DB notification for manager
+       try {
+         await supabase.from('notifications').insert({
+           user_id: user.reporting_manager_id,
+           message: `${title}: ${managerBody}`,
+           type: 'info',
+           is_read: false,
+           link_to: '/attendance',
+           metadata: { rule_id: rule.id, source: 'automation_engine', is_manager_copy: true, original_user: userName }
+         });
+       } catch (e: any) {
+         console.error(`[ProcessRules] Failed to insert manager DB notification:`, e.message);
+       }
+
        const managerPushResp = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
           body: JSON.stringify({ 
               userIds: [user.reporting_manager_id], 
-              title: (rule.push_title_template || 'System Alert'), 
+              title: title, 
               message: managerBody,
               enable_sms: rule.enable_sms,
               sms_message: managerSmsMsg,

@@ -9,7 +9,7 @@ import type {
   SubmissionCostBreakdown, AppModule, Role, SupportTicket, TicketPost, TicketComment, VerificationResult, CompOffLog,
   ExtraWorkLog, PerfiosVerificationData, HolidayListItem, UniformRequestItem, IssuedTool, RecurringHolidayRule,
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
-  NotificationRule, AutomatedNotificationRule, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
+  NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
   CommunicationLog, RevisionLog, UserChild
 } from '../types';
@@ -3507,8 +3507,37 @@ export const api = {
     }
   },
 
-  deleteAutomatedRule: async (id: string): Promise<void> => {
-    const { error } = await supabase.from('automated_notification_rules').delete().eq('id', id);
+  deleteAutomatedRule: async (id: string | number): Promise<void> => {
+    // Determine if the ID is a number or a UUID
+    const targetId = (typeof id === 'string' && !id.includes('-')) ? parseInt(id) : id;
+    const { error } = await supabase.from('automated_notification_rules').delete().eq('id', targetId);
+    if (error) throw error;
+  },
+  
+  getScheduledNotifications: async (): Promise<ScheduledNotification[]> => {
+    const { data, error } = await supabase
+      .from('scheduled_notifications')
+      .select('*')
+      .order('scheduled_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  saveScheduledNotification: async (sn: Partial<ScheduledNotification>): Promise<ScheduledNotification> => {
+    const data = toSnakeCase({ ...sn, createdBy: useAuthStore.getState().user?.id });
+    if (sn.id) {
+      const { data: updated, error } = await supabase.from('scheduled_notifications').update(data).eq('id', sn.id).select().single();
+      if (error) throw error;
+      return toCamelCase(updated);
+    } else {
+      const { data: inserted, error } = await supabase.from('scheduled_notifications').insert(data).select().single();
+      if (error) throw error;
+      return toCamelCase(inserted);
+    }
+  },
+
+  deleteScheduledNotification: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('scheduled_notifications').delete().eq('id', id);
     if (error) throw error;
   },
 

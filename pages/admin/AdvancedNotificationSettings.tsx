@@ -88,8 +88,9 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
                 setToast({ message: 'Rule created successfully.', type: 'success' });
             }
             resetForm();
-        } catch (err) {
-            setToast({ message: 'Failed to save rule.', type: 'error' });
+        } catch (err: any) {
+            console.error('Save error:', err);
+            setToast({ message: `Failed to save rule: ${err.message || 'Unknown error'}`, type: 'error' });
         } finally {
             setIsSaving(false);
         }
@@ -98,16 +99,25 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
     const handleEdit = (rule: AutomatedNotificationRule) => {
         setFormData(rule);
         setIsEditing(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this automated rule?')) return;
+    const handleDelete = async (id: string | number) => {
+        // Use type-agnostic comparison for filtering
+        const ruleId = String(id);
+        
+        // Optimistic UI Update: remove it from the list immediately
+        const previousRules = [...rules];
+        setRules(current => current.filter(r => String(r.id) !== ruleId));
+        
         try {
             await api.deleteAutomatedRule(id);
-            setRules(rules.filter(r => r.id !== id));
-            setToast({ message: 'Rule deleted.', type: 'success' });
-        } catch (err) {
-            setToast({ message: 'Failed to delete rule.', type: 'error' });
+            if (String(formData.id) === ruleId) resetForm();
+        } catch (err: any) {
+            console.error('Deletion error:', err);
+            // Re-sync with original list on absolute failure
+            setRules(previousRules);
+            setToast({ message: `Delete failed: ${err.message || 'Server error'}`, type: 'error' });
         }
     };
 
@@ -115,6 +125,7 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
         setFormData({
             name: '',
             triggerType: 'missed_punch_out',
+            targetCategory: 'all',
             isActive: true,
             enablePush: true,
             enableSms: false,
@@ -176,6 +187,19 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
                                 {TRIGGER_TYPES.map(t => (
                                     <option key={t.value} value={t.value}>{t.label}</option>
                                 ))}
+                            </Select>
+
+                            <Select 
+                                label="Target Staff Category" 
+                                value={formData.targetCategory || 'all'} 
+                                onChange={e => setFormData({ ...formData, targetCategory: e.target.value })}
+                            >
+                                <option value="all">All Staff (Everyone)</option>
+                                <option value="office">Office Staff</option>
+                                <option value="field">Field Staff</option>
+                                <option value="site">Site Staff</option>
+                                <option value="admin">Admin Only</option>
+                                <option value="management">Management Only</option>
                             </Select>
 
                             <div className="p-4 bg-page/50 rounded-xl border border-dashed text-xs text-muted">
@@ -334,28 +358,44 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
                 <div className="lg:col-span-2 space-y-8">
                     {/* Template Editor */}
                     <section className="bg-card p-8 rounded-2xl border border-border shadow-sm">
-                        <h3 className="text-xl font-bold mb-6 flex items-center">
-                            <MessageSquare className="mr-3 h-6 w-6 text-accent" /> 
-                            Content Templates
-                        </h3>
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-bold flex items-center">
+                                <MessageSquare className="mr-3 h-6 w-6 text-accent" /> 
+                                Content Templates
+                            </h3>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/5 rounded-lg border border-accent/10">
+                                    <Smartphone className="h-4 w-4 text-accent" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Push</span>
+                                    <Checkbox 
+                                        id="tm-push" 
+                                        label=""
+                                        checked={formData.enablePush} 
+                                        onChange={e => setFormData({ ...formData, enablePush: e.target.checked })} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
                         
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 gap-4">
-                                <Input 
-                                    label="Push Heading" 
-                                    placeholder="Reminder: Action Required"
-                                    value={formData.pushTitleTemplate}
-                                    onChange={e => setFormData({ ...formData, pushTitleTemplate: e.target.value })}
-                                />
-                                <div className="space-y-2">
-                                    <p className="text-sm font-bold text-primary-text">Push Message Body</p>
-                                    <textarea 
-                                        className="w-full h-24 p-4 rounded-xl border border-border focus:ring-2 focus:ring-accent focus:border-accent bg-page/30"
-                                        value={formData.pushBodyTemplate}
-                                        onChange={e => setFormData({ ...formData, pushBodyTemplate: e.target.value })}
+                                <div className={!formData.enablePush ? 'opacity-40 grayscale pointer-events-none' : ''}>
+                                    <Input 
+                                        label="Push Heading" 
+                                        placeholder="Reminder: Action Required"
+                                        value={formData.pushTitleTemplate}
+                                        onChange={e => setFormData({ ...formData, pushTitleTemplate: e.target.value })}
                                     />
+                                    <div className="space-y-2 mt-4">
+                                        <p className="text-sm font-bold text-primary-text">Push Message Body</p>
+                                        <textarea 
+                                            className="w-full h-24 p-4 rounded-xl border border-border focus:ring-2 focus:ring-accent focus:border-accent bg-page/30"
+                                            value={formData.pushBodyTemplate}
+                                            onChange={e => setFormData({ ...formData, pushBodyTemplate: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-2 opacity-80">
+                                <div className={`space-y-2 pt-4 border-t border-border/50 ${!formData.enableSms ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
                                     <p className="text-sm font-bold text-primary-text flex items-center">
                                         <Smartphone className="h-4 w-4 mr-2" /> SMS Fallback Template
                                     </p>
@@ -378,40 +418,100 @@ const AdvancedNotificationSettings: React.FC<AdvancedNotificationSettingsProps> 
 
                         <div className="grid grid-cols-1 gap-4">
                             {rules.map(rule => (
-                                <div key={rule.id} className="bg-card p-5 rounded-2xl border border-border flex items-center justify-between hover:shadow-md transition-all group">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`p-3 rounded-2xl ${rule.isActive ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted grayscale'}`}>
-                                            <Bell className="h-6 w-6" />
-                                        </div>
-                                        <div>
-                                            <h4 className="font-bold text-primary-text">{rule.name}</h4>
-                                            <div className="flex items-center gap-3 mt-1">
-                                                <span className="flex items-center text-xs text-muted">
-                                                    <Clock className="h-3 w-3 mr-1" /> {rule.config?.time}
-                                                </span>
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-page font-bold text-muted uppercase tracking-wider">
-                                                    {rule.triggerType.replace('_', ' ')}
-                                                </span>
-                                                {rule.config?.notifyManager && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold uppercase tracking-wider flex items-center">
-                                                        <Users className="h-3 w-3 mr-1" /> Manager Notified
+                                <div key={rule.id} className={`bg-card p-5 rounded-2xl border transition-all group ${rule.isActive ? 'border-border' : 'border-dashed opacity-60'}`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`p-3 rounded-2xl ${rule.isActive ? 'bg-accent/10 text-accent' : 'bg-muted/10 text-muted'}`}>
+                                                <Bell className="h-6 w-6" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-primary-text">{rule.name}</h4>
+                                                <div className="flex items-center gap-3 mt-1">
+                                                    <span className="flex items-center text-xs text-muted">
+                                                        <Clock className="h-3 w-3 mr-1" /> {rule.config?.time}
                                                     </span>
-                                                )}
-                                                <div className="flex gap-1">
-                                                    {rule.enablePush && <Smartphone className="h-3 w-3 text-accent" />}
-                                                    {rule.enableSms && <MessageSquare className="h-3 w-3 text-amber-600" />}
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 font-bold text-accent uppercase tracking-wider">
+                                                        Target: {rule.targetCategory || 'all'}
+                                                    </span>
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-page font-bold text-muted uppercase tracking-wider">
+                                                        {rule.triggerType.replace('_', ' ')}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button variant="outline" size="sm" onClick={() => handleEdit(rule)}>
-                                            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
-                                        </Button>
-                                        <Button variant="secondary" size="sm" className="text-red-600 hover:bg-red-50 hover:border-red-200" onClick={() => handleDelete(rule.id)}>
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
+
+                                        <div className="flex items-center gap-6">
+                                            <div className="flex items-center gap-4 border-r border-border pr-6">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className="text-[9px] font-bold text-muted uppercase">Push</span>
+                                                    <Checkbox 
+                                                        id={`qpush-${rule.id}`} 
+                                                        label=""
+                                                        checked={rule.enablePush} 
+                                                        onChange={async (e) => {
+                                                            try {
+                                                                const updated = await api.saveAutomatedRule({ ...rule, enablePush: e.target.checked });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {
+                                                                setToast({ message: 'Failed to update push setting.', type: 'error' });
+                                                            }
+                                                        }} 
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className="text-[9px] font-bold text-muted uppercase">SMS</span>
+                                                    <Checkbox 
+                                                        id={`qsms-${rule.id}`} 
+                                                        label=""
+                                                        checked={rule.enableSms} 
+                                                        onChange={async (e) => {
+                                                            try {
+                                                                const updated = await api.saveAutomatedRule({ ...rule, enableSms: e.target.checked });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {
+                                                                setToast({ message: 'Failed to update SMS setting.', type: 'error' });
+                                                            }
+                                                        }} 
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className="text-[9px] font-bold text-muted uppercase">Active</span>
+                                                    <Checkbox 
+                                                        id={`qactive-${rule.id}`} 
+                                                        label=""
+                                                        checked={rule.isActive} 
+                                                        onChange={async (e) => {
+                                                            try {
+                                                                const updated = await api.saveAutomatedRule({ ...rule, isActive: e.target.checked });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {
+                                                                setToast({ message: 'Failed to update status.', type: 'error' });
+                                                            }
+                                                        }} 
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <Button 
+                                                    type="button"
+                                                    variant="icon" 
+                                                    onClick={(e) => { e.stopPropagation(); handleEdit(rule); }} 
+                                                    className="h-10 w-10 text-accent hover:bg-accent/5 rounded-full"
+                                                    title="Edit Rule"
+                                                >
+                                                    <Pencil className="h-5 w-5" />
+                                                </Button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(rule.id); }} 
+                                                    className="h-10 w-10 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-full transition-colors border border-transparent hover:border-red-100"
+                                                    title="Delete Rule"
+                                                >
+                                                    <Trash2 className="h-5 w-5" />
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
