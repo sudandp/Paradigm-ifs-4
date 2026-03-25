@@ -237,7 +237,6 @@ async function isNotLoggedToday(supabase: any, ruleId: string, userId: string, s
     .select('*', { count: 'exact', head: true })
     .eq('rule_id', ruleId)
     .eq('user_id', userId)
-    .eq('status', 'sent')
     .gt('created_at', startOfTodayUTCStr);
   return count === 0;
 }

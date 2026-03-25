@@ -182,7 +182,7 @@ serve(async (req: Request) => {
 async function getAccessToken(serviceAccount: any) {
   const jwt = new JWT({
     email: serviceAccount.client_email,
-    key: serviceAccount.private_key,
+    key: serviceAccount.private_key.replace(/\\n/g, '\n'), // Important: fix literal \n in secrets
     scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
   });
   const tokens = await jwt.authorize();
