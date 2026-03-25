@@ -13,6 +13,8 @@ import { api } from '../../services/api';
 import Checkbox from '../ui/Checkbox';
 import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import Toast from '../ui/Toast';
+import { useSettingsStore } from '../../store/settingsStore';
+import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 
 interface EntityFormProps {
   isOpen: boolean;
@@ -88,6 +90,7 @@ const entitySchema = yup.object({
   }).optional(),
   
   holidayConfig: yup.object({
+    holidayType: yup.string().oneOf(['company_10', 'company_12', 'custom_10', 'custom_12', '']).optional(),
     numberOfDays: yup.number().oneOf([10, 12]).optional(),
     holidays: yup.array().of(yup.object({ date: yup.string().required(), description: yup.string().required() })).optional(),
     salaryRule: yup.string().oneOf(['Full', 'Duty', 'Nil', 'Category']).optional(),
@@ -332,22 +335,43 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
   const [allDesignations, setAllDesignations] = useState<SiteStaffDesignation[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
-  const { register, handleSubmit, formState: { errors }, reset, control, watch, setValue } = useForm<Entity>({
-    resolver: yupResolver(entitySchema) as Resolver<Entity>,
-    defaultValues: {
-        emails: [{ id: `email_${Date.now()}`, email: '', isPrimary: true }],
-        siteManagement: { projectType: 'Commercial' },
-        agreements: [{ id: `agr_${Date.now()}`, renewalTriggerDays: 30, minWageTriggerDays: 15 }],
-        complianceDetails: { form6Applicable: false, minWageRevisionApplicable: true },
-        holidayConfig: { numberOfDays: 10, salaryRule: 'Full', billingRule: 'Full' },
-        billingControls: { uniformDeductions: false },
-        verificationData: {
-            categories: VERIFICATION_CATEGORIES.map(cat => ({
-                name: cat.name,
-                employmentPlusPolice: [...cat.empPlusPol],
-                policeOnly: [...cat.polOnly]
-            }))
-        }
+  const { officeHolidays } = useSettingsStore();
+
+  const { register, control, handleSubmit, watch, setValue, reset, trigger, formState: { errors } } = useForm<Entity>({
+    resolver: yupResolver(entitySchema) as any,
+    defaultValues: initialData || {
+      id: crypto.randomUUID(),
+      status: 'draft',
+      name: '',
+      emails: [{ id: crypto.randomUUID(), email: '', isPrimary: true }],
+      complianceDetails: {
+        form6Applicable: false,
+        minWageRevisionApplicable: false
+      },
+      holidayConfig: {
+        numberOfDays: 10,
+        holidayType: '',
+        holidays: [],
+        salaryRule: 'Full',
+        billingRule: 'Full'
+      },
+      assetTracking: {
+        tools: [],
+        equipment: []
+      },
+      siteManagement: {
+        projectType: 'Residential',
+        siteAreaSqFt: 0,
+        unitCount: 0
+      },
+      billingControls: { uniformDeductions: false },
+      verificationData: {
+        categories: VERIFICATION_CATEGORIES.map(cat => ({
+          name: cat.name,
+          employmentPlusPolice: [...cat.empPlusPol],
+          policeOnly: [...cat.polOnly]
+        }))
+      }
     }
 });
 
@@ -429,7 +453,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 siteManagement: { projectType: 'Commercial' },
                 agreements: [{ id: `agr_${Date.now()}`, renewalTriggerDays: 30, minWageTriggerDays: 15 }],
                 complianceDetails: { form6Applicable: false, minWageRevisionApplicable: true },
-                holidayConfig: { numberOfDays: 10, salaryRule: 'Full', billingRule: 'Full' },
+                holidayConfig: { numberOfDays: 10, holidayType: '', holidays: [], salaryRule: 'Full', billingRule: 'Full' },
                 verificationData: {
                     categories: VERIFICATION_CATEGORIES.map(cat => ({
                         name: cat.name,
@@ -867,55 +891,181 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             {activeTab === 'Holidays' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
-                        <Select label="Total Festival Holidays" id="holidayCount" registration={register('holidayConfig.numberOfDays')}>
-                            <option value={10}>10 Days</option>
-                            <option value={12}>12 Days</option>
-                        </Select>
-                        <Input label="Logic Variation (e.g. 1+1, 1.5)" id="logicVariation" registration={register('holidayConfig.logicVariation')} placeholder="Overrides default rules" />
+                        <div className="space-y-4">
+                            <Select 
+                                label="Holiday Policy Type" 
+                                id="holidayType" 
+                                registration={register('holidayConfig.holidayType')}
+                                onChange={(e) => {
+                                    const val = e.target.value as 'company_10' | 'company_12' | 'custom_10' | 'custom_12' | '';
+                                    setValue('holidayConfig.holidayType', val);
+                                    
+                                    // Handle auto-population for policy types
+                                    if (val !== '') {
+                                        const limit = (val === 'company_10' || val === 'custom_10') ? 10 : 12;
+                                        setValue('holidayConfig.numberOfDays', limit);
+                                        
+                                        const currentYear = new Date().getFullYear();
+                                        let initialHolidays: any[] = [];
+
+                                        if (val.startsWith('company_')) {
+                                            // Start with global office holidays + fixed
+                                            initialHolidays = [
+                                                ...FIXED_HOLIDAYS.map(fh => ({
+                                                    date: `${currentYear}-${fh.date}`,
+                                                    description: fh.name
+                                                })),
+                                                ...officeHolidays.map(h => ({
+                                                    date: h.date,
+                                                    description: h.name
+                                                }))
+                                            ];
+                                        } else {
+                                            // Start with only fixed holidays
+                                            initialHolidays = FIXED_HOLIDAYS.map(fh => ({
+                                                date: `${currentYear}-${fh.date}`,
+                                                description: fh.name
+                                            }));
+                                        }
+
+                                        // Deduplicate and sort
+                                        const uniqueHolidays = Array.from(new Map(
+                                            initialHolidays.map(h => [h.date + h.description, h])
+                                        ).values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                        
+                                        setValue('holidayConfig.holidays', uniqueHolidays.slice(0, limit));
+                                    }
+                                }}
+                            >
+                                <option value="">Select Policy</option>
+                                <option value="company_10">Company 10 Days Holiday</option>
+                                <option value="company_12">Company 12 Days Holiday</option>
+                                <option value="custom_10">Custom Client 10 Holiday</option>
+                                <option value="custom_12">Custom Client 12 Holiday</option>
+                            </Select>
+                            <Input label="Logic Variation (e.g. 1+1, 1.5)" id="logicVariation" registration={register('holidayConfig.logicVariation')} placeholder="Overrides default rules" />
+                        </div>
                         
-                        <Select label="Salary Rule for Holiday" id="salaryRule" registration={register('holidayConfig.salaryRule')}>
-                            <option value="Full">Full Payment</option>
-                            <option value="Duty">Duty Payment</option>
-                            <option value="Nil">Nil Payment</option>
-                            <option value="Category">Category Wise</option>
-                        </Select>
-                        <Select label="Billing Rule for Holiday" id="billingRule" registration={register('holidayConfig.billingRule')}>
-                            <option value="Full">Full Payment</option>
-                            <option value="Duty">Duty Payment</option>
-                            <option value="Nil">Nil Payment</option>
-                            <option value="Category">Category Wise</option>
-                        </Select>
+                        <div className="space-y-4">
+                            <Select label="Salary Rule for Holiday" id="salaryRule" registration={register('holidayConfig.salaryRule')}>
+                                <option value="Full">Full Payment</option>
+                                <option value="Duty">Duty Payment</option>
+                                <option value="Nil">Nil Payment</option>
+                                <option value="Category">Category Wise</option>
+                            </Select>
+                            <Select label="Billing Rule for Holiday" id="billingRule" registration={register('holidayConfig.billingRule')}>
+                                <option value="Full">Full Payment</option>
+                                <option value="Duty">Duty Payment</option>
+                                <option value="Nil">Nil Payment</option>
+                                <option value="Category">Category Wise</option>
+                            </Select>
+                        </div>
                     </div>
                     
                     <div className="space-y-4 pt-4 border-t">
                         <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold flex items-center gap-2"><Calendar className="h-4 w-4" /> National & Festival Holiday List</h4>
+                            <h4 className="text-sm font-semibold flex items-center gap-2">
+                                <Calendar className="h-4 w-4" /> 
+                                {watch('holidayConfig.holidayType')?.startsWith('company_') ? 'Company Provided List' : 'Client Selected List'} 
+                                ({watch('holidayConfig.holidays')?.length || 0} / {watch('holidayConfig.numberOfDays') || 0})
+                            </h4>
                             <Button type="button" variant="secondary" size="sm" onClick={() => {
                                 const holidays = watch('holidayConfig.holidays') || [];
-                                setValue('holidayConfig.holidays', [...holidays, { date: '', description: '' }]);
+                                if (holidays.length < (watch('holidayConfig.numberOfDays') || 10)) {
+                                    setValue('holidayConfig.holidays', [...holidays, { date: '', description: '' }]);
+                                }
                             }}>
-                                <Plus className="h-4 w-4 mr-1" /> Add Holiday
+                                <Plus className="h-4 w-4 mr-1" /> Add Custom Holiday
                             </Button>
                         </div>
-                        
-                        {(watch('holidayConfig.holidays') || []).map((_, index) => (
-                            <div key={index} className="grid grid-cols-12 gap-3 items-end bg-accent/5 p-3 rounded-lg border border-accent/20">
-                                <div className="col-span-11 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <Controller name={`holidayConfig.holidays.${index}.date`} control={control} render={({ field }) => (
-                                        <DatePicker label="Date" id={`holidayDate-${index}`} value={field.value} onChange={field.onChange} />
-                                    )} />
-                                    <Input label="Description" id={`holidayDesc-${index}`} registration={register(`holidayConfig.holidays.${index}.description` as const)} />
-                                </div>
-                                <div className="col-span-1 flex justify-center">
-                                    <Button type="button" variant="icon" onClick={() => {
-                                        const holidays = watch('holidayConfig.holidays') || [];
-                                        setValue('holidayConfig.holidays', holidays.filter((__, i) => i !== index));
-                                    }} className="text-destructive">
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+
+                        {watch('holidayConfig.holidayType') !== '' && (
+                            <div className="bg-accent/5 p-4 rounded-xl border border-accent/20 mb-4 animate-fade-in">
+                                <h5 className="text-xs font-bold text-muted uppercase mb-3 px-1">
+                                    {watch('holidayConfig.holidayType')?.startsWith('company_') ? 'Select from Company Master Pool' : 'Quick Select from Master Pool'}
+                                </h5>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                                    {HOLIDAY_SELECTION_POOL.map(ph => {
+                                        const currentYear = new Date().getFullYear();
+                                        const poolDate = `${currentYear}${ph.date}`;
+                                        const isSelected = (watch('holidayConfig.holidays') || []).some(h => h.date === poolDate);
+                                        const limit = watch('holidayConfig.numberOfDays') || 10;
+                                        const currentCount = (watch('holidayConfig.holidays') || []).length;
+
+                                        return (
+                                            <button
+                                                key={ph.name + ph.date}
+                                                type="button"
+                                                disabled={!isSelected && currentCount >= limit}
+                                                onClick={() => {
+                                                    const holidays = watch('holidayConfig.holidays') || [];
+                                                    if (isSelected) {
+                                                        setValue('holidayConfig.holidays', holidays.filter(h => h.date !== poolDate));
+                                                    } else if (currentCount < limit) {
+                                                        setValue('holidayConfig.holidays', [...holidays, { date: poolDate, description: ph.name }]);
+                                                    }
+                                                }}
+                                                className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all text-left group ${
+                                                    isSelected 
+                                                    ? 'bg-accent text-white border-accent' 
+                                                    : 'bg-white hover:border-accent/50 text-primary-text border-border/50 disabled:opacity-50'
+                                                }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${isSelected ? 'border-white bg-white/20' : 'border-border group-hover:border-accent/30'}`}>
+                                                    {isSelected && <CheckCircle className="h-3 w-3" />}
+                                                </div>
+                                                <div className="flex-grow truncate">
+                                                    <div className="font-semibold">{ph.name}</div>
+                                                    <div className={isSelected ? 'text-white/70' : 'text-muted'}>{ph.date.substring(1)}</div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                        ))}
+                        )}
+                        
+                        {(watch('holidayConfig.holidays') || []).map((holiday, index) => {
+                            const isFixed = FIXED_HOLIDAYS.some(fh => holiday.description === fh.name);
+                            return (
+                                <div key={index} className={`grid grid-cols-12 gap-3 items-end p-3 rounded-lg border transition-all ${isFixed ? 'bg-primary/5 border-primary/20' : 'bg-accent/5 border-accent/20'}`}>
+                                    <div className="col-span-11 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <Controller name={`holidayConfig.holidays.${index}.date`} control={control} render={({ field }) => (
+                                            <DatePicker 
+                                                label="Date" 
+                                                id={`holidayDate-${index}`} 
+                                                value={field.value} 
+                                                onChange={field.onChange} 
+                                                disabled={isFixed || watch('holidayConfig.holidayType')?.startsWith('company_')} 
+                                            />
+                                        )} />
+                                        <Input 
+                                            label="Description" 
+                                            id={`holidayDesc-${index}`} 
+                                            registration={register(`holidayConfig.holidays.${index}.description` as const)} 
+                                            disabled={isFixed || watch('holidayConfig.holidayType')?.startsWith('company_')} 
+                                        />
+                                    </div>
+                                    <div className="col-span-1 flex justify-center">
+                                        {!isFixed && !watch('holidayConfig.holidayType')?.startsWith('company_') && (
+                                            <Button type="button" variant="icon" onClick={() => {
+                                                const holidays = watch('holidayConfig.holidays') || [];
+                                                setValue('holidayConfig.holidays', holidays.filter((__, i) => i !== index));
+                                            }} className="text-destructive">
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        )}
+                                        {isFixed && <ShieldCheck className="h-5 w-5 text-primary opacity-50 mb-2" title="Fixed Holiday" />}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {(!watch('holidayConfig.holidays') || watch('holidayConfig.holidays')?.length === 0) && (
+                            <div className="text-center py-12 bg-accent/5 rounded-xl border-2 border-dashed border-accent/20">
+                                <Calendar className="h-12 w-12 text-accent/30 mx-auto mb-3" />
+                                <p className="text-muted text-sm">Select a Holiday Policy Type above to get started.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

@@ -517,6 +517,7 @@ export interface Entity {
     minWageRevisionValidityTo?: string;
   };
   holidayConfig?: {
+    holidayType?: 'company_10' | 'company_12' | 'custom_10' | 'custom_12' | '';
     numberOfDays?: 10 | 12;
     holidays?: { date: string; description: string; }[];
     salaryRule?: 'Full' | 'Duty' | 'Nil' | 'Category';

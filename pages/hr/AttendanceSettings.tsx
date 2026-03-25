@@ -903,6 +903,58 @@ const AttendanceSettings: React.FC = () => {
                         </form>
                     </div>
 
+                    <div className="bg-accent/5 p-4 rounded-xl border border-accent/20 my-6 animate-fade-in shadow-sm">
+                        <div className="flex items-center justify-between mb-3 px-1">
+                            <h5 className="text-xs font-bold text-muted uppercase flex items-center gap-2">
+                                <Plus className="h-3 w-3" /> Quick Select from Master Pool
+                            </h5>
+                            <span className="text-[10px] bg-accent/20 text-accent-dark px-2 py-0.5 rounded-full font-bold">
+                                {currentHolidays.length} / {currentRules.maxHolidaysPerCategory || 10}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                            {(currentRules.holidayPool || HOLIDAY_SELECTION_POOL).map((ph) => {
+                                const poolDate = `${currentYear}${ph.date}`;
+                                const isSelected = currentHolidays.some(h => h.date === poolDate || (h.id.startsWith('fixed-') && h.name === ph.name));
+                                const limit = currentRules.maxHolidaysPerCategory || 10;
+
+                                return (
+                                    <button
+                                        key={ph.name + ph.date}
+                                        type="button"
+                                        disabled={!isSelected && currentHolidays.length >= limit}
+                                        onClick={async () => {
+                                            if (isSelected) {
+                                                const holiday = currentHolidays.find(h => h.date === poolDate && !h.id.startsWith('fixed-'));
+                                                if (holiday) handleRemoveHoliday(holiday.id);
+                                            } else if (currentHolidays.length < limit) {
+                                                try {
+                                                    await addHoliday(activeTab as 'office' | 'field' | 'site', { name: ph.name, date: poolDate });
+                                                    setToast({ message: `${ph.name} added to allocated list.`, type: 'success' });
+                                                } catch (e) {
+                                                    setToast({ message: 'Failed to add holiday.', type: 'error' });
+                                                }
+                                            }
+                                        }}
+                                        className={`flex items-center gap-2 px-3 py-2 text-xs rounded-lg border transition-all text-left group ${
+                                            isSelected 
+                                            ? 'bg-accent/20 text-accent-dark border-accent/50' 
+                                            : 'bg-white hover:border-accent/50 text-primary-text border-border/50 disabled:opacity-50'
+                                        }`}
+                                    >
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${isSelected ? 'border-accent bg-accent text-white shadow-sm shadow-accent/50 scale-110' : 'border-border group-hover:border-accent/30'}`}>
+                                            {isSelected && <Plus className="h-3 w-3 rotate-45" />}
+                                        </div>
+                                        <div className="flex-grow truncate">
+                                            <div className="font-semibold">{ph.name}</div>
+                                            <div className={isSelected ? 'text-accent-dark/70' : 'text-muted'}>{ph.date}</div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     {currentRules.enableCustomHolidays && (
                         <div className="mt-8 pt-6 border-t border-border/50">
                             <h4 className="font-semibold mb-2 flex items-center text-primary-text">
