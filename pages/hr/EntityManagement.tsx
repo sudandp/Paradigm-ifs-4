@@ -103,6 +103,7 @@ const EntityManagement: React.FC = () => {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [activeSubcategory, setActiveSubcategory] = useState<string>('client_structure');
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedLocation, setSelectedLocation] = useState<string>('Bangalore');
     const [viewingClients, setViewingClients] = useState<{ companyName: string; clients: Entity[] } | null>(null);
     const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -134,9 +135,9 @@ const EntityManagement: React.FC = () => {
 
     const allCompanies = useMemo(() => groups.flatMap(g => g.companies), [groups]);
     const existingLocations = useMemo(() => {
-        return Array.from(new Set(
-            groups.flatMap(g => g.companies.map(c => c.location).filter(Boolean) as string[])
-        )).sort();
+        const companyLocations = groups.flatMap(g => g.companies.map(c => c.location));
+        const entityLocations = groups.flatMap(g => g.companies.flatMap(c => c.entities.map(e => e.location)));
+        return Array.from(new Set([...companyLocations, ...entityLocations].filter(Boolean) as string[])).sort();
     }, [groups]);
 
     useEffect(() => {
@@ -159,45 +160,72 @@ const EntityManagement: React.FC = () => {
     }, []);
 
     const filteredGroups = useMemo(() => {
-        if (!searchTerm.trim()) {
-            return groups;
-        }
-        const lower = searchTerm.toLowerCase();
+        const lowerSearch = searchTerm.toLowerCase().trim();
+        const locFilter = selectedLocation;
 
         return groups.map(group => {
-            if (group.name.toLowerCase().includes(lower)) {
-                return group; // Group name matches, include whole group
-            }
+            // If searching by text and group name matches, we might include whole group
+            // But if also filtering by location, we must check children
+            const groupMatchesSearch = lowerSearch ? group.name.toLowerCase().includes(lowerSearch) : true;
 
             const matchingCompanies = group.companies.map(company => {
-                if (company.name.toLowerCase().includes(lower)) {
-                    return company; // Company name matches, include whole company
-                }
+                const companyMatchesSearch = lowerSearch ? company.name.toLowerCase().includes(lowerSearch) : true;
+                const companyMatchesLocation = locFilter ? company.location === locFilter : true;
 
-                const matchingEntities = company.entities.filter(entity =>
-                    entity.name.toLowerCase().includes(lower)
-                );
+                // Handle entities (societies)
+                const matchingEntities = company.entities.filter(entity => {
+                    const entityMatchesSearch = lowerSearch ? entity.name.toLowerCase().includes(lowerSearch) : true;
+                    const entityMatchesLocation = locFilter ? entity.location === locFilter : true;
+                    return entityMatchesSearch && entityMatchesLocation;
+                });
 
-                if (matchingEntities.length > 0) {
-                    return { ...company, entities: matchingEntities };
+                // A company is included if:
+                // 1. It matches the location AND (it matches the search OR has matching entities)
+                // 2. OR it doesn't match location itself but has matching entities that do
+                
+                if (locFilter) {
+                    // Location filter is active
+                    if (companyMatchesLocation) {
+                        // Company matches location - show it if it also matches search or has babies
+                        if (companyMatchesSearch || matchingEntities.length > 0) {
+                            return { ...company, entities: lowerSearch ? matchingEntities : company.entities };
+                        }
+                    } else if (matchingEntities.length > 0) {
+                        // Company doesn't match location, but some entities do
+                        return { ...company, entities: matchingEntities };
+                    }
+                    return null;
+                } else {
+                    // Only search filter is active (or none)
+                    if (companyMatchesSearch) return company;
+                    if (matchingEntities.length > 0) return { ...company, entities: matchingEntities };
+                    return null;
                 }
-                return null;
             }).filter(Boolean) as Company[];
 
             if (matchingCompanies.length > 0) {
                 return { ...group, companies: matchingCompanies };
             }
+            // If group name matches search and no specifically filtered companies exist, 
+            // we only show the group if no location filter is active
+            if (groupMatchesSearch && !locFilter) {
+                return group;
+            }
             return null;
         }).filter(Boolean) as OrganizationGroup[];
-    }, [groups, searchTerm]);
+    }, [groups, searchTerm, selectedLocation]);
 
     const filteredOrganizations = useMemo(() => {
-        if (!searchTerm.trim()) {
-            return organizations;
-        }
-        const lower = searchTerm.toLowerCase();
-        return organizations.filter(org => org.shortName.toLowerCase().includes(lower));
-    }, [organizations, searchTerm]);
+        const lower = searchTerm.toLowerCase().trim();
+        const locFilter = selectedLocation;
+        
+        return organizations.filter(org => {
+            const matchesSearch = lower ? org.shortName.toLowerCase().includes(lower) : true;
+            // Organizations don't have location at the top level in this schema usually, 
+            // but let's keep search working
+            return matchesSearch;
+        });
+    }, [organizations, searchTerm, selectedLocation]);
 
 
     const toggleExpand = (id: string) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
@@ -267,11 +295,15 @@ const EntityManagement: React.FC = () => {
                 })
             })));
 
-            setToast({ message: clientData.id.startsWith('new_') ? 'Society added successfully.' : 'Society updated successfully.', type: 'success' });
-            setEntityFormState({ isOpen: false, initialData: null, companyName: '' });
+            if (clientData.status === 'draft') {
+                setToast({ message: 'Draft saved successfully.', type: 'success' });
+            } else {
+                setToast({ message: clientData.id.startsWith('new_') ? 'Society added successfully.' : 'Society updated successfully.', type: 'success' });
+                setEntityFormState({ isOpen: false, initialData: null, companyName: '' });
+            }
         } catch (error) {
             console.error('Save failed:', error);
-            setToast({ message: 'Failed to save client document or data.', type: 'error' });
+            setToast({ message: 'Failed to save client document or data. If this is a new draft, please ensure at least the name is provided.', type: 'error' });
         }
     };
 
@@ -402,17 +434,17 @@ const EntityManagement: React.FC = () => {
                     ...updatedData
                 });
                 newGroups[groupIndex].companies.push({ ...newCompany, entities: [] });
-                setToast({ message: `Company '${data.name}' added.`, type: 'success' });
+                setToast({ message: `Company '${data.name}' added successfully.`, type: 'success' });
             } else if (data.id) {
                 const updatedCompany = await api.updateCompany(data.id, updatedData);
-                 const compIndex = newGroups[groupIndex].companies.findIndex(c => c.id === data.id);
-                 if (compIndex !== -1) {
-                     newGroups[groupIndex].companies[compIndex] = {
-                         ...newGroups[groupIndex].companies[compIndex],
-                         ...updatedCompany
-                     };
-                 }
-                setToast({ message: 'Company updated.', type: 'success' });
+                const compIndex = newGroups[groupIndex].companies.findIndex(c => c.id === data.id);
+                if (compIndex !== -1) {
+                    newGroups[groupIndex].companies[compIndex] = {
+                        ...newGroups[groupIndex].companies[compIndex],
+                        ...updatedCompany
+                    };
+                }
+                setToast({ message: 'Company updated successfully.', type: 'success' });
             }
             setGroups(newGroups);
             setCompanyFormState({ ...companyFormState, isOpen: false });
@@ -527,8 +559,9 @@ const EntityManagement: React.FC = () => {
                 // Build the site config list from entities in the hierarchy (allClients)
                 // This ensures societies added via Client Structure automatically appear here
                 const siteConfigEntities = allClients.filter(client => {
-                    if (!searchTerm.trim()) return true;
-                    return client.name.toLowerCase().includes(searchTerm.toLowerCase());
+                    const matchesSearch = searchTerm.trim() ? client.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
+                    const matchesLocation = selectedLocation ? client.location === selectedLocation : true;
+                    return matchesSearch && matchesLocation;
                 });
                 return (
                     <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
@@ -690,17 +723,32 @@ const EntityManagement: React.FC = () => {
                 </div>
             )}
 
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
-                <input
-                    id="client-search"
-                    name="clientSearch"
-                    type="text"
-                    placeholder="Search across all clients and sites..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="form-input !pl-10 w-full"
-                />
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="relative flex-grow">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
+                    <input
+                        id="client-search"
+                        name="clientSearch"
+                        type="text"
+                        placeholder="Search across all clients and sites..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="form-input !pl-10 w-full"
+                    />
+                </div>
+                <div className="w-full sm:w-64">
+                    <Select
+                        id="location-filter"
+                        value={selectedLocation}
+                        onChange={e => setSelectedLocation(e.target.value)}
+                        className="w-full"
+                    >
+                        <option value="">All Locations</option>
+                        {existingLocations.map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                    </Select>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">

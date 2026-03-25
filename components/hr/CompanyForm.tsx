@@ -166,7 +166,16 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   };
 
   const onInvalid = () => {
-    setToast({ message: 'Please complete all mandatory fields with correct data.', type: 'error' });
+    setToast({ message: "Missing mandatory fields to create a profile. Please fill them, or use 'Save Draft' to continue later.", type: 'error' });
+  };
+
+  const handleSaveDraft = () => {
+    const data = watch();
+    if (!data.name?.trim()) {
+      setToast({ message: 'Company Name is required to save a draft.', type: 'error' });
+      return;
+    }
+    onSave(data, pendingFiles);
   };
 
   const setFile = (key: string, file: UploadedFile | null) => {
@@ -245,7 +254,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
               </div>
               <div className="flex items-center gap-3">
                  <Button type="button" onClick={onClose} variant="secondary" className="px-6">Cancel</Button>
-                 <Button type="button" onClick={() => onSave(watch(), pendingFiles)} variant="outline" className="px-6 border-accent text-accent hover:bg-accent/10">Save Draft</Button>
+                 <Button type="button" onClick={handleSaveDraft} variant="outline" className="px-6 border-accent text-accent hover:bg-accent/10">Save Draft</Button>
                  <Button type="submit" variant="primary" className="px-8 shadow-lg shadow-emerald-500/20">{isEditing ? 'Save Changes' : 'Create Profile'}</Button>
               </div>
             </div>

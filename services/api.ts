@@ -1574,7 +1574,14 @@ export const api = {
 
     // 3. Upsert Entities (Clients)
     const entities = companies.flatMap(c => c.entities.map(e => ({ ...e, companyId: c.id })));
-    const entityData = entities.map(e => toSnakeCase(e));
+    const entityData = entities.map(e => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { agreements, status: _status, ...rest } = e;
+        return toSnakeCase({
+            ...rest,
+            agreementDetails: agreements
+        });
+    });
     const { error: entityError } = await supabase.from('entities').upsert(entityData);
     if (entityError) throw entityError;
 
@@ -1624,12 +1631,18 @@ export const api = {
     if (error) throw error;
   },
   saveEntity: async (entity: Partial<Entity>): Promise<Entity> => {
-    const { id, ...rest } = entity;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, agreements, status: _status, ...rest } = entity;
     const status = await Network.getStatus();
     
+    const entityToSave = { 
+        ...rest,
+        ...(agreements ? { agreementDetails: agreements } : {})
+    };
+
     if (!status.connected) {
         const offlineId = id && !id.startsWith('new_') ? id : `new_${Date.now()}`;
-        await offlineDb.addToOutbox({ table_name: 'entities', action: id?.startsWith('new_') ? 'INSERT' : 'UPDATE', payload: entity });
+        await offlineDb.addToOutbox({ table_name: 'entities', action: id?.startsWith('new_') ? 'INSERT' : 'UPDATE', payload: entityToSave });
         const mockEntity = { ...entity, id: offlineId } as Entity;
         
         // Optimistic cache update
@@ -1642,7 +1655,7 @@ export const api = {
         return mockEntity;
     }
 
-    const dbData = toSnakeCase(rest);
+    const dbData = toSnakeCase(entityToSave);
     let query;
     if (id && !id.startsWith('new_')) {
       query = supabase.from('entities').update(dbData).eq('id', id);

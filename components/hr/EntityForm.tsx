@@ -2,20 +2,22 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller, useFieldArray, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company } from '../../types';
+import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company, SiteStaffDesignation } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import UploadDocument from '../UploadDocument';
+import MultiUploadDocument from '../MultiUploadDocument';
 import { api } from '../../services/api';
 import Checkbox from '../ui/Checkbox';
-import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import Toast from '../ui/Toast';
 
 interface EntityFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Entity, pendingFiles: Record<string, File>) => void;
+  onSave: (data: Entity, pendingFiles: Record<string, File | File[]>) => void;
   initialData: Entity | null;
   companyName: string;
   companies?: Company[];
@@ -58,15 +60,20 @@ const entitySchema = yup.object({
     unitCount: yup.number().typeError('Must be a number').nullable().optional(),
   }).optional(),
   
-  agreementDetails: yup.object({
-    fromDate: yup.string().optional().nullable(),
-    toDate: yup.string().optional().nullable(),
-    renewalTriggerDays: yup.number().nullable().optional(),
-    minWageTriggerDays: yup.number().nullable().optional(),
-    agreementDate: yup.string().optional().nullable(),
-    addendum1Date: yup.string().optional().nullable(),
-    addendum2Date: yup.string().optional().nullable(),
-  }).optional(),
+  agreements: yup.array().of(
+    yup.object({
+      id: yup.string().required(),
+      fromDate: yup.string().optional().nullable(),
+      toDate: yup.string().optional().nullable(),
+      renewalTriggerDays: yup.number().nullable().optional(),
+      minWageTriggerDays: yup.number().nullable().optional(),
+      agreementDate: yup.string().optional().nullable(),
+      addendum1Date: yup.string().optional().nullable(),
+      addendum2Date: yup.string().optional().nullable(),
+      wordCopyUrl: yup.string().optional().nullable(),
+      signedCopyUrl: yup.string().optional().nullable(),
+    })
+  ).optional(),
   
   complianceDetails: yup.object({
     form6Applicable: yup.boolean().default(false),
@@ -144,13 +151,13 @@ const entitySchema = yup.object({
     type: yup.string().required('Type is required'),
     policyNumber: yup.string().optional(),
     validTill: yup.string().nullable().optional(),
-    documentUrl: yup.string().nullable().optional()
+    documentUrls: yup.array().of(yup.string()).nullable().optional()
   })).optional(),
   policies: yup.array().of(yup.object({
     id: yup.string().required(),
     name: yup.string().required('Policy name is required'),
     level: yup.string().oneOf(['BO', 'Site', 'Both']).required('Level is required'),
-    documentUrl: yup.string().nullable().optional()
+    documentUrls: yup.array().of(yup.string()).nullable().optional()
   })).optional(),
   companyId: yup.string().optional(),
 }).defined();
@@ -215,18 +222,122 @@ const VERIFICATION_CATEGORIES = [
   }
 ];
 
+interface AddRoleInputProps {
+    allDesignations: SiteStaffDesignation[];
+    excludeRoles: string[];
+    categoryName: string;
+    onAdd: (role: string) => void;
+}
+
+const AddRoleInput: React.FC<AddRoleInputProps> = ({ allDesignations, excludeRoles, categoryName, onAdd }) => {
+    const [isAdding, setIsAdding] = useState(false);
+
+    const groupedOptions = useMemo(() => {
+        return allDesignations.reduce((acc, d) => {
+            if (excludeRoles.includes(d.designation)) return acc;
+            const dept = d.department || 'Other';
+            if (!acc[dept]) acc[dept] = [];
+            acc[dept].push(d.designation);
+            return acc;
+        }, {} as Record<string, string[]>);
+    }, [allDesignations, excludeRoles]);
+
+    // Sort departments to put the most relevant one first (fuzzy match)
+    const sortedDepartments = useMemo(() => {
+        return Object.keys(groupedOptions).sort((a, b) => {
+            const aMatch = a.toLowerCase().includes(categoryName.toLowerCase().split(' ')[0]) || categoryName.toLowerCase().includes(a.toLowerCase().split('_')[0]);
+            const bMatch = b.toLowerCase().includes(categoryName.toLowerCase().split(' ')[0]) || categoryName.toLowerCase().includes(b.toLowerCase().split('_')[0]);
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+            return a.localeCompare(b);
+        });
+    }, [groupedOptions, categoryName]);
+
+    if (!isAdding) {
+        return (
+            <button
+                type="button"
+                onClick={() => setIsAdding(true)}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-dashed border-accent/20 text-accent/60 hover:text-accent hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5 uppercase tracking-wider"
+            >
+                <Plus className="w-3 h-3" />
+                <span>Add Role</span>
+            </button>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-2 animate-in zoom-in-95 duration-200">
+            <select
+                autoFocus
+                className="bg-white border border-accent/30 rounded-lg px-2 py-1.5 text-[11px] font-medium outline-none focus:ring-2 focus:ring-accent/20 w-56"
+                onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) {
+                        onAdd(val);
+                        setIsAdding(false);
+                    }
+                }}
+                onBlur={() => {
+                    // Delay to allow selection
+                    setTimeout(() => setIsAdding(false), 200);
+                }}
+                defaultValue=""
+            >
+                <option value="" disabled>Select Designation...</option>
+                {sortedDepartments.map(dept => (
+                    <optgroup key={dept} label={dept}>
+                        {groupedOptions[dept].map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                    </optgroup>
+                ))}
+                {sortedDepartments.length === 0 && <option value="" disabled>No designations found</option>}
+            </select>
+            <button
+                type="button"
+                onClick={() => setIsAdding(false)}
+                className="p-1.5 bg-muted/10 text-muted rounded-lg hover:bg-muted/20 transition-all"
+            >
+                <X className="w-3 h-3" />
+            </button>
+        </div>
+    );
+};
+
+const isDepartmentMatch = (dept: string, category: string) => {
+    const d = dept.toUpperCase().replace(/\s+/g, '_');
+    const c = category.toUpperCase().replace(/\s+/g, '_');
+    
+    if (c.includes('ADMIN')) return d.includes('ADMIN');
+    if (c.includes('HOUSEKEEPING')) return d.includes('HOUSEKEEPING');
+    if (c.includes('LANDSCAPING')) return d.includes('LANDSCAPING');
+    if (c.includes('SECURITY')) return d.includes('SECURITY');
+    if (c.includes('PLUMBING')) return d.includes('PLUMBING');
+    if (c.includes('ELECTRICAL') || c.includes('ENGINEERING')) return d.includes('ELECTRICAL') || d.includes('ENGINEERING');
+    if (c.includes('FIRE')) return d.includes('FIRE');
+    if (c.includes('STP')) return d.includes('STP');
+    if (c.includes('SWIMMING') || c.includes('POOL')) return d.includes('POOL');
+    if (c.includes('PEST')) return d.includes('PEST');
+    if (c.includes('BACK_OFFICE')) return d.includes('BACK_OFFICE') || d.includes('ADMIN');
+    
+    return d.includes(c) || c.includes(d);
+};
+
 const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initialData, companyName, companies }) => {
   const [activeTab, setActiveTab] = useState<Tab>('General');
   const [completedTabs, setCompletedTabs] = useState<Set<Tab>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File | File[]>>({});
+  const [allDesignations, setAllDesignations] = useState<SiteStaffDesignation[]>([]);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
   const { register, handleSubmit, formState: { errors }, reset, control, watch, setValue } = useForm<Entity>({
     resolver: yupResolver(entitySchema) as Resolver<Entity>,
     defaultValues: {
         emails: [{ id: `email_${Date.now()}`, email: '', isPrimary: true }],
         siteManagement: { projectType: 'Commercial' },
-        agreementDetails: { renewalTriggerDays: 30, minWageTriggerDays: 15 },
+        agreements: [{ id: `agr_${Date.now()}`, renewalTriggerDays: 30, minWageTriggerDays: 15 }],
         complianceDetails: { form6Applicable: false, minWageRevisionApplicable: true },
         holidayConfig: { numberOfDays: 10, salaryRule: 'Full', billingRule: 'Full' },
         billingControls: { uniformDeductions: false },
@@ -238,7 +349,12 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
             }))
         }
     }
-  });
+});
+
+const { fields: agreementFields, append: appendAgreement, remove: removeAgreement } = useFieldArray({
+    control,
+    name: "agreements"
+});
 
   const { fields: emailFields, append: appendEmail, remove: removeEmail } = useFieldArray({
     control,
@@ -280,11 +396,23 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
   useEffect(() => {
     if (isOpen) {
         setIsLoading(true);
-        // We no longer fetch global policies/insurances here as we use site-specific ones
-        setIsLoading(false);
+        // Fetch all designations for verification mapping
+        api.getSiteStaffDesignations()
+            .then(setAllDesignations)
+            .catch(err => console.error('Failed to fetch designations:', err))
+            .finally(() => setIsLoading(false));
 
         if (initialData) {
-            reset(initialData);
+            const data = { ...initialData };
+            // Migration: agreementDetails -> agreements array
+            if ((data as any).agreementDetails && (!data.agreements || data.agreements.length === 0)) {
+                data.agreements = [{
+                    id: `agr_${Date.now()}`,
+                    ...(data as any).agreementDetails
+                }];
+                delete (data as any).agreementDetails;
+            }
+            reset(data);
             setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance']));
         } else {
             reset({ 
@@ -299,7 +427,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                 email: '', 
                 emails: [{ id: `email_${Date.now()}`, email: '', isPrimary: true }],
                 siteManagement: { projectType: 'Commercial' },
-                agreementDetails: { renewalTriggerDays: 30, minWageTriggerDays: 15 },
+                agreements: [{ id: `agr_${Date.now()}`, renewalTriggerDays: 30, minWageTriggerDays: 15 }],
                 complianceDetails: { form6Applicable: false, minWageRevisionApplicable: true },
                 holidayConfig: { numberOfDays: 10, salaryRule: 'Full', billingRule: 'Full' },
                 verificationData: {
@@ -317,64 +445,20 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
         setPendingFiles({});
         setActiveTab('General');
     }
-  }, [initialData, reset, isOpen]);
+}, [initialData, reset, isOpen]);
 
-  const AddRoleInput: React.FC<{ onAdd: (role: string) => void }> = ({ onAdd }) => {
-    const [isAdding, setIsAdding] = useState(false);
-    const [value, setLocalValue] = useState('');
 
-    if (!isAdding) {
-      return (
-        <button
-          type="button"
-          onClick={() => setIsAdding(true)}
-          className="px-3 py-1.5 rounded-lg text-[10px] font-bold border border-dashed border-accent/20 text-accent/60 hover:text-accent hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5 uppercase tracking-wider"
-        >
-          <Plus className="w-3 h-3" />
-          <span>Add Role</span>
-        </button>
-      );
-    }
-
-    return (
-      <div className="flex items-center gap-2 animate-in zoom-in-95 duration-200">
-        <input
-          autoFocus
-          className="bg-white/80 border border-accent/30 rounded-lg px-3 py-1.5 text-[11px] font-medium outline-none focus:ring-2 focus:ring-accent/20 w-36 placeholder:text-muted/50"
-          placeholder="New role name..."
-          value={value}
-          onChange={(e) => setLocalValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              if (value.trim()) {
-                onAdd(value.trim());
-                setLocalValue('');
-                setIsAdding(false);
-              }
-            } else if (e.key === 'Escape') {
-              setIsAdding(false);
-            }
-          }}
-          onBlur={() => {
-            if (!value.trim()) setIsAdding(false);
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            if (value.trim()) {
-                onAdd(value.trim());
-                setLocalValue('');
-            }
-            setIsAdding(false);
-          }}
-          className="p-1.5 bg-accent text-white rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95"
-        >
-          <Plus className="w-3 h-3" />
-        </button>
-      </div>
-    );
+  const setFiles = (key: string, uploadedFiles: UploadedFile[]) => {
+    setPendingFiles(prev => {
+        const next = { ...prev };
+        const files = uploadedFiles.map(uf => uf.file).filter(Boolean) as File[];
+        if (files.length > 0) {
+            next[key] = files;
+        } else {
+            delete next[key];
+        }
+        return next;
+    });
   };
 
 
@@ -382,23 +466,27 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
   const getTabErrors = (tab: Tab, currentErrors: any = errors) => {
     switch (tab) {
       case 'General':
-        return currentErrors.name || currentErrors.emails || currentErrors.gstNumber || currentErrors.panNumber || currentErrors.email || currentErrors.siteTakeoverDate;
+        return !!(currentErrors.name || currentErrors.billingName || currentErrors.location || 
+               currentErrors.siteTakeoverDate || currentErrors.registeredAddress || 
+               currentErrors.gstNumber || currentErrors.panNumber || 
+               currentErrors.registrationType || currentErrors.registrationNumber || 
+               currentErrors.emails || currentErrors.companyId);
       case 'Management':
-        return currentErrors.siteManagement;
+        return !!currentErrors.siteManagement;
       case 'Agreement':
-        return currentErrors.agreementDetails;
+        return !!currentErrors.agreements;
       case 'Compliance':
-        return currentErrors.complianceDetails;
+        return !!currentErrors.complianceDetails;
       case 'Holidays':
-        return currentErrors.holidayConfig;
+        return !!currentErrors.holidayConfig;
       case 'Assets':
-        return currentErrors.assetTracking;
+        return !!currentErrors.assetTracking;
       case 'Billing':
-        return currentErrors.billingControls;
+        return !!currentErrors.billingControls;
       case 'Verification':
-        return currentErrors.verificationData;
+        return !!currentErrors.verificationData;
       case 'Policies/Insurance':
-        return currentErrors.policyIds || currentErrors.insuranceIds;
+        return !!(currentErrors.policies || currentErrors.insurances || currentErrors.policyIds || currentErrors.insuranceIds);
       default:
         return false;
     }
@@ -411,12 +499,20 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
 
   const onSaveDraft = () => {
     const data = watch();
+    if (!data.name?.trim()) {
+      setToast({ message: 'Society Name is required to save a draft.', type: 'error' });
+      return;
+    }
     const draftData = { ...data, status: 'draft' as const };
     // Skip full validation for draft
     onSave(draftData, pendingFiles);
   };
 
   const onError = (errors: any) => {
+    setToast({ 
+        message: "Missing mandatory fields to create a profile. Please fill them, or use 'Save Draft' to continue later.", 
+        type: 'error' 
+    });
     const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance'];
     for (const tab of tabOrder) {
       if (getTabErrors(tab, errors)) {
@@ -464,11 +560,11 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
       <button
         type="button"
         onClick={() => setActiveTab(tabName)}
-        className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-all ${activeTab === tabName ? 'border-accent text-accent bg-accent/5' : 'border-transparent text-muted hover:text-primary-text'}`}
+        className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-all relative ${activeTab === tabName ? 'border-accent text-accent bg-accent/5' : 'border-transparent text-muted hover:text-primary-text'}`}
       >
         <span>{tabName}</span>
         {hasError ? (
-          <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.9)]" />
         ) : isCompleted ? (
           <CheckCircle className="h-4 w-4 text-green-500" />
         ) : null}
@@ -492,8 +588,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                <Button 
                     type="submit" 
                     variant="primary" 
-                    className={`px-8 shadow-lg shadow-emerald-500/20 ${(completedTabs.size < 9 && !isEditing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    disabled={completedTabs.size < 9 && !isEditing}
+                    className="px-8 shadow-lg shadow-emerald-500/20"
                 >
                     {isEditing ? 'Save Changes' : 'Create Profile'}
                 </Button>
@@ -514,7 +609,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
             </nav>
           </div>
           
-          <div className="space-y-6 min-h-[450px]">
+          <div className={`space-y-6 min-h-[450px] p-4 rounded-2xl transition-all duration-300 ${getTabErrors(activeTab) ? 'border-2 border-red-500/30 bg-red-500/[0.02] shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'border-2 border-transparent'}`}>
             {activeTab === 'General' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -607,43 +702,82 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                 </div>
             )}
             {activeTab === 'Agreement' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
-                        <Controller name="agreementDetails.fromDate" control={control} render={({ field }) => (
-                            <DatePicker label="Agreement From Date" id="agreementFrom" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.fromDate?.message} />
-                        )} />
-                        <Controller name="agreementDetails.toDate" control={control} render={({ field }) => (
-                            <DatePicker label="Agreement To Date" id="agreementTo" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.toDate?.message} />
-                        )} />
-                        
-                        <Input label="Auto Renewal Trigger (Days before)" id="renewalTrigger" type="number" registration={register('agreementDetails.renewalTriggerDays')} error={errors.agreementDetails?.renewalTriggerDays?.message} />
-                        <Input label="Min Wage Trigger (Days before)" id="minWageTrigger" type="number" registration={register('agreementDetails.minWageTriggerDays')} error={errors.agreementDetails?.minWageTriggerDays?.message} />
+                <div className="space-y-8">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                             <FileText className="h-5 w-5 text-accent" />
+                             <h3 className="text-lg font-bold text-primary-text">Agreement History</h3>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => appendAgreement({ id: `agr_${Date.now()}`, renewalTriggerDays: 30, minWageTriggerDays: 15 })}>
+                            <Plus className="h-4 w-4 mr-1" /> Add Agreement
+                        </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t">
-                        <UploadDocument 
-                            label="Agreement Word Copy (Soft Copy)" 
-                            file={watch('agreementDetails.wordCopyUrl') ? { name: 'Current Document', preview: watch('agreementDetails.wordCopyUrl')!, type: 'application/msword', size: 0 } as UploadedFile : null} 
-                            onFileChange={(f) => handleFileUpload('agreementDetails.wordCopy', f?.file!)} 
-                        />
-                        <UploadDocument 
-                            label="Signed Agreement Copy (Scan)" 
-                            file={watch('agreementDetails.signedCopyUrl') ? { name: 'Signed Document', preview: watch('agreementDetails.signedCopyUrl')!, type: 'application/pdf', size: 0 } as UploadedFile : null} 
-                            onFileChange={(f) => handleFileUpload('agreementDetails.signedCopy', f?.file!)} 
-                        />
-                    </div>
+                    {agreementFields.map((field, index) => (
+                        <div key={field.id} className="relative bg-accent/5 border border-accent/20 p-6 rounded-2xl group animate-fade-in space-y-6">
+                            {agreementFields.length > 1 && (
+                                <button 
+                                    type="button" 
+                                    onClick={() => removeAgreement(index)}
+                                    className="absolute -top-3 -right-3 p-1.5 bg-destructive text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 z-10"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            )}
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (
+                                    <DatePicker label="Agreement From Date" id={`agreementFrom-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />
+                                )} />
+                                <Controller name={`agreements.${index}.toDate`} control={control} render={({ field: f }) => (
+                                    <DatePicker label="Agreement To Date" id={`agreementTo-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />
+                                )} />
+                                
+                                <Input label="Auto Renewal Trigger (Days before)" id={`renewalTrigger-${field.id}`} type="number" registration={register(`agreements.${index}.renewalTriggerDays` as const)} error={errors.agreements?.[index]?.renewalTriggerDays?.message} />
+                                <Input label="Min Wage Trigger (Days before)" id={`minWageTrigger-${field.id}`} type="number" registration={register(`agreements.${index}.minWageTriggerDays` as const)} error={errors.agreements?.[index]?.minWageTriggerDays?.message} />
+                            </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-                        <Controller name="agreementDetails.agreementDate" control={control} render={({ field }) => (
-                            <DatePicker label="Agreement Date" id="agreementDate" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.agreementDate?.message} />
-                        )} />
-                        <Controller name="agreementDetails.addendum1Date" control={control} render={({ field }) => (
-                            <DatePicker label="Addendum 1 Date" id="addendum1Date" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.addendum1Date?.message} />
-                        )} />
-                        <Controller name="agreementDetails.addendum2Date" control={control} render={({ field }) => (
-                            <DatePicker label="Addendum 2 Date" id="addendum2Date" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.addendum2Date?.message} />
-                        )} />
-                    </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-accent/10">
+                                <UploadDocument 
+                                    label="Agreement Word Copy (Soft Copy)" 
+                                    file={watch(`agreements.${index}.wordCopyUrl` as any) ? { name: 'Current Document', preview: watch(`agreements.${index}.wordCopyUrl` as any)!, type: 'application/msword', size: 0 } as UploadedFile : null} 
+                                    onFileChange={(f) => {
+                                        if (f?.file) {
+                                            handleFileUpload(`agreements.${index}.wordCopy`, f.file);
+                                        }
+                                    }} 
+                                />
+                                <UploadDocument 
+                                    label="Signed Agreement Copy (Scan)" 
+                                    file={watch(`agreements.${index}.signedCopyUrl` as any) ? { name: 'Signed Document', preview: watch(`agreements.${index}.signedCopyUrl` as any)!, type: 'application/pdf', size: 0 } as UploadedFile : null} 
+                                    onFileChange={(f) => {
+                                        if (f?.file) {
+                                            handleFileUpload(`agreements.${index}.signedCopy`, f.file);
+                                        }
+                                    }} 
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-accent/10">
+                                <Controller name={`agreements.${index}.agreementDate`} control={control} render={({ field: f }) => (
+                                    <DatePicker label="Agreement Date" id={`agreementDate-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />
+                                )} />
+                                <Controller name={`agreements.${index}.addendum1Date`} control={control} render={({ field: f }) => (
+                                    <DatePicker label="Addendum 1 Date" id={`addendum1Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />
+                                )} />
+                                <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (
+                                    <DatePicker label="Addendum 2 Date" id={`addendum2Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />
+                                )} />
+                            </div>
+                        </div>
+                    ))}
+                    
+                    {agreementFields.length === 0 && (
+                        <div className="text-center py-12 bg-accent/5 border border-dashed border-accent/20 rounded-2xl">
+                             <FileWarning className="h-12 w-12 text-accent/40 mx-auto mb-4" />
+                             <p className="text-muted">No agreements added yet. Click the button above to add one.</p>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -934,36 +1068,38 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                                         <div className="bg-accent/5 border border-accent/10 rounded-xl p-3 min-h-[100px] flex flex-wrap gap-2 content-start">
                                             {(() => {
                                                 const currentRoles = watch(`verificationData.categories.${catIdx}.employmentPlusPolice`) || [];
-                                                const allRoles = Array.from(new Set([...(cat.empPlusPol || []), ...currentRoles]));
+                                                const allRoles = currentRoles;
                                                 
                                                 return (
                                                     <>
-                                                        {allRoles.map(role => {
-                                                            const isSelected = currentRoles.includes(role);
-                                                            return (
-                                                                <button
-                                                                    key={role}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const newRoles = isSelected 
-                                                                            ? currentRoles.filter(r => r !== role)
-                                                                            : [...currentRoles, role];
-                                                                        setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, newRoles);
-                                                                    }}
-                                                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${isSelected 
-                                                                        ? 'bg-accent text-white border-accent shadow-sm scale-105' 
-                                                                        : 'bg-white/50 text-muted border-border hover:border-accent/30 hover:text-primary-text'}`}
-                                                                >
-                                                                    {role}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        <AddRoleInput onAdd={(role) => {
-                                                            const current = watch(`verificationData.categories.${catIdx}.employmentPlusPolice`) || [];
-                                                            if (!current.includes(role)) {
-                                                                setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, [...current, role]);
-                                                            }
-                                                        }} />
+                                                        {allRoles.map(role => (
+                                                            <button
+                                                                key={role}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const newRoles = currentRoles.filter(r => r !== role);
+                                                                    setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, newRoles);
+                                                                }}
+                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border bg-accent text-white border-accent shadow-sm scale-105 hover:bg-accent-dark hover:border-accent-dark"
+                                                                title="Click to remove"
+                                                            >
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span>{role}</span>
+                                                                    <X className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                        <AddRoleInput 
+                                                            allDesignations={allDesignations.filter(d => isDepartmentMatch(d.department, cat.name))}
+                                                            excludeRoles={currentRoles}
+                                                            categoryName={cat.name}
+                                                            onAdd={(role) => {
+                                                                const current = watch(`verificationData.categories.${catIdx}.employmentPlusPolice`) || [];
+                                                                if (!current.includes(role)) {
+                                                                    setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, [...current, role]);
+                                                                }
+                                                            }} 
+                                                        />
                                                     </>
                                                 );
                                             })()}
@@ -978,36 +1114,38 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                                         <div className="bg-card/30 border border-border rounded-xl p-3 min-h-[100px] flex flex-wrap gap-2 content-start">
                                             {(() => {
                                                 const currentRoles = watch(`verificationData.categories.${catIdx}.policeOnly`) || [];
-                                                const allRoles = Array.from(new Set([...(cat.polOnly || []), ...currentRoles]));
+                                                const allRoles = currentRoles;
 
                                                 return (
                                                     <>
-                                                        {allRoles.map(role => {
-                                                            const isSelected = currentRoles.includes(role);
-                                                            return (
-                                                                <button
-                                                                    key={role}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const newRoles = isSelected 
-                                                                            ? currentRoles.filter(r => r !== role)
-                                                                            : [...currentRoles, role];
-                                                                        setValue(`verificationData.categories.${catIdx}.policeOnly`, newRoles);
-                                                                    }}
-                                                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${isSelected 
-                                                                        ? 'bg-primary-text text-white border-primary-text shadow-sm scale-105' 
-                                                                        : 'bg-white/50 text-muted border-border hover:border-primary-text/30 hover:text-primary-text'}`}
-                                                                >
-                                                                    {role}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        <AddRoleInput onAdd={(role) => {
-                                                            const current = watch(`verificationData.categories.${catIdx}.policeOnly`) || [];
-                                                            if (!current.includes(role)) {
-                                                                setValue(`verificationData.categories.${catIdx}.policeOnly`, [...current, role]);
-                                                            }
-                                                        }} />
+                                                        {allRoles.map(role => (
+                                                            <button
+                                                                key={role}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const newRoles = currentRoles.filter(r => r !== role);
+                                                                    setValue(`verificationData.categories.${catIdx}.policeOnly`, newRoles);
+                                                                }}
+                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border bg-primary-text text-white border-primary-text shadow-sm scale-105 hover:bg-black"
+                                                                title="Click to remove"
+                                                            >
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span>{role}</span>
+                                                                    <X className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                        <AddRoleInput 
+                                                            allDesignations={allDesignations.filter(d => isDepartmentMatch(d.department, cat.name))}
+                                                            excludeRoles={currentRoles}
+                                                            categoryName={cat.name}
+                                                            onAdd={(role) => {
+                                                                const current = watch(`verificationData.categories.${catIdx}.policeOnly`) || [];
+                                                                if (!current.includes(role)) {
+                                                                    setValue(`verificationData.categories.${catIdx}.policeOnly`, [...current, role]);
+                                                                }
+                                                            }} 
+                                                        />
                                                     </>
                                                 );
                                             })()}
@@ -1032,7 +1170,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                             <Button 
                                 type="button" 
                                 size="sm" 
-                                onClick={() => appendInsurance({ id: `ins_${Date.now()}`, provider: '', type: 'GMC', policyNumber: '', validTill: null, documentUrl: null })} 
+                                onClick={() => appendInsurance({ id: `ins_${Date.now()}`, provider: '', type: 'GMC', policyNumber: '', validTill: null, documentUrls: [] })} 
                                 className="!rounded-full text-xs font-bold shadow-sm"
                                 variant="secondary"
                             >
@@ -1077,10 +1215,29 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                                         </div>
                                     </div>
                                     
-                                    <UploadDocument
-                                        label="Insurance Policy Document"
-                                        file={watch(`insurances.${index}.documentUrl`) ? { name: 'Current Policy Document', preview: watch(`insurances.${index}.documentUrl`) as string, type: 'application/pdf', size: 0 } : null}
-                                        onFileChange={(f) => f && handleFileUpload(`insurances.${index}.document`, f.file!)}
+                                    <Controller
+                                        name={`insurances.${index}.documentUrls`}
+                                        control={control}
+                                        render={({ field: f }) => {
+                                            const urls = f.value || [];
+                                            const pending = pendingFiles[`ins_${field.id}`] as File[];
+                                            
+                                            const displayFiles: UploadedFile[] = [
+                                                ...(urls as string[]).map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url } as UploadedFile)),
+                                                ...(Array.isArray(pending) ? (pending as File[]).map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf } as UploadedFile)) : [])
+                                            ];
+
+                                            return (
+                                                <MultiUploadDocument
+                                                    label="Insurance Policy Documents"
+                                                    files={displayFiles}
+                                                    onFilesChange={(newFiles: UploadedFile[]) => {
+                                                        setFiles(`ins_${field.id}`, newFiles);
+                                                        f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
+                                                    }}
+                                                />
+                                            );
+                                        }}
                                     />
                                 </div>
                             ))}
@@ -1107,7 +1264,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                             <Button 
                                 type="button" 
                                 size="sm" 
-                                onClick={() => appendPolicy({ id: `pol_${Date.now()}`, name: '', level: 'Site', documentUrl: null })} 
+                                onClick={() => appendPolicy({ id: `pol_${Date.now()}`, name: '', level: 'Site', documentUrls: [] })} 
                                 className="!rounded-full text-xs font-bold shadow-sm"
                                 variant="secondary"
                             >
@@ -1139,10 +1296,29 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
                                         </div>
                                     </div>
                                     
-                                    <UploadDocument
-                                        label="Policy Document"
-                                        file={watch(`policies.${index}.documentUrl`) ? { name: 'Current Policy Document', preview: watch(`policies.${index}.documentUrl`) as string, type: 'application/pdf', size: 0 } : null}
-                                        onFileChange={(f) => f && handleFileUpload(`policies.${index}.document`, f.file!)}
+                                    <Controller
+                                        name={`policies.${index}.documentUrls`}
+                                        control={control}
+                                        render={({ field: f }) => {
+                                            const urls = f.value || [];
+                                            const pending = pendingFiles[`pol_${field.id}`] as File[];
+                                            
+                                            const displayFiles: UploadedFile[] = [
+                                                ...(urls as string[]).map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url } as UploadedFile)),
+                                                ...(Array.isArray(pending) ? (pending as File[]).map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf } as UploadedFile)) : [])
+                                            ];
+
+                                            return (
+                                                <MultiUploadDocument
+                                                    label="Policy Documents"
+                                                    files={displayFiles}
+                                                    onFilesChange={(newFiles: UploadedFile[]) => {
+                                                        setFiles(`pol_${field.id}`, newFiles);
+                                                        f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
+                                                    }}
+                                                />
+                                            );
+                                        }}
                                     />
                                 </div>
                             ))}
@@ -1189,6 +1365,13 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
             )}
           </div>
           {/* Remove bottom buttons as they are now in the top header */}
+          {toast && (
+            <Toast 
+              message={toast.message} 
+              type={toast.type} 
+              onDismiss={() => setToast(null)} 
+            />
+          )}
         </form>
     </div>
   );

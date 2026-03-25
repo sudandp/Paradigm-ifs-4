@@ -493,7 +493,8 @@ export interface Entity {
     projectType?: string;
     unitCount?: number;
   };
-  agreementDetails?: {
+  agreements?: {
+    id: string;
     fromDate?: string;
     toDate?: string;
     renewalTriggerDays?: number;
@@ -503,8 +504,7 @@ export interface Entity {
     agreementDate?: string;
     addendum1Date?: string;
     addendum2Date?: string;
-    versionTracking?: { version: string; url: string; date: string; }[];
-  };
+  }[];
   complianceDetails?: {
     form6Applicable: boolean;
     form6ValidityFrom?: string;
@@ -605,7 +605,7 @@ export interface SiteInsurance {
   type: string;
   policyNumber?: string;
   validTill?: string | null;
-  documentUrl?: string | null;
+  documentUrls?: string[] | null;
 }
 
 export interface SitePolicy {
@@ -752,7 +752,8 @@ export interface SiteConfiguration {
   siteAreaSqFt?: number | null;
   projectType?: 'Apartment' | 'Villa' | 'Vilament' | 'Rowhouse' | 'Combined' | 'Commercial Office' | 'Commercial Retail' | 'Commercial' | 'Public' | '';
   apartmentCount?: number | null;
-  agreementDetails?: {
+  agreements?: {
+    id: string;
     fromDate?: string | null;
     toDate?: string | null;
     renewalIntervalDays?: number | null;
@@ -761,7 +762,7 @@ export interface SiteConfiguration {
     agreementDate?: string | null;
     addendum1Date?: string | null;
     addendum2Date?: string | null;
-  };
+  }[];
   siteOperations?: {
     form6Applicable: boolean;
     form6RenewalTaskCreation?: boolean;

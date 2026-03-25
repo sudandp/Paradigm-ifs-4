@@ -8,7 +8,7 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
 import DatePicker from '../ui/DatePicker';
-import { Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, FileText } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const projectTypes = ['Apartment', 'Villa', 'Vilament', 'Rowhouse', 'Combined', 'Commercial Office', 'Commercial Retail', 'Commercial', 'Public', ''];
@@ -30,20 +30,23 @@ const siteConfigSchema = yup.object({
   siteAreaSqFt: yup.number().typeError('Must be a number').nullable().optional(),
   projectType: yup.string().oneOf(projectTypes).optional(),
   apartmentCount: yup.number().typeError('Must be a number').nullable().optional(),
-  agreementDetails: yup.object({
-    fromDate: yup.string().optional().nullable(),
-    toDate: yup.string().optional().nullable().test('is-after-from', 'To Date must be after From Date', function(value) {
-      const { fromDate } = this.parent;
-      if (!fromDate || !value) return true;
-      return new Date(value.replace(/-/g, '/')) >= new Date(fromDate.replace(/-/g, '/'));
-    }),
-    renewalIntervalDays: yup.number().typeError('Must be a number').nullable().optional().min(0, 'Cannot be negative'),
-    softCopy: yup.mixed<UploadedFile | null>().nullable().optional(),
-    scannedCopy: yup.mixed<UploadedFile | null>().nullable().optional(),
-    agreementDate: yup.string().optional().nullable(),
-    addendum1Date: yup.string().optional().nullable(),
-    addendum2Date: yup.string().optional().nullable(),
-  }).optional(),
+  agreements: yup.array().of(
+    yup.object({
+      id: yup.string().required(),
+      fromDate: yup.string().optional().nullable(),
+      toDate: yup.string().optional().nullable().test('is-after-from', 'To Date must be after From Date', function(value) {
+        const { fromDate } = this.parent;
+        if (!fromDate || !value) return true;
+        return new Date(value.replace(/-/g, '/')) >= new Date(fromDate.replace(/-/g, '/'));
+      }),
+      renewalIntervalDays: yup.number().typeError('Must be a number').nullable().optional().min(0, 'Cannot be negative'),
+      softCopy: yup.mixed<UploadedFile | null>().nullable().optional(),
+      scannedCopy: yup.mixed<UploadedFile | null>().nullable().optional(),
+      agreementDate: yup.string().optional().nullable(),
+      addendum1Date: yup.string().optional().nullable(),
+      addendum2Date: yup.string().optional().nullable(),
+    })
+  ).optional(),
   siteOperations: yup.object({
     form6Applicable: yup.boolean().default(false),
     form6RenewalTaskCreation: yup.boolean().optional(),
@@ -128,6 +131,7 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
         }
     });
 
+    const { fields: agreementFields, append: appendAgreement, remove: removeAgreement } = useFieldArray({ control, name: "agreements" });
     const { fields: holidayFields, append: appendHoliday, remove: removeHoliday } = useFieldArray({ control, name: "siteOperations.holidays.list" });
     const { fields: toolFields, append: appendTool, remove: removeTool } = useFieldArray({ control, name: "siteOperations.tools.list" });
     const { fields: simFields, append: appendSim, remove: removeSim } = useFieldArray({ control, name: "siteOperations.sims.details" });
@@ -135,7 +139,12 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
 
     useEffect(() => {
         if (isOpen) {
-            reset(initialData || { organizationId: organization.id });
+            const data = { ...initialData } as any;
+            if (data?.agreementDetails && (!data.agreements || data.agreements.length === 0)) {
+                data.agreements = [{ id: `agr_${Date.now()}`, ...data.agreementDetails }];
+                delete data.agreementDetails;
+            }
+            reset(data || { organizationId: organization.id, agreements: [{ id: `agr_${Date.now()}`, renewalIntervalDays: 30 }] });
         }
     }, [isOpen, initialData, organization.id, reset]);
 
@@ -239,17 +248,47 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                         )}
 
                         {activeTab === 'Agreement' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                                <Controller name="agreementDetails.fromDate" control={control} render={({ field }) => (<DatePicker label="From Date" id="agreementDetails.fromDate" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.fromDate?.message} />)} />
-                                <Controller name="agreementDetails.toDate" control={control} render={({ field }) => (<DatePicker label="To Date" id="agreementDetails.toDate" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.toDate?.message} />)} />
-                                <Input label="Renewal Interval (Days)" id="agreementDetails.renewalIntervalDays" type="number" registration={register('agreementDetails.renewalIntervalDays')} error={errors.agreementDetails?.renewalIntervalDays?.message} />
-                                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Controller name="agreementDetails.softCopy" control={control} render={({ field }) => (<UploadDocument label="Soft Copy" file={field.value} onFileChange={field.onChange} />)} />
-                                    <Controller name="agreementDetails.scannedCopy" control={control} render={({ field }) => (<UploadDocument label="Scanned Copy" file={field.value} onFileChange={field.onChange} />)} />
+                            <div className="space-y-6">
+                                <div className="flex justify-between items-center bg-accent/5 p-4 rounded-xl border border-accent/20">
+                                    <h4 className="text-sm font-semibold flex items-center gap-2"><FileText className="h-4 w-4" /> Agreement Periods</h4>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => appendAgreement({ id: `agr_${Date.now()}`, renewalIntervalDays: 30 })}>
+                                        <Plus className="h-4 w-4 mr-1"/> Add Period
+                                    </Button>
                                 </div>
-                                <Controller name="agreementDetails.agreementDate" control={control} render={({ field }) => (<DatePicker label="Agreement Dated" id="agreementDetails.agreementDate" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.agreementDate?.message} />)} />
-                                <Controller name="agreementDetails.addendum1Date" control={control} render={({ field }) => (<DatePicker label="Addendum 1 Dated" id="agreementDetails.addendum1Date" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.addendum1Date?.message} />)} />
-                                <Controller name="agreementDetails.addendum2Date" control={control} render={({ field }) => (<DatePicker label="Addendum 2 Dated" id="agreementDetails.addendum2Date" value={field.value} onChange={field.onChange} error={errors.agreementDetails?.addendum2Date?.message} />)} />
+
+                                {agreementFields.map((field, index) => (
+                                    <div key={field.id} className="relative bg-card border border-border p-6 rounded-xl group animate-fade-in space-y-4">
+                                        {agreementFields.length > 1 && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => removeAgreement(index)}
+                                                className="absolute -top-2 -right-2 p-1 bg-destructive text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (<DatePicker label="From Date" id={`agr-from-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />)} />
+                                            <Controller name={`agreements.${index}.toDate`} control={control} render={({ field: f }) => (<DatePicker label="To Date" id={`agr-to-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />)} />
+                                            <Input label="Renewal Interval (Days)" id={`agr-renewal-${index}`} type="number" registration={register(`agreements.${index}.renewalIntervalDays` as const)} error={errors.agreements?.[index]?.renewalIntervalDays?.message} />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
+                                            <Controller name={`agreements.${index}.softCopy`} control={control} render={({ field: f }) => (<UploadDocument label="Soft Copy" file={f.value} onFileChange={f.onChange} />)} />
+                                            <Controller name={`agreements.${index}.scannedCopy`} control={control} render={({ field: f }) => (<UploadDocument label="Scanned Copy" file={f.value} onFileChange={f.onChange} />)} />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-4 border-t border-border">
+                                            <Controller name={`agreements.${index}.agreementDate`} control={control} render={({ field: f }) => (<DatePicker label="Agreement Dated" id={`agr-date-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />)} />
+                                            <Controller name={`agreements.${index}.addendum1Date`} control={control} render={({ field: f }) => (<DatePicker label="Addendum 1 Dated" id={`agr-add1-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />)} />
+                                            <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (<DatePicker label="Addendum 2 Dated" id={`agr-add2-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />)} />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {agreementFields.length === 0 && (
+                                    <div className="text-center py-8 bg-accent/5 border border-dashed border-accent/20 rounded-xl">
+                                        <p className="text-muted text-sm">No agreement periods added.</p>
+                                    </div>
+                                )}
                             </div>
                         )}
                         
