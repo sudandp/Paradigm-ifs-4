@@ -676,9 +676,16 @@ const AttendanceSettings: React.FC = () => {
                     </div>
 
                     <div className="mt-8 p-4 bg-pink-500/5 border border-pink-500/20 rounded-xl">
-                        <h4 className="text-sm font-semibold text-pink-600 mb-4 flex items-center">
-                            <LifeBuoy className="mr-2 h-4 w-4" /> Maternity & Child Care Leave (Female Employees)
-                        </h4>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                            <h4 className="text-sm font-semibold text-pink-600 flex items-center mb-0">
+                                <LifeBuoy className="mr-2 h-4 w-4" /> Maternity & Child Care Leave (Female Employees)
+                            </h4>
+                            <Checkbox
+                                label="Enable Maternity & Child Care Leave"
+                                checked={!!currentRules.enableMaternityChildCare}
+                                onChange={(e) => handleSettingChange('enableMaternityChildCare', e.target.checked)}
+                            />
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             <Input
                                 label="Maternity Leave (weeks)"
@@ -687,6 +694,7 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.maternityLeaveWeeks ?? 26}
                                 onChange={(e) => handleSettingChange('maternityLeaveWeeks', parseInt(e.target.value, 10) || 26)}
                                 description="26 weeks as per policy (8 before + 18 after delivery)"
+                                disabled={!currentRules.enableMaternityChildCare}
                             />
                             <Input
                                 label="Min. Tenure (months)"
@@ -695,6 +703,7 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.maternityMinTenureMonths ?? 6}
                                 onChange={(e) => handleSettingChange('maternityMinTenureMonths', parseInt(e.target.value, 10) || 6)}
                                 description="Minimum months in company to be eligible"
+                                disabled={!currentRules.enableMaternityChildCare}
                             />
                             <Input
                                 label="Child Care (< 5 yrs)"
@@ -703,6 +712,7 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.childCareLeaveUnder5 ?? 6}
                                 onChange={(e) => handleSettingChange('childCareLeaveUnder5', parseInt(e.target.value, 10) || 6)}
                                 description="Days/year for child under 5 years"
+                                disabled={!currentRules.enableMaternityChildCare}
                             />
                             <Input
                                 label="Child Care (5-15 yrs)"
@@ -711,6 +721,7 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.childCareLeave5to15 ?? 3}
                                 onChange={(e) => handleSettingChange('childCareLeave5to15', parseInt(e.target.value, 10) || 3)}
                                 description="Days/year for child 5-15 years"
+                                disabled={!currentRules.enableMaternityChildCare}
                             />
                         </div>
                     </div>

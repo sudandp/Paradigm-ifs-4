@@ -969,6 +969,7 @@ export interface StaffAttendanceRules {
   maternityMinTenureMonths?: number; // default 6
   childCareLeaveUnder5?: number; // default 6 days/year
   childCareLeave5to15?: number; // default 3 days/year
+  enableMaternityChildCare?: boolean;
 }
 
 export interface UserHoliday {

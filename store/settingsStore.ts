@@ -89,6 +89,7 @@ const initialAttendance: AttendanceSettings = {
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     weeklyOffDays: [0], // Sunday
+    enableMaternityChildCare: true,
   },
   field: {
     minimumHoursFullDay: 9,
@@ -118,6 +119,7 @@ const initialAttendance: AttendanceSettings = {
     employeeHolidays: 6,
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
+    enableMaternityChildCare: true,
   },
   site: {
     minimumHoursFullDay: 9,
@@ -143,6 +145,7 @@ const initialAttendance: AttendanceSettings = {
     employeeHolidays: 6,
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
+    enableMaternityChildCare: true,
   }
 };
 
