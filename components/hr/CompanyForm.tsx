@@ -9,8 +9,9 @@ import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import Toast from '../ui/Toast';
-import { Plus, Trash2, Calendar, FileText } from 'lucide-react';
+import { Plus, Trash2, Calendar, FileText, Sparkles } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
+import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 
 interface CompanyFormProps {
   isOpen: boolean;
@@ -125,7 +126,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
     control, name: 'complianceDocuments'
   });
 
-  const { fields: holFields, append: appendHol, remove: removeHol } = useFieldArray({
+  const { fields: holFields, append: appendHol, remove: removeHol, replace: replaceHol } = useFieldArray({
     control, name: 'holidays'
   });
 
@@ -413,9 +414,46 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                             <h4 className="text-lg font-semibold text-primary-text">Registered Company Holidays</h4>
                             <p className="text-sm text-muted">Create holiday schedules that apply to this organization globally.</p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => appendHol({ id: `hol_${Date.now()}`, date: '', year: new Date().getFullYear(), festivalName: '' })}>
-                            <Calendar className="w-4 h-4 mr-2" /> Add Entry
-                        </Button>
+                        <div className="flex items-center gap-4">
+                            <div className="w-64">
+                                <Select 
+                                    id="holiday_preset"
+                                    icon={<Sparkles className="w-4 h-4 text-accent" />}
+                                    onChange={(e: any) => {
+                                        const val = e.target.value;
+                                        if (val === '10' || val === '12') {
+                                            const limit = parseInt(val);
+                                            const currentYear = new Date().getFullYear();
+                                            
+                                            // Combine fixed holidays with selection pool items
+                                            const presetHolidays = [
+                                                ...FIXED_HOLIDAYS.map(h => ({
+                                                    id: `hol_${Date.now()}_${Math.random()}`,
+                                                    date: `${currentYear}-${h.date}`,
+                                                    year: currentYear,
+                                                    festivalName: h.name
+                                                })),
+                                                ...HOLIDAY_SELECTION_POOL.slice(0, limit - FIXED_HOLIDAYS.length).map(h => ({
+                                                    id: `hol_${Date.now()}_${Math.random()}`,
+                                                    date: `${currentYear}${h.date}`, // h.date is like '-01-01'
+                                                    year: currentYear,
+                                                    festivalName: h.name
+                                                }))
+                                            ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                                            replaceHol(presetHolidays);
+                                        }
+                                    }}
+                                >
+                                    <option value="">Auto-populate Holidays...</option>
+                                    <option value="10">Feed 10 Days Holiday</option>
+                                    <option value="12">Feed 12 Days Holiday</option>
+                                </Select>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendHol({ id: `hol_${Date.now()}`, date: '', year: new Date().getFullYear(), festivalName: '' })}>
+                                <Calendar className="w-4 h-4 mr-2" /> Add Entry
+                            </Button>
+                        </div>
                     </div>
                     <div className="space-y-4">
                         {holFields.map((field, index) => (

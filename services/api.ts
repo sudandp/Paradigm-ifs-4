@@ -668,6 +668,43 @@ export const api = {
     if (error) throw error;
   },
 
+  getScopedAttendanceSettings: async (scope: 'location' | 'company' | 'entity', scopeId: string): Promise<AttendanceSettings | null> => {
+    const { data, error } = await supabase
+      .from('attendance_settings_scopes')
+      .select('settings')
+      .eq('scope_type', scope)
+      .eq('scope_id', scopeId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? toCamelCase(data.settings) : null;
+  },
+
+  saveScopedAttendanceSettings: async (scope: 'location' | 'company' | 'entity', scopeId: string, settings: AttendanceSettings): Promise<void> => {
+    const { error } = await supabase
+      .from('attendance_settings_scopes')
+      .upsert({
+        scope_type: scope,
+        scope_id: scopeId,
+        settings: toSnakeCase(settings),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'scope_type,scope_id' });
+
+    if (error) throw error;
+  },
+
+  getAllScopedSettings: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('attendance_settings_scopes')
+      .select('*');
+    
+    if (error) throw error;
+    return (data || []).map(item => ({
+        ...item,
+        settings: toCamelCase(item.settings)
+    }));
+  },
+
   // --- Onboarding & Verification ---
   getVerificationSubmissions: async (status?: string, organizationId?: string, managerId?: string): Promise<OnboardingData[]> => {
     return fetchWithCache(`verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`, async () => {
@@ -1398,12 +1435,15 @@ export const api = {
         return { ...updates, id };
     }
 
-    const { role, biometricId, organizationId, organizationName, ...rest } = updates;
+    const { role, biometricId, organizationId, organizationName, societyId, societyName, locationId, ...rest } = updates;
     const dbUpdates: any = toSnakeCase(rest);
     if (role) dbUpdates.role_id = role;
     if (biometricId !== undefined) dbUpdates.biometric_id = biometricId;
     if (organizationId !== undefined) dbUpdates.organization_id = organizationId;
     if (organizationName !== undefined) dbUpdates.organization_name = organizationName;
+    if (societyId !== undefined) dbUpdates.society_id = societyId;
+    if (societyName !== undefined) dbUpdates.society_name = societyName;
+    if (locationId !== undefined) dbUpdates.location_id = locationId;
 
     if ('photo_url' in dbUpdates) {
       const { data: { session } } = await supabase.auth.getSession();

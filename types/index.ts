@@ -67,6 +67,7 @@ export interface Organization {
   managerName?: string;
   fieldStaffNames?: string[];
   backendFieldStaffName?: string;
+  parentId?: string;
 }
 
 export interface User {
@@ -115,6 +116,10 @@ export interface User {
    * Flag indicating if the user is considered "nearby" the current user.
    */
   isNearby?: boolean;
+  location?: string;
+  societyId?: string;
+  societyName?: string;
+  locationId?: string;
 }
 
 export interface UserChild {

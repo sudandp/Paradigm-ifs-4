@@ -818,6 +818,7 @@ const AttendanceDashboard: React.FC = () => {
     const [fieldViolationsMap, setFieldViolationsMap] = useState<Record<string, FieldAttendanceViolation[]>>({});
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [scopedSettings, setScopedSettings] = useState<any[]>([]);
 
     const [dateRange, setDateRange] = useState<Range>({
         startDate: startOfToday(),
@@ -907,6 +908,37 @@ const AttendanceDashboard: React.FC = () => {
     const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0 });
     const [employeeLogs, setEmployeeLogs] = useState<any[]>([]);
 
+    const resolveUserRules = useCallback((userId?: string, userCategoryOverride?: 'office' | 'field' | 'site') => {
+        const targetUser = userId ? users.find(u => u.id === userId) : user;
+        if (!targetUser) return attendance.office;
+
+        const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
+        const userCategory = userCategoryOverride || (officeRoles.includes(targetUser.role?.toLowerCase() || '') ? 'office' : 'field');
+
+        // Priority order: Entity > Company > Location > Global
+        
+        // 1. Entity (Site)
+        const entitySetting = scopedSettings.find(s => s.scope_type === 'entity' && s.scope_id === targetUser.organizationId);
+        if (entitySetting) return entitySetting.settings[userCategory] || attendance[userCategory];
+
+        // 2. Society (Company)
+        const org = organizations.find(o => o.id === targetUser.organizationId);
+        const companyId = org?.parentId;
+        if (companyId) {
+            const companySetting = scopedSettings.find(s => s.scope_type === 'company' && s.scope_id === companyId);
+            if (companySetting) return companySetting.settings[userCategory] || attendance[userCategory];
+        }
+
+        // 3. Location
+        if (targetUser.location) {
+            const locationSetting = scopedSettings.find(s => s.scope_type === 'location' && s.scope_id === targetUser.location);
+            if (locationSetting) return locationSetting.settings[userCategory] || attendance[userCategory];
+        }
+
+        // 4. Global Fallback
+        return attendance[userCategory];
+    }, [scopedSettings, organizations, attendance, users, user]);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
@@ -921,6 +953,7 @@ const AttendanceDashboard: React.FC = () => {
         if (canDownloadReport) {
             api.getUsers().then(setUsers);
             api.getOrganizations().then(setOrganizations);
+            api.getAllScopedSettings().then(setScopedSettings);
         }
     }, [canDownloadReport]);
 
@@ -928,6 +961,14 @@ const AttendanceDashboard: React.FC = () => {
     useEffect(() => {
         const fetchEmployeeData = async () => {
             if (!isEmployeeView || !user || !dateRange.startDate || !dateRange.endDate) return;
+
+            // Resolve rules once for the current viewing user
+            const officeRoles = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance'];
+            const isOfficeRole = officeRoles.includes(user.role?.toLowerCase() || '');
+            const userCategory = isOfficeRole ? 'office' : 'field'; 
+            const userRules = resolveUserRules(user.id, userCategory);
+            const weeklyOffDays = userRules.weeklyOffDays || [0];
+
             setIsLoading(true);
             try {
                 // Fetch extra days before start date to handle weekend logic correctly across months
@@ -1000,19 +1041,21 @@ const AttendanceDashboard: React.FC = () => {
 
                     // Check Holidays/Weekends
                     const dayName = format(day, 'EEEE');
-                    const isWeekend = dayName === 'Sunday';
                     const officeRoles = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance'];
                     const isOfficeRole = officeRoles.includes(user.role?.toLowerCase() || '');
+                    const userCategoryInner = isOfficeRole ? 'office' : 'field'; 
+                    
+                    // Already resolved above for this user
+                    const weeklyOffDays = userRules.weeklyOffDays || [0];
+                    const isWeekend = weeklyOffDays.includes(day.getDay());
 
                     // 1. Recurring
                     const isRecurringHoliday = recurringHolidays.some(rule => {
                         if (rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
                         const occurrence = Math.ceil(day.getDate() / 7);
-                        const userRoleType = isOfficeRole ? 'office' : 'field'; 
-                        if (rule.n === occurrence && (rule.type || 'office') === userRoleType) {
-                            const categorySettings = attendance[userRoleType as keyof AttendanceSettings] as StaffAttendanceRules;
-                            if (categorySettings && categorySettings.floatingLeavesExpiryDate) {
-                                const expiryDate = startOfDay(new Date(categorySettings.floatingLeavesExpiryDate));
+                        if (rule.n === occurrence && (rule.type || 'office') === userCategoryInner) {
+                             if (userRules && userRules.floatingLeavesExpiryDate) {
+                                const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
                                 if (startOfDay(day) > expiryDate) {
                                     return false;
                                 }
@@ -1076,11 +1119,12 @@ const AttendanceDashboard: React.FC = () => {
                         if (checkOutEvent) {
                             checkOut = format(new Date(checkOutEvent.timestamp), 'hh:mm a');
 
-                            // Calculate OT (if > 8 hours)
+                             // Calculate OT (based on rules)
                             if (checkInEvent) {
                                 const { workingHours } = calculateWorkingHours(dayEvents);
-                                if (workingHours > 8) {
-                                    dailyOT = Math.round((workingHours - 8) * 10) / 10;
+                                const fullDayThreshold = userRules.minimumHoursFullDay || 8;
+                                if (workingHours > fullDayThreshold) {
+                                    dailyOT = Math.round((workingHours - fullDayThreshold) * 10) / 10;
                                 }
                             }
                         }
@@ -1097,9 +1141,10 @@ const AttendanceDashboard: React.FC = () => {
                     };
                 });
 
-                // 2. Apply Weekend Rule: If < 4 present days in the preceding week, mark Sunday as Absent
+                // 2. Apply Weekend Rule: If < present threshold days in the preceding week, mark Weekend Off as Absent
                 logs.forEach((log, index) => {
-                    if (log.status === 'W/O' && log.day === 'Sunday') {
+                    const isWeeklyOff = weeklyOffDays.includes(log.rawDate.getDay());
+                    if (log.status === 'W/O' && isWeeklyOff) {
                         let presentCount = 0;
                         // Look back up to 6 days
                         const lookBackLimit = Math.max(0, index - 6);
@@ -1110,7 +1155,7 @@ const AttendanceDashboard: React.FC = () => {
                                 presentCount++;
                             }
                         }
-                        if (presentCount < 4) {
+                        if (presentCount < (userRules.weekendPresentThreshold ?? 4)) {
                             log.status = 'A';
                         }
                     }
@@ -1406,10 +1451,13 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Check for holidays/weekends first
                 const dayName = format(day, 'EEEE');
-                const isWeekend = dayName === 'Sunday';
-
                 const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
                 const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+
+                // RESOLVE RULES FOR THIS USER
+                const userRules = resolveUserRules(user.id, userCategory);
+                const weeklyOffDays = userRules.weeklyOffDays || [0];
+                const isWeekend = weeklyOffDays.includes(day.getDay());
 
                 // Check for recurring holidays
                 const isRecurringHoliday = recurringHolidays.some(rule => {
@@ -1418,9 +1466,8 @@ const AttendanceDashboard: React.FC = () => {
                     const occurrence = Math.ceil(dayDate / 7);
                     const ruleType = rule.type || 'office';
                     if (rule.n === occurrence && ruleType === userCategory) {
-                        const categorySettings = attendance[userCategory as keyof AttendanceSettings] as StaffAttendanceRules;
-                        if (categorySettings && categorySettings.floatingLeavesExpiryDate) {
-                            const expiryDate = startOfDay(new Date(categorySettings.floatingLeavesExpiryDate));
+                        if (userRules && userRules.floatingLeavesExpiryDate) {
+                            const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
                             if (startOfDay(day) > expiryDate) {
                                 return false;
                             }
@@ -1643,6 +1690,11 @@ const AttendanceDashboard: React.FC = () => {
         const targetUsers = filteredUsers;
 
         return targetUsers.map(user => {
+            const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
+            const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+            const userRules = resolveUserRules(user.id, userCategory);
+            const weeklyOffDays = userRules.weeklyOffDays || [0];
+
             const statuses: string[] = [];
             let presentDays = 0;
             let absentDays = 0;
@@ -1705,10 +1757,9 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Determine day type (Weekend, Holiday, Regular)
                 const dayName = format(day, 'EEEE');
-                const isWeekend = dayName === 'Sunday';
+                const isWeekend = weeklyOffDays.includes(day.getDay());
 
-                const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
-                const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+                const userCategoryInner = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
 
                 // 1. Check Recurring holiday (Floating Holiday)
                 const isRecurringHoliday = recurringHolidays.some(rule => {
@@ -1716,10 +1767,9 @@ const AttendanceDashboard: React.FC = () => {
                     const dayDate = day.getDate();
                     const occurrence = Math.ceil(dayDate / 7);
                     const ruleType = rule.type || 'office';
-                    if (rule.n === occurrence && ruleType === userCategory) {
-                        const categorySettings = attendance[userCategory as keyof AttendanceSettings] as StaffAttendanceRules;
-                        if (categorySettings && categorySettings.floatingLeavesExpiryDate) {
-                            const expiryDate = startOfDay(new Date(categorySettings.floatingLeavesExpiryDate));
+                    if (rule.n === occurrence && ruleType === userCategoryInner) {
+                        if (userRules && userRules.floatingLeavesExpiryDate) {
+                            const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
                             if (startOfDay(day) > expiryDate) {
                                 return false;
                             }
@@ -1871,8 +1921,8 @@ const AttendanceDashboard: React.FC = () => {
                         daysPresentInWeek++;
                     }
                 } else if (isWeekend) {
-                    const isFirstSunday = day.getDate() <= 7;
-                    if (isFirstSunday || daysPresentInWeek >= 4) {
+                    const isFirstWeekend = day.getDate() <= 7;
+                    if (isFirstWeekend || daysPresentInWeek >= (userRules.weekendPresentThreshold ?? 4)) {
                         status = 'W/O';
                         weekOffs++;
                     } else {

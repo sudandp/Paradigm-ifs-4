@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, getDay, isAfter, startOfDay, differenceInMinutes } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
 import { api } from '../../services/api';
 import type { AttendanceEvent, AttendanceSettings } from '../../types';
 import Button from '../../components/ui/Button';
@@ -24,19 +24,8 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
     useEffect(() => {
         if (!settings || !user) return;
         
-        // Calculate threshold
-        let staffCategory: keyof AttendanceSettings = 'field';
-        const userRole = user.role.toLowerCase();
-        if ([
-            'admin', 'hr', 'finance', 'developer', 'management', 'office_staff', 
-            'back_office_staff', 'bd', 'operation_manager', 'field_staff',
-            'finance_manager', 'hr_ops', 'business developer', 'unverified',
-            'operation manager', 'field staff', 'finance manager', 'hr ops'
-        ].includes(userRole)) {
-            staffCategory = 'office';
-        } else if (['site_manager', 'site_supervisor', 'site manager', 'site supervisor'].includes(userRole)) {
-            staffCategory = 'site';
-        }
+        // Calculate threshold using new unified config-based logic
+        const staffCategory = getStaffCategory(user.roleId || user.role, user.organizationId, settings);
 
         const rules = settings[staffCategory];
         const shiftMax = rules?.dailyWorkingHours?.max || 8;

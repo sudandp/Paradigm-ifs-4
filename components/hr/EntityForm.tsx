@@ -904,36 +904,19 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     if (val !== '') {
                                         const limit = (val === 'company_10' || val === 'custom_10') ? 10 : 12;
                                         setValue('holidayConfig.numberOfDays', limit);
-                                        
-                                        const currentYear = new Date().getFullYear();
-                                        let initialHolidays: any[] = [];
 
                                         if (val.startsWith('company_')) {
-                                            // Start with global office holidays + fixed
-                                            initialHolidays = [
-                                                ...FIXED_HOLIDAYS.map(fh => ({
-                                                    date: `${currentYear}-${fh.date}`,
-                                                    description: fh.name
-                                                })),
-                                                ...officeHolidays.map(h => ({
-                                                    date: h.date,
-                                                    description: h.name
-                                                }))
-                                            ];
+                                            // Fetch from parent company's registered holidays
+                                            const parentCompany = companies?.find(c => c.id === watch('companyId')) || companies?.find(c => c.name === companyName);
+                                            const companyHols = (parentCompany?.holidays || []).map(h => ({
+                                                date: h.date,
+                                                description: h.festivalName
+                                            })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                            setValue('holidayConfig.holidays', companyHols.slice(0, limit));
                                         } else {
-                                            // Start with only fixed holidays
-                                            initialHolidays = FIXED_HOLIDAYS.map(fh => ({
-                                                date: `${currentYear}-${fh.date}`,
-                                                description: fh.name
-                                            }));
+                                            // Custom: start empty, HR/Admin selects from pool
+                                            setValue('holidayConfig.holidays', []);
                                         }
-
-                                        // Deduplicate and sort
-                                        const uniqueHolidays = Array.from(new Map(
-                                            initialHolidays.map(h => [h.date + h.description, h])
-                                        ).values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                                        
-                                        setValue('holidayConfig.holidays', uniqueHolidays.slice(0, limit));
                                     }
                                 }}
                             >
@@ -969,20 +952,22 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 {watch('holidayConfig.holidayType')?.startsWith('company_') ? 'Company Provided List' : 'Client Selected List'} 
                                 ({watch('holidayConfig.holidays')?.length || 0} / {watch('holidayConfig.numberOfDays') || 0})
                             </h4>
-                            <Button type="button" variant="secondary" size="sm" onClick={() => {
-                                const holidays = watch('holidayConfig.holidays') || [];
-                                if (holidays.length < (watch('holidayConfig.numberOfDays') || 10)) {
-                                    setValue('holidayConfig.holidays', [...holidays, { date: '', description: '' }]);
-                                }
-                            }}>
-                                <Plus className="h-4 w-4 mr-1" /> Add Custom Holiday
-                            </Button>
+                            {!watch('holidayConfig.holidayType')?.startsWith('company_') && (
+                                <Button type="button" variant="secondary" size="sm" onClick={() => {
+                                    const holidays = watch('holidayConfig.holidays') || [];
+                                    if (holidays.length < (watch('holidayConfig.numberOfDays') || 10)) {
+                                        setValue('holidayConfig.holidays', [...holidays, { date: '', description: '' }]);
+                                    }
+                                }}>
+                                    <Plus className="h-4 w-4 mr-1" /> Add Custom Holiday
+                                </Button>
+                            )}
                         </div>
 
-                        {watch('holidayConfig.holidayType') !== '' && (
+                        {watch('holidayConfig.holidayType') !== '' && !watch('holidayConfig.holidayType')?.startsWith('company_') && (
                             <div className="bg-accent/5 p-4 rounded-xl border border-accent/20 mb-4 animate-fade-in">
                                 <h5 className="text-xs font-bold text-muted uppercase mb-3 px-1">
-                                    {watch('holidayConfig.holidayType')?.startsWith('company_') ? 'Select from Company Master Pool' : 'Quick Select from Master Pool'}
+                                    Select from Holiday Selection Pool
                                 </h5>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
                                     {HOLIDAY_SELECTION_POOL.map(ph => {
@@ -1026,9 +1011,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         )}
                         
                         {(watch('holidayConfig.holidays') || []).map((holiday, index) => {
+                            const isCompanyType = watch('holidayConfig.holidayType')?.startsWith('company_');
                             const isFixed = FIXED_HOLIDAYS.some(fh => holiday.description === fh.name);
                             return (
-                                <div key={index} className={`grid grid-cols-12 gap-3 items-end p-3 rounded-lg border transition-all ${isFixed ? 'bg-primary/5 border-primary/20' : 'bg-accent/5 border-accent/20'}`}>
+                                <div key={index} className={`grid grid-cols-12 gap-3 items-end p-3 rounded-lg border transition-all ${isCompanyType ? 'bg-primary/5 border-primary/20' : isFixed ? 'bg-primary/5 border-primary/20' : 'bg-accent/5 border-accent/20'}`}>
                                     <div className="col-span-11 grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <Controller name={`holidayConfig.holidays.${index}.date`} control={control} render={({ field }) => (
                                             <DatePicker 
@@ -1036,18 +1022,18 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                 id={`holidayDate-${index}`} 
                                                 value={field.value} 
                                                 onChange={field.onChange} 
-                                                disabled={isFixed || watch('holidayConfig.holidayType')?.startsWith('company_')} 
+                                                disabled={isCompanyType} 
                                             />
                                         )} />
                                         <Input 
                                             label="Description" 
                                             id={`holidayDesc-${index}`} 
                                             registration={register(`holidayConfig.holidays.${index}.description` as const)} 
-                                            disabled={isFixed || watch('holidayConfig.holidayType')?.startsWith('company_')} 
+                                            disabled={isCompanyType} 
                                         />
                                     </div>
                                     <div className="col-span-1 flex justify-center">
-                                        {!isFixed && !watch('holidayConfig.holidayType')?.startsWith('company_') && (
+                                        {!isCompanyType && (
                                             <Button type="button" variant="icon" onClick={() => {
                                                 const holidays = watch('holidayConfig.holidays') || [];
                                                 setValue('holidayConfig.holidays', holidays.filter((__, i) => i !== index));
@@ -1055,7 +1041,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         )}
-                                        {isFixed && <ShieldCheck className="h-5 w-5 text-primary opacity-50 mb-2" title="Fixed Holiday" />}
+                                        {isCompanyType && <ShieldCheck className="h-5 w-5 text-primary opacity-50 mb-2" title="Company Holiday" />}
                                     </div>
                                 </div>
                             );

@@ -13,7 +13,7 @@ import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear } from 'date-fns';
-import { calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
 import DatePicker from '../../components/ui/DatePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -287,20 +287,7 @@ const LeaveDashboard: React.FC = () => {
             }
 
             // Map User Role to Staff Category (office, field, site)
-            let staffCategory: keyof AttendanceSettings = 'office';
-            const userRole = (currentUserData.role || '').toLowerCase();
-
-            if ([
-                'admin', 'hr', 'finance', 'developer', 'management', 'office_staff', 
-                'back_office_staff', 'bd', 'operation_manager', 'finance_manager', 
-                'hr_ops', 'business developer', 'operation manager', 'finance manager', 'hr ops'
-            ].includes(userRole)) {
-                staffCategory = 'office';
-            } else if (userRole.includes('site')) {
-                staffCategory = 'site';
-            } else {
-                staffCategory = 'field';
-            }
+            const staffCategory = getStaffCategory(currentUserData.roleId || currentUserData.role || '', currentUserData.organizationId, settings);
 
             const userRules = settings[staffCategory];
             const shiftThreshold = userRules?.dailyWorkingHours?.max || 8;

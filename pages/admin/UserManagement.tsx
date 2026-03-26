@@ -59,7 +59,7 @@ const UserRow = React.memo(({
             )}
         </td>
         <td data-label="Site" className="px-6 py-4 text-sm text-muted">
-            {user.organizationName || '-'}
+            {user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}
         </td>
         <td data-label="Biometric ID" className="px-6 py-4 text-sm font-mono text-muted">
             {user.biometricId || '-'}
@@ -101,7 +101,7 @@ const UserCard = React.memo(({
         <div className="grid grid-cols-2 gap-2 text-sm mt-1 flex-grow">
             <div>
                 <span className="text-xs text-muted block">Site</span>
-                <span className="font-medium text-primary-text">{user.organizationName || '-'}</span>
+                <span className="font-medium text-primary-text">{user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}</span>
             </div>
             <div>
                 <span className="text-xs text-muted block">Biometric ID</span>

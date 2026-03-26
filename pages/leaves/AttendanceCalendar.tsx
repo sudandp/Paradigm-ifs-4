@@ -3,6 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMont
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { getStaffCategory } from '../../utils/attendanceCalculations';
 import { api } from '../../services/api';
 import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, RecurringHolidayRule } from '../../types';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -36,14 +37,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     // Determine which holidays to use based on user role
     const holidays = useMemo(() => {
         const { officeHolidays, fieldHolidays } = useSettingsStore.getState();
-        if (user?.role === 'field_staff') return fieldHolidays;
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+        if (staffCategory === 'field') return fieldHolidays;
         return officeHolidays;
-    }, [user]);
+    }, [user, settings]);
 
     const recurringRules = useMemo(() => {
-        const roleType = user?.role === 'field_staff' ? 'field' : 'office';
+        const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
         return recurringHolidays.filter(rule => (rule.type || 'office') === roleType);
-    }, [user, recurringHolidays]);
+    }, [user, recurringHolidays, settings]);
 
     // Debug logs
     useEffect(() => {
@@ -99,7 +101,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const getDayStatus = (date: Date) => {
         const currentYear = date.getFullYear();
-        const staffCategory = user?.role === 'field_staff' ? 'field' : 'office';
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
         const activePool = (settings as any)?.[staffCategory]?.holidayPool || HOLIDAY_SELECTION_POOL;
         
         // Check for attendance (present)

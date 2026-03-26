@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import type { User, UserRole, Organization, Role, BiometricDevice } from '../../types';
+import type { User, UserRole, Organization, Role, BiometricDevice, OrganizationGroup, AttendanceSettings } from '../../types';
+import { getStaffCategory } from '../../utils/attendanceCalculations';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
@@ -41,6 +42,9 @@ const createUserSchema = yup.object({
   compOffOpeningDate: yup.string().optional().nullable(),
   floatingLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
   floatingLeaveOpeningDate: yup.string().optional().nullable(),
+  societyId: yup.string().optional().nullable(),
+  societyName: yup.string().optional().nullable(),
+  locationId: yup.string().optional().nullable(),
 }).defined();
 
 const editUserSchema = yup.object({
@@ -67,6 +71,9 @@ const editUserSchema = yup.object({
   compOffOpeningDate: yup.string().optional().nullable(),
   floatingLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
   floatingLeaveOpeningDate: yup.string().optional().nullable(),
+  societyId: yup.string().optional().nullable(),
+  societyName: yup.string().optional().nullable(),
+  locationId: yup.string().optional().nullable(),
 }).defined();
 
 const AddUserPage: React.FC = () => {
@@ -81,6 +88,10 @@ const AddUserPage: React.FC = () => {
   const [allDevices, setAllDevices] = useState<BiometricDevice[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [initialData, setInitialData] = useState<User | null>(null);
+  const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [selectedSociety, setSelectedSociety] = useState<string>('');
+  const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
 
   const schema = isEditing ? editUserSchema : createUserSchema;
   const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<Partial<User> & { password?: string; noSiteAssignment?: boolean }>({
@@ -88,18 +99,23 @@ const AddUserPage: React.FC = () => {
   });
 
   const role = watch('role');
+  const organizationId = watch('organizationId');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [orgs, fetchedRoles, fetchedDevices] = await Promise.all([
+        const [orgs, fetchedRoles, fetchedDevices, structure, settings] = await Promise.all([
           api.getOrganizations(),
           api.getRoles(),
-          api.getBiometricDevices ? api.getBiometricDevices() : Promise.resolve([])
+          api.getBiometricDevices ? api.getBiometricDevices() : Promise.resolve([]),
+          api.getOrganizationStructure(),
+          api.getAttendanceSettings()
         ]);
         setOrganizations(orgs);
         setRoles(fetchedRoles);
         setAllDevices(fetchedDevices);
+        setOrgStructure(structure);
+        setAttendanceSettings(settings);
 
         if (isEditing && id) {
           const users = await api.getUsers();
@@ -107,6 +123,90 @@ const AddUserPage: React.FC = () => {
           if (user) {
             setInitialData(user);
             reset(user);
+
+            // Auto-resolve hierarchy for edit mode
+            if (user.organizationId) {
+              const site = orgs.find(o => o.id === user.organizationId);
+              if (site && site.parentId) {
+                const uniqueLocations = new Set<string>();
+                structure.forEach(group => {
+                  group.companies.forEach(company => {
+                    if (company.location) uniqueLocations.add(company.location);
+                    company.entities.forEach(entity => {
+                      if (entity.location) uniqueLocations.add(entity.location);
+                    });
+                  });
+                });
+                
+                // Find if the site belongs to a company that matches a location
+                let foundLocation: string | null = null;
+                let foundSociety: any = null;
+
+                for (const group of structure) {
+                  for (const company of group.companies) {
+                    if (company.id === site.parentId) {
+                      foundSociety = company;
+                      // Determine the best location for this society
+                      foundLocation = company.location || site.location || null;
+                      if (!foundLocation) {
+                        // fallback to finding matching location
+                        const availableLocs = Array.from(uniqueLocations);
+                        if (availableLocs.length > 0) foundLocation = availableLocs[0];
+                      }
+                      break;
+                    }
+                  }
+                  if (foundSociety) break;
+                }
+
+                if (foundSociety && foundLocation) {
+                  setSelectedSociety(foundSociety.id);
+                  setSelectedLocation(foundLocation);
+                  setValue('societyId', foundSociety.id);
+                  setValue('societyName', foundSociety.name);
+                  // Location name is now the string location
+                  setValue('locationId', foundLocation);
+                }
+              }
+            } else if (user.societyId) {
+              // User has a company but no specific site (Entity). Treat as Head Office.
+              const uniqueLocations = new Set<string>();
+              structure.forEach(group => {
+                group.companies.forEach(company => {
+                  if (company.location) uniqueLocations.add(company.location);
+                });
+              });
+              
+              let foundLocation: string | null = null;
+              let foundSociety: any = null;
+
+              for (const group of structure) {
+                for (const company of group.companies) {
+                  if (company.id === user.societyId) {
+                    foundSociety = company;
+                    foundLocation = company.location || null;
+                    if (!foundLocation) {
+                      const availableLocs = Array.from(uniqueLocations);
+                      if (availableLocs.length > 0) foundLocation = availableLocs[0];
+                    }
+                    break;
+                  }
+                }
+                if (foundSociety) break;
+              }
+
+              if (foundSociety && foundLocation) {
+                setSelectedSociety(foundSociety.id);
+                setSelectedLocation(foundLocation);
+                setValue('societyId', foundSociety.id);
+                setValue('societyName', foundSociety.name);
+                setValue('locationId', foundLocation);
+                
+                // Map to the exact pseudo-id used by the dropdown so it selects properly
+                setValue('organizationId', `${foundSociety.id}_head_office`);
+                setValue('organizationName', 'Head Office');
+              }
+            }
           }
         } else {
           reset({ name: '', email: '', role: 'field_staff' });
@@ -118,16 +218,78 @@ const AddUserPage: React.FC = () => {
     fetchData();
   }, [id, isEditing, reset]);
 
+  const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const locId = e.target.value;
+    setSelectedLocation(locId);
+    setSelectedSociety('');
+    setValue('organizationId', '');
+    setValue('organizationName', '');
+    setValue('societyId', '');
+    setValue('societyName', '');
+    setValue('locationId', locId);
+  };
+
+  // Derived options for Societies and Entities
+  const locations = React.useMemo(() => {
+    const uniqueLocations = new Set<string>();
+    orgStructure.forEach(group => {
+      group.companies.forEach(company => {
+        if (company.location) uniqueLocations.add(company.location);
+        company.entities.forEach(entity => {
+          if (entity.location) uniqueLocations.add(entity.location);
+        });
+      });
+    });
+    return Array.from(uniqueLocations).sort();
+  }, [orgStructure]);
+
+  const availableCompanies = React.useMemo(() => {
+    if (!selectedLocation) return [];
+    const companies: { id: string, name: string }[] = [];
+    orgStructure.forEach(group => {
+      group.companies.forEach(company => {
+        const matchesLoc = company.location === selectedLocation || 
+                         company.entities.some(e => e.location === selectedLocation);
+        if (matchesLoc) {
+          companies.push({ id: company.id, name: company.name });
+        }
+      });
+    });
+    return companies;
+  }, [orgStructure, selectedLocation]);
+
+  const availableEntities = React.useMemo(() => {
+    if (!selectedSociety) return [];
+    const entities: { id: string, name: string }[] = [];
+    orgStructure.forEach(group => {
+      group.companies.forEach(company => {
+        if (company.id === selectedSociety) {
+          company.entities.forEach(entity => {
+            entities.push({ id: entity.id, name: entity.name });
+          });
+        }
+      });
+    });
+    return entities;
+  }, [orgStructure, selectedSociety]);
+
   const handleOrgChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const orgId = e.target.value;
     const org = organizations.find(o => o.id === orgId);
+    
+    // Find name from structure as fallback
+    let entityName = org?.shortName || '';
+    if (!entityName && orgId) {
+      const entity = availableEntities.find(ent => ent.id === orgId);
+      entityName = entity?.name || '';
+    }
+
     setValue('organizationId', orgId);
-    setValue('organizationName', org?.shortName || '');
+    setValue('organizationName', entityName);
     if (orgId) {
       setValue('noSiteAssignment', false);
     }
   };
-
   const onSubmit: SubmitHandler<Partial<User> & { password?: string; noSiteAssignment?: boolean }> = async (data) => {
     setIsSubmitting(true);
     
@@ -144,13 +306,38 @@ const AddUserPage: React.FC = () => {
     };
 
     try {
+      // Map the string geographic locationId back to the true Organization Group UUID 
+      // that the database foreign key expects
+      const processedData = { ...data };
+      if (processedData.societyId) {
+        const matchingGroup = orgStructure.find(g => 
+          g.companies.some(c => c.id === processedData.societyId)
+        );
+        if (matchingGroup) {
+          processedData.locationId = matchingGroup.id;
+        } else {
+          // If no matching group is found, it's safer to send null than a string that will break the foreign key
+          processedData.locationId = '';
+        }
+      } else if (processedData.locationId && !processedData.locationId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+         // If they didn't select a society but selected a location string, nullify it to prevent FK constraint error
+         processedData.locationId = '';
+      }
+
+      // Intercept Head Office pseudo-entity IDs and convert them to null
+      // so the database doesn't throw a foreign key error on organization_id
+      if (processedData.organizationId && processedData.organizationId.endsWith('_head_office')) {
+        processedData.organizationId = '';
+        processedData.organizationName = '';
+      }
+
       if (isEditing && id) {
-        const { password, noSiteAssignment, ...rest } = data;
+        const { password, noSiteAssignment, ...rest } = processedData;
         const payload = cleanPayload(rest);
         await api.updateUser(id, payload);
         setToast({ message: 'User updated successfully!', type: 'success' });
       } else {
-        const { name, email, password, role, noSiteAssignment, ...rest } = data;
+        const { name, email, password, role, noSiteAssignment, ...rest } = processedData;
         if (!password) {
           throw new Error('Password is required when creating a new user');
         }
@@ -230,10 +417,51 @@ const AddUserPage: React.FC = () => {
                   error={(errors as any).password?.message}
                 />
               )}
-              <Select label="Assigned Site" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={watch('noSiteAssignment')}>
-                <option value="">Select a Site</option>
-                {organizations.map(org => <option key={org.id} value={org.id}>{org.shortName}</option>)}
+              <Select label="Location (Region)" id="locationId" registration={register('locationId')} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+                <option value="">Select a Location</option>
+                {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
               </Select>
+              
+              <Select label="Society (Company)" id="societyId" registration={register('societyId')} onChange={(e) => {
+                const socId = e.target.value;
+                setSelectedSociety(socId);
+                setValue('organizationId', '');
+                setValue('organizationName', '');
+                setValue('societyId', socId);
+                const socName = availableCompanies.find(c => c.id === socId)?.name || '';
+                setValue('societyName', socName);
+              }} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
+                <option value="">Select a Society</option>
+                {availableCompanies.map(soc => (
+                  <option key={soc.id} value={soc.id}>{soc.name}</option>
+                ))}
+              </Select>
+
+              <Select label="Assigned Site (Entity)" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={!selectedSociety || watch('noSiteAssignment')}>
+                <option value="">Select a Site</option>
+                {selectedSociety && (
+                  <option value={`${selectedSociety}_head_office`}>Head Office</option>
+                )}
+                {availableEntities.map(ent => (
+                  <option key={ent.id} value={ent.id}>{ent.name}</option>
+                ))}
+              </Select>
+              
+              {role && (
+                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2 flex items-start gap-2">
+                  <span className="text-xl leading-none">ℹ️</span>
+                  <div>
+                    <h4 className="text-sm font-semibold text-indigo-900">Staff Category Status</h4>
+                    <p className="text-xs text-indigo-800/80 mt-1 flex flex-col gap-0.5">
+                      <span>Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong>, this user is categorized as:</span>
+                      <strong className="text-indigo-700 capitalize text-[13px] bg-indigo-100/50 py-0.5 px-2 rounded-md self-start mt-1 border border-indigo-200/50 shadow-sm">
+                        {getStaffCategory(role, watch('organizationId'), attendanceSettings)} Staff
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {!watch('organizationId') && (
                 <div className="flex items-center gap-2 mt-2 px-1">
                   <input
@@ -411,10 +639,52 @@ const AddUserPage: React.FC = () => {
               error={(errors as any).password?.message}
             />
           )}
-          <Select label="Assigned Site" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={watch('noSiteAssignment')}>
-            <option value="">Select a Site (Location)</option>
-            {organizations.map(org => <option key={org.id} value={org.id}>{org.shortName}</option>)}
+          <Select label="Location (Region)" id="locationId" registration={register('locationId')} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+            <option value="">Select a Location</option>
+            {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
           </Select>
+          
+          <Select label="Society (Company)" id="societyId" registration={register('societyId')} onChange={(e) => {
+            const socId = e.target.value;
+            setSelectedSociety(socId);
+            setValue('organizationId', '');
+            setValue('organizationName', '');
+            setValue('societyId', socId);
+            const socName = availableCompanies.find(c => c.id === socId)?.name || '';
+            setValue('societyName', socName);
+          }} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
+            <option value="">Select a Society</option>
+            {availableCompanies.map(soc => (
+              <option key={soc.id} value={soc.id}>{soc.name}</option>
+            ))}
+          </Select>
+
+          <Select label="Assigned Site (Entity)" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={!selectedSociety || watch('noSiteAssignment')}>
+            <option value="">Select a Site (Location)</option>
+            {selectedSociety && (
+              <option value={`${selectedSociety}_head_office`}>Head Office</option>
+            )}
+            {availableEntities.map(ent => (
+              <option key={ent.id} value={ent.id}>{ent.name}</option>
+            ))}
+          </Select>
+
+          {role && (
+            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-start gap-3 shadow-sm">
+              <span className="text-2xl leading-none mt-0.5">ℹ️</span>
+              <div>
+                <h4 className="text-sm font-semibold text-indigo-900">Staff Category Assignment</h4>
+                <p className="text-sm text-indigo-800/80 mt-1">
+                  Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong> configuration, this user will automatically follow the rules of:
+                </p>
+                <div className="mt-2 inline-block">
+                  <span className="text-indigo-700 font-bold capitalize text-sm bg-indigo-100 py-1 px-3 rounded-lg border border-indigo-200 shadow-sm">
+                    {getStaffCategory(role, watch('organizationId'), attendanceSettings)} Staff
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {!watch('organizationId') && (
             <div className="flex items-center gap-2 mt-2 px-1 bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">

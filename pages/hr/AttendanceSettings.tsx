@@ -2,7 +2,7 @@
 
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -20,6 +20,12 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 
 const AttendanceSettings: React.FC = () => {
     const { attendance, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays, addHoliday, removeHoliday, addRecurringHoliday, removeRecurringHoliday, updateAttendanceSettings: updateStore } = useSettingsStore();
+    const [orgStructure, setOrgStructure] = useState<any[]>([]);
+    const [locations, setLocations] = useState<string[]>([]);
+    const [selectedLocation, setSelectedLocation] = useState<string>('global');
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+    const [isLoadingSettings, setIsLoadingSettings] = useState(false);
 
     const [localAttendance, setLocalAttendance] = useState<AttendanceSettings>(attendance);
     const [isDirty, setIsDirty] = useState(false);
@@ -39,19 +45,120 @@ const AttendanceSettings: React.FC = () => {
     const [editingPoolIndex, setEditingPoolIndex] = useState<number | null>(null);
 
     useEffect(() => {
-        const fetchRoles = async () => {
+        const fetchData = async () => {
             setIsLoadingRoles(true);
             try {
-                const roles = await api.getAppRoles();
+                const [roles, structure] = await Promise.all([
+                    api.getAppRoles(),
+                    api.getOrganizationStructure()
+                ]);
                 setAllRoles(roles);
+                setOrgStructure(structure);
+                
+                // Collect unique locations from organization structure
+                const uniqueLocations = new Set<string>();
+                structure.forEach(group => {
+                    group.companies.forEach(company => {
+                        if (company.location) uniqueLocations.add(company.location);
+                        company.entities.forEach(entity => {
+                            if (entity.location) uniqueLocations.add(entity.location);
+                        });
+                    });
+                });
+                setLocations(Array.from(uniqueLocations).sort());
             } catch (error) {
-                console.error('Failed to fetch roles:', error);
+                console.error('Failed to fetch roles or organization structure:', error);
             } finally {
                 setIsLoadingRoles(false);
             }
         };
-        fetchRoles();
+        fetchData();
     }, []);
+
+    // Derived options for Societies and Entities
+    const availableCompanies = useMemo(() => {
+        if (selectedLocation === 'global') return [];
+        const companies: { id: string, name: string }[] = [];
+        orgStructure.forEach(group => {
+            group.companies.forEach(company => {
+                const matchesLoc = company.location === selectedLocation || 
+                                 company.entities.some(e => e.location === selectedLocation);
+                if (matchesLoc) {
+                    companies.push({ id: company.id, name: company.name });
+                }
+            });
+        });
+        return companies;
+    }, [orgStructure, selectedLocation]);
+
+    const availableEntities = useMemo(() => {
+        if (!selectedCompanyId) return [];
+        const entities: { id: string, name: string }[] = [];
+        orgStructure.forEach(group => {
+            group.companies.forEach(company => {
+                if (company.id === selectedCompanyId) {
+                    company.entities.forEach(entity => {
+                        entities.push({ id: entity.id, name: entity.name });
+                    });
+                }
+            });
+        });
+        return entities;
+    }, [orgStructure, selectedCompanyId]);
+
+    // Fetch scoped settings when selection changes
+    useEffect(() => {
+        const fetchScopedSettings = async () => {
+            let scope: 'location' | 'company' | 'entity' | 'global' = 'global';
+            let scopeId = '';
+
+            if (selectedEntityId) {
+                scope = 'entity';
+                scopeId = selectedEntityId;
+            } else if (selectedCompanyId) {
+                scope = 'company';
+                scopeId = selectedCompanyId;
+            } else if (selectedLocation !== 'global') {
+                scope = 'location';
+                scopeId = selectedLocation;
+            }
+
+            if (scope === 'global') {
+                setLocalAttendance(attendance);
+                return;
+            }
+
+            setIsLoadingSettings(true);
+            try {
+                const settings = await api.getScopedAttendanceSettings(scope as any, scopeId);
+                if (settings) {
+                    setLocalAttendance(settings);
+                } else {
+                    // Fallback to global settings if no scoped settings yet
+                    setLocalAttendance(attendance);
+                }
+            } catch (error) {
+                console.error('Failed to fetch scoped settings:', error);
+                setToast({ message: `Failed to fetch settings for ${scope}. Using global defaults.`, type: 'error' });
+                setLocalAttendance(attendance);
+            } finally {
+                setIsLoadingSettings(false);
+            }
+        };
+        fetchScopedSettings();
+    }, [selectedLocation, selectedCompanyId, selectedEntityId, attendance]);
+
+    // Reset subordinate selections when parent changes
+    const handleLocationChange = (val: string) => {
+        setSelectedLocation(val);
+        setSelectedCompanyId('');
+        setSelectedEntityId('');
+    };
+
+    const handleCompanyChange = (val: string) => {
+        setSelectedCompanyId(val);
+        setSelectedEntityId('');
+    };
 
     useEffect(() => {
         // Initialize admin and management if missing
@@ -64,8 +171,21 @@ const AttendanceSettings: React.FC = () => {
     }, [attendance]);
 
     useEffect(() => {
-        setIsDirty(JSON.stringify(localAttendance) !== JSON.stringify(attendance));
-    }, [localAttendance, attendance]);
+        const isGlobal = selectedLocation === 'global' && !selectedCompanyId && !selectedEntityId;
+        setIsDirty(JSON.stringify(localAttendance) !== JSON.stringify(isGlobal ? attendance : localAttendance));
+    }, [localAttendance, attendance, selectedLocation, selectedCompanyId, selectedEntityId]);
+
+    // Automatically switch tabs if the active tab is hidden by the current entity selection
+    useEffect(() => {
+        const isHeadOfficeSelected = selectedEntityId === `${selectedCompanyId}_head_office`;
+        const isSpecificEntitySelected = selectedEntityId && !isHeadOfficeSelected;
+
+        if (isHeadOfficeSelected && activeTab === 'site') {
+            setActiveTab('office');
+        } else if (isSpecificEntitySelected && (activeTab === 'office' || activeTab === 'field')) {
+            setActiveTab('site');
+        }
+    }, [selectedEntityId, selectedCompanyId, activeTab]);
 
     // Load geofencing settings
     // No extra loading here, it's part of attendance settings
@@ -254,9 +374,27 @@ const AttendanceSettings: React.FC = () => {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            await api.saveAttendanceSettings(localAttendance);
-            
-            updateStore(localAttendance);
+            let scope: 'location' | 'company' | 'entity' | 'global' = 'global';
+            let scopeId = '';
+
+            if (selectedEntityId) {
+                scope = 'entity';
+                scopeId = selectedEntityId;
+            } else if (selectedCompanyId) {
+                scope = 'company';
+                scopeId = selectedCompanyId;
+            } else if (selectedLocation !== 'global') {
+                scope = 'location';
+                scopeId = selectedLocation;
+            }
+
+            if (scope === 'global') {
+                await api.updateAttendanceSettings(localAttendance);
+                updateStore(localAttendance);
+            } else {
+                await api.saveScopedAttendanceSettings(scope as any, scopeId, localAttendance);
+            }
+            setIsDirty(false);
             setToast({ message: 'Settings saved successfully!', type: 'success' });
         } catch (error) {
             setToast({ message: 'Failed to save settings.', type: 'error' });
@@ -274,24 +412,74 @@ const AttendanceSettings: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <AdminPageHeader title="Attendance & Leave Rules">
-                <Button onClick={handleSave} isLoading={isSaving} disabled={!isDirty} size="md" className="py-2 px-6">
-                    <Save className="mr-2 h-4 w-4" /> Save Rules
-                </Button>
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="w-48">
+                         <Select
+                            id="location-filter"
+                            value={selectedLocation}
+                            onChange={(e) => handleLocationChange(e.target.value)}
+                        >
+                            <option value="global">Global Rules</option>
+                            {locations.map(loc => (
+                                <option key={loc} value={loc}>{loc}</option>
+                            ))}
+                        </Select>
+                    </div>
+
+                    <div className="w-48 animate-in slide-in-from-right-2 duration-300">
+                        <Select
+                            id="society-filter"
+                            value={selectedCompanyId}
+                            onChange={(e) => handleCompanyChange(e.target.value)}
+                        >
+                            <option value="">All Societies</option>
+                            {availableCompanies.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+
+                    <div className="w-48 animate-in slide-in-from-right-2 duration-300">
+                        <Select
+                            id="entity-filter"
+                            value={selectedEntityId}
+                            onChange={(e) => setSelectedEntityId(e.target.value)}
+                        >
+                            <option value="">All Entities</option>
+                            {selectedCompanyId && (
+                                <option value={`${selectedCompanyId}_head_office`}>Head Office</option>
+                            )}
+                            {availableEntities.map(ent => (
+                                <option key={ent.id} value={ent.id}>{ent.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+
+                    <Button onClick={handleSave} isLoading={isSaving} disabled={!isDirty} size="md" className="py-2 px-6">
+                        <Save className="mr-2 h-4 w-4" /> Save Rules
+                    </Button>
+                </div>
             </AdminPageHeader>
             <p className="text-muted -mt-4 mb-6">Set company-wide rules for attendance and leave calculation.</p>
 
 
             <div className="mb-6 border-b border-border">
                 <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-                    <button onClick={() => setActiveTab('office')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'office' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Office Staff
-                    </button>
-                    <button onClick={() => setActiveTab('field')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'field' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Field Staff
-                    </button>
-                    <button onClick={() => setActiveTab('site')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'site' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Site Staff
-                    </button>
+                    {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && (
+                        <>
+                            <button onClick={() => setActiveTab('office')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'office' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                                Office Staff
+                            </button>
+                            <button onClick={() => setActiveTab('field')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'field' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                                Field Staff
+                            </button>
+                        </>
+                    )}
+                    {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && (
+                        <button onClick={() => setActiveTab('site')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'site' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                            Site Staff
+                        </button>
+                    )}
                     <button onClick={() => setActiveTab('admin')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'admin' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                         Admin
                     </button>
@@ -304,9 +492,9 @@ const AttendanceSettings: React.FC = () => {
                 </nav>
             </div>
 
-            {activeTab === 'office' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Receptionist, Accountant, and general Office Staff.</p>}
-            {activeTab === 'field' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Field Staff and Field Managers.</p>}
-            {activeTab === 'site' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Site Staff (e.g. Site Managers, Security Guards).</p>}
+            {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'office' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Receptionist, Accountant, and general Office Staff.</p>}
+            {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'field' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Field Staff and Field Managers.</p>}
+            {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && activeTab === 'site' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Site Staff (e.g. Site Managers, Security Guards).</p>}
             {activeTab === 'admin' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to System Administrators and HR Admins.</p>}
             {activeTab === 'management' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Top Management, CEO, GM, etc.</p>}
             {activeTab === 'selections' && <p className="text-sm text-muted -mt-4 mb-4">Select staff groups to include in automated actions like missed check-out triggers.</p>}

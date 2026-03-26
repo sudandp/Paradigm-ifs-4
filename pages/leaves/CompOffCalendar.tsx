@@ -5,6 +5,7 @@ import type { CompOffLog, LeaveRequest, AttendanceEvent, UserHoliday } from '../
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { getStaffCategory } from '../../utils/attendanceCalculations';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
@@ -50,7 +51,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
 
     const getDayStatus = (date: Date) => {
         const currentYear = date.getFullYear();
-        const staffCategory = user?.role === 'field_staff' ? 'field' : 'office';
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, { missedCheckoutConfig: attendance?.missedCheckoutConfig });
         const activePool = (attendance as any)?.[staffCategory]?.holidayPool || HOLIDAY_SELECTION_POOL;
 
         // 1. Check for taken comp-offs from leave requests

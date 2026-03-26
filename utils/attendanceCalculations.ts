@@ -249,3 +249,29 @@ export function processDailyEvents(events: AttendanceEvent[]): {
     workingHours: result.workingHours,
   };
 }
+
+/**
+ * Determine the staff category based on user's role and assigned site
+ * utilizing the configurable missedCheckoutConfig.roleMapping
+ */
+export function getStaffCategory(
+  roleId: string,
+  societyId?: string | null,
+  settings?: any
+): 'office' | 'field' | 'site' {
+  const mapping = settings?.missedCheckoutConfig?.roleMapping || {
+    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'operation_manager'],
+    field: ['field_staff', 'field_officer'],
+    site: ['site_manager', 'security_guard', 'supervisor']
+  };
+
+  if (mapping.field?.includes(roleId)) return 'field';
+  
+  // If the user's role is specifically mapped to site, or they are assigned to a real physical society
+  // (ignoring 'null' and 'head_office' suffix which imply corporate mapping)
+  if (mapping.site?.includes(roleId) || (societyId && !societyId.endsWith('_head_office'))) return 'site';
+  
+  return 'office';
+}
+
+// Force Vite HMR
