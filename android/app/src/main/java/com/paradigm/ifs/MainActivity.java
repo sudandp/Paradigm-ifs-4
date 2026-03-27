@@ -4,6 +4,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowManager;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -11,6 +12,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Prevent screen recording and screenshots system-wide
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        
         registerPlugin(BadgeHelperPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();

@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, ZoomIn, ZoomOut, RotateCw, ArrowLeft, FileText } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCw, ArrowLeft, FileText, ShieldAlert } from 'lucide-react';
 import Button from '../components/ui/Button';
 
 const DocumentViewerPage: React.FC = () => {
@@ -11,21 +11,49 @@ const DocumentViewerPage: React.FC = () => {
     
     const [scale, setScale] = useState(1);
     const [rotation, setRotation] = useState(0);
+    const [isObscured, setIsObscured] = useState(false);
 
     const isPdf = useMemo(() => {
         const lowerUrl = url.toLowerCase();
         return lowerUrl.includes('.pdf') || lowerUrl.includes('application/pdf');
     }, [url]);
 
-    // Handle escape key to close
+    // Security and keyboard event listeners
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 navigate(-1);
             }
+            // Block screenshots/recording shortcuts (PrintScreen, Ctrl+S, Cmd+Shift+3/4/5)
+            if (e.key === 'PrintScreen' || 
+                (e.ctrlKey && (e.key === 's' || e.key === 'p' || e.key === 'c')) || 
+                (e.metaKey && (e.key === 's' || e.key === 'p' || e.key === 'c')) ||
+                (e.metaKey && e.shiftKey && ['3','4','5'].includes(e.key))) {
+                e.preventDefault();
+                setIsObscured(true);
+                setTimeout(() => setIsObscured(false), 3000); // Obscure for a few seconds
+            }
         };
+
+        const handleVisibilityChange = () => setIsObscured(document.hidden);
+        const handleBlur = () => setIsObscured(true);
+        const handleFocus = () => setIsObscured(false);
+
+        const preventAction = (e: Event) => e.preventDefault();
+
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('blur', handleBlur);
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('copy', preventAction);
+        
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', handleBlur);
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('copy', preventAction);
+        };
     }, [navigate]);
 
     const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 3));
@@ -51,7 +79,17 @@ const DocumentViewerPage: React.FC = () => {
     }
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col font-sans">
+        <div 
+            className="fixed inset-0 z-[9999] bg-black/95 flex flex-col font-sans select-none"
+            onContextMenu={(e) => e.preventDefault()}
+        >
+            {isObscured && (
+                <div className="absolute inset-0 z-[10000] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
+                    <ShieldAlert className="h-16 w-16 text-yellow-500 mb-4" />
+                    <h2 className="text-2xl font-bold text-white mb-2">Screen Capture Protected</h2>
+                    <p className="text-white/70 max-w-md">This document contains sensitive information. Screenshots, screen recording, and copying are disabled to protect compliance data.</p>
+                </div>
+            )}
             {/* Top Bar */}
             <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-md border-b border-white/10 shadow-lg relative z-20">
                 <div className="flex items-center gap-4">
