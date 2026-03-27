@@ -12,6 +12,8 @@ import Toast from '../ui/Toast';
 import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
+import { useNavigate } from 'react-router-dom';
+import { getProxyUrl } from '../../utils/fileUrl';
 
 interface CompanyFormProps {
   isOpen: boolean;
@@ -118,6 +120,7 @@ const companySchema = yup.object({
 type Tab = 'Details' | 'Contacts' | 'License' | 'Documents' | 'Holidays' | 'Policies' | 'Preview';
 
 const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, initialData, groupName, existingLocations }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('Details');
   const [pendingFiles, setPendingFiles] = useState<Record<string, File | File[]>>({});
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -598,7 +601,10 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                         <td className="px-4 py-3 text-right">
                                                             <div className="flex items-center justify-end gap-1">
                                                                 {docCount > 0 && docVal?.documentUrls?.[0] && (
-                                                                    <button type="button" onClick={() => window.open(docVal.documentUrls![0], '_blank')} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="View Document">
+                                                                    <button type="button" onClick={() => {
+                                                                        const proxyUrl = getProxyUrl(docVal.documentUrls![0]);
+                                                                        navigate(`/document-viewer?url=${encodeURIComponent(proxyUrl)}&title=${encodeURIComponent(docVal.type)}`);
+                                                                    }} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="View Document">
                                                                         <Eye className="w-4 h-4" />
                                                                     </button>
                                                                 )}
@@ -782,6 +788,14 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                                 <button type="button" onClick={() => toggleExpanded(`ins_${businessId}`)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-accent/10'}`} title="Edit">
                                                                     <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                                 </button>
+                                                                {docCount > 0 && insVal?.documentUrls?.[0] && (
+                                                                    <button type="button" onClick={() => {
+                                                                        const proxyUrl = getProxyUrl(insVal.documentUrls![0]);
+                                                                        navigate(`/document-viewer?url=${encodeURIComponent(proxyUrl)}&title=${encodeURIComponent(insVal.name)}`);
+                                                                    }} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="View Policy">
+                                                                        <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
                                                                 <button type="button" onClick={() => removeIns(index)} className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                                                                     <Trash2 className="w-4 h-4" />
                                                                 </button>
@@ -876,6 +890,14 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                                 <button type="button" onClick={() => toggleExpanded(`pol_${businessId}`)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-accent/10'}`} title="Edit">
                                                                     <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                                                 </button>
+                                                                {docCount > 0 && polVal?.documentUrls?.[0] && (
+                                                                    <button type="button" onClick={() => {
+                                                                        const proxyUrl = getProxyUrl(polVal.documentUrls![0]);
+                                                                        navigate(`/document-viewer?url=${encodeURIComponent(proxyUrl)}&title=${encodeURIComponent(polVal.name)}`);
+                                                                    }} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="View Policy">
+                                                                        <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
                                                                 <button type="button" onClick={() => removePol(index)} className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
                                                                     <Trash2 className="w-4 h-4" />
                                                                 </button>

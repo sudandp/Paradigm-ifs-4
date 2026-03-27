@@ -88,7 +88,7 @@
     "@types/yargs": "^17.0.35",
     "@typescript-eslint/eslint-plugin": "^7.7.0",
     "@typescript-eslint/parser": "^7.7.0",
-    "@vercel/node": "^5.6.21",
+    "@vercel/node": "^4.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
@@ -129,6 +129,9 @@
     "readdir-glob": "^2.0.1",
     "filelist": "^1.0.4",
     "serialize-javascript": "^7.0.3",
-    "yauzl": "^3.2.1"
+    "yauzl": "^3.2.1",
+    "ajv": "^8.17.1",
+    "esbuild": "^0.25.0",
+    "undici": "^6.21.1"
   }
 }

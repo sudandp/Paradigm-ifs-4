@@ -15,6 +15,7 @@ import TicketPostComponent from '../../components/support/TicketPost';
 import CloseTicketModal from '../../components/support/CloseTicketModal';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { getProxyUrl } from '../../utils/fileUrl';
 
 
 const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ priority }) => {
@@ -243,14 +244,20 @@ const TicketDetail: React.FC = () => {
                         {ticket.attachmentUrl && (ticket.attachmentUrl.startsWith('http') || ticket.attachmentUrl.startsWith('https') || ticket.attachmentUrl.startsWith('data:')) && (
                             <div className="mt-4">
                                 <h5 className="text-sm font-semibold text-primary-text mb-2">Attachment</h5>
-                                <a href={ticket.attachmentUrl} target="_blank" rel="noopener noreferrer" className="block border rounded-lg overflow-hidden max-w-xs hover:border-accent">
+                                <button 
+                                    onClick={() => {
+                                        const proxyUrl = getProxyUrl(ticket.attachmentUrl!);
+                                        navigate(`/document-viewer?url=${encodeURIComponent(proxyUrl)}&title=${encodeURIComponent(`Attachment-${ticket.ticketNumber}`)}`);
+                                    }} 
+                                    className="block border rounded-lg overflow-hidden max-w-xs hover:border-accent text-left"
+                                >
                                     <img 
                                         src={ticket.attachmentUrl} 
                                         alt="Attachment" 
                                         className="max-h-64 w-auto" 
                                         onError={(e) => (e.currentTarget.parentElement!.style.display = 'none')}
                                     />
-                                </a>
+                                </button>
                             </div>
                         )}
                     </div>

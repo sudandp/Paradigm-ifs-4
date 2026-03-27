@@ -26,6 +26,7 @@ import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 import { createWorker } from 'tesseract.js';
 import { withTimeout } from '../utils/async';
+import { getProxyUrl } from '../utils/fileUrl';
 
 const ONBOARDING_DOCS_BUCKET = 'onboarding-documents';
 const COMPLIANCE_DOCS_BUCKET = 'compliance-documents';
@@ -123,8 +124,9 @@ const processUrlsForDisplay = (obj: any): any => {
   if (typeof newObj.name === 'string' && typeof newObj.path === 'string') {
     const bucket = newObj.path.startsWith('avatars/') ? AVATAR_BUCKET : ONBOARDING_DOCS_BUCKET;
     const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(newObj.path);
-    newObj.preview = publicUrl;
-    newObj.url = publicUrl;
+    const maskedUrl = getProxyUrl(publicUrl);
+    newObj.preview = maskedUrl;
+    newObj.url = maskedUrl;
   }
 
   // Recursively process nested objects
@@ -1520,7 +1522,7 @@ export const api = {
         const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(filePath, blob, { upsert: true });
         if (uploadError) throw uploadError;
         const { data: { publicUrl } } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);
-        dbUpdates.photo_url = publicUrl;
+        dbUpdates.photo_url = getProxyUrl(publicUrl);
       } else if (dbUpdates.photo_url === null) {
         await deleteOldAvatar(oldPhotoUrl);
       }
@@ -2336,7 +2338,7 @@ export const api = {
     const { error: uploadError } = await supabase.storage.from(LOGO_BUCKET).upload(filePath, file, { upsert: true });
     if (uploadError) throw uploadError;
     const { data: { publicUrl } } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(filePath);
-    return publicUrl;
+    return getProxyUrl(publicUrl);
   },
 
   /**
@@ -2349,7 +2351,7 @@ export const api = {
     if (error) throw error;
     return (data || []).map(obj => {
       const { data: { publicUrl } } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(obj.name);
-      return { name: obj.name, url: publicUrl };
+      return { name: obj.name, url: getProxyUrl(publicUrl) };
     });
   },
 
@@ -2374,7 +2376,7 @@ export const api = {
     const { error: uploadError } = await supabase.storage.from(BACKGROUND_BUCKET).upload(filePath, file, { upsert: true });
     if (uploadError) throw uploadError;
     const { data: { publicUrl } } = supabase.storage.from(BACKGROUND_BUCKET).getPublicUrl(filePath);
-    return publicUrl;
+    return getProxyUrl(publicUrl);
   },
 
   /**
@@ -2386,7 +2388,7 @@ export const api = {
     if (error) throw error;
     return (data || []).map(obj => {
       const { data: { publicUrl } } = supabase.storage.from(BACKGROUND_BUCKET).getPublicUrl(obj.name);
-      return { name: obj.name, url: publicUrl };
+      return { name: obj.name, url: getProxyUrl(publicUrl) };
     });
   },
 
@@ -6200,7 +6202,7 @@ export const api = {
       const { error: uploadError } = await supabase.storage.from(BIRTH_CERT_BUCKET).upload(filePath, blob, { upsert: true });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from(BIRTH_CERT_BUCKET).getPublicUrl(filePath);
-      birthCertUrl = publicUrl;
+      birthCertUrl = getProxyUrl(publicUrl);
     }
 
     const { data, error } = await supabase.from('user_children').insert({
@@ -6233,7 +6235,7 @@ export const api = {
       const { error: uploadError } = await supabase.storage.from(BIRTH_CERT_BUCKET).upload(filePath, blob, { upsert: true });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from(BIRTH_CERT_BUCKET).getPublicUrl(filePath);
-      dbUpdates.birth_certificate_url = publicUrl;
+      dbUpdates.birth_certificate_url = getProxyUrl(publicUrl);
       dbUpdates.verification_status = 'pending'; // Reset verification when certificate changes
     }
 

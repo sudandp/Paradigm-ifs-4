@@ -1,4 +1,6 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getProxyUrl, getCleanFilename } from '../../utils/fileUrl';
 import type { Company } from '../../types';
 import { Mail, Phone, MapPin, Globe, Award, Calendar, ShieldCheck, FileText, Eye } from 'lucide-react';
 
@@ -8,6 +10,17 @@ interface CompanyProfilePreviewProps {
 }
 
 const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, logoUrl }) => {
+  const navigate = useNavigate();
+
+  const handleViewDoc = (url: string, title?: string) => {
+    const proxyUrl = getProxyUrl(url);
+    const cleanName = getCleanFilename(title || url);
+    const params = new URLSearchParams({
+      url: proxyUrl,
+      title: cleanName
+    });
+    navigate(`/document-viewer?${params.toString()}`);
+  };
   return (
     <div className="bg-gray-100 p-8 flex justify-center overflow-auto min-h-screen">
       <div 
@@ -98,7 +111,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                         <FileText className="w-3 h-3" /> 
                         {docCount > 0 ? `${docCount} Doc` : 'Missing'}
                         {docCount > 0 && doc.documentUrls?.map((url, idx) => (
-                          <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                          <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleViewDoc(url, doc.type); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                         ))}
@@ -132,7 +145,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                               <div className="text-[10px] text-muted flex items-center gap-1">
                                 <FileText className="w-3 h-3" /> {docCount} attachment{docCount > 1 ? 's' : ''}
                                 {ins.documentUrls?.map((url, idx) => (
-                                  <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                                  <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleViewDoc(url, ins.name); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
                                 ))}
@@ -166,7 +179,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                             <FileText className="w-3 h-3" />
                             <span>{docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'No document'}</span>
                             {docCount > 0 && pol.documentUrls?.map((url, idx) => (
-                              <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                              <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleViewDoc(url, pol.name); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                             ))}
