@@ -25,14 +25,22 @@ function getMimeType(filename: string): string {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Extract the full path from the catch-all route
-    // e.g. /api/view-file/compliance-documents/documents/uid/123/Invoice.pdf
+    // Extract the full path from the query parameter or URL
+    // The vercel.json rewrite will map /api/view-file/:path* to /api/view-file?path=:path*
     const pathSegments = req.query.path;
+    
     if (!pathSegments || (Array.isArray(pathSegments) && pathSegments.length === 0)) {
-      return res.status(400).json({ error: 'No file path provided' });
+       // Fallback: check if the path is in the URL despite the rewrite
+       const url = req.url || '';
+       const match = url.match(/\/api\/view-file\/(.*)/);
+       if (!match || !match[1]) {
+         return res.status(400).json({ error: 'No file path provided' });
+       }
+       var filePath = match[1].split('?')[0];
+    } else {
+       var filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     }
 
-    const filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${filePath}`;
 
     // Fetch the file from Supabase
