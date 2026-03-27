@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, ZoomIn, ZoomOut, RotateCw, Download, ArrowLeft, Printer, FileText, ExternalLink } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCw, ArrowLeft, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 
 const DocumentViewerPage: React.FC = () => {
@@ -32,33 +32,6 @@ const DocumentViewerPage: React.FC = () => {
     const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
     const handleRotate = () => setRotation(prev => (prev + 90) % 360);
 
-    const handleDownload = async () => {
-        try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = decodeURIComponent(title).replace(/[/\\?%*:|"<>]/g, '-') || 'document';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(downloadUrl);
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error('Download failed:', error);
-            // Fallback for cross-origin if fetch fails
-            window.open(url, '_blank');
-        }
-    };
-
-    const handlePrint = () => {
-        if (isPdf) {
-            const printWindow = window.open(url, '_blank');
-            printWindow?.print();
-        } else {
-            window.print();
-        }
-    };
 
     const handleBack = () => {
         navigate(-1);
@@ -104,21 +77,6 @@ const DocumentViewerPage: React.FC = () => {
                 
                 <div className="flex items-center gap-1 sm:gap-2">
                     <button
-                        onClick={handleDownload}
-                        className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                        title="Download"
-                    >
-                        <Download className="h-5 w-5" />
-                    </button>
-                    <button
-                        onClick={handlePrint}
-                        className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-                        title="Print"
-                    >
-                        <Printer className="h-5 w-5" />
-                    </button>
-                    <div className="h-6 w-px bg-white/10 mx-1" />
-                    <button
                         onClick={handleBack}
                         className="p-2 text-white/80 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
                         aria-label="Close"
@@ -133,21 +91,11 @@ const DocumentViewerPage: React.FC = () => {
                 {isPdf ? (
                     <div className="w-full h-full flex flex-col">
                         <iframe
-                            src={`${url}#toolbar=1`}
+                            src={`${url}#toolbar=0`}
                             title={title}
                             className="w-full h-full border-none"
                             loading="lazy"
                         />
-                        {/* Mobile Help Text if iframe blocks controls */}
-                        <div className="absolute bottom-4 right-4 sm:hidden">
-                            <button 
-                                onClick={() => window.open(url, '_blank')}
-                                className="bg-accent text-white p-3 rounded-full shadow-xl active:scale-95 transition-transform"
-                                title="Open Original"
-                            >
-                                <ExternalLink className="h-6 w-6" />
-                            </button>
-                        </div>
                     </div>
                 ) : (
                     <div className="w-full h-full flex items-center justify-center overflow-auto p-4 md:p-10 scrollbar-hide">

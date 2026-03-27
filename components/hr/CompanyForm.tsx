@@ -9,7 +9,7 @@ import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import Toast from '../ui/Toast';
-import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye } from 'lucide-react';
+import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye, ChevronUp } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
@@ -168,6 +168,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
     control, name: 'policies'
   });
 
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    registration: false,
+    statutory: false
+  });
+
   const isEditing = !!initialData;
 
   useEffect(() => {
@@ -317,130 +322,150 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                     </div>
                     <Input label="Registered Address" id="address" registration={register('address')} error={errors.address?.message} />
                     
-                    <div className="md:col-span-2 mt-4 space-y-6">
-                        <h4 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-3">Registration & Identification</h4>
+                    <div className="md:col-span-2 mt-4 overflow-hidden border border-border/50 rounded-2xl bg-page/40 shadow-sm">
+                        <button 
+                            type="button"
+                            onClick={() => setExpandedSections(prev => ({ ...prev, registration: !prev.registration }))}
+                            className="w-full flex items-center justify-between p-6 hover:bg-page/50 transition-colors"
+                        >
+                            <h4 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-3">Registration & Identification</h4>
+                            {expandedSections.registration ? <ChevronUp className="h-5 w-5 text-accent" /> : <ChevronDown className="h-5 w-5 text-accent" />}
+                        </button>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border rounded-2xl bg-page/30">
-                            <div>
-                                <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message}>
-                                    <option value="">Select Type</option>
-                                    <option value="ROC">ROC</option>
-                                    <option value="ROF">ROF</option>
-                                    <option value="Society">Society</option>
-                                    <option value="Trust">Trust</option>
-                                </Select>
-                            </div>
-                            <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
+                        {expandedSections.registration && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 pt-0 animate-in slide-in-from-top-2 duration-300">
+                                <div>
+                                    <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message}>
+                                        <option value="">Select Type</option>
+                                        <option value="ROC">ROC</option>
+                                        <option value="ROF">ROF</option>
+                                        <option value="Society">Society</option>
+                                        <option value="Trust">Trust</option>
+                                    </Select>
+                                </div>
+                                <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
 
-                            <div className="space-y-4">
-                                <Input label="CIN Number" id="cinNumber" registration={register('cinNumber')} error={errors.cinNumber?.message} />
-                                <Controller name="cinDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="CIN Document" 
-                                        file={pendingFiles['cinDoc'] && !Array.isArray(pendingFiles['cinDoc']) ? { file: pendingFiles['cinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('cinDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
+                                <div className="space-y-4">
+                                    <Input label="CIN Number" id="cinNumber" registration={register('cinNumber')} error={errors.cinNumber?.message} />
+                                    <Controller name="cinDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="CIN Document" 
+                                            file={pendingFiles['cinDoc'] && !Array.isArray(pendingFiles['cinDoc']) ? { file: pendingFiles['cinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('cinDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
+                                <div className="space-y-4">
+                                    <Input label="DIN Number" id="dinNumber" registration={register('dinNumber')} error={errors.dinNumber?.message} />
+                                    <Controller name="dinDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="DIN Document" 
+                                            file={pendingFiles['dinDoc'] && !Array.isArray(pendingFiles['dinDoc']) ? { file: pendingFiles['dinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('dinDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
+                                <div className="space-y-4">
+                                    <Input label="TIN Number" id="tinNumber" registration={register('tinNumber')} error={errors.tinNumber?.message} />
+                                    <Controller name="tinDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="TIN Document" 
+                                            file={pendingFiles['tinDoc'] && !Array.isArray(pendingFiles['tinDoc']) ? { file: pendingFiles['tinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('tinDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
+                                <div className="space-y-4">
+                                    <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} />
+                                    <Controller name="gstDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="GST Attachment" 
+                                            file={pendingFiles['gstDoc'] && !Array.isArray(pendingFiles['gstDoc']) ? { file: pendingFiles['gstDoc'] as File, preview: '', name: 'New GST', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('gstDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
+                                <div className="space-y-4">
+                                    <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} />
+                                    <Controller name="panDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="PAN Attachment" 
+                                            file={pendingFiles['panDoc'] && !Array.isArray(pendingFiles['panDoc']) ? { file: pendingFiles['panDoc'] as File, preview: '', name: 'New PAN', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('panDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
+                                <div className="space-y-4">
+                                    <Input label="Udyog Number" id="udyogNumber" registration={register('udyogNumber')} error={errors.udyogNumber?.message} />
+                                    <Controller name="udyogDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="Udyog Document" 
+                                            file={pendingFiles['udyogDoc'] && !Array.isArray(pendingFiles['udyogDoc']) ? { file: pendingFiles['udyogDoc'] as File, preview: '', name: 'New Udyog', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            onFileChange={(f) => { setFile('udyogDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
                             </div>
-                            <div className="space-y-4">
-                                <Input label="DIN Number" id="dinNumber" registration={register('dinNumber')} error={errors.dinNumber?.message} />
-                                <Controller name="dinDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="DIN Document" 
-                                        file={pendingFiles['dinDoc'] && !Array.isArray(pendingFiles['dinDoc']) ? { file: pendingFiles['dinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('dinDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="TIN Number" id="tinNumber" registration={register('tinNumber')} error={errors.tinNumber?.message} />
-                                <Controller name="tinDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="TIN Document" 
-                                        file={pendingFiles['tinDoc'] && !Array.isArray(pendingFiles['tinDoc']) ? { file: pendingFiles['tinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('tinDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} />
-                                <Controller name="gstDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="GST Attachment" 
-                                        file={pendingFiles['gstDoc'] && !Array.isArray(pendingFiles['gstDoc']) ? { file: pendingFiles['gstDoc'] as File, preview: '', name: 'New GST', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('gstDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} />
-                                <Controller name="panDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="PAN Attachment" 
-                                        file={pendingFiles['panDoc'] && !Array.isArray(pendingFiles['panDoc']) ? { file: pendingFiles['panDoc'] as File, preview: '', name: 'New PAN', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('panDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="Udyog Number" id="udyogNumber" registration={register('udyogNumber')} error={errors.udyogNumber?.message} />
-                                <Controller name="udyogDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="Udyog Document" 
-                                        file={pendingFiles['udyogDoc'] && !Array.isArray(pendingFiles['udyogDoc']) ? { file: pendingFiles['udyogDoc'] as File, preview: '', name: 'New Udyog', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('udyogDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
+                        )}
+
+                        <div className="border-t border-border">
+                            <button 
+                                type="button"
+                                onClick={() => setExpandedSections(prev => ({ ...prev, statutory: !prev.statutory }))}
+                                className="w-full flex items-center justify-between p-6 hover:bg-page/50 transition-colors"
+                            >
+                                <h4 className="text-lg font-bold text-primary-text border-l-4 border-emerald-500 pl-3">EPFO, ESIC & E-Shram Details</h4>
+                                {expandedSections.statutory ? <ChevronUp className="h-5 w-5 text-emerald-500" /> : <ChevronDown className="h-5 w-5 text-emerald-500" />}
+                            </button>
+
+                            {expandedSections.statutory && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 pt-0 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-4">
+                                        <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} error={errors.complianceCodes?.epfoCode?.message} />
+                                        <Controller name="complianceCodes.epfoDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="EPFO Document" 
+                                                file={pendingFiles['epfoDoc'] && !Array.isArray(pendingFiles['epfoDoc']) ? { file: pendingFiles['epfoDoc'] as File, preview: '', name: 'EPFO', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                onFileChange={(f) => { setFile('epfoDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} error={errors.complianceCodes?.esicCode?.message} />
+                                        <Controller name="complianceCodes.esicDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="ESIC Document" 
+                                                file={pendingFiles['esicDoc'] && !Array.isArray(pendingFiles['esicDoc']) ? { file: pendingFiles['esicDoc'] as File, preview: '', name: 'ESIC', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                onFileChange={(f) => { setFile('esicDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Input label="E-Shram Number" id="shram" registration={register('complianceCodes.eShramNumber')} error={errors.complianceCodes?.eShramNumber?.message} />
+                                        <Controller name="complianceCodes.eShramDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="E-Shram Document" 
+                                                file={pendingFiles['shramDoc'] && !Array.isArray(pendingFiles['shramDoc']) ? { file: pendingFiles['shramDoc'] as File, preview: '', name: 'Shram', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                onFileChange={(f) => { setFile('shramDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                </div>
+                            )}
                         </div>
+                    </div>
 
-                        <h4 className="text-lg font-bold text-primary-text border-l-4 border-emerald-500 pl-3 pt-6">EPFO, ESIC & E-Shram Details</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border rounded-2xl bg-page/30">
-                            <div className="space-y-4">
-                                <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} error={errors.complianceCodes?.epfoCode?.message} />
-                                <Controller name="complianceCodes.epfoDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="EPFO Document" 
-                                        file={pendingFiles['epfoDoc'] && !Array.isArray(pendingFiles['epfoDoc']) ? { file: pendingFiles['epfoDoc'] as File, preview: '', name: 'EPFO', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('epfoDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} error={errors.complianceCodes?.esicCode?.message} />
-                                <Controller name="complianceCodes.esicDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="ESIC Document" 
-                                        file={pendingFiles['esicDoc'] && !Array.isArray(pendingFiles['esicDoc']) ? { file: pendingFiles['esicDoc'] as File, preview: '', name: 'ESIC', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('esicDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            <div className="space-y-4">
-                                <Input label="E-Shram Number" id="shram" registration={register('complianceCodes.eShramNumber')} error={errors.complianceCodes?.eShramNumber?.message} />
-                                <Controller name="complianceCodes.eShramDocUrl" control={control} render={({ field }) => (
-                                    <UploadDocument 
-                                        label="E-Shram Document" 
-                                        file={pendingFiles['shramDoc'] && !Array.isArray(pendingFiles['shramDoc']) ? { file: pendingFiles['shramDoc'] as File, preview: '', name: 'Shram', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                        onFileChange={(f) => { setFile('shramDoc', f); if (!f) field.onChange(''); }}
-                                    />
-                                )} />
-                            </div>
-                            </div>
-                        </div>
-
-                        <div className="md:col-span-2 mt-4 p-6 border rounded-2xl bg-page/30">
+                        <div className="md:col-span-1 mt-4 p-4 border border-border/50 rounded-2xl bg-page/40 shadow-sm max-w-sm">
                            <Controller name="logoUrl" control={control} render={({ field }) => (
                            <UploadDocument 
                              label="Company Logo" 
-                             file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: URL.createObjectURL(pendingFiles['logo'] as File), name: 'New Image', type: 'image/jpeg', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'image/jpeg', size: 0 } as UploadedFile : null)}
-                             onFileChange={(f) => {
-                                 setFile('logo', f);
-                                 if (!f) field.onChange(''); // clear string
-                             }}
+                             variant="compact"
+                             file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: '', name: 'Logo', type: 'image/png', size: 0 } : (field.value ? { preview: field.value, name: 'Current Logo', type: 'image/png', size: 0 } as UploadedFile : null)}
+                             onFileChange={(f) => { setFile('logo', f); if (!f) field.onChange(''); }}
+                             allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
                            />
-                        )} />
-                    </div>
+                           )} />
+                        </div>
                 </div>
                 </>
             )}

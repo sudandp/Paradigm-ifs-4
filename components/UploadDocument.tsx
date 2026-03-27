@@ -25,6 +25,7 @@ interface UploadDocumentProps {
   setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
   docType?: string;
   onVerification?: (base64: string, mimeType: string) => Promise<{ success: boolean; reason: string }>;
+  variant?: 'default' | 'compact';
 }
 
 const UploadDocument: React.FC<UploadDocumentProps> = ({ 
@@ -41,6 +42,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     setToast,
     docType,
     onVerification,
+    variant = 'default',
 }) => {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
@@ -187,7 +189,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                      <div className={`
                         w-full flex flex-col p-4 border-2 border-dashed rounded-lg bg-page/50 relative overflow-hidden
                         border-accent/30 pro-dark-theme:bg-accent/5 pro-dark-theme:border-accent/40
-                        min-h-[160px] justify-center
+                        ${variant === 'compact' ? 'min-h-[100px]' : 'min-h-[160px]'} justify-center
                      `}>
                         <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none">
                             <Icon className="h-32 w-32" />
@@ -200,7 +202,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                         src={file.preview} 
                                         alt="preview" 
                                         className={`
-                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : 'max-w-full max-h-[180px] object-contain'}
+                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : variant === 'compact' ? 'max-w-full max-h-[80px] object-contain' : 'max-w-full max-h-[180px] object-contain'}
                                             rounded transition-transform duration-500 group-hover:scale-105 shadow-sm
                                             ${isLoading ? 'opacity-40 blur-[2px]' : 'opacity-100'}
                                         `} 
@@ -264,13 +266,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         bg-page/30 border-border hover:border-accent hover:bg-accent-light
                         pro-dark-theme:border-accent/30 pro-dark-theme:hover:border-accent pro-dark-theme:bg-accent/5
                         ${displayError ? '!border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : ''}
-                        min-h-[180px]
+                        ${variant === 'compact' ? 'min-h-[100px] p-4' : 'min-h-[180px] p-6'}
                     `}>
-                        <div className="p-4 bg-accent/5 rounded-full text-accent pro-dark-theme:bg-accent/10">
-                            <Icon className="h-10 w-10" />
+                        <div className={`${variant === 'compact' ? 'p-2' : 'p-4'} bg-accent/5 rounded-full text-accent pro-dark-theme:bg-accent/10`}>
+                            <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
                         </div>
-                        <p className="font-bold text-primary-text mt-3">Click to upload</p>
-                        <p className="text-xs text-muted mt-1 uppercase tracking-wider">or drag & drop</p>
+                        <p className={`font-bold text-primary-text ${variant === 'compact' ? 'mt-2 text-sm' : 'mt-3'}`}>Click to upload</p>
+                        {variant !== 'compact' && <p className="text-xs text-muted mt-1 uppercase tracking-wider">or drag & drop</p>}
                         
                         {allowCapture && (
                             <div className="w-full flex flex-col items-center mt-4">

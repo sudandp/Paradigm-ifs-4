@@ -302,6 +302,11 @@ const EntityManagement: React.FC = () => {
                             shramDoc: 'eShramDocUrl'
                         };
                         (updatedClientData as any)[mapping[path]] = uploadResult.url;
+                    } else if (path === 'logo') {
+                        // Society Logo
+                        const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
+                        const uploadResult = await api.uploadLogo(file as File);
+                        updatedClientData.logoUrl = uploadResult;
                     } else {
                         // Legacy/Generic nested path handling
                         const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];

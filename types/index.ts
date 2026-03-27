@@ -467,6 +467,7 @@ export interface Entity {
   id: string;
   status?: 'draft' | 'completed';
   name: string;
+  logoUrl?: string;
   organizationId?: string;
   location?: string;
   registeredAddress?: string;
