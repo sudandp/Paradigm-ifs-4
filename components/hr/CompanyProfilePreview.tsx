@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Company } from '../../types';
-import { Mail, Phone, MapPin, Globe, Award, Calendar, ShieldCheck, FileText } from 'lucide-react';
+import { Mail, Phone, MapPin, Globe, Award, Calendar, ShieldCheck, FileText, Eye } from 'lucide-react';
 
 interface CompanyProfilePreviewProps {
   data: Partial<Company>;
@@ -47,21 +47,25 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
           
           {/* Section 1: Registration Details */}
           <div className="col-span-2">
-            <h2 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-2 mb-4 uppercase tracking-wider">Registration & Compliance</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <h2 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-2 mb-4 uppercase tracking-wider">Registration & Statutory Details</h2>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
               <div className="space-y-2">
                 <p><span className="font-semibold text-muted">Registration Type:</span> {data.registrationType || 'N/A'}</p>
                 <p><span className="font-semibold text-muted">Registration Number:</span> {data.registrationNumber || 'N/A'}</p>
-                <p><span className="font-semibold text-muted">GST Number:</span> {data.gstNumber || 'N/A'}</p>
+                {data.cinNumber && <p><span className="font-semibold text-muted">CIN Number:</span> {data.cinNumber}</p>}
+                {data.dinNumber && <p><span className="font-semibold text-muted">DIN Number:</span> {data.dinNumber}</p>}
+                {data.tinNumber && <p><span className="font-semibold text-muted">TIN Number:</span> {data.tinNumber}</p>}
               </div>
               <div className="space-y-2">
                 <p><span className="font-semibold text-muted">PAN Number:</span> {data.panNumber || 'N/A'}</p>
+                <p><span className="font-semibold text-muted">GST Number:</span> {data.gstNumber || 'N/A'}</p>
+                {data.udyogNumber && <p><span className="font-semibold text-muted">Udyog Number:</span> {data.udyogNumber}</p>}
                 <p><span className="font-semibold text-muted">E-Shram Number:</span> {data.complianceCodes?.eShramNumber || 'N/A'}</p>
-                <p><span className="font-semibold text-muted">ESIC Code:</span> {data.complianceCodes?.esicCode || 'N/A'}</p>
               </div>
-              <div className="col-span-2 space-y-2">
-                <p><span className="font-semibold text-muted">Shop & Establishment Code:</span> {data.complianceCodes?.shopAndEstablishmentCode || 'N/A'}</p>
+              <div className="col-span-2 grid grid-cols-2 gap-x-8 gap-y-2 pt-2 border-t border-dotted border-muted/30">
                 <p><span className="font-semibold text-muted">EPFO Code:</span> {data.complianceCodes?.epfoCode || 'N/A'}</p>
+                <p><span className="font-semibold text-muted">ESIC Code:</span> {data.complianceCodes?.esicCode || 'N/A'}</p>
+                <p><span className="font-semibold text-muted">S & E Code:</span> {data.complianceCodes?.shopAndEstablishmentCode || 'N/A'} {data.complianceCodes?.shopAndEstablishmentValidTill && `(Valid till: ${data.complianceCodes.shopAndEstablishmentValidTill})`}</p>
                 <p><span className="font-semibold text-muted">PSARA License:</span> {data.complianceCodes?.psaraLicenseNumber || 'N/A'} {data.complianceCodes?.psaraValidTill && `(Valid till: ${data.complianceCodes.psaraValidTill})`}</p>
               </div>
             </div>
@@ -89,12 +93,19 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                 return (
                   <div key={doc.id} className="flex flex-col border-b border-border pb-2 last:border-0">
                     <span className="text-sm font-medium">{doc.type}</span>
-                    <div className="flex items-center gap-4 text-xs text-muted mt-1">
-                      <span className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted mt-1">
+                      <div className="flex items-center gap-1">
                         <FileText className="w-3 h-3" /> 
-                        {docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'Missing'}
-                      </span>
-                      {doc.expiryDate && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Exp: {doc.expiryDate}</span>}
+                        {docCount > 0 ? `${docCount} Doc` : 'Missing'}
+                        {docCount > 0 && doc.documentUrls?.map((url, idx) => (
+                          <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        ))}
+                      </div>
+                      {doc.effectiveDate && <span>Eff: {doc.effectiveDate}</span>}
+                      {doc.announcedDate && <span>Ann: {doc.announcedDate}</span>}
+                      {doc.expiryDate && <span className="flex items-center gap-1 text-accent font-semibold"><Calendar className="w-3 h-3" /> Exp: {doc.expiryDate}</span>}
                     </div>
                   </div>
                 );
@@ -102,24 +113,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
             </div>
           </div>
 
-          {/* Section 4: Holidays */}
-          <div className="col-span-2">
-            <h2 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-2 mb-4 uppercase tracking-wider">Holiday Calendar</h2>
-            <div className="grid grid-cols-3 gap-4">
-              {data.holidays && data.holidays.length > 0 ? data.holidays.map((hol) => (
-                <div key={hol.id} className="flex items-center gap-3 p-3 border border-border rounded bg-page/30">
-                  <div className="text-center">
-                    <span className="block text-xs font-bold text-accent uppercase">{new Date(hol.date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                    <span className="block text-lg font-bold">{new Date(hol.date).getDate()}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold truncate">{hol.festivalName}</span>
-                    <span className="block text-xs text-muted">{hol.year}</span>
-                  </div>
-                </div>
-              )) : <p className="text-sm text-muted col-span-3">No holidays defined</p>}
-            </div>
-          </div>
+          {/* Section 4: Removed Holidays Calendar per request */}
 
           {/* Section 5: Insurance & Internal Policies */}
           <div className="col-span-2">
@@ -132,10 +126,25 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                     const docCount = ins.documentUrls?.length || 0;
                     return (
                       <li key={ins.id} className="text-sm flex flex-col p-2 hover:bg-page/40 rounded transition-colors border-b border-border last:border-0">
-                        <div className="flex justify-between items-center">
-                          <span>{ins.name}</span>
-                          {docCount > 0 && <span className="text-[10px] text-muted flex items-center gap-1"><FileText className="w-3 h-3" /> {docCount} attachment{docCount > 1 ? 's' : ''}</span>}
-                        </div>
+                          <div className="flex justify-between items-center">
+                            <span>{ins.name}</span>
+                            {docCount > 0 && (
+                              <div className="text-[10px] text-muted flex items-center gap-1">
+                                <FileText className="w-3 h-3" /> {docCount} attachment{docCount > 1 ? 's' : ''}
+                                {ins.documentUrls?.map((url, idx) => (
+                                  <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {(ins.effectiveDate || ins.announcedDate) && (
+                            <div className="flex gap-2 text-[9px] text-muted mt-0.5 opacity-70">
+                                {ins.effectiveDate && <span>Eff: {ins.effectiveDate}</span>}
+                                {ins.announcedDate && <span>Ann: {ins.announcedDate}</span>}
+                            </div>
+                          )}
                       </li>
                     );
                   }) : <p className="text-sm text-muted">No policy records</p>}
@@ -153,8 +162,17 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                           <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded uppercase font-bold">{pol.level} Level</span>
                         </div>
                         <div className="flex items-center gap-2 text-[10px] text-muted mt-1">
-                          <FileText className="w-3 h-3" />
-                          <span>{docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'No document'}</span>
+                          <div className="flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            <span>{docCount > 0 ? `${docCount} Attachment${docCount > 1 ? 's' : ''}` : 'No document'}</span>
+                            {docCount > 0 && pol.documentUrls?.map((url, idx) => (
+                              <button key={idx} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); }} className="text-blue-500 hover:text-blue-700 ml-1 cursor-pointer" title="View Document">
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            ))}
+                          </div>
+                          {pol.effectiveDate && <span className="ml-2">Eff: {pol.effectiveDate}</span>}
+                          {pol.announcedDate && <span className="ml-2">Ann: {pol.announcedDate}</span>}
                         </div>
                       </li>
                     );

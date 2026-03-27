@@ -9,7 +9,7 @@ import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import Toast from '../ui/Toast';
-import { Plus, Trash2, Calendar, FileText, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 
@@ -35,11 +35,23 @@ const companySchema = yup.object({
     .required('GST Number is required')
     .matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Invalid GST format (15 characters)')
     .nullable(),
+  gstDocUrl: yup.string().optional().nullable(),
   panNumber: yup.string()
     .required('PAN Number is required')
     .matches(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Invalid PAN format (e.g. ABCDE1234F)')
     .nullable(),
+  panDocUrl: yup.string().optional().nullable(),
   logoUrl: yup.string().optional().nullable(),
+
+  // New specific registration fields
+  cinNumber: yup.string().optional(),
+  cinDocUrl: yup.string().optional().nullable(),
+  dinNumber: yup.string().optional(),
+  dinDocUrl: yup.string().optional().nullable(),
+  tinNumber: yup.string().optional(),
+  tinDocUrl: yup.string().optional().nullable(),
+  udyogNumber: yup.string().optional(),
+  udyogDocUrl: yup.string().optional().nullable(),
   
   // Arrays & Nested
   emails: yup.array().of(
@@ -51,13 +63,17 @@ const companySchema = yup.object({
   
   complianceCodes: yup.object({
     eShramNumber: yup.string().optional(),
+    eShramDocUrl: yup.string().optional().nullable(),
     shopAndEstablishmentCode: yup.string().optional(),
+    shopAndEstablishmentValidTill: yup.string().optional().nullable(),
     epfoCode: yup.string()
         .required('EPFO Code is required')
         .matches(/^[A-Z]{2}[A-Z]{2}[0-9]{7}[0-9]{3}[0-9]{7}$/, 'Invalid EPFO format (22 characters)'),
+    epfoDocUrl: yup.string().optional().nullable(),
     esicCode: yup.string()
         .required('ESIC Code is required')
         .matches(/^[0-9]{17}$/, 'Invalid ESIC format (17 digits)'),
+    esicDocUrl: yup.string().optional().nullable(),
     psaraLicenseNumber: yup.string().optional(),
     psaraValidTill: yup.string().optional().nullable(),
   }).optional(),
@@ -99,7 +115,7 @@ const companySchema = yup.object({
   ).optional(),
 }).defined();
 
-type Tab = 'Details' | 'Contacts' | 'Compliance' | 'Documents' | 'Holidays' | 'Policies' | 'Preview';
+type Tab = 'Details' | 'Contacts' | 'License' | 'Documents' | 'Holidays' | 'Policies' | 'Preview';
 
 const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, initialData, groupName, existingLocations }) => {
   const [activeTab, setActiveTab] = useState<Tab>('Details');
@@ -110,7 +126,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
     resolver: yupResolver(companySchema) as any,
     defaultValues: {
       emails: [{ id: `email_${Date.now()}_1`, email: '' }, { id: `email_${Date.now()}_2`, email: '' }],
-      complianceCodes: {},
+      complianceCodes: {
+      },
       complianceDocuments: [],
       holidays: [],
       insurances: [],
@@ -133,6 +150,16 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   const { fields: insFields, append: appendIns, remove: removeIns } = useFieldArray({
     control, name: 'insurances'
   });
+
+  const [docFilters, setDocFilters] = useState({
+    type: '',
+    effectiveDate: '',
+    announcedDate: '',
+    search: ''
+  });
+
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const toggleExpanded = (id: string) => setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
 
   const { fields: polFields, append: appendPol, remove: removePol } = useFieldArray({
     control, name: 'policies'
@@ -163,7 +190,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
     : formData.logoUrl;
 
   const onSubmit: SubmitHandler<Partial<Company>> = (data) => {
-    onSave(data, pendingFiles);
+    onSave({ ...data, status: 'completed' }, pendingFiles);
   };
 
   const onInvalid = () => {
@@ -176,7 +203,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
       setToast({ message: 'Company Name is required to save a draft.', type: 'error' });
       return;
     }
-    onSave(data, pendingFiles);
+    onSave({ ...data, status: 'draft' }, pendingFiles);
   };
 
   const setFile = (key: string, file: UploadedFile | null) => {
@@ -212,7 +239,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
         return !!(errors.name || errors.location || errors.address || errors.registrationType || errors.registrationNumber || errors.gstNumber || errors.panNumber);
       case 'Contacts':
         return !!errors.emails;
-      case 'Compliance':
+      case 'License':
         return !!errors.complianceCodes;
       case 'Documents':
         return !!errors.complianceDocuments;
@@ -264,7 +291,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
               <nav className="-mb-px flex space-x-1 sm:space-x-4 min-w-max pb-1 text-base">
                   <TabButton tabName="Details" />
                   <TabButton tabName="Contacts" />
-                  <TabButton tabName="Compliance" />
+                  <TabButton tabName="License" />
                   <TabButton tabName="Documents" />
                   <TabButton tabName="Holidays" />
                   <TabButton tabName="Policies" />
@@ -276,6 +303,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
           <div className="flex-1 py-2 min-h-[60vh]">
              {/* General Details Tab */}
             {activeTab === 'Details' && (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                     <div className="md:col-span-2">
                         <Input label="Company / LLP / Partnership / Society Name" id="name" registration={register('name')} error={errors.name?.message} />
@@ -285,15 +313,121 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                         <datalist id="existing-locations">{existingLocations.map(l => <option key={l} value={l} />)}</datalist>
                     </div>
                     <Input label="Registered Address" id="address" registration={register('address')} error={errors.address?.message} />
-                    <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message}>
-                        <option value="">Select Type</option><option value="CIN">CIN</option><option value="ROC">ROC</option><option value="ROF">ROF</option><option value="Society">Society</option><option value="Trust">Trust</option>
-                    </Select>
-                    <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
-                    <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} />
-                    <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} />
                     
-                    <div className="md:col-span-2 mt-4 p-6 border rounded-2xl bg-page/30">
-                       <Controller name="logoUrl" control={control} render={({ field }) => (
+                    <div className="md:col-span-2 mt-4 space-y-6">
+                        <h4 className="text-lg font-bold text-primary-text border-l-4 border-accent pl-3">Registration & Identification</h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border rounded-2xl bg-page/30">
+                            <div>
+                                <Select label="Registration Type" id="registrationType" registration={register('registrationType')} error={errors.registrationType?.message}>
+                                    <option value="">Select Type</option>
+                                    <option value="ROC">ROC</option>
+                                    <option value="ROF">ROF</option>
+                                    <option value="Society">Society</option>
+                                    <option value="Trust">Trust</option>
+                                </Select>
+                            </div>
+                            <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
+
+                            <div className="space-y-4">
+                                <Input label="CIN Number" id="cinNumber" registration={register('cinNumber')} error={errors.cinNumber?.message} />
+                                <Controller name="cinDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="CIN Document" 
+                                        file={pendingFiles['cinDoc'] && !Array.isArray(pendingFiles['cinDoc']) ? { file: pendingFiles['cinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('cinDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="DIN Number" id="dinNumber" registration={register('dinNumber')} error={errors.dinNumber?.message} />
+                                <Controller name="dinDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="DIN Document" 
+                                        file={pendingFiles['dinDoc'] && !Array.isArray(pendingFiles['dinDoc']) ? { file: pendingFiles['dinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('dinDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="TIN Number" id="tinNumber" registration={register('tinNumber')} error={errors.tinNumber?.message} />
+                                <Controller name="tinDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="TIN Document" 
+                                        file={pendingFiles['tinDoc'] && !Array.isArray(pendingFiles['tinDoc']) ? { file: pendingFiles['tinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('tinDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} />
+                                <Controller name="gstDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="GST Attachment" 
+                                        file={pendingFiles['gstDoc'] && !Array.isArray(pendingFiles['gstDoc']) ? { file: pendingFiles['gstDoc'] as File, preview: '', name: 'New GST', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('gstDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} />
+                                <Controller name="panDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="PAN Attachment" 
+                                        file={pendingFiles['panDoc'] && !Array.isArray(pendingFiles['panDoc']) ? { file: pendingFiles['panDoc'] as File, preview: '', name: 'New PAN', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('panDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="Udyog Number" id="udyogNumber" registration={register('udyogNumber')} error={errors.udyogNumber?.message} />
+                                <Controller name="udyogDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="Udyog Document" 
+                                        file={pendingFiles['udyogDoc'] && !Array.isArray(pendingFiles['udyogDoc']) ? { file: pendingFiles['udyogDoc'] as File, preview: '', name: 'New Udyog', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('udyogDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                        </div>
+
+                        <h4 className="text-lg font-bold text-primary-text border-l-4 border-emerald-500 pl-3 pt-6">EPFO, ESIC & E-Shram Details</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border rounded-2xl bg-page/30">
+                            <div className="space-y-4">
+                                <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} error={errors.complianceCodes?.epfoCode?.message} />
+                                <Controller name="complianceCodes.epfoDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="EPFO Document" 
+                                        file={pendingFiles['epfoDoc'] && !Array.isArray(pendingFiles['epfoDoc']) ? { file: pendingFiles['epfoDoc'] as File, preview: '', name: 'EPFO', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('epfoDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} error={errors.complianceCodes?.esicCode?.message} />
+                                <Controller name="complianceCodes.esicDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="ESIC Document" 
+                                        file={pendingFiles['esicDoc'] && !Array.isArray(pendingFiles['esicDoc']) ? { file: pendingFiles['esicDoc'] as File, preview: '', name: 'ESIC', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('esicDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            <div className="space-y-4">
+                                <Input label="E-Shram Number" id="shram" registration={register('complianceCodes.eShramNumber')} error={errors.complianceCodes?.eShramNumber?.message} />
+                                <Controller name="complianceCodes.eShramDocUrl" control={control} render={({ field }) => (
+                                    <UploadDocument 
+                                        label="E-Shram Document" 
+                                        file={pendingFiles['shramDoc'] && !Array.isArray(pendingFiles['shramDoc']) ? { file: pendingFiles['shramDoc'] as File, preview: '', name: 'Shram', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                        onFileChange={(f) => { setFile('shramDoc', f); if (!f) field.onChange(''); }}
+                                    />
+                                )} />
+                            </div>
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-2 mt-4 p-6 border rounded-2xl bg-page/30">
+                           <Controller name="logoUrl" control={control} render={({ field }) => (
                            <UploadDocument 
                              label="Company Logo" 
                              file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: URL.createObjectURL(pendingFiles['logo'] as File), name: 'New Image', type: 'image/jpeg', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'image/jpeg', size: 0 } as UploadedFile : null)}
@@ -302,9 +436,10 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                  if (!f) field.onChange(''); // clear string
                              }}
                            />
-                       )} />
+                        )} />
                     </div>
                 </div>
+                </>
             )}
 
             {/* Contacts Hub */}
@@ -334,75 +469,204 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                 </div>
             )}
 
-            {/* Compliance Codes */}
-            {activeTab === 'Compliance' && (
+            {/* License Tab (Formerly Compliance) */}
+            {activeTab === 'License' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                    <Input label="E-Shram Number" id="shram" registration={register('complianceCodes.eShramNumber')} error={errors.complianceCodes?.eShramNumber?.message} />
-                    <Input label="Shop & Establishment Code" id="shop" registration={register('complianceCodes.shopAndEstablishmentCode')} error={errors.complianceCodes?.shopAndEstablishmentCode?.message} />
-                    <Input label="EPFO Code" id="epfo" registration={register('complianceCodes.epfoCode')} error={errors.complianceCodes?.epfoCode?.message} />
-                    <Input label="ESIC Code" id="esic" registration={register('complianceCodes.esicCode')} error={errors.complianceCodes?.esicCode?.message} />
-                    <Input label="PSARA License Number" id="psara" registration={register('complianceCodes.psaraLicenseNumber')} />
-                    <Input label="PSARA Valid Till" id="psaradate" type="date" registration={register('complianceCodes.psaraValidTill')} />
+                    <div className="md:col-span-2">
+                         <h4 className="text-lg font-semibold text-primary-text mb-2">Government Licenses & Statutory Codes</h4>
+                         <p className="text-sm text-muted">Manage Shop & Establishment and PSARA specific license details here.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
+                        <Input label="Shop & Establishment Code" id="shop" registration={register('complianceCodes.shopAndEstablishmentCode')} error={errors.complianceCodes?.shopAndEstablishmentCode?.message} />
+                        <Input label="S & E Valid Till" id="shopdate" type="date" registration={register('complianceCodes.shopAndEstablishmentValidTill')} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
+                        <Input label="PSARA License Number" id="psara" registration={register('complianceCodes.psaraLicenseNumber')} />
+                        <Input label="PSARA Valid Till" id="psaradate" type="date" registration={register('complianceCodes.psaraValidTill')} />
+                    </div>
                 </div>
             )}
 
             {/* Compliance Documents */}
             {activeTab === 'Documents' && (
-                <div className="space-y-8">
+                <div className="space-y-6">
                     <div className="flex justify-between items-center">
                         <div>
-                            <h4 className="text-lg font-semibold text-primary-text">Compliance Notifications & Circulars</h4>
-                            <p className="text-sm text-muted">Upload minimum wages, PT, or PF & ESI related documents.</p>
+                            <h4 className="text-lg font-semibold text-primary-text">Government Notifications & Documents</h4>
+                            <p className="text-sm text-muted">Upload only government notifications related to minimum wages, PT, PF, or ESI.</p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => appendDoc({ id: `doc_${Date.now()}`, type: 'Minimum Wages Notifications', documentUrls: [], expiryDate: '' })}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                            const newId = `doc_${Date.now()}`;
+                            appendDoc({ id: newId, type: 'Minimum Wages Notifications', documentUrls: [], expiryDate: '', effectiveDate: '', announcedDate: '', editorLog: '' });
+                            setExpandedItems(prev => ({ ...prev, [newId]: true }));
+                        }}>
                             <Plus className="w-4 h-4 mr-2" /> Add Document
                         </Button>
                     </div>
-                    <div className="grid grid-cols-1 gap-6">
-                        {docFields.map((field, index) => (
-                            <div key={field.id} className="p-6 border border-border rounded-2xl bg-page shadow-sm relative animate-in fade-in scale-in-95">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                   <Select label="Circular Type" id={`docs.${index}.type`} registration={register(`complianceDocuments.${index}.type` as const)}>
-                                       <option value="Minimum Wages Notifications">Minimum Wages Notifications</option>
-                                       <option value="PT Circulars & Notifications">PT Circulars & Notifications</option>
-                                       <option value="PF & ESI Circulars & Notifications">PF & ESI Circulars</option>
-                                       <option value="Other">Other</option>
-                                   </Select>
-                                   <Input label="Valid Till" id={`docs.${index}.expiry`} type="date" registration={register(`complianceDocuments.${index}.expiryDate` as const)} />
-                                   <div className="md:col-span-2 mt-2">
-                                      <Controller name={`complianceDocuments.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                           const pendingList = pendingFiles[`doc_${field.id}`] as File[];
-                                           const existingUrls = f.value || [];
-                                           
-                                           // Create UploadedFile list from both pending files and existing URLs
-                                           const displayFiles: UploadedFile[] = [
-                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url })),
-                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
-                                           ];
 
-                                           return (
-                                               <MultiUploadDocument 
-                                                   label="Upload Document Capture" 
-                                                   files={displayFiles}
-                                                   onFilesChange={(newFileList) => {
-                                                       // Separate actual Files for pendingFiles state and URLs for form state
-                                                       const filesOnly = newFileList.map(nf => nf.file).filter(Boolean) as File[];
-                                                       const urlsOnly = newFileList.map(nf => nf.url).filter(Boolean) as string[];
-                                                       
-                                                       setFiles(`doc_${field.id}`, newFileList);
-                                                       f.onChange(urlsOnly);
-                                                   }}
-                                               />
-                                           );
-                                      }} />
-                                   </div>
-                                </div>
-                                <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removeDoc(index)}>
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
-                            </div>
-                        ))}
+                    {/* Filters Bar */}
+                    <div className="p-4 border border-border rounded-2xl bg-page/40 flex flex-wrap items-end gap-4 shadow-sm">
+                        <div className="flex-1 min-w-[200px]">
+                            <Select label="Filter by Type" id="filter_type" value={docFilters.type} onChange={(e: any) => setDocFilters(prev => ({ ...prev, type: e.target.value }))}>
+                                <option value="">All Types</option>
+                                <option value="Minimum Wages Notifications">Minimum Wages Notifications</option>
+                                <option value="PT Circulars & Notifications">PT Circulars & Notifications</option>
+                                <option value="PF Circulars & Notifications">PF Circulars & Notifications</option>
+                                <option value="ESI Circulars & Notifications">ESI Circulars & Notifications</option>
+                                <option value="Other Government Notification">Other Government Notification</option>
+                            </Select>
+                        </div>
+                        <div className="w-44">
+                            <Input label="Eff. Date" id="filter_eff" type="date" value={docFilters.effectiveDate} onChange={(e: any) => setDocFilters(prev => ({ ...prev, effectiveDate: e.target.value }))} />
+                        </div>
+                        <div className="w-44">
+                            <Input label="Ann. Date" id="filter_ann" type="date" value={docFilters.announcedDate} onChange={(e: any) => setDocFilters(prev => ({ ...prev, announcedDate: e.target.value }))} />
+                        </div>
+                        <div className="flex-1 min-w-[200px]">
+                            <Input label="Search Editor Log" id="filter_search" placeholder="Search history/notes..." value={docFilters.search} onChange={(e: any) => setDocFilters(prev => ({ ...prev, search: e.target.value }))} icon={<Search className="w-4 h-4" />} />
+                        </div>
+                        {(docFilters.type || docFilters.effectiveDate || docFilters.announcedDate || docFilters.search) && (
+                            <Button type="button" variant="secondary" onClick={() => setDocFilters({ type: '', effectiveDate: '', announcedDate: '', search: '' })} className="h-10">Clear</Button>
+                        )}
                     </div>
+
+                    {/* Documents Table */}
+                    {docFields.length > 0 && (() => {
+                        const filteredDocs = docFields.map((field, index) => ({ field, index }))
+                            .filter(({ index }) => {
+                                const docValues = watch(`complianceDocuments.${index}`);
+                                const matchesType = !docFilters.type || docValues?.type === docFilters.type;
+                                const matchesEff = !docFilters.effectiveDate || docValues?.effectiveDate === docFilters.effectiveDate;
+                                const matchesAnn = !docFilters.announcedDate || docValues?.announcedDate === docFilters.announcedDate;
+                                const matchesSearch = !docFilters.search || docValues?.editorLog?.toLowerCase().includes(docFilters.search.toLowerCase());
+                                return matchesType && matchesEff && matchesAnn && matchesSearch;
+                            })
+                            .sort((a, b) => {
+                                const valA = watch(`complianceDocuments.${a.index}`);
+                                const valB = watch(`complianceDocuments.${b.index}`);
+                                const dateA = new Date(valA?.effectiveDate || valA?.announcedDate || 0).getTime();
+                                const dateB = new Date(valB?.effectiveDate || valB?.announcedDate || 0).getTime();
+                                return dateB - dateA;
+                            });
+                        
+                        if (filteredDocs.length === 0) {
+                            return (
+                                <div className="p-12 text-center border-2 border-dashed border-border rounded-2xl bg-page/20">
+                                    <Search className="w-12 h-12 text-muted mx-auto mb-4 opacity-20" />
+                                    <p className="text-muted">No documents match your filter criteria.</p>
+                                    <Button type="button" variant="secondary" className="mt-4" onClick={() => setDocFilters({ type: '', effectiveDate: '', announcedDate: '', search: '' })}>Clear All Filters</Button>
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div className="border border-border rounded-2xl overflow-hidden bg-card">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-border bg-page/40">
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Document Type</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Eff. Date</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Ann. Date</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Valid Till</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Files</th>
+                                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredDocs.map(({ field, index }) => {
+                                            const docVal = watch(`complianceDocuments.${index}`);
+                                            const businessId = docVal?.id || field.id;
+                                            const isExpanded = expandedItems[businessId];
+                                            const docCount = (docVal?.documentUrls?.length || 0) + ((pendingFiles[`doc_${businessId}`] as File[])?.length || 0);
+                                            return (
+                                                <React.Fragment key={field.id}>
+                                                    <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <FileText className="w-4 h-4 text-accent flex-shrink-0" />
+                                                                <span className="font-medium text-primary-text">{docVal?.type || 'Untitled'}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-muted">{docVal?.effectiveDate || '—'}</td>
+                                                        <td className="px-4 py-3 text-muted">{docVal?.announcedDate || '—'}</td>
+                                                        <td className="px-4 py-3 text-muted">{docVal?.expiryDate || '—'}</td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${docCount > 0 ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}`}>
+                                                                <FileText className="w-3 h-3" />{docCount}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {docCount > 0 && docVal?.documentUrls?.[0] && (
+                                                                    <button type="button" onClick={() => window.open(docVal.documentUrls![0], '_blank')} className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors" title="View Document">
+                                                                        <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                <button type="button" onClick={() => toggleExpanded(businessId)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-accent/10'}`} title="Edit">
+                                                                    <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                                </button>
+                                                                <button type="button" onClick={() => removeDoc(index)} className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr>
+                                                            <td colSpan={6} className="p-0">
+                                                                <div className="px-6 py-6 bg-page/20 border-b border-border">
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                                       <div className="md:col-span-2">
+                                                                           <Select label="Document Type" id={`docs.${index}.type`} registration={register(`complianceDocuments.${index}.type` as const)}>
+                                                                               <option value="Minimum Wages Notifications">Minimum Wages Notifications</option>
+                                                                               <option value="PT Circulars & Notifications">PT Circulars & Notifications</option>
+                                                                               <option value="PF Circulars & Notifications">PF Circulars & Notifications</option>
+                                                                               <option value="ESI Circulars & Notifications">ESI Circulars & Notifications</option>
+                                                                               <option value="Other Government Notification">Other Government Notification</option>
+                                                                           </Select>
+                                                                       </div>
+                                                                       
+                                                                       <Input label="Effective Date" id={`docs.${index}.effective`} type="date" registration={register(`complianceDocuments.${index}.effectiveDate` as const)} />
+                                                                       <Input label="Announced / Circulated Date" id={`docs.${index}.announced`} type="date" registration={register(`complianceDocuments.${index}.announcedDate` as const)} />
+                                                                       <Input label="Valid Till" id={`docs.${index}.expiry`} type="date" registration={register(`complianceDocuments.${index}.expiryDate` as const)} />
+                                                                       <Input label="Editor Log (Background Cron)" id={`docs.${index}.log`} registration={register(`complianceDocuments.${index}.editorLog` as const)} placeholder="Internal notes or cron reference..." />
+
+                                                                       <div className="md:col-span-2 mt-2">
+                                                                        <Controller name={`complianceDocuments.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                                                               const pendingList = pendingFiles[`doc_${businessId}`] as File[];
+                                                                               const existingUrls = f.value || [];
+                                                                               
+                                                                               const displayFiles: UploadedFile[] = [
+                                                                                   ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url })),
+                                                                                   ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                               ];
+
+                                                                               return (
+                                                                                   <MultiUploadDocument 
+                                                                                       label="Upload Document Capture" 
+                                                                                       files={displayFiles}
+                                                                                       onFilesChange={(newFileList) => {
+                                                                                           const urlsOnly = newFileList.map(nf => nf.url).filter(Boolean) as string[];
+                                                                                           setFiles(`doc_${businessId}`, newFileList);
+                                                                                           f.onChange(urlsOnly);
+                                                                                       }}
+                                                                                   />
+                                                                               );
+                                                                          }} />
+                                                                       </div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -473,81 +737,189 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
             {/* Policies Tab */}
             {activeTab === 'Policies' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                    {/* Policies (formerly Insurances) Sequence */}
-                    <div className="space-y-6">
+                    {/* Policies (formerly Insurances) */}
+                    <div className="space-y-4">
                         <div className="flex justify-between items-center">
                             <h4 className="text-lg font-semibold text-primary-text">Policies</h4>
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendIns({ id: `ins_${Date.now()}`, name: '', documentUrls: [] })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                const newId = `ins_${Date.now()}`;
+                                appendIns({ id: newId, name: '', documentUrls: [] });
+                                setExpandedItems(prev => ({ ...prev, [`ins_${newId}`]: true }));
+                            }}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
                         </div>
-                        <div className="space-y-6">
-                           {insFields.map((item, index) => (
-                               <div key={item.id} className="p-6 border border-border rounded-2xl bg-page/40 relative shadow-sm">
-                                   <Input label="Policy Name" id={`ins_${index}`} registration={register(`insurances.${index}.name` as const)} error={errors.insurances?.[index]?.name?.message} />
-                                   <div className="mt-4">
-                                       <Controller name={`insurances.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                           const pendingList = pendingFiles[`ins_${item.id}`] as File[];
-                                           const existingUrls = f.value || [];
-                                           
-                                           const displayFiles: UploadedFile[] = [
-                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
-                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
-                                           ];
-
-                                           return (
-                                               <MultiUploadDocument 
-                                                   label="Upload Policy Documents" 
-                                                   files={displayFiles}
-                                                   onFilesChange={(newFileList) => {
-                                                       setFiles(`ins_${item.id}`, newFileList);
-                                                       f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
-                                                   }}
-                                               />
-                                           );
-                                       }} />
-                                   </div>
-                                   <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removeIns(index)}><Trash2 className="w-4 h-4" /></Button>
-                               </div>
-                           ))}
-                        </div>
+                        {insFields.length > 0 && (
+                            <div className="border border-border rounded-2xl overflow-hidden bg-card">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-border bg-page/40">
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Policy Name</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Files</th>
+                                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {insFields.map((item, index) => {
+                                            const insVal = watch(`insurances.${index}`);
+                                            const businessId = insVal?.id || item.id;
+                                            const isExpanded = expandedItems[`ins_${businessId}`];
+                                            const docCount = (insVal?.documentUrls?.length || 0) + ((pendingFiles[`ins_${businessId}`] as File[])?.length || 0);
+                                            return (
+                                                <React.Fragment key={item.id}>
+                                                    <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <FileText className="w-4 h-4 text-accent flex-shrink-0" />
+                                                                <span className="font-medium text-primary-text">{insVal?.name || 'Untitled'}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${docCount > 0 ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}`}>
+                                                                <FileText className="w-3 h-3" />{docCount}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button type="button" onClick={() => toggleExpanded(`ins_${businessId}`)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-accent/10'}`} title="Edit">
+                                                                    <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                                </button>
+                                                                <button type="button" onClick={() => removeIns(index)} className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr>
+                                                            <td colSpan={3} className="p-0">
+                                                                <div className="px-6 py-6 bg-page/20 border-b border-border">
+                                                                    <Input label="Policy Name" id={`ins_${index}`} registration={register(`insurances.${index}.name` as const)} error={errors.insurances?.[index]?.name?.message} />
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                                                        <Input label="Effective Date" id={`ins_eff_${index}`} type="date" registration={register(`insurances.${index}.effectiveDate` as const)} />
+                                                                        <Input label="Announced Date" id={`ins_ann_${index}`} type="date" registration={register(`insurances.${index}.announcedDate` as const)} />
+                                                                        <div className="md:col-span-2">
+                                                                            <Input label="Editor Log" id={`ins_log_${index}`} registration={register(`insurances.${index}.editorLog` as const)} placeholder="Internal policy reference..." />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="mt-4">
+                                                                        <Controller name={`insurances.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                                                            const pendingList = pendingFiles[`ins_${businessId}`] as File[];
+                                                                            const existingUrls = f.value || [];
+                                                                            const displayFiles: UploadedFile[] = [
+                                                                                ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
+                                                                                ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                            ];
+                                                                            return (
+                                                                                <MultiUploadDocument label="Upload Policy Documents" files={displayFiles}
+                                                                                    onFilesChange={(newFileList) => { setFiles(`ins_${businessId}`, newFileList); f.onChange(newFileList.map(nf => nf.url).filter(Boolean)); }} />
+                                                                            );
+                                                                        }} />
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Policies Sequence */}
-                     <div className="space-y-6">
+                    {/* Company Policies */}
+                    <div className="space-y-4">
                         <div className="flex justify-between items-center">
                             <h4 className="text-lg font-semibold text-primary-text">Company Policies</h4>
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendPol({ id: `pol_${Date.now()}`, name: '', level: 'Both', documentUrls: [] })}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                const newId = `pol_${Date.now()}`;
+                                appendPol({ id: newId, name: '', level: 'Both', documentUrls: [] });
+                                setExpandedItems(prev => ({ ...prev, [`pol_${newId}`]: true }));
+                            }}><Plus className="w-4 h-4 mr-2" /> New Entry</Button>
                         </div>
-                        <div className="space-y-6">
-                           {polFields.map((item, index) => (
-                               <div key={item.id} className="p-6 border border-border rounded-2xl bg-page/40 relative shadow-sm">
-                                   <Input label="Global/Local Policy Name" id={`pol_${index}`} registration={register(`policies.${index}.name` as const)} error={errors.policies?.[index]?.name?.message} />
-                                   <div className="mt-3"><Select label="Deployment Level" id={`lvl_${index}`} registration={register(`policies.${index}.level` as const)}><option value="Both">Both BO & Site</option><option value="BO">BO Level Only</option><option value="Site">Site Level Only</option></Select></div>
-                                   <div className="mt-4">
-                                       <Controller name={`policies.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                           const pendingList = pendingFiles[`pol_${item.id}`] as File[];
-                                           const existingUrls = f.value || [];
-                                           
-                                           const displayFiles: UploadedFile[] = [
-                                               ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
-                                               ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
-                                           ];
-
-                                           return (
-                                               <MultiUploadDocument 
-                                                   label="Upload Policy Documents" 
-                                                   files={displayFiles}
-                                                   onFilesChange={(newFileList) => {
-                                                       setFiles(`pol_${item.id}`, newFileList);
-                                                       f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
-                                                   }}
-                                               />
-                                           );
-                                       }} />
-                                   </div>
-                                   <Button type="button" variant="danger" size="sm" className="absolute top-4 right-4" onClick={() => removePol(index)}><Trash2 className="w-4 h-4" /></Button>
-                               </div>
-                           ))}
-                        </div>
+                        {polFields.length > 0 && (
+                            <div className="border border-border rounded-2xl overflow-hidden bg-card">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-border bg-page/40">
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Policy Name</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Level</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Files</th>
+                                            <th className="text-right px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {polFields.map((item, index) => {
+                                            const polVal = watch(`policies.${index}`);
+                                            const businessId = polVal?.id || item.id;
+                                            const isExpanded = expandedItems[`pol_${businessId}`];
+                                            const docCount = (polVal?.documentUrls?.length || 0) + ((pendingFiles[`pol_${businessId}`] as File[])?.length || 0);
+                                            return (
+                                                <React.Fragment key={item.id}>
+                                                    <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <FileText className="w-4 h-4 text-accent flex-shrink-0" />
+                                                                <span className="font-medium text-primary-text">{polVal?.name || 'Untitled'}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className="bg-accent/10 text-accent px-2 py-0.5 rounded text-xs font-bold uppercase">{polVal?.level || 'Both'}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${docCount > 0 ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}`}>
+                                                                <FileText className="w-3 h-3" />{docCount}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button type="button" onClick={() => toggleExpanded(`pol_${businessId}`)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'text-accent bg-accent/10' : 'text-muted hover:text-accent hover:bg-accent/10'}`} title="Edit">
+                                                                    <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                                                </button>
+                                                                <button type="button" onClick={() => removePol(index)} className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr>
+                                                            <td colSpan={4} className="p-0">
+                                                                <div className="px-6 py-6 bg-page/20 border-b border-border">
+                                                                    <Input label="Global/Local Policy Name" id={`pol_${index}`} registration={register(`policies.${index}.name` as const)} error={errors.policies?.[index]?.name?.message} />
+                                                                    <div className="mt-3"><Select label="Deployment Level" id={`lvl_${index}`} registration={register(`policies.${index}.level` as const)}><option value="Both">Both BO & Site</option><option value="BO">BO Level Only</option><option value="Site">Site Level Only</option></Select></div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                                                        <Input label="Effective Date" id={`pol_eff_${index}`} type="date" registration={register(`policies.${index}.effectiveDate` as const)} />
+                                                                        <Input label="Announced Date" id={`pol_ann_${index}`} type="date" registration={register(`policies.${index}.announcedDate` as const)} />
+                                                                        <div className="md:col-span-2">
+                                                                            <Input label="Editor Log" id={`pol_log_${index}`} registration={register(`policies.${index}.editorLog` as const)} placeholder="Internal company policy reference..." />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="mt-4">
+                                                                        <Controller name={`policies.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
+                                                                            const pendingList = pendingFiles[`pol_${businessId}`] as File[];
+                                                                            const existingUrls = f.value || [];
+                                                                            const displayFiles: UploadedFile[] = [
+                                                                                ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
+                                                                                ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                            ];
+                                                                            return (
+                                                                                <MultiUploadDocument label="Upload Policy Documents" files={displayFiles}
+                                                                                    onFilesChange={(newFileList) => { setFiles(`pol_${businessId}`, newFileList); f.onChange(newFileList.map(nf => nf.url).filter(Boolean)); }} />
+                                                                            );
+                                                                        }} />
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

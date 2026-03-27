@@ -150,7 +150,7 @@ const FormsSelection = lazyWithRetry(() => import('./pages/public/FormsSelection
 const GMCForm = lazyWithRetry(() => import('./pages/public/GMCForm'));
 
 // Image Viewer
-const ImageViewerPage = lazyWithRetry(() => import('./pages/ImageViewerPage'));
+const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPage'));
 
 // Components
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -877,7 +877,7 @@ const App: React.FC = () => {
         <Route path="/public/forms/gmc" element={<GMCForm />} />
         
         {/* Full-screen Image Viewer */}
-        <Route path="/image-viewer" element={<ImageViewerPage />} />
+        <Route path="/document-viewer" element={<DocumentViewerPage />} />
 
         {/* 2. Page for unverified users */}
         <Route path="/pending-approval" element={user && user.role === 'unverified' ? <PendingApproval /> : <Navigate to="/auth/login" replace />} />

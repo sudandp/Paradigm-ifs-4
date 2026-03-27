@@ -28,6 +28,7 @@ import { createWorker } from 'tesseract.js';
 import { withTimeout } from '../utils/async';
 
 const ONBOARDING_DOCS_BUCKET = 'onboarding-documents';
+const COMPLIANCE_DOCS_BUCKET = 'compliance-documents';
 const AVATAR_BUCKET = 'avatars';
 const SUPPORT_ATTACHMENTS_BUCKET = 'support-attachments';
 const BIRTH_CERT_BUCKET = 'birth-certificates';
@@ -977,6 +978,8 @@ export const api = {
   },
 
   deleteFile: async (filePath: string): Promise<void> => {
+    // Ensure the default bucket exists before removal
+    await api.ensureBucket(ONBOARDING_DOCS_BUCKET);
     const { error } = await supabase.storage.from(ONBOARDING_DOCS_BUCKET).remove([filePath]);
     if (error) throw error;
   },
@@ -997,6 +1000,41 @@ export const api = {
    * @param submissionId (optional) ID of the related onboarding submission
    * @param docName  (optional) descriptive name of the document (e.g. 'idProofFront')
    */
+  ensureBucket: async (bucket: string): Promise<void> => {
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const existing = buckets?.find(b => b.name === bucket);
+      if (!existing) {
+        console.log(`Bucket "${bucket}" not found, creating as public...`);
+        const { error } = await supabase.storage.createBucket(bucket, {
+          public: true,
+          allowedMimeTypes: null,
+          fileSizeLimit: null
+        });
+        if (error) {
+          console.error(`Failed to create bucket "${bucket}":`, error);
+        } else {
+          console.log(`Bucket "${bucket}" created successfully.`);
+        }
+      } else if (!existing.public) {
+        // Bucket exists but is private — update it to public so getPublicUrl works
+        console.log(`Bucket "${bucket}" exists but is private, updating to public...`);
+        const { error } = await supabase.storage.updateBucket(bucket, { public: true });
+        if (error) {
+          console.error(`Failed to update bucket "${bucket}" to public:`, error);
+        } else {
+          console.log(`Bucket "${bucket}" is now public.`);
+          // Fire a small success toast if it was a compliance bucket
+          if (bucket === 'compliance-documents') {
+            console.log('Fixed compliance-documents bucket access.');
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error in ensureBucket:', e);
+    }
+  },
+
   uploadDocument: async (
     file: File,
     bucket: string = ONBOARDING_DOCS_BUCKET,
@@ -1005,7 +1043,11 @@ export const api = {
   ): Promise<{ url: string; path: string; }> => {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id || 'anonymous_user';
-    const filePath = `${userId}/documents/${Date.now()}_${file.name}`;
+    const timestamp = Date.now();
+    const filePath = `documents/${userId}/${timestamp}/${file.name}`;
+    
+    // Ensure the destination bucket exists
+    await api.ensureBucket(bucket);
     const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file);
     if (uploadError) throw uploadError;
     const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
@@ -2288,6 +2330,9 @@ export const api = {
     const fileExt = file.name.split('.').pop() || 'png';
     const fileName = `${Date.now()}_${file.name}`;
     const filePath = `${fileName}`;
+    
+    // Ensure the logo bucket exists
+    await api.ensureBucket(LOGO_BUCKET);
     const { error: uploadError } = await supabase.storage.from(LOGO_BUCKET).upload(filePath, file, { upsert: true });
     if (uploadError) throw uploadError;
     const { data: { publicUrl } } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(filePath);

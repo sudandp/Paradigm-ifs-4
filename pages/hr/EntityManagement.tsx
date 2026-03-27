@@ -246,7 +246,7 @@ const EntityManagement: React.FC = () => {
     // Client/Entity handlers
     const handleAddClient = (companyName: string) => setEntityFormState({ isOpen: true, initialData: null, companyName });
     const handleEditClient = (entity: Entity, companyName: string) => setEntityFormState({ isOpen: true, initialData: entity, companyName });
-    const handleSaveClient = async (clientData: Entity, pendingFiles: Record<string, File>) => {
+    const handleSaveClient = async (clientData: Entity, pendingFiles: Record<string, File | File[]>) => {
         try {
             let company = groups.flatMap(g => g.companies).find(c => c.name === entityFormState.companyName);
             
@@ -263,17 +263,58 @@ const EntityManagement: React.FC = () => {
             
             if (fileEntries.length > 0) {
                 setToast({ message: 'Uploading documents...', type: 'info' as any });
-                for (const [path, file] of fileEntries) {
-                    const uploadResult = await api.uploadDocument(file, 'onboarding-documents', undefined, path);
-                    
-                    // Update nested path (e.g., 'agreementDetails.wordCopy')
-                    const pathParts = path.split('.');
-                    let current: any = updatedClientData;
-                    for (let i = 0; i < pathParts.length - 1; i++) {
-                        if (!current[pathParts[i]]) current[pathParts[i]] = {};
-                        current = current[pathParts[i]];
+                for (const [path, fileOrFiles] of fileEntries) {
+                    if (path.startsWith('doc_') || path.startsWith('ins_') || path.startsWith('pol_')) {
+                        // Multi-file upload for Compliance Documents, Insurances, or Policies
+                        const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+                        const uploadPromises = files.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, path));
+                        const results = await Promise.all(uploadPromises);
+                        const newUrls = results.map(r => r.url);
+
+                        // Extract everything after the first prefix (doc_, ins_, pol_)
+                        // e.g. "doc_doc_1711544123456" → "doc_1711544123456"
+                        const id = path.substring(path.indexOf('_') + 1);
+                        if (path.startsWith('doc_')) {
+                            updatedClientData.complianceDocuments = updatedClientData.complianceDocuments?.map(d => 
+                                d.id === id ? { ...d, documentUrls: [...(d.documentUrls || []), ...newUrls] } : d
+                            );
+                        } else if (path.startsWith('ins_')) {
+                            updatedClientData.insurances = updatedClientData.insurances?.map(i => 
+                                i.id === id ? { ...i, documentUrls: [...(i.documentUrls || []), ...newUrls] } : i
+                            );
+                        } else if (path.startsWith('pol_')) {
+                            updatedClientData.policies = updatedClientData.policies?.map(p => 
+                                p.id === id ? { ...p, documentUrls: [...(p.documentUrls || []), ...newUrls] } : p
+                            );
+                        }
+                    } else if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
+                        // Single file registration/statutory docs
+                        const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
+                        const uploadResult = await api.uploadDocument(file as File, 'onboarding-documents', undefined, path);
+                        
+                        const mapping: Record<string, string> = {
+                            cinDoc: 'cinDocUrl',
+                            dinDoc: 'dinDocUrl',
+                            tinDoc: 'tinDocUrl',
+                            udyogDoc: 'udyogDocUrl',
+                            epfoDoc: 'epfoDocUrl',
+                            esicDoc: 'esicDocUrl',
+                            shramDoc: 'eShramDocUrl'
+                        };
+                        (updatedClientData as any)[mapping[path]] = uploadResult.url;
+                    } else {
+                        // Legacy/Generic nested path handling
+                        const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+                        const uploadResult = await api.uploadDocument(files[0] as File, 'onboarding-documents', undefined, path);
+                        
+                        const pathParts = path.split('.');
+                        let current: any = updatedClientData;
+                        for (let i = 0; i < pathParts.length - 1; i++) {
+                            if (!current[pathParts[i]]) current[pathParts[i]] = {};
+                            current = current[pathParts[i]];
+                        }
+                        current[`${pathParts[pathParts.length - 1]}Url`] = uploadResult.url;
                     }
-                    current[`${pathParts[pathParts.length - 1]}Url`] = uploadResult.url;
                 }
             }
 
@@ -374,19 +415,49 @@ const EntityManagement: React.FC = () => {
                 updatedData.logoUrl = logoUrl;
             }
 
+            // 1b. Registration & Statutory Documents
+            const fileEntries = Object.entries(pendingFiles);
+            for (const [path, fileOrFiles] of fileEntries) {
+                if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'gstDoc', 'panDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
+                    const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
+                    const { url } = await api.uploadDocument(file as File);
+                    
+                    const mapping: Record<string, { field: string; nested?: string }> = {
+                        cinDoc: { field: 'cinDocUrl' },
+                        dinDoc: { field: 'dinDocUrl' },
+                        tinDoc: { field: 'tinDocUrl' },
+                        udyogDoc: { field: 'udyogDocUrl' },
+                        gstDoc: { field: 'gstDocUrl' },
+                        panDoc: { field: 'panDocUrl' },
+                        epfoDoc: { field: 'epfoDocUrl', nested: 'complianceCodes' },
+                        esicDoc: { field: 'esicDocUrl', nested: 'complianceCodes' },
+                        shramDoc: { field: 'eShramDocUrl', nested: 'complianceCodes' },
+                        logo: { field: 'logoUrl' }
+                    };
+                    
+                    const { field, nested } = mapping[path];
+                    if (nested) {
+                        if (!(updatedData as any)[nested]) (updatedData as any)[nested] = {};
+                        (updatedData as any)[nested][field] = url;
+                    } else {
+                        (updatedData as any)[field] = url;
+                    }
+                }
+            }
+
             // 2. Upload Compliance Documents
             if (updatedData.complianceDocuments) {
                 for (const doc of updatedData.complianceDocuments) {
                     const pendingForDoc = pendingFiles[`doc_${doc.id}`];
                     if (pendingForDoc) {
                         if (Array.isArray(pendingForDoc)) {
-                            // Upload multiple files
-                            const uploadPromises = pendingForDoc.map(file => api.uploadDocument(file));
+                            // Upload multiple files to compliance-documents bucket
+                            const uploadPromises = pendingForDoc.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `doc_${doc.id}`));
                             const results = await Promise.all(uploadPromises);
                             doc.documentUrls = [...(doc.documentUrls || []), ...results.map(r => r.url)];
                         } else {
                             // Single file fallback
-                            const { url } = await api.uploadDocument(pendingForDoc as File);
+                            const { url } = await api.uploadDocument(pendingForDoc as File, 'compliance-documents', undefined, `doc_${doc.id}`);
                             doc.documentUrls = [...(doc.documentUrls || []), url];
                         }
                     }
@@ -399,11 +470,11 @@ const EntityManagement: React.FC = () => {
                     const pendingForIns = pendingFiles[`ins_${ins.id}`];
                     if (pendingForIns) {
                         if (Array.isArray(pendingForIns)) {
-                            const uploadPromises = pendingForIns.map(file => api.uploadDocument(file));
+                            const uploadPromises = pendingForIns.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `ins_${ins.id}`));
                             const results = await Promise.all(uploadPromises);
                             ins.documentUrls = [...(ins.documentUrls || []), ...results.map(r => r.url)];
                         } else {
-                            const { url } = await api.uploadDocument(pendingForIns as File);
+                            const { url } = await api.uploadDocument(pendingForIns as File, 'compliance-documents', undefined, `ins_${ins.id}`);
                             ins.documentUrls = [...(ins.documentUrls || []), url];
                         }
                     }
@@ -416,11 +487,11 @@ const EntityManagement: React.FC = () => {
                     const pendingForPol = pendingFiles[`pol_${pol.id}`];
                     if (pendingForPol) {
                         if (Array.isArray(pendingForPol)) {
-                            const uploadPromises = pendingForPol.map(file => api.uploadDocument(file));
+                            const uploadPromises = pendingForPol.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `pol_${pol.id}`));
                             const results = await Promise.all(uploadPromises);
                             pol.documentUrls = [...(pol.documentUrls || []), ...results.map(r => r.url)];
                         } else {
-                            const { url } = await api.uploadDocument(pendingForPol as File);
+                            const { url } = await api.uploadDocument(pendingForPol as File, 'compliance-documents', undefined, `pol_${pol.id}`);
                             pol.documentUrls = [...(pol.documentUrls || []), url];
                         }
                     }
@@ -524,7 +595,11 @@ const EntityManagement: React.FC = () => {
                                                     <div className="p-2 flex items-center justify-between bg-card">
                                                         <div className="flex items-center gap-2">
                                                             <button onClick={() => toggleExpand(company.id)}><ChevronRight className={`h-5 w-5 transition-transform ${expanded[company.id] ? 'rotate-90' : ''}`} /></button>
-                                                            <span>{company.name} ({company.entities.length} societies)</span>
+                                                            <span>
+                                                                {company.name} 
+                                                                {company.location && <span className="text-sm text-muted ml-1">({company.location})</span>}{' '}
+                                                                <span className="text-sm text-muted">({company.entities.length} societies)</span>
+                                                            </span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <Button variant="icon" size="sm" title={`View ${company.entities.length} societies`} onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}><Eye className="h-4 w-4" /></Button>
@@ -537,7 +612,10 @@ const EntityManagement: React.FC = () => {
                                                         <div className="p-2">
                                                             {company.entities.map(client => (
                                                                 <div key={client.id} className="p-2 flex items-center justify-between hover:bg-page rounded">
-                                                                    <span>{client.name}</span>
+                                                                    <span>
+                                                                        {client.name}
+                                                                        {client.location && <span className="text-sm text-muted ml-1">({client.location})</span>}
+                                                                    </span>
                                                                     <div className="flex items-center gap-1">
                                                                         <Button variant="icon" onClick={() => handleEditClient(client, company.name)} className="p-2 hover:bg-blue-500/10 rounded-full transition-colors"><Edit className="h-5 w-5" /></Button>
                                                                         <Button variant="icon" onClick={() => handleDeleteClick('client', client.id, client.name)} className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>

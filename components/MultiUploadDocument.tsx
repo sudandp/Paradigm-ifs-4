@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
 import { 
   UploadCloud, 
@@ -9,7 +11,8 @@ import {
   Plus,
   Loader2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Eye
 } from 'lucide-react';
 import Button from './ui/Button';
 
@@ -30,6 +33,7 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
     error,
     maxFiles = 999 // Effectively no limit for UI purposes
 }) => {
+    const navigate = useNavigate();
     const [isDragging, setIsDragging] = useState(false);
 
     const handleFileSelect = useCallback(async (selectedFiles: FileList | null) => {
@@ -140,13 +144,34 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
                                         {file.size > 0 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : 'Existing Document'}
                                     </p>
                                 </div>
-                                <button 
-                                    type="button" 
-                                    onClick={() => handleRemove(idx)}
-                                    className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    {(file.url || (file.preview && !file.preview.startsWith('blob:'))) && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                const rawUrl = file.url || (file.preview && !file.preview.startsWith('blob:') ? file.preview : '');
+                                                const proxyUrl = getProxyUrl(rawUrl);
+                                                const cleanName = getCleanFilename(file.name || rawUrl);
+                                                const params = new URLSearchParams({
+                                                    url: proxyUrl,
+                                                    title: cleanName
+                                                });
+                                                navigate(`/document-viewer?${params.toString()}`);
+                                            }}
+                                            className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="View Document"
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    <button 
+                                        type="button" 
+                                        onClick={() => handleRemove(idx)}
+                                        className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

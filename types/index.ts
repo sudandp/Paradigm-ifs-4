@@ -461,7 +461,7 @@ export interface NotificationSettings {
 }
 
 // Types for Entity Management
-export type RegistrationType = 'CIN' | 'ROC' | 'ROF' | 'Society' | 'Trust' | '';
+export type RegistrationType = 'ROC' | 'ROF' | 'Society' | 'Trust' | '';
 
 export interface Entity {
   id: string;
@@ -478,7 +478,10 @@ export interface Entity {
   eShramNumber?: string;
   shopAndEstablishmentCode?: string;
   epfoCode?: string;
+  epfoDocUrl?: string;
   esicCode?: string;
+  esicDocUrl?: string;
+  eShramDocUrl?: string;
   psaraLicenseNumber?: string;
   psaraValidTill?: string | null;
   insuranceIds?: string[];
@@ -486,6 +489,16 @@ export interface Entity {
   insurances?: SiteInsurance[];
   policies?: SitePolicy[];
   companyId?: string;
+  
+  // Registration Documents (Updated)
+  cinNumber?: string;
+  cinDocUrl?: string;
+  dinNumber?: string;
+  dinDocUrl?: string;
+  tinNumber?: string;
+  tinDocUrl?: string;
+  udyogNumber?: string;
+  udyogDocUrl?: string;
 
   // Advanced Fields (Phase 1 Redesign)
   siteTakeoverDate?: string | null;
@@ -569,6 +582,7 @@ export interface Entity {
       policeOnly: string[];
     }[];
   };
+  complianceDocuments?: ComplianceDocument[];
 }
 
 export interface CompanyEmail {
@@ -578,9 +592,13 @@ export interface CompanyEmail {
 
 export interface ComplianceCodes {
   eShramNumber?: string;
+  eShramDocUrl?: string;
   shopAndEstablishmentCode?: string;
+  shopAndEstablishmentValidTill?: string | null;
   epfoCode?: string;
+  epfoDocUrl?: string;
   esicCode?: string;
+  esicDocUrl?: string;
   psaraLicenseNumber?: string;
   psaraValidTill?: string | null;
 }
@@ -590,6 +608,9 @@ export interface ComplianceDocument {
   type: string;
   documentUrls?: string[] | null;
   expiryDate?: string | null;
+  effectiveDate?: string | null;
+  announcedDate?: string | null;
+  editorLog?: string | null;
 }
 
 export interface CompanyHoliday {
@@ -603,6 +624,9 @@ export interface CompanyInsurance {
   id: string;
   name: string;
   documentUrls?: string[] | null;
+  effectiveDate?: string | null;
+  announcedDate?: string | null;
+  editorLog?: string | null;
 }
 
 export interface SiteInsurance {
@@ -627,11 +651,15 @@ export interface CompanyPolicy {
   documentUrls?: string[] | null;
   level: 'BO' | 'Site' | 'Both';
   description?: string;
+  effectiveDate?: string | null;
+  announcedDate?: string | null;
+  editorLog?: string | null;
 }
 
 export interface Company {
   id: string;
   name: string;
+  status?: 'draft' | 'completed';
   entities: Entity[];
   groupId?: string;
   location?: string;
@@ -642,7 +670,19 @@ export interface Company {
   registrationType?: RegistrationType;
   registrationNumber?: string;
   gstNumber?: string | null;
+  gstDocUrl?: string | null;
   panNumber?: string | null;
+  panDocUrl?: string | null;
+
+  // Independence identification fields
+  cinNumber?: string;
+  cinDocUrl?: string;
+  dinNumber?: string;
+  dinDocUrl?: string;
+  tinNumber?: string;
+  tinDocUrl?: string;
+  udyogNumber?: string;
+  udyogDocUrl?: string;
   
   // Nested JSONB Structures
   emails?: CompanyEmail[];
