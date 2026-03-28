@@ -2637,10 +2637,8 @@ export const api = {
       throw new Error('SMTP not configured. Please save your email configuration first.');
     }
 
-    const response = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const { error: funcError } = await supabase.functions.invoke('send-email', {
+      body: {
         to: testEmail,
         subject: '✅ Paradigm FMS — Test Email',
         html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
@@ -2667,13 +2665,10 @@ export const api = {
           fromName: config.from_name || 'Paradigm FMS',
           replyTo: config.reply_to,
         }
-      })
+      }
     });
     
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Test email failed');
-    }
+    if (funcError) throw funcError;
   },
 
   // ═══ Email Templates APIs ═══════════════════════════════════════════════
@@ -2810,22 +2805,17 @@ export const api = {
       .replace('{message}', `This is a test email for the rule: ${rule.name}`)
       .replace('{subject}', `Test: ${rule.name}`);
 
-    const response = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const { error: funcError } = await supabase.functions.invoke('send-email', {
+      body: {
         to: emails,
         subject: renderedSubject,
         html: renderedHtml,
         ruleId: id,
         templateId: rule.template_id,
-      })
+      }
     });
     
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Test email failed');
-    }
+    if (funcError) throw funcError;
   },
 
   // ═══ Email Logs APIs ═══════════════════════════════════════════════════
@@ -2846,15 +2836,10 @@ export const api = {
   },
 
   sendEmail: async (params: { to: string | string[]; cc?: string[]; subject: string; html: string; attachments?: any[] }): Promise<void> => {
-    const response = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
+    const { error: funcError } = await supabase.functions.invoke('send-email', {
+      body: params
     });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to send email');
-    }
+    if (funcError) throw funcError;
   },
 
   getRecurringHolidays: async (): Promise<RecurringHolidayRule[]> => {

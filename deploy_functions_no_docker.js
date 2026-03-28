@@ -1,7 +1,7 @@
 import fs from 'fs';
 
 const projectRef = 'fmyafuhxlorbafbacywa';
-const token = 'sbp_b5ff4efa2504c0e3e0c16bedb2ae154972d574fc';
+const token = 'sbp_31794f229b16a21a9992df7024b7feb71c4b0d05';
 
 async function deploy(slug, filePath) {
   const code = fs.readFileSync(filePath, 'utf8');
