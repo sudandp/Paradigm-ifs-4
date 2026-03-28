@@ -273,8 +273,22 @@ export const useAuthStore = create<AuthState>()(
         },
 
         loginWithPasscode: async (email, passcode, rememberMe) => {
-            // Simply a wrapper for loginWithEmail to maintain terminology consistency
-            // but we can add passcode-specific pre-checks here if needed in the future.
+            // Check if this appears to be a 4-digit numeric passcode
+            const isFourDigitPasscode = (passcode.length === 4 && /^\d+$/.test(passcode));
+            
+            if (isFourDigitPasscode) {
+                // Try with our hidden internal prefix first (satisfies 6-char rule)
+                const result = await get().loginWithEmail(email, `PAR_${passcode}`, rememberMe);
+                
+                // If prefixed login works, return success
+                if (!result.error) return result;
+                
+                // Otherwise, fall back to testing the raw passcode (for old accounts or if prefix didn't match)
+                // we clear the error before trying the fallback to avoid confusing the UI
+                set({ error: null });
+            }
+
+            // Fallback: Try with the provided value as-is (works for 6+ char passwords or un-prefixed PINs)
             return get().loginWithEmail(email, passcode, rememberMe);
         },
 

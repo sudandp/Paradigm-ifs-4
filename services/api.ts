@@ -1581,8 +1581,14 @@ export const api = {
     // if the userId belongs to them. If it's an admin updating another user,
     // this specific call won't work for the other user without the admin API.
     // However, for the user changing their own passcode in the profile, this is correct.
+    // SATISFY SUPABASE 6-CHARACTER MINIMUM:
+    // If it's a 4-digit passcode, use a hidden prefix to satisfy Auth rules.
+    const effectivePassword = (newPasscode.length === 4 && /^\d+$/.test(newPasscode)) 
+      ? `PAR_${newPasscode}` 
+      : newPasscode;
+
     const { error: authError } = await supabase.auth.updateUser({
-      password: newPasscode
+      password: effectivePassword
     });
 
     if (authError) throw authError;
@@ -1590,13 +1596,42 @@ export const api = {
 
   resetUserPasscode: async (userId: string): Promise<string> => {
     const newPasscode = Math.floor(1000 + Math.random() * 9000).toString();
-    const { error } = await supabase
+    
+    // 1. Update the public.users table (local reference)
+    const { error: dbError } = await supabase
       .from('users')
       .update({ passcode: newPasscode })
       .eq('id', userId);
     
-    if (error) throw error;
+    if (dbError) throw dbError;
+
+    // 2. Sync with Supabase Auth (using the definer RPC to bypass client-side admin restrictions)
+    // The RPC internally adds the 'PAR_' prefix to satisfy the 6-char rule.
+    const { error: rpcError } = await supabase.rpc('sync_user_auth_password', {
+      user_id: userId,
+      new_passcode: newPasscode
+    });
+
+    if (rpcError) {
+      console.warn('Passcode saved locally, but Auth sync failed. User may need to sign in with their old password or Google.', rpcError);
+    }
+
     return newPasscode;
+  },
+
+  /**
+   * Fetches only the current passcode for a specific user.
+   * Used for real-time verification to avoid stale local state issues.
+   */
+  getUserPasscode: async (userId: string): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('passcode')
+      .eq('id', userId)
+      .single();
+    
+    if (error) return null;
+    return data?.passcode || null;
   },
 
   getOrganizations: async (filter?: { page?: number, pageSize?: number }): Promise<any> => {

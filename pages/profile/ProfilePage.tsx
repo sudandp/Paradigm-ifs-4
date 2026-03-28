@@ -330,14 +330,21 @@ const ProfilePage: React.FC = () => {
     const onPasscodeSubmit: SubmitHandler<PasscodeFormData> = async (formData) => {
         if (!user) return;
         
-        // Security check: Verify old passcode
-        if (formData.oldPasscode !== user.passcode) {
-            setToast({ message: 'Current passcode is incorrect.', type: 'error' });
-            return;
-        }
-
         setIsSavingPasscode(true);
         try {
+            // Security check: Fetch the LATEST passcode from the database 
+            // to avoid "Incorrect Passcode" errors due to stale local session data (e.g. after admin reset)
+            const latestPasscode = await api.getUserPasscode(user.id);
+            
+            // If no passcode is set in the DB, fallback to system default '5687'
+            const effectiveCurrentPasscode = latestPasscode || '5687';
+            
+            if (effectiveCurrentPasscode !== formData.oldPasscode) {
+                setToast({ message: 'Current passcode is incorrect.', type: 'error' });
+                setIsSavingPasscode(false);
+                return;
+            }
+
             await api.updateUserPasscode(user.id, formData.newPasscode);
             updateUserProfile({ passcode: formData.newPasscode });
             resetPasscode({ oldPasscode: '', newPasscode: '', confirmPasscode: '' });
