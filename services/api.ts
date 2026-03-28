@@ -1,5 +1,6 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
-import { supabase, supabaseAnonKey } from './supabase';
+import { supabase } from './supabase';
+import { dispatchNotificationFromRules } from './notificationService';
 import type {
   OnboardingData, User, Organization, OrganizationGroup, AttendanceEvent, Location, AttendanceSettings, Holiday,
   LeaveBalance, LeaveRequest, Task, Notification, SiteConfiguration, Entity, Policy, Insurance,
@@ -19,7 +20,6 @@ import {
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-import { dispatchNotificationFromRules } from './notificationService';
 import { offlineDb } from './offline/database';
 import { Network } from '@capacitor/network';
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
@@ -1614,6 +1614,27 @@ export const api = {
 
     if (rpcError) {
       console.warn('Passcode saved locally, but Auth sync failed. User may need to sign in with their old password or Google.', rpcError);
+    }
+
+    // 3. Trigger Notification Dispatch
+    try {
+        const { data: userData } = await supabase.from('users').select('*').eq('id', userId).single();
+        if (userData) {
+            dispatchNotificationFromRules('passcode_reset', {
+                actorName: 'System',
+                actionText: 'has reset your security passcode',
+                locString: '',
+                title: '🔐 Passcode Reset',
+                actor: {
+                    id: userData.id,
+                    name: userData.name || 'Employee',
+                    role: userData.role_id || 'unverified',
+                    reportingManagerId: userData.reporting_manager_id
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('Failed to dispatch passcode reset notification:', e);
     }
 
     return newPasscode;

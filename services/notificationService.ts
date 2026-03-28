@@ -17,6 +17,10 @@ export interface NotificationData {
     actor: NotificationActor;
     severity?: 'Low' | 'Medium' | 'High';
     metadata?: any;
+    /** When true, the actor themselves will ALSO receive the notification + push (for self-actions like punch-in, login) */
+    selfNotify?: boolean;
+    /** Custom message for the actor's own notification (e.g. "Good Morning, Sudhan! You punched in at 9:00 AM") */
+    selfMessage?: string;
 }
 
 /**
@@ -80,8 +84,14 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
             }
         }
 
-        // Remove the actor themselves
-        recipients.delete(data.actor.id);
+        // Decide whether to keep the actor as a recipient:
+        // - selfNotify events (punch-in, login, etc.): actor STAYS to receive their own push
+        // - passcode_reset: actor stays because they need to know their code was reset
+        // - Everything else: actor is REMOVED to avoid self-notifications for team events
+        const selfNotifyEvents = ['passcode_reset', 'user_login', 'user_logout'];
+        if (!data.selfNotify && !selfNotifyEvents.includes(eventType)) {
+            recipients.delete(data.actor.id);
+        }
 
         if (recipients.size > 0) {
             const message = `${data.actorName} ${data.actionText}${data.locString}`;
@@ -96,18 +106,31 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
                     employeeName: data.actor.name,
                     employeePhoto: data.actor.photoUrl,
                     employeeId: data.actor.id,
-                    isTeamActivity: ['check_in', 'check_out', 'site_check_in', 'site_check_out', 'break_in', 'break_out', 'break_start', 'break_end', 'not_reported_by_12pm'].includes(eventType)
+                    isTeamActivity: ['check_in', 'check_out', 'site_check_in', 'site_check_out', 'break_in', 'break_out', 'break_start', 'break_end', 'not_reported_by_12pm', 'greeting'].includes(eventType),
+                    isSelfNotification: (data.selfNotify && userId === data.actor.id) || false
                 }
             }));
             
-            await supabase.from('notifications').insert(notifications);
+            // Override message for self-notify notifications (the actor gets a personalized message)
+            const finalNotifications = notifications.map(n => {
+                if (data.selfMessage && n.user_id === data.actor.id) {
+                    return { ...n, message: data.selfMessage };
+                }
+                return n;
+            });
+            
+            await supabase.from('notifications').insert(finalNotifications);
 
-            // Trigger real push notification via FCM Edge Function for specific types or explicit rules
-            const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast'];
-            const pushRecipients = notifications
+            // Trigger real push notification via FCM Edge Function
+            // These event types ALWAYS get push notifications:
+            const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast', ...selfNotifyEvents];
+            const pushRecipients = finalNotifications
                 .filter((n) => {
                     const flags = recipients.get(n.user_id);
-                    return triggerPushTypes.includes(n.type) || (flags?.sendPush === true);
+                    // Send push if: rule says sendPush, or notification type is in trigger list,
+                    // or this is a self-notify action (user punched in, logged in, etc.)
+                    const isSelfAction = data.selfNotify && n.user_id === data.actor.id;
+                    return triggerPushTypes.includes(n.type) || (flags?.sendPush === true) || isSelfAction;
                 })
                 .map(n => n.user_id);
 
@@ -157,7 +180,7 @@ export const sendGlobalAnnouncement = async (title: string, message: string, lin
  * Maps a system event type to a UI notification category.
  */
 const getNotificationTypeForEvent = (eventType: string): any => {
-    if (eventType === 'violation' || eventType.includes('rejected') || eventType.includes('security')) {
+    if (eventType === 'violation' || eventType.includes('rejected') || eventType.includes('security') || eventType === 'passcode_reset') {
         return 'security';
     }
     if (eventType.includes('task')) {
@@ -169,7 +192,7 @@ const getNotificationTypeForEvent = (eventType: string): any => {
     if (eventType === 'emergency_broadcast') {
         return 'emergency_broadcast';
     }
-    if (eventType === 'greeting') {
+    if (eventType === 'greeting' || eventType === 'user_login' || eventType === 'user_logout') {
         return 'greeting';
     }
     if (['check_in', 'check_out', 'site_check_in', 'site_check_out', 'break_in', 'break_out', 'break_start', 'break_end', 'not_reported_by_12pm'].includes(eventType)) {

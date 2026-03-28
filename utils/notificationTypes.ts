@@ -16,7 +16,9 @@ import {
     Bell, 
     FileText, 
     Shield,
-    Zap
+    Zap,
+    Lock,
+    LogIn
 } from 'lucide-react';
 
 export const APP_EVENT_TYPES = [
@@ -44,6 +46,9 @@ export const APP_EVENT_TYPES = [
     { id: 'billing_invoice', label: 'Invoice Generated', icon: FileText, category: 'finance' },
     { id: 'punch_unlock_request', label: 'Punch Unlock Request', icon: Shield, category: 'compliance' },
     { id: 'ot_punch', label: 'Overtime (OT) Punch', icon: Clock, category: 'attendance' },
+    { id: 'passcode_reset', label: 'Passcode Reset', icon: Lock, category: 'security' },
+    { id: 'user_login', label: 'User Login (Greeting)', icon: LogIn, category: 'greeting' },
+    { id: 'user_logout', label: 'User Logout (Farewell)', icon: LogOut, category: 'greeting' },
     { id: 'security_alert', label: 'Emergency / Security Alert', icon: Shield, category: 'security' }
 ];
 

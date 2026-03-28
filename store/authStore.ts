@@ -239,20 +239,26 @@ export const useAuthStore = create<AuthState>()(
                 if (appUser) {
                     // Success case: profile fetched
                     set({ user: appUser, error: null, loading: false });
-                    // Send a one‑time greeting notification on the first successful login
+                    // Dispatch login greeting via the Notification Rules engine
+                    // Admins can configure who receives this in Notification Management
                     try {
-                        const greetKey = `greetingSent_${appUser.id}`;
-                        // Always send a greeting on new login session, not just once per browser install
-                        // We use a session-based key or just send it every time login happens explicitly
                         const greeting = getTimeBasedGreeting();
-                        await api.createNotification({
-                            userId: appUser.id,
+                        dispatchNotificationFromRules('user_login', {
+                            actorName: appUser.name || 'there',
+                            actionText: 'logged in',
+                            locString: '',
                             title: 'Paradigm Services',
-                            message: `${greeting}, ${appUser.name || 'there'}! Welcome back to Paradigm Services.`,
-                            type: 'greeting',
+                            selfNotify: true,
+                            selfMessage: `${greeting}, ${appUser.name || 'there'}! Welcome back to Paradigm Services.`,
+                            actor: {
+                                id: appUser.id,
+                                name: appUser.name,
+                                role: appUser.role,
+                                reportingManagerId: appUser.reportingManagerId
+                            }
                         });
                     } catch (e) {
-                        console.error('Failed to send login greeting notification', e);
+                        console.error('Failed to dispatch login greeting notification', e);
                     }
                     return { error: null };
                 } else {
@@ -356,21 +362,28 @@ export const useAuthStore = create<AuthState>()(
 
         logout: async () => {
             const currentUser = get().user;
-            // Attempt to send a one‑time farewell notification before logging out.
+            // Dispatch logout farewell via the Notification Rules engine
             if (currentUser) {
                 try {
                     const greeting = getTimeBasedGreeting();
-                    // If it's late (after 8 PM), say Good Night, otherwise use the time-based greeting
                     const farewell = new Date().getHours() >= 20 ? 'Good Night' : greeting;
 
-                    await api.createNotification({
-                        userId: currentUser.id,
+                    dispatchNotificationFromRules('user_logout', {
+                        actorName: currentUser.name || 'there',
+                        actionText: 'logged out',
+                        locString: '',
                         title: 'Paradigm Services',
-                        message: `${farewell}, ${currentUser.name || 'there'}! Thanks for your hard work today.`,
-                        type: 'greeting',
+                        selfNotify: true,
+                        selfMessage: `${farewell}, ${currentUser.name || 'there'}! Thanks for your hard work today.`,
+                        actor: {
+                            id: currentUser.id,
+                            name: currentUser.name,
+                            role: currentUser.role,
+                            reportingManagerId: currentUser.reportingManagerId
+                        }
                     });
                 } catch (e) {
-                    console.error('Failed to send logout farewell notification', e);
+                    console.error('Failed to dispatch logout farewell notification', e);
                 }
             }
             // Clear all persistent tokens on logout
@@ -582,30 +595,8 @@ export const useAuthStore = create<AuthState>()(
                     });
                     await get().checkAttendanceStatus();
 
-                    // Send notification to the USER themselves
-                    try {
-                        const isFirstAction = dailyPunchCount === 0 && newType === 'punch-in';
-                        const greeting = isFirstAction ? `${getTimeBasedGreeting()}, ` : '';
-                        
-                        // Use 'punched' for office, 'checked' for field
-                        const verb = workType === 'field' ? 'checked' : 'punched';
-                        
-                        const actionText = 
-                            newType === 'punch-in' ? `${verb} in` : 
-                            newType === 'punch-out' ? `${verb} out` : 
-                            newType === 'break-in' ? 'started your break ☕' : 'ended your break 🏁';
-                        
-                        const timeStr = format(new Date(), 'hh:mm a');
-                        const atText = locName ? ` at ${locName}` : '';
-                        
-                        await api.createNotification({
-                            userId: user.id,
-                            message: `${greeting}${user.name || 'there'}! You have ${actionText}${atText} at ${timeStr}.`,
-                            type: isFirstAction ? 'greeting' : 'info',
-                        });
-                    } catch (e) {
-                        console.warn('Failed to send user attendance notification', e);
-                    }
+                    // Self-notification is now handled by the dispatcher below with selfNotify: true
+                    // This replaces the old hardcoded api.createNotification() call
                     
                     // Native Push Notification for Breaks (Swiggy Style)
                     if (Capacitor.isNativePlatform() && (newType === 'break-in' || newType === 'break-out')) {
@@ -640,12 +631,26 @@ export const useAuthStore = create<AuthState>()(
                         mappedType = 'break_end';
                     }
                     
+                    // Build the self-notification message for the actor's own push notification
+                    const isFirstAction = dailyPunchCount === 0 && newType === 'punch-in';
+                    const selfGreeting = isFirstAction ? `${getTimeBasedGreeting()}, ` : '';
+                    const verb = workType === 'field' ? 'checked' : 'punched';
+                    const selfActionText = 
+                        newType === 'punch-in' ? `${verb} in` : 
+                        newType === 'punch-out' ? `${verb} out` : 
+                        newType === 'break-in' ? 'started your break ☕' : 'ended your break 🏁';
+                    const timeStr = format(new Date(), 'hh:mm a');
+                    const atText = locName ? ` at ${locName}` : '';
+
                     dispatchNotificationFromRules(
                         mappedType,
                         {
                             actorName: user.name || 'An employee',
                             actionText: getActionTextForType(newType, workType),
                             locString: locName ? ` at ${locName}` : '',
+                            selfNotify: true,
+                            selfMessage: `${selfGreeting}${user.name || 'there'}! You have ${selfActionText}${atText} at ${timeStr}.`,
+                            title: isFirstAction ? 'Paradigm Services' : `${selfActionText.charAt(0).toUpperCase() + selfActionText.slice(1)}`,
                             actor: {
                                 id: user.id,
                                 name: user.name,
