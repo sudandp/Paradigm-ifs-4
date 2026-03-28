@@ -1530,6 +1530,8 @@ export interface NotificationRule {
   isEnabled: boolean;
   sendAlert: boolean;
   sendPush: boolean;
+  sendEmail?: boolean;
+  emailTemplateId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1557,6 +1559,8 @@ export interface AutomatedNotificationRule {
   smsTemplate?: string;
   enablePush: boolean;
   enableSms: boolean;
+  enableEmail?: boolean;
+  emailTemplateId?: string;
   maxAlerts?: number;
   cooldownMinutes?: number;
   createdAt: string;

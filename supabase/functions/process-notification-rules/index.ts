@@ -282,9 +282,17 @@ async function shouldNotifyUser(supabase: any, rule: any, userId: string, startO
 async function processNotifications(supabase: any, rule: any, targets: any[], checkTime: string, results: any[], isTestMode: boolean = false) {
   if (targets.length === 0) return;
   
+  // Pre-fetch template if email is enabled
+  let emailTemplate: any = null;
+  if (rule.enable_email && rule.email_template_id) {
+    const { data: temp } = await supabase.from('email_templates').select('*').eq('id', rule.email_template_id).single();
+    emailTemplate = temp;
+  }
+  
   for (const target of targets) {
-    const { data: user } = await supabase.from('users').select('name, reporting_manager_id').eq('id', target.userId).single();
+    const { data: user } = await supabase.from('users').select('name, email, reporting_manager_id').eq('id', target.userId).single();
     const userName = user?.name || 'User';
+    const userEmail = user?.email;
     const title = rule.push_title_template || 'System Alert';
     const body = (rule.push_body_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
     const smsMsg = (rule.sms_template || '').replace('{name}', userName).replace('{site}', target.site || 'System').replace('{time}', checkTime);
@@ -322,13 +330,38 @@ async function processNotifications(supabase: any, rule: any, targets: any[], ch
       })
     });
 
-    // Step 3: Log result
+    // Step 3: Send Email if enabled
+    if (rule.enable_email && userEmail) {
+      const subject = (emailTemplate?.subject_template || title).replace('{subject}', title);
+      let html = emailTemplate?.body_template || `<div><h2>${title}</h2><p>${body}</p></div>`;
+      
+      // Basic variable replacement
+      html = html.replace(/{name}/g, userName)
+                 .replace(/{message}/g, body)
+                 .replace(/{subject}/g, title)
+                 .replace(/{date}/g, new Date().toLocaleDateString('en-IN'))
+                 .replace(/{time}/g, checkTime);
+
+      fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({
+          to: userEmail,
+          subject,
+          html,
+          ruleId: rule.id,
+          templateId: rule.email_template_id
+        })
+      }).catch(err => console.error(`[ProcessRules] Email failed for ${userName}:`, err.message));
+    }
+
+    // Step 4: Log result
     if (pushResp.ok) {
       await supabase.from('automated_notification_logs').insert({ 
           rule_id: rule.id, 
           user_id: target.userId, 
           trigger_type: rule.trigger_type, 
-          channel: rule.enable_push ? 'push' : 'sms', 
+          channel: rule.enable_push ? 'push' : (rule.enable_email ? 'email' : 'sms'), 
           status: 'sent' 
       });
       results.push({ user: userName, rule: rule.name });

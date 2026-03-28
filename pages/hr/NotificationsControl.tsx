@@ -37,7 +37,7 @@ import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import { api } from '../../services/api';
-import type { NotificationRule, NotificationType, User as AppUser, Role } from '../../types';
+import type { NotificationRule, NotificationType, User as AppUser, Role, EmailTemplate } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import AdvancedNotificationSettings from '../admin/AdvancedNotificationSettings';
@@ -70,6 +70,7 @@ const NotificationsControl: React.FC = () => {
     const [rules, setRules] = useState<NotificationRule[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
+    const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
@@ -84,7 +85,9 @@ const NotificationsControl: React.FC = () => {
         recipientRole: 'direct_manager',
         isEnabled: true,
         sendAlert: false,
-        sendPush: false
+        sendPush: false,
+        sendEmail: false,
+        emailTemplateId: ''
     });
 
     // Broadcast Form State
@@ -99,14 +102,16 @@ const NotificationsControl: React.FC = () => {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [fetchedRules, fetchedRoles, fetchedUsers] = await Promise.all([
+                const [fetchedRules, fetchedRoles, fetchedUsers, fetchedTemplates] = await Promise.all([
                     api.getNotificationRules(),
                     api.getRoles(),
-                    api.getUsers()
+                    api.getUsers(),
+                    api.getEmailTemplates()
                 ]);
                 setRules(fetchedRules);
                 setRoles(fetchedRoles);
                 setUsers(fetchedUsers.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+                setEmailTemplates(fetchedTemplates.filter(t => t.isActive));
             } catch (err) {
                 setToast({ message: 'Failed to load data.', type: 'error' });
             } finally {
@@ -143,7 +148,9 @@ const NotificationsControl: React.FC = () => {
             recipientUserId: rule.recipientUserId,
             isEnabled: rule.isEnabled,
             sendPush: rule.sendPush,
-            sendAlert: rule.sendAlert
+            sendAlert: rule.sendAlert,
+            sendEmail: rule.sendEmail,
+            emailTemplateId: rule.emailTemplateId
         });
         setIsEditing(true);
         // Scroll to form on mobile
@@ -153,7 +160,15 @@ const NotificationsControl: React.FC = () => {
     };
 
     const cancelEdit = () => {
-        setNewRule({ eventType: 'check_in', recipientRole: 'direct_manager', isEnabled: true, sendAlert: false, sendPush: false });
+        setNewRule({ 
+            eventType: 'check_in', 
+            recipientRole: 'direct_manager', 
+            isEnabled: true, 
+            sendAlert: false, 
+            sendPush: false, 
+            sendEmail: false, 
+            emailTemplateId: '' 
+        });
         setIsEditing(false);
     };
 
@@ -323,6 +338,24 @@ const NotificationsControl: React.FC = () => {
                                         checked={newRule.sendPush}
                                         onChange={(e) => setNewRule({ ...newRule, sendPush: e.target.checked })}
                                     />
+                                    <Checkbox 
+                                        id="newRuleSendEmail"
+                                        label="Send Automated Email Alert"
+                                        checked={newRule.sendEmail}
+                                        onChange={(e) => setNewRule({ ...newRule, sendEmail: e.target.checked })}
+                                    />
+                                    {newRule.sendEmail && (
+                                        <Select 
+                                            label="Select Email Template" 
+                                            value={newRule.emailTemplateId || ''} 
+                                            onChange={(e) => setNewRule({ ...newRule, emailTemplateId: e.target.value })}
+                                        >
+                                            <option value="">Choose Template...</option>
+                                            {emailTemplates.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </Select>
+                                    )}
                                     <Button className="w-full" onClick={handleAddRule} isLoading={isSaving}>
                                         {isEditing ? 'Update Rule' : 'Create Rule'}
                                     </Button>
@@ -414,6 +447,22 @@ const NotificationsControl: React.FC = () => {
                                                                 setRules(rules.map(r => r.id === rule.id ? updated : r));
                                                             } catch (err) {
                                                                 setToast({ message: 'Failed to update push setting.', type: 'error' });
+                                                            }
+                                                        }} 
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-muted uppercase font-bold tracking-wider">Email</span>
+                                                    <Checkbox 
+                                                        id={`email-${rule.id}`} 
+                                                        label=""
+                                                        checked={rule.sendEmail} 
+                                                        onChange={async () => {
+                                                            try {
+                                                                const updated = await api.saveNotificationRule({ ...rule, sendEmail: !rule.sendEmail });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {
+                                                                setToast({ message: 'Failed to update email setting.', type: 'error' });
                                                             }
                                                         }} 
                                                     />

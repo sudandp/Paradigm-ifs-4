@@ -116,6 +116,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Security Check
+  const apiKey = req.headers['x-api-key'];
+  const internalKey = process.env.INTERNAL_API_KEY;
+  if (internalKey && apiKey !== internalKey) {
+    console.warn('[send-email] Unauthorized request: Invalid API Key');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   try {
     const body: EmailPayload = req.body;
 
