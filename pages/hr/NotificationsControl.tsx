@@ -26,7 +26,9 @@ import {
     MessageSquare,
     DollarSign, 
     FileText,
-    Zap
+    Zap,
+    Activity,
+    Smartphone
 } from 'lucide-react';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Button from '../../components/ui/Button';
@@ -63,7 +65,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
 
 const NotificationsControl: React.FC = () => {
     const { user } = useAuthStore();
-    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner'>('rules');
+    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner' | 'activity'>('rules');
     const [rules, setRules] = useState<NotificationRule[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
@@ -234,6 +236,12 @@ const NotificationsControl: React.FC = () => {
                                 className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'planner' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 <Clock className="mr-2 h-3.5 w-3.5" /> Planner
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('activity')} 
+                                className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'activity' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Activity className="mr-2 h-3.5 w-3.5" /> Activity
                             </button>
                         </>
                     )}
@@ -439,6 +447,8 @@ const NotificationsControl: React.FC = () => {
                 <AdvancedNotificationSettings hideHeader={true} />
             ) : activeTab === 'planner' ? (
                 <NotificationPlanner />
+            ) : activeTab === 'activity' ? (
+                <ActivityGreetingConfig rules={rules} setRules={setRules} toast={toast} setToast={setToast} />
             ) : (
                 <div className="space-y-6">
                     <section className="bg-card p-8 rounded-2xl border border-border shadow-lg">
@@ -559,6 +569,338 @@ const NotificationsControl: React.FC = () => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+// ─── Activity-Based Greeting Configuration ─────────────────────────────────
+// This component provides a simple toggle UI for enabling greeting + push
+// notifications on specific user activities (punch-in, punch-out, etc.)
+
+const ACTIVITY_EVENTS = [
+    { id: 'check_in', label: 'Office Punch In', description: 'Send greeting when employee punches in at office', emoji: '🟢', color: 'emerald' },
+    { id: 'check_out', label: 'Office Punch Out', description: 'Send farewell when employee punches out', emoji: '🔴', color: 'red' },
+    { id: 'site_check_in', label: 'Site Check-in', description: 'Send greeting when employee checks in at field site', emoji: '📍', color: 'blue' },
+    { id: 'site_check_out', label: 'Site Check-out', description: 'Send notification when employee checks out from site', emoji: '📌', color: 'indigo' },
+    { id: 'break_start', label: 'Break Start', description: 'Notify when employee starts a break', emoji: '☕', color: 'amber' },
+    { id: 'break_end', label: 'Break End', description: 'Notify when employee ends a break', emoji: '🏁', color: 'orange' },
+    { id: 'user_login', label: 'User Login', description: 'Send welcome greeting on login', emoji: '👋', color: 'violet' },
+    { id: 'user_logout', label: 'User Logout', description: 'Send farewell on logout', emoji: '👋', color: 'slate' },
+];
+
+interface ActivityGreetingConfigProps {
+    rules: NotificationRule[];
+    setRules: React.Dispatch<React.SetStateAction<NotificationRule[]>>;
+    toast: { message: string; type: 'success' | 'error' } | null;
+    setToast: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' } | null>>;
+}
+
+const ActivityGreetingConfig: React.FC<ActivityGreetingConfigProps> = ({ rules, setRules, toast, setToast }) => {
+    const [savingId, setSavingId] = useState<string | null>(null);
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editData, setEditData] = useState({ description: '', emoji: '', color: '' });
+    const [customActivities, setCustomActivities] = useState<typeof ACTIVITY_EVENTS>(() => {
+        try {
+            const stored = localStorage.getItem('custom_activity_events');
+            return stored ? JSON.parse(stored) : [];
+        } catch { return []; }
+    });
+    // Overrides for default cards (emoji/color/description changes)
+    const [defaultOverrides, setDefaultOverrides] = useState<Record<string, { emoji?: string; color?: string; description?: string }>>(() => {
+        try {
+            const stored = localStorage.getItem('activity_default_overrides');
+            return stored ? JSON.parse(stored) : {};
+        } catch { return {}; }
+    });
+    const [newActivity, setNewActivity] = useState({ eventId: '', description: '', emoji: '🔔', color: 'emerald' });
+
+    // Merge overrides into default activities
+    const mergedDefaults = ACTIVITY_EVENTS.map(a => {
+        const override = defaultOverrides[a.id];
+        return override ? { ...a, ...override } : a;
+    });
+    const allActivities = [...mergedDefaults, ...customActivities];
+    const usedEventIds = new Set(allActivities.map(a => a.id));
+    const availableEvents = APP_EVENT_TYPES.filter(e => !usedEventIds.has(e.id));
+
+    const saveCustomActivities = (updated: typeof ACTIVITY_EVENTS) => {
+        setCustomActivities(updated);
+        localStorage.setItem('custom_activity_events', JSON.stringify(updated));
+    };
+    const saveDefaultOverrides = (updated: typeof defaultOverrides) => {
+        setDefaultOverrides(updated);
+        localStorage.setItem('activity_default_overrides', JSON.stringify(updated));
+    };
+
+    const getGreetingRule = (eventType: string) => {
+        return rules.find(r => r.eventType === eventType && r.sendPush && r.isEnabled);
+    };
+
+    const handleToggle = async (eventId: string, isCurrentlyActive: boolean) => {
+        if (editingId) return; // Don't toggle when editing
+        setSavingId(eventId);
+        try {
+            if (isCurrentlyActive) {
+                const rule = getGreetingRule(eventId);
+                if (rule) {
+                    await api.deleteNotificationRule(rule.id);
+                    setRules(prev => prev.filter(r => r.id !== rule.id));
+                }
+            } else {
+                const newRule = await api.saveNotificationRule({
+                    eventType: eventId,
+                    recipientRole: 'direct_manager',
+                    isEnabled: true,
+                    sendAlert: false,
+                    sendPush: true
+                });
+                setRules(prev => [newRule, ...prev]);
+            }
+            setToast({ message: isCurrentlyActive ? 'Activity notification disabled.' : 'Activity notification enabled with real-time push!', type: 'success' });
+        } catch (err) {
+            setToast({ message: 'Failed to update activity rule.', type: 'error' });
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    const handleAddActivity = () => {
+        if (!newActivity.eventId) {
+            setToast({ message: 'Please select an event type.', type: 'error' });
+            return;
+        }
+        const eventMeta = APP_EVENT_TYPES.find(e => e.id === newActivity.eventId);
+        if (!eventMeta) return;
+        const activity = {
+            id: newActivity.eventId,
+            label: eventMeta.label,
+            description: newActivity.description || `Send notification on ${eventMeta.label}`,
+            emoji: newActivity.emoji,
+            color: newActivity.color
+        };
+        saveCustomActivities([...customActivities, activity]);
+        setNewActivity({ eventId: '', description: '', emoji: '🔔', color: 'emerald' });
+        setShowAddForm(false);
+        setToast({ message: `"${eventMeta.label}" added to activities!`, type: 'success' });
+    };
+
+    const handleRemoveCustom = (eventId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const rule = getGreetingRule(eventId);
+        if (rule) {
+            api.deleteNotificationRule(rule.id).catch(() => {});
+            setRules(prev => prev.filter(r => r.id !== rule.id));
+        }
+        saveCustomActivities(customActivities.filter(a => a.id !== eventId));
+        setToast({ message: 'Activity removed.', type: 'success' });
+    };
+
+    const handleEditStart = (event: typeof ACTIVITY_EVENTS[0], e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingId(event.id);
+        setEditData({ description: event.description, emoji: event.emoji, color: event.color });
+    };
+
+    const handleEditSave = (eventId: string) => {
+        const isCustom = customActivities.some(c => c.id === eventId);
+        if (isCustom) {
+            // Update custom activity directly
+            saveCustomActivities(customActivities.map(a => a.id === eventId ? { ...a, ...editData } : a));
+        } else {
+            // Save as override for default card
+            saveDefaultOverrides({ ...defaultOverrides, [eventId]: editData });
+        }
+        setEditingId(null);
+        setToast({ message: 'Activity updated!', type: 'success' });
+    };
+
+    const handleEditCancel = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setEditingId(null);
+    };
+
+    const EMOJI_OPTIONS = ['🔔', '📢', '📋', '✅', '⚡', '🎯', '💼', '📊', '🔒', '⏰', '🚀', '💬', '📝', '🏷️', '🔧', '🎉', '🟢', '🔴', '📍', '📌', '☕', '🏁', '👋'];
+    const COLOR_OPTIONS = [
+        { value: 'emerald', css: 'bg-emerald-500' },
+        { value: 'red', css: 'bg-red-500' },
+        { value: 'blue', css: 'bg-blue-500' },
+        { value: 'indigo', css: 'bg-indigo-500' },
+        { value: 'amber', css: 'bg-amber-500' },
+        { value: 'orange', css: 'bg-orange-500' },
+        { value: 'violet', css: 'bg-violet-500' },
+        { value: 'slate', css: 'bg-slate-500' },
+    ];
+    const colorMap: Record<string, string> = {
+        emerald: 'from-emerald-500 to-emerald-600', red: 'from-red-500 to-red-600',
+        blue: 'from-blue-500 to-blue-600', indigo: 'from-indigo-500 to-indigo-600',
+        amber: 'from-amber-500 to-amber-600', orange: 'from-orange-500 to-orange-600',
+        violet: 'from-violet-500 to-violet-600', slate: 'from-slate-500 to-slate-600',
+    };
+
+    return (
+        <div className="space-y-6">
+            <section className="bg-card p-8 rounded-2xl border border-border shadow-sm">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl text-white shadow-lg">
+                            <Activity className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold text-primary-text">Activity-Based Notifications</h3>
+                            <p className="text-muted text-sm">Enable real-time push notifications for employee actions.</p>
+                        </div>
+                    </div>
+                    <Button onClick={() => setShowAddForm(!showAddForm)} className="shrink-0">
+                        <Plus className="h-4 w-4 mr-2" /> Add Activity
+                    </Button>
+                </div>
+
+                {showAddForm && (
+                    <div className="mt-6 p-5 bg-page/50 rounded-xl border border-dashed border-accent/30 space-y-4">
+                        <h4 className="font-bold text-sm text-primary-text flex items-center gap-2">
+                            <Plus className="h-4 w-4 text-accent" /> Create New Activity Notification
+                        </h4>
+                        <Select label="Select Event Type" value={newActivity.eventId} onChange={(e) => setNewActivity({ ...newActivity, eventId: e.target.value })}>
+                            <option value="">Choose an event...</option>
+                            {availableEvents.map(ev => (
+                                <option key={ev.id} value={ev.id}>{ev.label} ({ev.category})</option>
+                            ))}
+                        </Select>
+                        <Input label="Description (optional)" placeholder="e.g. Notify when employee completes a task" value={newActivity.description} onChange={(e) => setNewActivity({ ...newActivity, description: e.target.value })} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm font-medium text-primary-text mb-2">Emoji</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {EMOJI_OPTIONS.map(em => (
+                                        <button key={em} type="button" onClick={() => setNewActivity({ ...newActivity, emoji: em })}
+                                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-base transition-all ${newActivity.emoji === em ? 'ring-2 ring-accent bg-accent/10 scale-110' : 'bg-page hover:bg-white'}`}>{em}</button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-primary-text mb-2">Color</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {COLOR_OPTIONS.map(c => (
+                                        <button key={c.value} type="button" onClick={() => setNewActivity({ ...newActivity, color: c.value })}
+                                            className={`w-8 h-8 rounded-full ${c.css} transition-all ${newActivity.color === c.value ? 'ring-2 ring-offset-2 ring-accent scale-110' : 'opacity-60 hover:opacity-100'}`} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <Button onClick={handleAddActivity} className="flex-1"><CheckCircle2 className="h-4 w-4 mr-2" /> Add Activity</Button>
+                            <Button variant="secondary" onClick={() => { setShowAddForm(false); setNewActivity({ eventId: '', description: '', emoji: '🔔', color: 'emerald' }); }}>Cancel</Button>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {allActivities.map(event => {
+                    const isActive = !!getGreetingRule(event.id);
+                    const isSaving = savingId === event.id;
+                    const isEditing = editingId === event.id;
+                    const isCustom = customActivities.some(c => c.id === event.id);
+                    const displayEmoji = isEditing ? editData.emoji : event.emoji;
+                    const displayColor = isEditing ? editData.color : event.color;
+                    const gradient = colorMap[displayColor] || 'from-emerald-500 to-emerald-600';
+
+                    if (isEditing) {
+                        return (
+                            <div key={event.id} className="bg-card rounded-2xl border-2 border-accent/40 p-5 shadow-lg">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h4 className="font-bold text-sm text-primary-text flex items-center gap-2">
+                                        <Pencil className="h-3.5 w-3.5 text-accent" /> Edit: {event.label}
+                                    </h4>
+                                    <button onClick={handleEditCancel} className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600">
+                                        <CloseIcon className="h-4 w-4" />
+                                    </button>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-xs font-medium text-muted mb-1.5">Description</p>
+                                        <input
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-border focus:ring-2 focus:ring-accent focus:border-accent bg-white"
+                                            value={editData.description}
+                                            onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-medium text-muted mb-1.5">Emoji</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {EMOJI_OPTIONS.map(em => (
+                                                <button key={em} type="button" onClick={(e) => { e.stopPropagation(); setEditData({ ...editData, emoji: em }); }}
+                                                    className={`w-7 h-7 rounded-md flex items-center justify-center text-sm transition-all ${editData.emoji === em ? 'ring-2 ring-accent bg-accent/10 scale-110' : 'bg-page hover:bg-white'}`}>{em}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-medium text-muted mb-1.5">Color</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {COLOR_OPTIONS.map(c => (
+                                                <button key={c.value} type="button" onClick={(e) => { e.stopPropagation(); setEditData({ ...editData, color: c.value }); }}
+                                                    className={`w-7 h-7 rounded-full ${c.css} transition-all ${editData.color === c.value ? 'ring-2 ring-offset-2 ring-accent scale-110' : 'opacity-50 hover:opacity-100'}`} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <Button onClick={(e: any) => { e.stopPropagation(); handleEditSave(event.id); }} className="flex-1 h-9 text-xs">
+                                            <Save className="h-3.5 w-3.5 mr-1.5" /> Save
+                                        </Button>
+                                        <Button variant="secondary" onClick={handleEditCancel} className="h-9 text-xs">Cancel</Button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div key={event.id}
+                            className={`relative bg-card rounded-2xl border-2 p-5 transition-all duration-300 cursor-pointer group hover:shadow-lg ${isActive ? 'border-emerald-400 shadow-emerald-100 shadow-md' : 'border-border hover:border-slate-300'} ${isSaving ? 'opacity-60 pointer-events-none' : ''}`}
+                            onClick={() => handleToggle(event.id, isActive)}>
+                            <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                                <button onClick={(e) => handleEditStart(event, e)}
+                                    className="p-1 rounded-full text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100" title="Edit activity">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                {isCustom && (
+                                    <button onClick={(e) => handleRemoveCustom(event.id, e)}
+                                        className="p-1 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100" title="Remove activity">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                                    {isActive ? (<><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span> Live</>) : 'Off'}
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-4">
+                                <div className={`p-3 rounded-xl bg-gradient-to-br ${gradient} text-white text-xl shadow-sm shrink-0`}>{event.emoji}</div>
+                                <div className="min-w-0">
+                                    <h4 className="font-bold text-primary-text text-sm">{event.label}</h4>
+                                    <p className="text-xs text-muted mt-1 leading-relaxed">{event.description}</p>
+                                </div>
+                            </div>
+                            {isActive && (
+                                <div className="mt-4 flex items-center gap-3 pt-3 border-t border-border/50">
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 rounded-lg"><Smartphone className="h-3 w-3 text-emerald-600" /><span className="text-[10px] font-bold text-emerald-700 uppercase">Push</span></div>
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 rounded-lg"><Bell className="h-3 w-3 text-violet-600" /><span className="text-[10px] font-bold text-violet-700 uppercase">In-App</span></div>
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 rounded-lg"><Users className="h-3 w-3 text-blue-600" /><span className="text-[10px] font-bold text-blue-700 uppercase">All Users</span></div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-4">
+                <Info className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-sm text-emerald-800 space-y-1">
+                    <p className="font-bold">How it works</p>
+                    <p className="text-xs text-emerald-700">Click a card to enable/disable push notifications. Hover over any card to see the <strong>✏️ edit</strong> and <strong>🗑️ delete</strong> buttons. Use <strong>"+ Add Activity"</strong> to add new event types.</p>
+                </div>
+            </div>
         </div>
     );
 };
