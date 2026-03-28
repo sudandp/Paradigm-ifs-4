@@ -2604,6 +2604,259 @@ export const api = {
     if (error) throw error;
   },
 
+  // ═══ Email Configuration APIs ═══════════════════════════════════════════
+
+  getEmailConfig: async (): Promise<any> => {
+    const { data, error } = await supabase
+      .from('settings')
+      .select('email_config')
+      .eq('id', 'singleton')
+      .single();
+    if (error) throw error;
+    if (!data?.email_config) return null;
+    return toCamelCase(data.email_config);
+  },
+
+  saveEmailConfig: async (config: any): Promise<void> => {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 'singleton', email_config: toSnakeCase(config) }, { onConflict: 'id' });
+    if (error) throw error;
+  },
+
+  sendTestEmail: async (testEmail: string): Promise<void> => {
+    // First get the email config to pass along
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('email_config')
+      .eq('id', 'singleton')
+      .single();
+    
+    const config = settings?.email_config;
+    if (!config?.user || !config?.pass) {
+      throw new Error('SMTP not configured. Please save your email configuration first.');
+    }
+
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: testEmail,
+        subject: '✅ Paradigm FMS — Test Email',
+        html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+          <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">✅ Email Configuration Working!</h1>
+          </div>
+          <div style="padding: 32px;">
+            <p style="color: #374151; font-size: 14px; line-height: 1.7;">Your SMTP email configuration is working correctly. Emails will be sent from <strong>${config.from_email || config.user}</strong>.</p>
+            <div style="margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 10px; border: 1px solid #bbf7d0;">
+              <p style="margin: 0; font-size: 13px; color: #166534;">✓ SMTP connection verified<br/>✓ Authentication successful<br/>✓ Email delivery confirmed</p>
+            </div>
+          </div>
+          <div style="background: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="margin: 0; font-size: 11px; color: #9ca3af;">Sent by Paradigm FMS — ${new Date().toLocaleString()}</p>
+          </div>
+        </div>`,
+        smtpConfig: {
+          host: config.host || 'smtp.gmail.com',
+          port: config.port || 587,
+          secure: config.secure || false,
+          user: config.user,
+          pass: config.pass,
+          fromEmail: config.from_email || config.user,
+          fromName: config.from_name || 'Paradigm FMS',
+          replyTo: config.reply_to,
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Test email failed');
+    }
+  },
+
+  // ═══ Email Templates APIs ═══════════════════════════════════════════════
+
+  getEmailTemplates: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  saveEmailTemplate: async (template: any): Promise<any> => {
+    const payload = toSnakeCase(template);
+    if (template.id) {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', template.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    } else {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+  },
+
+  deleteEmailTemplate: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('email_templates').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // ═══ Email Schedule Rules APIs ══════════════════════════════════════════
+
+  getEmailScheduleRules: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('email_schedule_rules')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  saveEmailScheduleRule: async (rule: any): Promise<any> => {
+    const payload = toSnakeCase(rule);
+    if (rule.id) {
+      const { data, error } = await supabase
+        .from('email_schedule_rules')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', rule.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    } else {
+      payload.created_by = useAuthStore.getState().user?.id;
+      const { data, error } = await supabase
+        .from('email_schedule_rules')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      return toCamelCase(data);
+    }
+  },
+
+  deleteEmailScheduleRule: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('email_schedule_rules').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  testEmailScheduleRule: async (id: string): Promise<void> => {
+    // Get the rule, template, and recipients, then manually send
+    const { data: rule, error: ruleErr } = await supabase
+      .from('email_schedule_rules')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (ruleErr || !rule) throw ruleErr || new Error('Rule not found');
+
+    const { data: template } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('id', rule.template_id)
+      .single();
+
+    // Resolve recipients
+    let emails: string[] = [];
+    if (rule.recipient_type === 'custom_emails') {
+      emails = rule.recipient_emails || [];
+    } else if (rule.recipient_type === 'role') {
+      const { data: users } = await supabase
+        .from('users')
+        .select('email')
+        .in('role_id', rule.recipient_roles || []);
+      emails = (users || []).map((u: any) => u.email).filter(Boolean);
+    } else if (rule.recipient_type === 'users') {
+      const { data: users } = await supabase
+        .from('users')
+        .select('email')
+        .in('id', rule.recipient_user_ids || []);
+      emails = (users || []).map((u: any) => u.email).filter(Boolean);
+    }
+
+    if (emails.length === 0) {
+      // Fallback: send to current user
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser?.email) emails = [currentUser.email];
+      else throw new Error('No recipients found for this rule');
+    }
+
+    const subject = template?.subject_template || `Test: ${rule.name}`;
+    const html = template?.body_template || `<div><h2>Test Email</h2><p>This is a test for rule: ${rule.name}</p></div>`;
+
+    // Replace basic variables
+    const now = new Date();
+    const renderedSubject = subject
+      .replace('{date}', now.toLocaleDateString())
+      .replace('{subject}', `Test: ${rule.name}`);
+    const renderedHtml = html
+      .replace('{date}', now.toLocaleDateString())
+      .replace('{totalPresent}', '—')
+      .replace('{totalAbsent}', '—')
+      .replace('{lateCount}', '—')
+      .replace('{table}', '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
+      .replace('{message}', `This is a test email for the rule: ${rule.name}`)
+      .replace('{subject}', `Test: ${rule.name}`);
+
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: emails,
+        subject: renderedSubject,
+        html: renderedHtml,
+        ruleId: id,
+        templateId: rule.template_id,
+      })
+    });
+    
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Test email failed');
+    }
+  },
+
+  // ═══ Email Logs APIs ═══════════════════════════════════════════════════
+
+  getEmailLogs: async (filter?: { ruleId?: string; status?: string }): Promise<any[]> => {
+    let query = supabase
+      .from('email_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    
+    if (filter?.ruleId) query = query.eq('rule_id', filter.ruleId);
+    if (filter?.status) query = query.eq('status', filter.status);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  sendEmail: async (params: { to: string | string[]; cc?: string[]; subject: string; html: string; attachments?: any[] }): Promise<void> => {
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to send email');
+    }
+  },
+
   getRecurringHolidays: async (): Promise<RecurringHolidayRule[]> => {
     const { data, error } = await supabase.from('recurring_holidays').select('*');
     if (error) throw error;

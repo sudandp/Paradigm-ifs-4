@@ -42,6 +42,7 @@ import { useAuthStore } from '../../store/authStore';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import AdvancedNotificationSettings from '../admin/AdvancedNotificationSettings';
 import NotificationPlanner from './NotificationPlannerUI';
+import EmailConfigPanel from './EmailConfigPanel';
 import { APP_EVENT_TYPES } from '../../utils/notificationTypes';
 
 
@@ -65,7 +66,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
 
 const NotificationsControl: React.FC = () => {
     const { user } = useAuthStore();
-    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner' | 'activity'>('rules');
+    const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner' | 'activity' | 'email'>('rules');
     const [rules, setRules] = useState<NotificationRule[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
     const [users, setUsers] = useState<AppUser[]>([]);
@@ -242,6 +243,12 @@ const NotificationsControl: React.FC = () => {
                                 className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'activity' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 <Activity className="mr-2 h-3.5 w-3.5" /> Activity
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('email')} 
+                                className={`flex items-center px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'email' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                <Mail className="mr-2 h-3.5 w-3.5" /> Email
                             </button>
                         </>
                     )}
@@ -449,6 +456,8 @@ const NotificationsControl: React.FC = () => {
                 <NotificationPlanner />
             ) : activeTab === 'activity' ? (
                 <ActivityGreetingConfig rules={rules} setRules={setRules} toast={toast} setToast={setToast} />
+            ) : activeTab === 'email' ? (
+                <EmailConfigPanel />
             ) : (
                 <div className="space-y-6">
                     <section className="bg-card p-8 rounded-2xl border border-border shadow-lg">

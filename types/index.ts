@@ -461,6 +461,73 @@ export interface NotificationSettings {
   };
 }
 
+export interface EmailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  fromEmail: string;
+  fromName: string;
+  replyTo?: string;
+  enabled: boolean;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  category: 'report' | 'alert' | 'greeting' | 'document_expiry';
+  variables: { key: string; description: string }[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailScheduleRule {
+  id: string;
+  name: string;
+  templateId: string;
+  triggerType: 'scheduled' | 'event' | 'document_expiry';
+  scheduleConfig?: {
+    time: string;
+    frequency: 'daily' | 'weekly' | 'monthly';
+    dayOfWeek?: number;
+    dayOfMonth?: number;
+  };
+  eventType?: string;
+  expiryConfig?: {
+    table: string;
+    field: string;
+    daysBefore: number;
+  };
+  reportType?: string;
+  reportFormat: 'html' | 'pdf' | 'csv';
+  recipientType: 'role' | 'users' | 'custom_emails';
+  recipientRoles: string[];
+  recipientUserIds: string[];
+  recipientEmails: string[];
+  isActive: boolean;
+  lastSentAt?: string;
+  nextRunAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailLog {
+  id: string;
+  ruleId?: string;
+  templateId?: string;
+  recipientEmail: string;
+  subject: string;
+  status: 'sent' | 'failed' | 'queued';
+  errorMessage?: string;
+  metadata: Record<string, any>;
+  createdAt: string;
+}
+
 // Types for Entity Management
 export type RegistrationType = 'ROC' | 'ROF' | 'Society' | 'Trust' | '';
 
