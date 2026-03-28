@@ -66,3 +66,6 @@ tsc_output.txt
 
 # Backups
 _backups/
+
+.vercel
+.env*.local

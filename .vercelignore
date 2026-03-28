@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+.git
+.vercel
+.env*
+*.apk
+*.aab
+*.zip
+*.jar
+android
+ios
+supabase
+public/assets/large-videos
+**/node_modules
+**/build
+**/dist

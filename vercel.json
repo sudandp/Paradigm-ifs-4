@@ -1,5 +1,4 @@
 {
-  "name": "paradigm-office-4",
   "crons": [
     {
       "path": "/api/process-email-schedules",
