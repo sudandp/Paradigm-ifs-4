@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User } from '../../types';
-import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, FilterX, FileSpreadsheet, X } from 'lucide-react';
+import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Toast from '../../components/ui/Toast';
@@ -37,16 +36,19 @@ const getRoleBadgeClass = (role: string) => {
     }
 };
 
+interface UserActionProps {
+    user: User;
+    handleApprove: (u: User) => void;
+    handleEdit: (u: User) => void;
+    handleManageLocations: (u: User) => void;
+    handleResetPasscode: (u: User) => void;
+    handleDelete: (u: User) => void;
+}
+
 // Memoized Row for performance
 const UserRow = React.memo(({ 
-    user, handleApprove, handleEdit, handleManageLocations, handleDelete 
-}: { 
-    user: User, 
-    handleApprove: (u: User) => void, 
-    handleEdit: (u: User) => void, 
-    handleManageLocations: (u: User) => void, 
-    handleDelete: (u: User) => void 
-}) => (
+    user, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete 
+}: UserActionProps) => (
     <tr>
         <td data-label="Name" className="px-6 py-4 font-medium">{user.name}</td>
         <td data-label="Email" className="px-6 py-4 text-sm text-muted">{user.email}</td>
@@ -71,6 +73,7 @@ const UserRow = React.memo(({
                 )}
                 <Button variant="icon" size="sm" onClick={() => handleEdit(user)} aria-label={`Edit user ${user.name}`} title={`Edit user ${user.name}`}><Edit className="h-4 w-4" /></Button>
                 <Button variant="icon" size="sm" onClick={() => handleManageLocations(user)} aria-label={`Manage Geofencing for ${user.name}`} title={`Manage Geofencing for ${user.name}`}><MapPin className="h-4 w-4 text-emerald-500" /></Button>
+                <Button variant="icon" size="sm" onClick={() => handleResetPasscode(user)} aria-label={`Reset Passcode for ${user.name}`} title={`Reset Passcode for ${user.name}`} className="hover:text-amber-600"><RotateCw className="h-4 w-4" /></Button>
                 <Button variant="icon" onClick={() => handleDelete(user)} aria-label={`Delete user ${user.name}`} title={`Delete user ${user.name}`} className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
             </div>
         </td>
@@ -79,14 +82,8 @@ const UserRow = React.memo(({
 
 // Memoized Card for Mobile view performance
 const UserCard = React.memo(({ 
-    user, handleApprove, handleEdit, handleManageLocations, handleDelete 
-}: { 
-    user: User, 
-    handleApprove: (u: User) => void, 
-    handleEdit: (u: User) => void, 
-    handleManageLocations: (u: User) => void, 
-    handleDelete: (u: User) => void 
-}) => (
+    user, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete 
+}: UserActionProps) => (
     <div className="bg-card p-4 rounded-xl border border-border shadow-sm flex flex-col gap-3 h-full">
         <div className="flex justify-between items-start">
             <div>
@@ -121,6 +118,9 @@ const UserCard = React.memo(({
             <Button variant="icon" size="sm" onClick={() => handleManageLocations(user)} className="h-9 w-9 border border-border rounded-lg">
                 <MapPin className="h-4 w-4 text-emerald-500" />
             </Button>
+            <Button variant="icon" size="sm" onClick={() => handleResetPasscode(user)} className="h-9 w-9 border border-border rounded-lg hover:text-amber-600">
+                <RotateCw className="h-4 w-4" />
+            </Button>
             <Button variant="icon" size="sm" onClick={() => handleDelete(user)} className="h-9 w-9 border border-border rounded-lg hover:bg-red-50 text-red-500">
                 <Trash2 className="h-4 w-4" />
             </Button>
@@ -151,6 +151,11 @@ const UserManagement: React.FC = () => {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+    const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+    const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
+    const [recoveryPasscode, setRecoveryPasscode] = useState('');
+    const [recoveryCountdown, setRecoveryCountdown] = useState(0);
+    const [isCopied, setIsCopied] = useState(false);
 
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [currentUserForLocation, setCurrentUserForLocation] = useState<User | null>(null);
@@ -204,6 +209,20 @@ const UserManagement: React.FC = () => {
         fetchUsers();
     }, [fetchUsers]);
 
+    // Recovery Modal Countdown Logic
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (isRecoveryModalOpen && recoveryCountdown > 0) {
+            timer = setTimeout(() => {
+                setRecoveryCountdown(prev => prev - 1);
+            }, 1000);
+        } else if (recoveryCountdown === 0 && isRecoveryModalOpen) {
+            setIsRecoveryModalOpen(false);
+            setRecoveryPasscode('');
+        }
+        return () => clearTimeout(timer);
+    }, [isRecoveryModalOpen, recoveryCountdown]);
+
     const handleAdd = () => {
         navigate('/admin/users/add');
     };
@@ -227,6 +246,11 @@ const UserManagement: React.FC = () => {
         setIsLocationModalOpen(true);
     }, []);
 
+    const handleResetPasscode = useCallback((user: User) => {
+        setCurrentUser(user);
+        setIsResetModalOpen(true);
+    }, []);
+
     const handleConfirmApproval = async (userId: string, newRole: string) => {
         setIsSaving(true);
         try {
@@ -245,6 +269,26 @@ const UserManagement: React.FC = () => {
             setToast({ message: 'Failed to approve user.', type: 'error' });
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleConfirmReset = async () => {
+        if (currentUser) {
+            setIsSaving(true);
+            try {
+                const newCode = await api.resetUserPasscode(currentUser.id);
+                setRecoveryPasscode(newCode);
+                setRecoveryCountdown(30);
+                setIsRecoveryModalOpen(true);
+                setIsResetModalOpen(false);
+                
+                // Still background fetch to be safe
+                fetchUsers();
+            } catch (error) {
+                setToast({ message: 'Failed to reset passcode.', type: 'error' });
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -328,12 +372,72 @@ const UserManagement: React.FC = () => {
                 Are you sure you want to delete the user "{currentUser?.name}"? This action cannot be undone.
             </Modal>
 
+            <Modal
+                isOpen={isResetModalOpen}
+                onClose={() => setIsResetModalOpen(false)}
+                onConfirm={handleConfirmReset}
+                title="Reset Passcode"
+                isConfirming={isSaving}
+                confirmButtonText="Reset to Default"
+                confirmButtonVariant="primary"
+            >
+                Are you sure you want to reset the passcode for "{currentUser?.name}"? It will be set back to the default system passcode.
+            </Modal>
+
             <LocationAssignmentModal
                 isOpen={isLocationModalOpen}
                 onClose={() => setIsLocationModalOpen(false)}
                 userId={currentUserForLocation?.id || ''}
                 userName={currentUserForLocation?.name || ''}
             />
+
+            <Modal
+                isOpen={isRecoveryModalOpen}
+                onClose={() => setIsRecoveryModalOpen(false)}
+                title="Passcode Recovery"
+                footer={
+                    <div className="flex justify-center w-full">
+                        <Button
+                            onClick={() => setIsRecoveryModalOpen(false)}
+                            variant="primary"
+                            className="!px-12"
+                        >
+                            Done
+                        </Button>
+                    </div>
+                }
+            >
+                <div className="text-center py-4">
+                    <p className="text-sm text-muted mb-4 uppercase tracking-widest font-bold">New Passcode Generated</p>
+                    
+                    <div className="relative group max-w-[200px] mx-auto">
+                        <div className="text-4xl font-black text-primary tracking-[0.5em] pl-[0.5em] bg-primary/5 py-4 rounded-xl border-2 border-primary/20 animate-in zoom-in duration-300">
+                            {recoveryPasscode}
+                        </div>
+                        <button 
+                            onClick={() => {
+                                navigator.clipboard.writeText(recoveryPasscode);
+                                setIsCopied(true);
+                                setTimeout(() => setIsCopied(false), 2000);
+                            }}
+                            className="absolute -top-2 -right-2 bg-white shadow-md border border-border p-2 rounded-lg hover:scale-110 active:scale-95 transition-all text-primary"
+                            title="Copy to clipboard"
+                        >
+                            {isCopied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                        </button>
+                    </div>
+
+                    <div className="mt-8 space-y-3">
+                        <div className="flex items-center justify-center gap-2 text-amber-600 bg-amber-50 py-2 px-4 rounded-full w-fit mx-auto border border-amber-100">
+                            <Clock className="h-4 w-4 animate-pulse" />
+                            <span className="text-sm font-bold">Expires in {recoveryCountdown}s</span>
+                        </div>
+                        <p className="text-[11px] text-muted italic">
+                            For security, this code will be hidden once the timer reaches zero.
+                        </p>
+                    </div>
+                </div>
+            </Modal>
 
             <AdminPageHeader title="User Management">
                 <div className="flex gap-2">
@@ -403,6 +507,7 @@ const UserManagement: React.FC = () => {
                                     handleApprove={handleApprove}
                                     handleEdit={handleEdit}
                                     handleManageLocations={handleManageLocations}
+                                    handleResetPasscode={handleResetPasscode}
                                     handleDelete={handleDelete}
                                 />
                             ))}
@@ -512,6 +617,7 @@ const UserManagement: React.FC = () => {
                                         handleApprove={handleApprove}
                                         handleEdit={handleEdit}
                                         handleManageLocations={handleManageLocations}
+                                        handleResetPasscode={handleResetPasscode}
                                         handleDelete={handleDelete}
                                     />
                                 ))}

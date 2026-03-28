@@ -114,6 +114,7 @@ interface AuthState {
     isPunchUnlocked: boolean;
     isFieldCheckedIn: boolean;
     isFieldCheckedOut: boolean;
+    loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
 }
 
@@ -269,6 +270,12 @@ export const useAuthStore = create<AuthState>()(
                 set({ user: null, error: friendlyError, loading: false });
                 return { error: { message: friendlyError } };
             }
+        },
+
+        loginWithPasscode: async (email, passcode, rememberMe) => {
+            // Simply a wrapper for loginWithEmail to maintain terminology consistency
+            // but we can add passcode-specific pre-checks here if needed in the future.
+            return get().loginWithEmail(email, passcode, rememberMe);
         },
 
         signUp: async (name, email, password) => {

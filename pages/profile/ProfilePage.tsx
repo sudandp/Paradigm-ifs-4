@@ -309,6 +309,45 @@ const ProfilePage: React.FC = () => {
             setIsSaving(false);
         }
     };
+    
+    // Passcode management
+    const [isSavingPasscode, setIsSavingPasscode] = useState(false);
+    const passcodeValidationSchema = yup.object({
+        oldPasscode: yup.string().required('Current passcode is required'),
+        newPasscode: yup.string()
+            .matches(/^\d{4}$/, 'Passcode must be exactly 4 digits')
+            .required('New passcode is required'),
+        confirmPasscode: yup.string()
+            .oneOf([yup.ref('newPasscode')], 'Passcodes must match')
+            .required('Please confirm your new passcode'),
+    });
+    type PasscodeFormData = { oldPasscode: string; newPasscode: string; confirmPasscode: string };
+    const { register: registerPasscode, handleSubmit: handlePasscodeSubmit, formState: { errors: passcodeErrors, isDirty: isPasscodeDirty }, reset: resetPasscode } = useForm<PasscodeFormData>({
+        resolver: yupResolver(passcodeValidationSchema) as Resolver<PasscodeFormData>,
+        defaultValues: { oldPasscode: '', newPasscode: '', confirmPasscode: '' }
+    });
+
+    const onPasscodeSubmit: SubmitHandler<PasscodeFormData> = async (formData) => {
+        if (!user) return;
+        
+        // Security check: Verify old passcode
+        if (formData.oldPasscode !== user.passcode) {
+            setToast({ message: 'Current passcode is incorrect.', type: 'error' });
+            return;
+        }
+
+        setIsSavingPasscode(true);
+        try {
+            await api.updateUserPasscode(user.id, formData.newPasscode);
+            updateUserProfile({ passcode: formData.newPasscode });
+            resetPasscode({ oldPasscode: '', newPasscode: '', confirmPasscode: '' });
+            setToast({ message: 'Passcode updated successfully!', type: 'success' });
+        } catch (error: any) {
+            setToast({ message: error.message || 'Failed to update passcode.', type: 'error' });
+        } finally {
+            setIsSavingPasscode(false);
+        }
+    };
 
     const handleAttendanceAction = async () => {
         setIsSubmittingAttendance(true);
@@ -426,6 +465,69 @@ const ProfilePage: React.FC = () => {
                             </div>
                             <div className="flex justify-end pt-2"><Button type="submit" isLoading={isSaving} disabled={!isDirty}>Save Changes</Button></div>
                         </form>
+                    </section>
+ 
+                    <section className="bg-emerald-500/5 rounded-2xl border border-emerald-500/10 p-5 mt-4">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                                <Lock className="h-5 w-5" />
+                            </div>
+                            <h3 className="text-lg font-bold text-white">Authentication Passcode</h3>
+                        </div>
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-400">Update your 4-digit numeric passcode for secure access.</p>
+                            
+                            <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                <Input 
+                                    label="Current Passcode" 
+                                    id="oldPasscode" 
+                                    type="password" 
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    placeholder="Enter current 4 digits"
+                                    registration={registerPasscode('oldPasscode')}
+                                    error={passcodeErrors.oldPasscode?.message}
+                                />
+                                
+                                <div className="grid grid-cols-1 gap-4">
+                                    <Input 
+                                        label="New Passcode" 
+                                        id="newPasscode" 
+                                        type="password" 
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        placeholder="Enter new 4 digits"
+                                        registration={registerPasscode('newPasscode')}
+                                        error={passcodeErrors.newPasscode?.message}
+                                    />
+                                    
+                                    <Input 
+                                        label="Confirm New Passcode" 
+                                        id="confirmPasscode" 
+                                        type="password" 
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        placeholder="Confirm new 4 digits"
+                                        registration={registerPasscode('confirmPasscode')}
+                                        error={passcodeErrors.confirmPasscode?.message}
+                                    />
+                                </div>
+
+                                <Button 
+                                    type="submit"
+                                    isLoading={isSavingPasscode}
+                                    disabled={!isPasscodeDirty}
+                                    className="w-full"
+                                >
+                                    Update Passcode
+                                </Button>
+                            </form>
+
+                            <div className="flex items-center gap-2 text-[10px] text-emerald-400/60 mt-1">
+                                <Info className="h-3 w-3" />
+                                <span>Contact Admin if you forgot your current passcode.</span>
+                            </div>
+                        </div>
                     </section>
 
 
@@ -1076,6 +1178,69 @@ const ProfilePage: React.FC = () => {
                         </div>
                     ) : <div></div>}
                     </div> {/* End Side-by-Side Grid */}
+
+                    {/* Passcode Management Desktop */}
+                    <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="p-2 bg-amber-50 rounded-lg">
+                                <Lock className="h-5 w-5 text-amber-600" />
+                            </div>
+                            <h3 className="text-lg md:text-base font-bold text-gray-900">Security Passcode</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-6">Manage your 4-digit security passcode for quick authentication.</p>
+                        
+                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <Input 
+                                    label="Current Passcode" 
+                                    id="oldPasscode-desktop" 
+                                    type="password" 
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    placeholder="Old PIN"
+                                    registration={registerPasscode('oldPasscode')}
+                                    error={passcodeErrors.oldPasscode?.message}
+                                    className="bg-gray-50/50"
+                                />
+                                <Input 
+                                    label="New Passcode" 
+                                    id="newPasscode-desktop" 
+                                    type="password" 
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    placeholder="New PIN"
+                                    registration={registerPasscode('newPasscode')}
+                                    error={passcodeErrors.newPasscode?.message}
+                                    className="bg-gray-50/50"
+                                />
+                                <Input 
+                                    label="Confirm Passcode" 
+                                    id="confirmPasscode-desktop" 
+                                    type="password" 
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    placeholder="Confirm PIN"
+                                    registration={registerPasscode('confirmPasscode')}
+                                    error={passcodeErrors.confirmPasscode?.message}
+                                    className="bg-gray-50/50"
+                                />
+                            </div>
+                            <div className="flex justify-between items-center pt-4 border-t border-gray-50">
+                                <div className="flex items-center gap-2 text-xs text-gray-400">
+                                    <Info className="h-3.5 w-3.5" />
+                                    <span>Must be exactly 4 digits.</span>
+                                </div>
+                                <Button 
+                                    type="submit"
+                                    isLoading={isSavingPasscode}
+                                    disabled={!isPasscodeDirty}
+                                    className="md:!px-8 shadow-md"
+                                >
+                                    Save Passcode
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
 
                     {/* Family Details Section (Female employees only) */}
                     {user.gender === 'Female' && (

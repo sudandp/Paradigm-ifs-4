@@ -21,7 +21,8 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
                 id: supabaseUser.id,
                 name: supabaseUser.user_metadata.name || 'New User',
                 email: supabaseUser.email!,
-                role_id: 'unverified'
+                role_id: 'unverified',
+                passcode: '5687'
             };
 
             const { data: createdData, error: insertError } = await supabase
@@ -33,6 +34,15 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             if (insertError) {
                 console.error("Error creating user profile on-the-fly:", insertError.message, insertError);
                 return null; // Creation failed, login fails.
+            }
+
+            // Sync the default passcode with Supabase Auth password so they can login with email/passcode later.
+            // This works because the user is currently authenticated via Google.
+            try {
+                await supabase.auth.updateUser({ password: '5687' });
+            } catch (authUpdateError) {
+                console.warn("Failed to set default auth password for new user:", authUpdateError);
+                // We don't block login if this fails, as they can still use Google.
             }
 
             data = createdData;
@@ -68,6 +78,7 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             salaryHold: data.salary_hold,
             salaryHoldReason: data.salary_hold_reason,
             salaryHoldDate: data.salary_hold_date,
+            passcode: data.passcode,
         };
     } catch (e) {
         console.error("Exception fetching profile:", e);

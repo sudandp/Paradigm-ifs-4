@@ -23,7 +23,9 @@ import { api } from '../../services/api';
 
 const emailValidationSchema = yup.object({
     email: yup.string().email('Must be a valid email').required('Email is required'),
-    password: yup.string().required('Password is required'),
+    password: yup.string()
+        .min(4, 'Password/Passcode must be at least 4 characters')
+        .required('Required'),
     rememberMe: yup.boolean().optional(),
 }).defined();
 // Fix: Use imported InferType
@@ -41,7 +43,7 @@ const getHomeRoute = (user: User) => {
 
 
 const Login: React.FC = () => {
-    const { user, loginWithEmail, loginWithGoogle, error, setError, loading, setLoginAnimationPending, isLoginAnimationPending } = useAuthStore();
+    const { user, loginWithPasscode, loginWithGoogle, error, setError, loading, setLoginAnimationPending, isLoginAnimationPending } = useAuthStore();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -123,8 +125,7 @@ const Login: React.FC = () => {
         // Force "Remember Me" on mobile devices to ensure persistent login
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const shouldRemember = isMobile ? true : (data.rememberMe || false);
-
-        const result = await loginWithEmail(data.email, data.password, shouldRemember);
+        const result = await loginWithPasscode(data.email, data.password, shouldRemember);
 
         if (result.error) {
             setLoginAnimationPending(false);
@@ -164,9 +165,10 @@ const Login: React.FC = () => {
                         <Input
                             id="password"
                             type="password"
+                            inputMode="text"
                             autoComplete="current-password"
-                            placeholder="Password"
-                            aria-label="Password"
+                            placeholder="Passcode or Password"
+                            aria-label="Passcode or Password"
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
                             className="!pl-12 !bg-black/60 !text-white !border-white/10 focus:!border-[#22c55e] placeholder:!text-gray-500 !py-3 !rounded-xl transition-all"

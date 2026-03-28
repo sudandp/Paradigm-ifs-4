@@ -120,6 +120,7 @@ export interface User {
   societyId?: string;
   societyName?: string;
   locationId?: string;
+  passcode?: string;
 }
 
 export interface UserChild {

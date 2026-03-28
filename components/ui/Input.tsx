@@ -1,6 +1,6 @@
-import React, { useId } from 'react';
-// Fix: Changed `import type` to inline `import { type ... }` for UseFormRegisterReturn to fix namespace-as-type error.
+import React, { useId, useState } from 'react';
 import { type UseFormRegisterReturn } from 'react-hook-form';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -14,13 +14,18 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClassName, id, error, description, registration, icon, autoCapitalizeCustom = true, ...props }, ref) => {
+  const [showPassword, setShowPassword] = useState(false);
   const generatedId = useId();
   const inputId = id || generatedId;
   const { className, ...otherProps } = props;
   
   const baseClass = 'form-input';
   const errorClass = 'form-input--error';
-  const finalClassName = `${baseClass} ${error ? errorClass : ''} ${icon ? '!pl-16' : ''} ${className || ''}`;
+  
+  const isPassword = props.type === 'password';
+  const inputType = isPassword ? (showPassword ? 'text' : 'password') : props.type;
+  
+  const finalClassName = `${baseClass} ${error ? errorClass : ''} ${icon ? '!pl-16' : ''} ${isPassword ? '!pr-12' : ''} ${className || ''}`;
   
   const inputElement = (
     <div className="relative">
@@ -40,6 +45,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
         autoCapitalize={autoCapitalizeCustom ? "words" : undefined}
         {...registration}
         {...otherProps}
+        type={inputType}
         onChange={(e) => {
           const isTextField = !props.type || props.type === 'text';
           if (autoCapitalizeCustom && isTextField) {
@@ -60,6 +66,16 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
           }
         }}
       />
+      {isPassword && (
+        <button
+          type="button"
+          onClick={() => setShowPassword(!showPassword)}
+          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-muted hover:text-primary transition-colors focus:outline-none"
+          tabIndex={-1}
+        >
+          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      )}
     </div>
   );
 

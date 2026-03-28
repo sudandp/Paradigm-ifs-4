@@ -1549,6 +1549,7 @@ export const api = {
     const { role, ...rest } = userData;
     const dbData: any = toSnakeCase(rest);
     if (role) dbData.role_id = role;
+    if (!dbData.passcode) dbData.passcode = '5687';
 
     const { data, error } = await supabase.from('users').insert(dbData).select().single();
     if (error) throw error;
@@ -1564,6 +1565,38 @@ export const api = {
     const columnMap = { 1: 'reporting_manager_id', 2: 'reporting_manager_2_id', 3: 'reporting_manager_3_id' };
     const { error } = await supabase.from('users').update({ [columnMap[slot]]: managerId }).eq('id', userId);
     if (error) throw error;
+  },
+
+  updateUserPasscode: async (userId: string, newPasscode: string): Promise<void> => {
+    // 1. Update the custom users table
+    const { error: dbError } = await supabase
+      .from('users')
+      .update({ passcode: newPasscode })
+      .eq('id', userId);
+    
+    if (dbError) throw dbError;
+
+    // 2. Update the Supabase Auth password
+    // NOTE: This updates the password for the CURRENTLY LOGGED IN user
+    // if the userId belongs to them. If it's an admin updating another user,
+    // this specific call won't work for the other user without the admin API.
+    // However, for the user changing their own passcode in the profile, this is correct.
+    const { error: authError } = await supabase.auth.updateUser({
+      password: newPasscode
+    });
+
+    if (authError) throw authError;
+  },
+
+  resetUserPasscode: async (userId: string): Promise<string> => {
+    const newPasscode = Math.floor(1000 + Math.random() * 9000).toString();
+    const { error } = await supabase
+      .from('users')
+      .update({ passcode: newPasscode })
+      .eq('id', userId);
+    
+    if (error) throw error;
+    return newPasscode;
   },
 
   getOrganizations: async (filter?: { page?: number, pageSize?: number }): Promise<any> => {
