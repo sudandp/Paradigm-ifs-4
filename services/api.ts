@@ -2814,7 +2814,7 @@ export const api = {
     try {
       // 1. Fetch settings for late threshold
       const settings = await api.getAttendanceSettings();
-      const configStartTime = settings?.startTime || '09:30';
+      const configStartTime = settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
 
       // 2. Fetch all active users (excluding management)
       const { data: allUsers } = await supabase
