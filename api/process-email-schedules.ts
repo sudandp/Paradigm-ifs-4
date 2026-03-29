@@ -15,10 +15,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Security Check (Internal API Key or Vercel Cron Secret)
   const apiKey = req.headers['x-api-key'];
   const authHeader = req.headers['authorization'];
+  const queryKey = req.query.key;
   const internalKey = process.env.INTERNAL_API_KEY;
   const cronSecret = process.env.CRON_SECRET;
 
-  const isInternal = internalKey && apiKey === internalKey;
+  const isInternal = internalKey && (apiKey === internalKey || queryKey === internalKey);
   const isVercelCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
 
   if (internalKey && !isInternal && !isVercelCron) {
