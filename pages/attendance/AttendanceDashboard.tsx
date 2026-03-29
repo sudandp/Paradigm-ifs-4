@@ -1268,11 +1268,12 @@ const AttendanceDashboard: React.FC = () => {
 
             // Use activeStaff count (excluding management) for totalEmployees
             const totalEmployees = activeStaff.length;
-            const absentToday = Math.max(0, totalEmployees - presentToday - onLeaveToday);
 
             // --- Calculate Inactive Status (No activity in last 10 days) ---
             const recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
             const inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
+
+            const absentToday = Math.max(0, totalEmployees - presentToday - onLeaveToday - inactiveCount);
 
 
             // --- Calculate Trends (for the selected dateRange only) ---
