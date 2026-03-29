@@ -235,7 +235,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Evaluate basic ternary conditionals e.g. {attendancePercentage > 90 ? "Yes" : "No"}  
       const evaluateConditionals = (str: string) => {
-          return str.replace(/\\{([a-zA-Z0-9_]+)\\s*([><]=?|==|!=)\\s*([0-9.]+)\\s*\\?\\s*["']([^"']+)["']\\s*:\\s*["']([^"']+)["']\\}/ig, 
+          return str.replace(/\{([a-zA-Z0-9_]+)\s*([><]=?|==|!=)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, 
             (match, varName, operator, val2Str, trueStr, falseStr) => {
               const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === varName.toLowerCase());
               if (!dataKey) return match; // fallback if variable not found
