@@ -158,7 +158,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </div>`;
 
       let subject = template?.subject_template || rule.name;
+      // Force premium template for attendance reports if they don't have the new boxes
       let html = template?.body_template || premiumTemplate;
+      if (rule.report_type === 'attendance_daily' && (!html || !html.includes('{onLeaveCount}'))) {
+        html = premiumTemplate;
+      }
 
       for (const [key, value] of Object.entries(reportData)) {
         subject = subject.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
@@ -300,12 +304,12 @@ async function generateDailyAttendanceReport(
   // 2. Get all active users (excluding management)
   const { data: allUsersRaw } = await supabase
     .from('users')
-    .select('id, name, email, employee_id, roles(display_name)')
+    .select('id, name, email, employee_id, role:roles(display_name)')
     .eq('is_active', true)
     .order('name');
 
   const filteredUsers = (allUsersRaw || []).filter((u: any) => {
-    const roleName = (Array.isArray(u.roles) ? u.roles[0]?.display_name : u.roles?.display_name) || '';
+    const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
     return roleName.toLowerCase() !== 'management';
   });
 

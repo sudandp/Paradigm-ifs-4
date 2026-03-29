@@ -2937,8 +2937,14 @@ export const api = {
 </div>`;
 
     const templateHtml = template?.body_template || premiumTemplate;
+    
+    // Force the 5-box premium template for Daily Attendance reports to ensure it's not empty
+    let useTemplate = templateHtml;
+    if (rule.report_type === 'attendance_daily' && (!useTemplate || !useTemplate.includes('{onLeaveCount}'))) {
+      useTemplate = premiumTemplate;
+    }
 
-    const renderedHtml = templateHtml
+    const renderedHtml = useTemplate
       .replace(/{date}/g, dateStr)
       .replace(/{totalPresent}/g, totalPresent.toString())
       .replace(/{totalAbsent}/g, totalAbsent.toString())
@@ -2963,7 +2969,7 @@ export const api = {
         to: emails,
         subject: renderedSubject,
         html: renderedHtml,
-        ruleId: id,
+        ruleId: rule.id,
         templateId: rule.template_id,
         smtpConfig: config ? {
           host: config.host || 'smtp.gmail.com',
