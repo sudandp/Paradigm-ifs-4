@@ -1,0 +1,16 @@
+name: Scheduled Email Reports
+
+on:
+  schedule:
+    # Run every hour at minute 5 (e.g., 00:05, 01:05, etc.)
+    # This provides a buffer for the top-of-the-hour schedules.
+    - cron: '5 * * * *'
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  trigger-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Email Processing API
+        run: |
+          curl -X GET "https://app.paradigmfms.com/api/process-email-schedules?key=${{ secrets.INTERNAL_API_KEY }}"
