@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import * as nodemailer from 'nodemailer';
-import { format, startOfDay, endOfDay, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfDay, endOfDay, isSameDay } from 'date-fns';
 
 // Helper: Stub frontend-only functions to prevent build failures
 const dispatchNotificationFromRules = async (...args: any[]) => console.log('Notification dispatch stubbed in backend', ...args);
@@ -21,6 +21,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
+  console.log('[process-email-schedules] Starting Version 2.0 (Config Fix)...');
+
   // Security Check (Internal API Key or Vercel Cron Secret)
   const apiKey = req.headers['x-api-key'];
   const authHeader = req.headers['authorization'];
@@ -39,8 +41,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {
-    console.log('[process-email-schedules] Starting...');
-
     // 1. Get email config from settings
     const { data: settings } = await supabase
       .from('settings')
