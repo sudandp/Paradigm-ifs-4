@@ -2987,10 +2987,6 @@ export const api = {
     const totalEmployees = filteredUsers ? filteredUsers.length : 0;
     const attendancePercentage = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100).toString() : '0';
 
-    const renderedSubject = subject
-      .replace(/{date}/g, dateStr)
-      .replace(/{subject}/g, `Test: ${rule.name}`);
-
     // Premium unified template fallback
     const customMessageVar = template?.variables?.find((v: any) => v.key === '_custom_message');
     const customMessage = customMessageVar?.description || "Greetings from Paradigm! 👋\nWe hope you're having a fantastic day. Here is your comprehensive daily attendance report to keep you fully updated on today's team presence and activity! 🚀";
@@ -3094,25 +3090,69 @@ export const api = {
 
     const templateHtml = template?.body_template || premiumTemplate;
     
-    // Force the unified premium template for Daily Attendance reports to ensure it's not empty
     let useTemplate = templateHtml;
-    if (rule.report_type === 'attendance_daily' && (!useTemplate || !useTemplate.includes('{attendancePercentage}'))) {
-      useTemplate = premiumTemplate;
+    // Inject Custom Greeting Message block dynamically into loaded html if missing
+    if (rule.report_type === 'attendance_daily') {
+       if (!useTemplate || !useTemplate.includes('{attendancePercentage}')) {
+          useTemplate = premiumTemplate;
+       } else if (!useTemplate.includes('<!-- Greeting Message -->') && headerText) {
+          useTemplate = useTemplate.replace('<!-- Report Title -->', `
+  <!-- Greeting Message -->
+  <div style="padding: 24px 24px 8px;">
+    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
+    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
+  </div>
+
+  <!-- Report Title -->`);
+       }
     }
 
-    const renderedHtml = useTemplate
-      .replace(/{date}/g, dateStr)
-      .replace(/{generatedTime}/g, generatedTime)
-      .replace(/{totalEmployees}/g, totalEmployees.toString())
-      .replace(/{totalPresent}/g, totalPresent.toString())
-      .replace(/{totalAbsent}/g, totalAbsent.toString())
-      .replace(/{lateCount}/g, lateCount.toString())
-      .replace(/{attendancePercentage}/g, attendancePercentage.toString())
-      .replace(/{onLeaveCount}/g, onLeaveCount.toString())
-      .replace(/{inactiveCount}/g, inactiveCount.toString())
-      .replace(/{table}/g, tableHtml)
-      .replace(/{message}/g, `This is a test email for the rule: ${rule.name}`)
-      .replace(/{subject}/g, `Test: ${rule.name}`);
+    const reportDataPayload: Record<string, string> = {
+      date: dateStr,
+      generatedTime,
+      totalEmployees: totalEmployees.toString(),
+      totalPresent: totalPresent.toString(),
+      totalAbsent: totalAbsent.toString(),
+      lateCount: lateCount.toString(),
+      attendancePercentage: attendancePercentage.toString(),
+      onLeaveCount: onLeaveCount.toString(),
+      inactiveCount: inactiveCount.toString(),
+      table: tableHtml,
+      message: `This is a test email for the rule: ${rule.name}`,
+      subject: `Test: ${rule.name}`
+    };
+
+    let renderedSubjectFinal = subject;
+    let renderedHtml = useTemplate;
+
+    // Evaluate basic ternary conditionals e.g. {attendancePercentage > 90 ? "Yes" : "No"}  
+    const evaluateConditionals = (str: string) => {
+        return str.replace(/\\{([a-zA-Z0-9_]+)\\s*([><]=?|==|!=)\\s*([0-9.]+)\\s*\\?\\s*["']([^"']+)["']\\s*:\\s*["']([^"']+)["']\\}/ig, 
+          (match, varName, operator, val2Str, trueStr, falseStr) => {
+            const dataKey = Object.keys(reportDataPayload).find(k => k.toLowerCase() === varName.toLowerCase());
+            if (!dataKey) return match; // return unchanged if var doesn't exist
+
+            const val1 = parseFloat(reportDataPayload[dataKey]);
+            const val2 = parseFloat(val2Str);
+            let condition = false;
+            if (operator === '>') condition = val1 > val2;
+            if (operator === '<') condition = val1 < val2;
+            if (operator === '>=') condition = val1 >= val2;
+            if (operator === '<=') condition = val1 <= val2;
+            if (operator === '==') condition = val1 == val2;
+            if (operator === '!=') condition = val1 != val2;
+            return condition ? trueStr : falseStr;
+        });
+    };
+
+    renderedSubjectFinal = evaluateConditionals(renderedSubjectFinal);
+    renderedHtml = evaluateConditionals(renderedHtml);
+
+    // Case-insensitive replacement for standard variables
+    for (const [key, value] of Object.entries(reportDataPayload)) {
+      renderedSubjectFinal = renderedSubjectFinal.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
+      renderedHtml = renderedHtml.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
+    }
 
     // Fetch config to pass along using existing helper
     const config = await api.getEmailConfig();
@@ -3126,7 +3166,7 @@ export const api = {
       },
       body: JSON.stringify({
         to: emails,
-        subject: renderedSubject,
+        subject: renderedSubjectFinal,
         html: renderedHtml,
         ruleId: rule.id,
         templateId: rule.template_id,

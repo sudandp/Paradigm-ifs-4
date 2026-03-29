@@ -216,15 +216,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </div>`;
 
       let subject = template?.subject_template || rule.name;
-      // Force unified premium template for attendance reports if they don't have the new variables
+      
       let html = template?.body_template || premiumTemplate;
-      if (rule.report_type === 'attendance_daily' && (!html || !html.includes('{attendancePercentage}'))) {
-        html = premiumTemplate;
+      if (rule.report_type === 'attendance_daily') {
+         if (!html || !html.includes('{attendancePercentage}')) {
+             html = premiumTemplate;
+         } else if (!html.includes('<!-- Greeting Message -->') && headerText) {
+             html = html.replace('<!-- Report Title -->', `
+  <!-- Greeting Message -->
+  <div style="padding: 24px 24px 8px;">
+    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
+    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
+  </div>
+
+  <!-- Report Title -->`);
+         }
       }
 
+      // Evaluate basic ternary conditionals e.g. {attendancePercentage > 90 ? "Yes" : "No"}  
+      const evaluateConditionals = (str: string) => {
+          return str.replace(/\\{([a-zA-Z0-9_]+)\\s*([><]=?|==|!=)\\s*([0-9.]+)\\s*\\?\\s*["']([^"']+)["']\\s*:\\s*["']([^"']+)["']\\}/ig, 
+            (match, varName, operator, val2Str, trueStr, falseStr) => {
+              const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === varName.toLowerCase());
+              if (!dataKey) return match; // fallback if variable not found
+
+              const val1 = parseFloat(reportData[dataKey]);
+              const val2 = parseFloat(val2Str);
+              let condition = false;
+              if (operator === '>') condition = val1 > val2;
+              if (operator === '<') condition = val1 < val2;
+              if (operator === '>=') condition = val1 >= val2;
+              if (operator === '<=') condition = val1 <= val2;
+              if (operator === '==') condition = val1 == val2;
+              if (operator === '!=') condition = val1 != val2;
+              return condition ? trueStr : falseStr;
+          });
+      };
+
+      subject = evaluateConditionals(subject);
+      html = evaluateConditionals(html);
+
       for (const [key, value] of Object.entries(reportData)) {
-        subject = subject.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
-        html = html.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+        subject = subject.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
+        html = html.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
       }
 
       // Resolve recipients
