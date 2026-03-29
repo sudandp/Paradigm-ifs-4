@@ -97,24 +97,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Check if should run now (for scheduled type)
       if (rule.trigger_type === 'scheduled') {
         const isForceRun = force || ruleId === rule.id;
-        const shouldRun = shouldRunSchedule(rule, nowIST);
+        const { shouldRun, reason } = shouldRunScheduleWithStatus(rule, nowIST);
         
         if (!shouldRun && !isForceRun) {
-          console.log(`  → Skipped (trigger time hasn't reached yet today)`);
+          console.log(`  → Skipped (${reason})`);
           continue;
         }
 
-        // Check if already sent today
-        if (rule.last_sent_at && !isForceRun) {
-          const lastSentDate = new Date(rule.last_sent_at);
-          if (isSameDay(lastSentDate, nowIST)) {
-            console.log(`  → Skipped (already sent today)`);
-            continue;
-          }
+        // Check if already sent today - strictly enforced for scheduled reports
+        if (rule.last_sent_at) {
+           const lastSentDate = new Date(rule.last_sent_at);
+           if (isSameDay(lastSentDate, nowIST) && !isForceRun) {
+             console.log(`  → Skipped (Already sent for today: ${rule.last_sent_at})`);
+             continue;
+           }
         }
         
         if (isForceRun) console.log(`  → TRIGGERED! (Force/Test mode enabled)`);
-        else console.log(`  → TRIGGERED! Sending report now...`);
+        else console.log(`  → TRIGGERED! Sending report now because: ${reason}`);
       }
 
       // Get template
@@ -294,18 +294,36 @@ function evaluateConditionals(str: string, reportData: Record<string, string>) {
     });
 }
 
-function shouldRunSchedule(rule: any, nowIST: Date): boolean {
+/**
+ * Enhanced schedule checker that supports Vercel Daily Crons.
+ * Logic: "Should I send today's edition of this report?"
+ */
+function shouldRunScheduleWithStatus(rule: any, nowIST: Date): { shouldRun: boolean; reason: string } {
   const config = rule.schedule_config || {};
   const [hour, minute] = (config.time || '21:00').split(':').map(Number);
+  
+  // Current time in IST (passed from handler)
   const currentHour = nowIST.getUTCHours();
   const currentMinute = nowIST.getUTCMinutes();
-  if (currentHour < hour || (currentHour === hour && currentMinute < minute)) return false;
+  
+  // 1. Time Check: Has the scheduled time been reached yet?
+  if (currentHour < hour || (currentHour === hour && currentMinute < minute)) {
+    return { shouldRun: false, reason: `Time ${config.time} not reached yet (current: ${currentHour}:${currentMinute} IST)` };
+  }
+
+  // 2. Frequency Check
   const freq = config.frequency || 'daily';
-  const dayOfWeek = nowIST.getUTCDay();
+  const dayOfWeek = nowIST.getUTCDay(); // 0-6 (Sun-Sat)
   const dayOfMonth = nowIST.getUTCDate();
-  if (freq === 'weekly' && config.dayOfWeek !== undefined && config.dayOfWeek !== dayOfWeek) return false;
-  if (freq === 'monthly' && config.dayOfMonth !== undefined && config.dayOfMonth !== dayOfMonth) return false;
-  return true;
+
+  if (freq === 'weekly' && config.dayOfWeek !== undefined && config.dayOfWeek !== dayOfWeek) {
+    return { shouldRun: false, reason: `Wrong day of week (expected ${config.dayOfWeek}, got ${dayOfWeek})` };
+  }
+  if (freq === 'monthly' && config.dayOfMonth !== undefined && config.dayOfMonth !== dayOfMonth) {
+    return { shouldRun: false, reason: `Wrong day of month (expected ${config.dayOfMonth}, got ${dayOfMonth})` };
+  }
+
+  return { shouldRun: true, reason: 'Scheduled time reached' };
 }
 
 async function resolveRecipients(supabase: any, rule: any): Promise<string[]> {
@@ -340,15 +358,22 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date, istOff
   });
   const activeStaffIds = new Set(filteredUsers.map((u: any) => u.id));
 
-  // 2. Fetch events (Today + 10 day lookback for inactivity)
-  const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
-  const { data: events } = await supabase.from('attendance_events')
+  // 2. Fetch events (Today)
+  const { data: todayEventsRaw, error: todayErr } = await supabase.from('attendance_events')
     .select('user_id, type, timestamp')
-    .gte('timestamp', tenDaysAgoUTC.toISOString())
+    .gte('timestamp', startOfTodayUTC.toISOString())
     .order('timestamp', { ascending: true });
 
-  const todayEvents = (events || []).filter((e: any) => e.timestamp >= startOfTodayUTC.toISOString() && activeStaffIds.has(e.user_id));
-  const tenDayEvents = (events || []).filter((e: any) => activeStaffIds.has(e.user_id));
+  if (todayErr) console.error('Error fetching today events:', todayErr);
+  const todayEvents = (todayEventsRaw || []).filter((e: any) => activeStaffIds.has(e.user_id));
+
+  // Fetch only user IDs for 10-day lookback to calculate inactivity (saves memory/time)
+  const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
+  const { data: tenDayIdsRes } = await supabase.from('attendance_events')
+    .select('user_id')
+    .gte('timestamp', tenDaysAgoUTC.toISOString());
+  
+  const recentlyActiveUserIds = new Set((tenDayIdsRes || []).map((e: any) => e.user_id));
 
   // 3. Fetch today's approved leaves
   const { data: leaves } = await supabase.from('leave_requests')
@@ -375,7 +400,6 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date, istOff
     if (format(punchIST, 'HH:mm') > configStartTime) lateCount++;
   });
 
-  const recentlyActiveUserIds = new Set(tenDayEvents.map((e: any) => e.user_id));
   const totalPresent = presentUserIds.size;
   const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
   const onLeaveCount = Array.from(onLeaveUserIds).filter(id => activeStaffIds.has(id)).length;
