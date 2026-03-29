@@ -2652,7 +2652,11 @@ export const api = {
             <h1 style="color: white; margin: 0; font-size: 22px;">✅ Email Configuration Working!</h1>
           </div>
           <div style="padding: 32px;">
-            <p style="color: #374151; font-size: 14px; line-height: 1.7;">Your SMTP email configuration is working correctly. Emails will be sent from <strong>${config.from_email || config.user}</strong>.</p>
+            <p style="color: #374151; font-size: 14px; line-height: 1.7;">
+              Your SMTP email configuration is working correctly.<br/>
+              Emails will be sent from: <strong>${config.from_email || config.user}</strong><br/>
+              Replies will be sent to: <strong>${config.reply_to || config.from_email || config.user}</strong>
+            </p>
             <div style="margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 10px; border: 1px solid #bbf7d0;">
               <p style="margin: 0; font-size: 13px; color: #166534;">✓ SMTP connection verified<br/>✓ Authentication successful<br/>✓ Email delivery confirmed</p>
             </div>
