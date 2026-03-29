@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Security Check (Internal API Key or Vercel Cron Secret)
   const apiKey = req.headers['x-api-key'];
   const authHeader = req.headers['authorization'];
-  const queryKey = req.query.key;
+  const queryKey = req.query.key as string;
   const internalKey = process.env.INTERNAL_API_KEY;
   const cronSecret = process.env.CRON_SECRET;
 
@@ -652,13 +652,13 @@ async function generateDocumentExpiryReport(supabase: any, nowIST: Date): Promis
 // ═══ Pending Approvals Report Generator ══════════════════════════════════
 
 async function generatePendingApprovalsReport(supabase: any): Promise<Record<string, string>> {
-  // Check common tables for pending status
+  // Check common tables for pending status with correct Supabase v2 syntax
   const [onboardRes, leavesRes, salaryRes] = await Promise.all([
-    supabase.from('onboarding_submissions').select('count').eq('status', 'pending'),
-    supabase.from('leave_requests').select('count').eq('status', 'pending'),
-    supabase.from('salary_requests').select('count').eq('status', 'pending')
+    supabase.from('onboarding_submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabase.from('salary_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
   ]);
-
+  
   const onboard = onboardRes.count || 0;
   const leaves = leavesRes.count || 0;
   const salary = salaryRes.count || 0;
