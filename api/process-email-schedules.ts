@@ -43,15 +43,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ message: 'Email not configured or disabled', processed: 0 });
     }
 
-    // 2. Get all active schedule rules
-    const { data: rules, error: rulesErr } = await supabase
-      .from('email_schedule_rules')
-      .select('*')
-      .eq('is_active', true);
+    // 2. Get active schedule rules
+    const ruleId = req.query.ruleId as string;
+    const force = req.query.force === 'true';
+
+    let query = supabase.from('email_schedule_rules').select('*').eq('is_active', true);
+    if (ruleId) query = query.eq('id', ruleId);
+    
+    const { data: rules, error: rulesErr } = await query;
 
     if (rulesErr) throw rulesErr;
     if (!rules || rules.length === 0) {
-      return res.status(200).json({ message: 'No active email schedules', processed: 0 });
+      return res.status(200).json({ message: ruleId ? `Rule ${ruleId} not found or inactive` : 'No active email schedules', processed: 0 });
     }
 
     // 3. Get all templates
@@ -88,16 +91,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const targetTime = config.time || '21:00';
         const currentTime = nowIST.getUTCHours().toString().padStart(2, '0') + ':' + nowIST.getUTCMinutes().toString().padStart(2, '0');
         
+        const isForceRun = force || ruleId === rule.id;
         const shouldRun = shouldRunSchedule(rule, nowIST);
-        console.log(`  → Time check: Scheduled for ${targetTime}, currently ${currentTime}`);
         
-        if (!shouldRun) {
+        console.log(`  → Time check: Scheduled for ${targetTime}, currently ${currentTime} (Force: ${isForceRun})`);
+        
+        if (!shouldRun && !isForceRun) {
           console.log(`  → Skipped (trigger time hasn't reached yet today)`);
           continue;
         }
 
         // Check if already sent today
-        if (rule.last_sent_at) {
+        if (rule.last_sent_at && !isForceRun) {
           const lastSentIST = new Date(new Date(rule.last_sent_at).getTime() + istOffset);
           const lastSentDate = lastSentIST.toISOString().split('T')[0];
           // If already sent today, skip it (applies to daily, weekly, and monthly)
@@ -106,7 +111,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             continue;
           }
         }
-        console.log(`  → TRIGGERED! Sending report now...`);
+        
+        if (isForceRun) console.log(`  → TRIGGERED! (Force/Test mode enabled)`);
+        else console.log(`  → TRIGGERED! Sending report now...`);
       }
 
       // Get template
@@ -329,7 +336,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    return res.status(200).json({ success: true, processed: totalSent, timestamp: now.toISOString() });
+    return res.status(200).json({ 
+      success: true, 
+      processed: totalSent, 
+      timestamp: now.toISOString(),
+      triggeredFor: ruleId ? `Rule ${ruleId}` : 'Cron Polling'
+    });
 
   } catch (error: any) {
     console.error('[process-email-schedules] Error:', error);
