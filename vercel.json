@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/process-email-schedules",
-      "schedule": "30 15 * * *"
+      "schedule": "*/10 * * * *"
     }
   ],
   "rewrites": [

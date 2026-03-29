@@ -12,10 +12,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  // Security Check (Internal API Key)
+  // Security Check (Internal API Key or Vercel Cron Secret)
   const apiKey = req.headers['x-api-key'];
+  const authHeader = req.headers['authorization'];
   const internalKey = process.env.INTERNAL_API_KEY;
-  if (internalKey && apiKey !== internalKey) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  const isInternal = internalKey && apiKey === internalKey;
+  const isVercelCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+
+  if (internalKey && !isInternal && !isVercelCron) {
     console.warn('[process-email-schedules] Unauthorized request');
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -78,20 +84,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Check if should run now (for scheduled type)
       if (rule.trigger_type === 'scheduled') {
+        const config = rule.schedule_config || {};
+        const targetTime = config.time || '21:00';
+        const currentTime = nowIST.getUTCHours().toString().padStart(2, '0') + ':' + nowIST.getUTCMinutes().toString().padStart(2, '0');
+        
         const shouldRun = shouldRunSchedule(rule, nowIST);
+        console.log(`  → Time check: Scheduled for ${targetTime}, currently ${currentTime}`);
+        
         if (!shouldRun) {
-          console.log(`  → Skipped (not time yet)`);
+          console.log(`  → Skipped (trigger time hasn't reached yet today)`);
           continue;
         }
+
         // Check if already sent today
         if (rule.last_sent_at) {
           const lastSentIST = new Date(new Date(rule.last_sent_at).getTime() + istOffset);
           const lastSentDate = lastSentIST.toISOString().split('T')[0];
-          if (lastSentDate === todayStr && rule.schedule_config?.frequency === 'daily') {
-            console.log(`  → Skipped (already sent today)`);
+          // If already sent today, skip it (applies to daily, weekly, and monthly)
+          if (lastSentDate === todayStr) {
+            console.log(`  → Skipped (already sent today on ${lastSentDate})`);
             continue;
           }
         }
+        console.log(`  → TRIGGERED! Sending report now...`);
       }
 
       // Get template
@@ -331,9 +346,11 @@ function shouldRunSchedule(rule: any, nowIST: Date): boolean {
   const currentHour = nowIST.getUTCHours();
   const currentMinute = nowIST.getUTCMinutes();
 
-  // Check if we're within the scheduled hour (allow 30-min window)
+  // Check if we're past the scheduled time for today
   if (currentHour < hour || (currentHour === hour && currentMinute < minute)) return false;
-  if (currentHour > hour + 1) return false; // Too late (more than 1 hour past)
+  
+  // Note: We removed the "Too late (more than 1 hour past)" check to implement "catch-up mode".
+  // If the cron schedule was delayed, it will still send as long as it hasn't sent today.
 
   // Check frequency
   const freq = config.frequency || 'daily';
