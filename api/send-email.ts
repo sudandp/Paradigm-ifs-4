@@ -37,16 +37,30 @@ interface SmtpConfig {
 
 // Get email config from Supabase settings or environment
 async function getSmtpConfig(): Promise<SmtpConfig> {
+  const fallback: SmtpConfig = {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
+    fromName: process.env.SMTP_FROM_NAME || 'Paradigm FMS',
+    replyTo: process.env.SMTP_REPLY_TO,
+  };
+
   try {
     if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('settings')
         .select('email_config')
         .eq('id', 'singleton')
-        .single();
+        .maybeSingle();
+
+      if (error) throw error;
 
       if (data?.email_config?.host) {
+        console.log('[send-email] Using SMTP config from database');
         return {
           host: data.email_config.host,
           port: data.email_config.port || 587,
@@ -59,21 +73,11 @@ async function getSmtpConfig(): Promise<SmtpConfig> {
         };
       }
     }
-  } catch (e) {
-    console.warn('[send-email] Failed to fetch SMTP config from DB, falling back to env vars:', e);
+  } catch (e: any) {
+    console.warn('[send-email] Failed to fetch SMTP config from DB, falling back to env vars:', e.message);
   }
 
-  // Fallback to environment variables
-  return {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '',
-    fromName: process.env.SMTP_FROM_NAME || 'Paradigm FMS',
-    replyTo: process.env.SMTP_REPLY_TO,
-  };
+  return fallback;
 }
 
 // Log email to database for audit trail
@@ -123,24 +127,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let isAuthorized = false;
 
-  // Method 1: Internal API key (for cron jobs / server-to-server)
-  if (internalKey && apiKey === internalKey) {
-    isAuthorized = true;
-  }
+  try {
+    // Standardize auth header (can be string or string[])
+    const authHeaderRaw = req.headers['authorization'];
+    const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
 
-  // Method 2: Valid Supabase JWT (for browser requests)
-  if (!isAuthorized && authHeader && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-    try {
-      const token = authHeader.replace('Bearer ', '');
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (user && !error) {
-        isAuthorized = true;
-        console.log(`[send-email] Authenticated via JWT: ${user.email}`);
-      }
-    } catch (e) {
-      console.warn('[send-email] JWT validation failed:', e);
+    // Method 1: Internal API key (for cron jobs / server-to-server)
+    if (internalKey && apiKey === internalKey) {
+      isAuthorized = true;
+      console.log('[send-email] Authenticated via Internal API Key');
     }
+
+    // Method 2: Valid Supabase JWT (for browser requests)
+    if (!isAuthorized && authHeader && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        if (token && token !== 'undefined' && token !== 'null') {
+          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+          const { data, error } = await supabase.auth.getUser(token);
+          if (data?.user && !error) {
+            isAuthorized = true;
+            console.log(`[send-email] Authenticated via JWT: ${data.user.email}`);
+          } else if (error) {
+            console.warn('[send-email] JWT User fetch error:', error.message);
+          }
+        }
+      } catch (e: any) {
+        console.warn('[send-email] JWT validation exception:', e.message);
+      }
+    }
+  } catch (authErr: any) {
+    console.error('[send-email] Critical Auth Block Error:', authErr.message);
   }
 
   if (!isAuthorized) {

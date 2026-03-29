@@ -3184,8 +3184,16 @@ export const api = {
     });
     
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Test email failed');
+      let errorMessage = 'Test email failed';
+      try {
+        const err = await response.json();
+        errorMessage = err.error || errorMessage;
+      } catch (e) {
+        // If not JSON, get the text (e.g., Vercel error page)
+        const text = await response.text();
+        errorMessage = text.substring(0, 150) || response.statusText;
+      }
+      throw new Error(errorMessage);
     }
   },
 
