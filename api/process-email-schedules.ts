@@ -116,51 +116,98 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Render template
       const premiumTemplate = `
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
-  <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">📊 Daily Attendance Report</h1>
-    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">{date}</p>
-  </div>
-  <div style="padding: 32px;">
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+<div style="font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: auto; border: 1px solid #d1d5db; background: #ffffff;">
+
+  <!-- Top Header -->
+  <div style="padding: 18px 24px; border-bottom: 3px solid #111827;">
+    <table style="width: 100%;">
       <tr>
-        <td style="width: 19%; padding: 16px 8px; background: #f0fdf4; border-radius: 10px; text-align: center; border: 1px solid #bbf7d0;">
-          <div style="font-size: 24px; font-weight: 800; color: #059669;">{totalPresent}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Present</div>
+        <td>
+          <h2 style="margin: 0; font-size: 20px; color: #111827;">PARADIGM FMS</h2>
+          <p style="margin: 2px 0 0; font-size: 12px; color: #6b7280;">Attendance Management System</p>
         </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fef2f2; border-radius: 10px; text-align: center; border: 1px solid #fecaca;">
-          <div style="font-size: 24px; font-weight: 800; color: #dc2626;">{totalAbsent}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Absent</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fffbeb; border-radius: 10px; text-align: center; border: 1px solid #fde68a;">
-          <div style="font-size: 24px; font-weight: 800; color: #d97706;">{lateCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Late</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #eff6ff; border-radius: 10px; text-align: center; border: 1px solid #bfdbfe;">
-          <div style="font-size: 24px; font-weight: 800; color: #2563eb;">{onLeaveCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">On Leave</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fdf2f8; border-radius: 10px; text-align: center; border: 1px solid #fbcfe8;">
-          <div style="font-size: 24px; font-weight: 800; color: #db2777;">{inactiveCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Inactive</div>
+        <td style="text-align: right;">
+          <p style="margin: 0; font-size: 12px;"><strong>Report Date:</strong> {date}</p>
+          <p style="margin: 2px 0 0; font-size: 12px;"><strong>Generated On:</strong> {generatedTime}</p>
         </td>
       </tr>
     </table>
-    {table}
   </div>
-  <div style="background: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
-    <p style="margin: 0; font-size: 11px; color: #9ca3af;">Automated report by Paradigm FMS • {date}</p>
+
+  <!-- Report Title -->
+  <div style="padding: 16px 24px; border-bottom: 1px solid #e5e7eb;">
+    <h3 style="margin: 0; font-size: 16px; color: #1f2937;">Daily Attendance Summary</h3>
   </div>
+
+  <!-- Summary KPI -->
+  <div style="padding: 16px 24px;">
+    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
+      <tr style="background: #f9fafb;">
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Total Employees</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Present</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Absent</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Late</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Attendance %</th>
+      </tr>
+      <tr>
+        <td style="border: 1px solid #e5e7eb; padding: 10px;">{totalEmployees}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #16a34a; font-weight: bold;">{totalPresent}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #dc2626; font-weight: bold;">{totalAbsent}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #d97706; font-weight: bold;">{lateCount}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px;">{attendancePercentage}%</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Employee Details -->
+  <div style="padding: 16px 24px;">
+    <h4 style="margin: 0 0 10px; font-size: 14px; color: #111827;">Employee Attendance Details</h4>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
+      <thead>
+        <tr style="background: #f3f4f6;">
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">S.No</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Employee Name</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Department</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-In</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-Out</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Work Hours</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Notes -->
+  <div style="padding: 12px 24px; border-top: 1px solid #e5e7eb;">
+    <p style="margin: 0; font-size: 11px; color: #6b7280;">
+      * Late is calculated based on shift start time. Attendance percentage is calculated as (Present / Total Employees) × 100.
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+    <table style="width: 100%; font-size: 11px;">
+      <tr>
+        <td style="color: #9ca3af;">
+          Generated by <strong>Paradigm FMS</strong>
+        </td>
+        <td style="text-align: right; color: #9ca3af;">
+          Confidential Internal Report
+        </td>
+      </tr>
+    </table>
+  </div>
+
 </div>`;
 
       let subject = template?.subject_template || rule.name;
-      // Force premium template for attendance reports if they don't have the new boxes
+      // Force unified premium template for attendance reports if they don't have the new variables
       let html = template?.body_template || premiumTemplate;
-      if (rule.report_type === 'attendance_daily' && (!html || !html.includes('{onLeaveCount}'))) {
+      if (rule.report_type === 'attendance_daily' && (!html || !html.includes('{attendancePercentage}'))) {
         html = premiumTemplate;
       }
 
@@ -365,100 +412,101 @@ async function generateDailyAttendanceReport(
   const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
 
   // Build report table rows
-  const presentRows: string[] = [];
-  const absentRows: string[] = [];
-
-  filteredUsers.forEach((user: any) => {
+  let tableHtml = '';
+  filteredUsers.forEach((user: any, i: number) => {
+    let statusText = 'Present';
+    let statusColor = '#16a34a'; // green
+    
+    let punchInTime = '—';
+    let punchOutTime = '—';
+    let workHours = '—';
+    
+    // department logic
+    let department = '—';
+    if (user.role) {
+      if (Array.isArray(user.role)) {
+         department = user.role[0]?.display_name || '—';
+      } else if (typeof user.role === 'object') {
+         department = user.role.display_name || '—';
+      } else {
+         department = String(user.role);
+      }
+    }
+    if (typeof department === 'string') {
+        const words = department.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1));
+        department = words.join(' ');
+    }
+    
     if (presentUserIds.has(user.id)) {
       const punchInTs = userFirstPunches[user.id];
-      const punchInTime = punchInTs 
-        ? new Date(new Date(punchInTs).getTime() + istOffset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-        : '—';
+      const punchInDate = punchInTs ? new Date(new Date(punchInTs).getTime() + istOffset) : null;
       
       const lastPunchOut = todayEvents.filter((e: any) => e.user_id === user.id && e.type === 'punch-out').pop();
-      const punchOutTime = lastPunchOut
-        ? new Date(new Date(lastPunchOut.timestamp).getTime() + istOffset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-        : '—';
+      const punchOutDate = lastPunchOut ? new Date(new Date(lastPunchOut.timestamp).getTime() + istOffset) : null;
 
-      const isLate = punchInTs && (new Date(new Date(punchInTs).getTime() + istOffset).getUTCHours().toString().padStart(2, '0') + ':' + new Date(new Date(punchInTs).getTime() + istOffset).getUTCMinutes().toString().padStart(2, '0')) > configStartTime;
-
-      presentRows.push({
-        name: user.name,
-        employeeId: user.employee_id || '—',
-        punchIn: punchInTime,
-        punchOut: punchOutTime,
-        location: todayEvents.find((e: any) => e.user_id === user.id)?.location_name || '—',
-        isLate,
-      } as any);
-    } else if (!onLeaveUserIds.has(user.id) && recentlyActiveUserIds.has(user.id)) {
-      absentRows.push({
-        name: user.name,
-        employeeId: user.employee_id || '—',
-      } as any);
+      if (punchInDate) {
+         punchInTime = punchInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+         
+         // isLate check
+         const punchTimeStr = punchInDate.getUTCHours().toString().padStart(2, '0') + ':' + punchInDate.getUTCMinutes().toString().padStart(2, '0');
+         if (punchTimeStr > configStartTime) {
+             statusText = 'Late';
+             statusColor = '#d97706'; // amber
+         }
+      }
+      if (punchOutDate) {
+         punchOutTime = punchOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+      
+      if (punchInDate && punchOutDate) {
+          const diffMs = punchOutDate.getTime() - punchInDate.getTime();
+          if (diffMs > 0) {
+             const hrs = Math.floor(diffMs / (1000 * 60 * 60));
+             const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+             workHours = `${hrs}h ${mins}m`;
+          }
+      }
+    } else if (onLeaveUserIds.has(user.id)) {
+      statusText = 'On Leave';
+      statusColor = '#2563eb'; // blue
+    } else if (recentlyActiveUserIds.has(user.id)) {
+      statusText = 'Absent';
+      statusColor = '#dc2626'; // red
+    } else {
+      statusText = 'Inactive';
+      statusColor = '#9ca3af'; // gray
     }
-  });
-
-  // Build HTML table
-  const dateFormatted = nowIST.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-  let tableHtml = `
-    <h3 style="color: #059669; margin: 0 0 12px 0; font-size: 15px;">✅ Present Staff (${totalPresent})</h3>
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px;">
-      <thead>
-        <tr style="background: #f0fdf4;">
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">#</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">Name</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">ID</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">Punch In</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">Punch Out</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #d1fae5; color: #065f46; font-weight: 700;">Location</th>
-        </tr>
-      </thead>
-      <tbody>`;
-
-  presentRows.forEach((u: any, i) => {
-    const bgColor = i % 2 === 0 ? '#ffffff' : '#f9fafb';
-    const lateTag = u.isLate ? ' <span style="color: #dc2626; font-size: 10px; font-weight: 700;">⚠ LATE</span>' : '';
+    
     tableHtml += `
-        <tr style="background: ${bgColor};">
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${i + 1}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; font-weight: 600; color: #111827;">${u.name}${lateTag}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${u.employeeId}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #059669; font-weight: 600;">${u.punchIn}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${u.punchOut}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280; font-size: 11px;">${u.location}</td>
+        <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#f9fafb'};">
+          <td style="border: 1px solid #e5e7eb; padding: 8px;">${i + 1}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 500; color: #111827;">${user.name || '—'}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${department}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchInTime}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchOutTime}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${workHours}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: ${statusColor}; font-weight: 600;">${statusText}</td>
         </tr>`;
   });
-  tableHtml += `</tbody></table>`;
 
-  if (absentRows.length > 0) {
-    tableHtml += `
-    <h3 style="color: #dc2626; margin: 0 0 12px 0; font-size: 15px;">❌ Absent Staff (${totalAbsent})</h3>
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-      <thead>
-        <tr style="background: #fef2f2;">
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #fecaca; color: #991b1b; font-weight: 700;">#</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #fecaca; color: #991b1b; font-weight: 700;">Name</th>
-          <th style="text-align: left; padding: 10px 12px; border-bottom: 2px solid #fecaca; color: #991b1b; font-weight: 700;">Employee ID</th>
-        </tr>
-      </thead>
-      <tbody>`;
-    absentRows.forEach((u: any, i) => {
-      tableHtml += `
-        <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#fef2f2'};">
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${i + 1}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; font-weight: 600; color: #111827;">${u.name}</td>
-          <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${u.employeeId}</td>
-        </tr>`;
-    });
-    tableHtml += `</tbody></table>`;
+  if (!tableHtml) {
+      tableHtml = `<tr><td colspan="7" style="border: 1px solid #e5e7eb; padding: 12px; text-align: center; color: #6b7280; font-style: italic;">No attendance data found for today.</td></tr>`;
   }
+
+  const dateFormatted = nowIST.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const generatedTime = nowIST.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  
+  const totalEmployees = filteredUsers.length;
+  const attendancePercentage = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100).toString() : '0';
 
   return {
     date: dateFormatted,
+    generatedTime,
+    totalEmployees: String(totalEmployees),
     totalPresent: String(totalPresent),
     totalAbsent: String(totalAbsent),
     lateCount: String(lateCount),
+    attendancePercentage,
     onLeaveCount: String(onLeaveCount),
     inactiveCount: String(inactiveCount),
     table: tableHtml,

@@ -2814,14 +2814,24 @@ export const api = {
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
 
+    let configStartTime = '09:30';
+    let filteredUsers: any[] = [];
+    let events: any[] = [];
+    let presentUserIds = new Set<string>();
+    let onLeaveTodayIds = new Set<string>();
+    let recentlyActiveUserIds = new Set<string>();
+    let userFirstPunches: Record<string, string> = {};
+
     try {
       // 1. Fetch settings for late threshold
       const settings = await api.getAttendanceSettings();
-      const configStartTime = settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
+      if (settings?.office?.fixedOfficeHours?.checkInTime) {
+        configStartTime = settings.office.fixedOfficeHours.checkInTime;
+      }
 
       // 2. Fetch all active users (excluding management)
       const users = await api.getUsers({ fetchAll: true });
-      const filteredUsers = users.filter((u: any) => u.role !== 'management');
+      filteredUsers = users.filter((u: any) => u.role !== 'management');
       const allUsers = filteredUsers;
 
       const totalEmployees = allUsers?.length || 0;
@@ -2831,10 +2841,11 @@ export const api = {
       const startOfTodayTs = startOfDay(now).toISOString();
       const endOfTodayTs = endOfDay(now).toISOString();
       
-      const [events, recentEvents] = await Promise.all([
+      const [fetchedEvents, recentEvents] = await Promise.all([
         api.getAllAttendanceEvents(startOfTodayTs, endOfTodayTs),
         api.getAllAttendanceEvents(subDays(now, 9).toISOString(), endOfTodayTs)
       ]);
+      events = fetchedEvents;
 
       // 4. Fetch today's leaves
       const leaves = await api.getLeaveRequests({ 
@@ -2845,27 +2856,26 @@ export const api = {
       const leavesData = Array.isArray(leaves) ? leaves : (leaves as any).data || [];
 
       // Calculate Inactive Status (No activity in last 10 days)
-      const recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+      recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
       inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
 
       // Calculate Present
       const todayEvents = events.filter(e => activeStaffIds.has(e.userId));
-      const presentUserIds = new Set(todayEvents.map(e => e.userId));
+      presentUserIds = new Set(todayEvents.map(e => e.userId));
       totalPresent = presentUserIds.size;
 
       // Calculate On Leave
-      const onLeaveTodayIds = new Set(
+      onLeaveTodayIds = new Set(
         leavesData
           .filter((l: any) => activeStaffIds.has(l.userId))
           .map((l: any) => l.userId)
       );
-      const onLeaveCount = onLeaveTodayIds.size;
+      onLeaveCount = onLeaveTodayIds.size;
 
       // Calculate Absent (excluding those on leave and inactive users)
       totalAbsent = Math.max(0, totalEmployees - totalPresent - onLeaveCount - inactiveCount);
 
       // Calculate Late
-      const userFirstPunches: Record<string, string> = {};
       todayEvents.forEach(e => {
         if (e.type === 'punch-in') {
           if (!userFirstPunches[e.userId] || new Date(e.timestamp) < new Date(userFirstPunches[e.userId])) {
@@ -2887,71 +2897,209 @@ export const api = {
       console.error('Failed to fetch data for test email summary:', dataErr);
     }
 
+    // Build report table rows
+    let tableHtml = '';
+    filteredUsers.forEach((user: any, i: number) => {
+        let statusText = 'Present';
+        let statusColor = '#16a34a'; // green
+        
+        let punchInTime = '—';
+        let punchOutTime = '—';
+        let workHours = '—';
+        
+        // department logic
+        let department = '—';
+        if (user.role) {
+          if (Array.isArray(user.role)) {
+             department = user.role[0]?.display_name || '—';
+          } else if (typeof user.role === 'object') {
+             department = user.role.display_name || '—';
+          } else {
+             department = String(user.role);
+          }
+        }
+        if (typeof department === 'string') {
+            const words = department.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1));
+            department = words.join(' ');
+        }
+        
+        if (presentUserIds.has(user.id)) {
+          const punchInTs = userFirstPunches[user.id];
+          const punchInDate = punchInTs ? new Date(punchInTs) : null;
+          
+          const lastPunchOut = events.filter((e: any) => e.userId === user.id && e.type === 'punch-out').pop();
+          const punchOutDate = lastPunchOut ? new Date(lastPunchOut.timestamp) : null;
+
+          if (punchInDate) {
+             punchInTime = punchInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+             
+             // isLate check
+             const punchTimeStr = punchInDate.getHours().toString().padStart(2, '0') + ':' + punchInDate.getMinutes().toString().padStart(2, '0');
+             if (punchTimeStr > configStartTime) {
+                 statusText = 'Late';
+                 statusColor = '#d97706'; // amber
+             }
+          }
+          if (punchOutDate) {
+             punchOutTime = punchOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          }
+          
+          if (punchInDate && punchOutDate) {
+              const diffMs = punchOutDate.getTime() - punchInDate.getTime();
+              if (diffMs > 0) {
+                 const hrs = Math.floor(diffMs / (1000 * 60 * 60));
+                 const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                 workHours = `${hrs}h ${mins}m`;
+              }
+          }
+        } else if (onLeaveTodayIds.has(user.id)) {
+          statusText = 'On Leave';
+          statusColor = '#2563eb'; // blue
+        } else if (recentlyActiveUserIds.has(user.id)) {
+          statusText = 'Absent';
+          statusColor = '#dc2626'; // red
+        } else {
+          statusText = 'Inactive';
+          statusColor = '#9ca3af'; // gray
+        }
+        
+        tableHtml += `
+        <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#f9fafb'};">
+          <td style="border: 1px solid #e5e7eb; padding: 8px;">${i + 1}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 500; color: #111827;">${user.name || '—'}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${department}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchInTime}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchOutTime}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${workHours}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 8px; color: ${statusColor}; font-weight: 600;">${statusText}</td>
+        </tr>`;
+    });
+
+    if (!tableHtml) {
+        tableHtml = `<tr><td colspan="7" style="border: 1px solid #e5e7eb; padding: 12px; text-align: center; color: #6b7280; font-style: italic;">No attendance data found for today.</td></tr>`;
+    }
+
     // Replace basic variables (using global regex to replace all occurrences)
-    const dateStr = now.toLocaleDateString();
+    const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const generatedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    // Fallback if not fetched correctly
+    const totalEmployees = filteredUsers ? filteredUsers.length : 0;
+    const attendancePercentage = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100).toString() : '0';
+
     const renderedSubject = subject
       .replace(/{date}/g, dateStr)
       .replace(/{subject}/g, `Test: ${rule.name}`);
 
-    // Premium 5-box template fallback
+    // Premium unified template fallback
     const premiumTemplate = `
-<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
-  <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">📊 Daily Attendance Report</h1>
-    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">{date}</p>
-  </div>
-  <div style="padding: 32px;">
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+<div style="font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: auto; border: 1px solid #d1d5db; background: #ffffff;">
+
+  <!-- Top Header -->
+  <div style="padding: 18px 24px; border-bottom: 3px solid #111827;">
+    <table style="width: 100%;">
       <tr>
-        <td style="width: 19%; padding: 16px 8px; background: #f0fdf4; border-radius: 10px; text-align: center; border: 1px solid #bbf7d0;">
-          <div style="font-size: 24px; font-weight: 800; color: #059669;">{totalPresent}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Present</div>
+        <td>
+          <h2 style="margin: 0; font-size: 20px; color: #111827;">PARADIGM FMS</h2>
+          <p style="margin: 2px 0 0; font-size: 12px; color: #6b7280;">Attendance Management System</p>
         </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fef2f2; border-radius: 10px; text-align: center; border: 1px solid #fecaca;">
-          <div style="font-size: 24px; font-weight: 800; color: #dc2626;">{totalAbsent}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Absent</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fffbeb; border-radius: 10px; text-align: center; border: 1px solid #fde68a;">
-          <div style="font-size: 24px; font-weight: 800; color: #d97706;">{lateCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Late</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #eff6ff; border-radius: 10px; text-align: center; border: 1px solid #bfdbfe;">
-          <div style="font-size: 24px; font-weight: 800; color: #2563eb;">{onLeaveCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">On Leave</div>
-        </td>
-        <td style="width: 5px;"></td>
-        <td style="width: 19%; padding: 16px 8px; background: #fdf2f8; border-radius: 10px; text-align: center; border: 1px solid #fbcfe8;">
-          <div style="font-size: 24px; font-weight: 800; color: #db2777;">{inactiveCount}</div>
-          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Inactive</div>
+        <td style="text-align: right;">
+          <p style="margin: 0; font-size: 12px;"><strong>Report Date:</strong> {date}</p>
+          <p style="margin: 2px 0 0; font-size: 12px;"><strong>Generated On:</strong> {generatedTime}</p>
         </td>
       </tr>
     </table>
-    {table}
   </div>
-  <div style="background: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
-    <p style="margin: 0; font-size: 11px; color: #9ca3af;">Automated report by Paradigm FMS • {date}</p>
+
+  <!-- Report Title -->
+  <div style="padding: 16px 24px; border-bottom: 1px solid #e5e7eb;">
+    <h3 style="margin: 0; font-size: 16px; color: #1f2937;">Daily Attendance Summary</h3>
   </div>
+
+  <!-- Summary KPI -->
+  <div style="padding: 16px 24px;">
+    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
+      <tr style="background: #f9fafb;">
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Total Employees</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Present</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Absent</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Late</th>
+        <th style="border: 1px solid #e5e7eb; padding: 10px;">Attendance %</th>
+      </tr>
+      <tr>
+        <td style="border: 1px solid #e5e7eb; padding: 10px;">{totalEmployees}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #16a34a; font-weight: bold;">{totalPresent}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #dc2626; font-weight: bold;">{totalAbsent}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #d97706; font-weight: bold;">{lateCount}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px;">{attendancePercentage}%</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Employee Details -->
+  <div style="padding: 16px 24px;">
+    <h4 style="margin: 0 0 10px; font-size: 14px; color: #111827;">Employee Attendance Details</h4>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
+      <thead>
+        <tr style="background: #f3f4f6;">
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">S.No</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Employee Name</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Department</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-In</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-Out</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Work Hours</th>
+          <th style="border: 1px solid #e5e7eb; padding: 8px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Notes -->
+  <div style="padding: 12px 24px; border-top: 1px solid #e5e7eb;">
+    <p style="margin: 0; font-size: 11px; color: #6b7280;">
+      * Late is calculated based on shift start time. Attendance percentage is calculated as (Present / Total Employees) × 100.
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+    <table style="width: 100%; font-size: 11px;">
+      <tr>
+        <td style="color: #9ca3af;">
+          Generated by <strong>Paradigm FMS</strong>
+        </td>
+        <td style="text-align: right; color: #9ca3af;">
+          Confidential Internal Report
+        </td>
+      </tr>
+    </table>
+  </div>
+
 </div>`;
 
     const templateHtml = template?.body_template || premiumTemplate;
     
-    // Force the 5-box premium template for Daily Attendance reports to ensure it's not empty
+    // Force the unified premium template for Daily Attendance reports to ensure it's not empty
     let useTemplate = templateHtml;
-    if (rule.report_type === 'attendance_daily' && (!useTemplate || !useTemplate.includes('{onLeaveCount}'))) {
+    if (rule.report_type === 'attendance_daily' && (!useTemplate || !useTemplate.includes('{attendancePercentage}'))) {
       useTemplate = premiumTemplate;
     }
 
     const renderedHtml = useTemplate
       .replace(/{date}/g, dateStr)
+      .replace(/{generatedTime}/g, generatedTime)
+      .replace(/{totalEmployees}/g, totalEmployees.toString())
       .replace(/{totalPresent}/g, totalPresent.toString())
       .replace(/{totalAbsent}/g, totalAbsent.toString())
       .replace(/{lateCount}/g, lateCount.toString())
+      .replace(/{attendancePercentage}/g, attendancePercentage.toString())
       .replace(/{onLeaveCount}/g, onLeaveCount.toString())
       .replace(/{inactiveCount}/g, inactiveCount.toString())
-      .replace(/{table}/g, '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
+      .replace(/{table}/g, tableHtml)
       .replace(/{message}/g, `This is a test email for the rule: ${rule.name}`)
       .replace(/{subject}/g, `Test: ${rule.name}`);
 
