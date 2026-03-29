@@ -2804,19 +2804,93 @@ export const api = {
     const subject = template?.subject_template || `Test: ${rule.name}`;
     const html = template?.body_template || `<div><h2>Test Email</h2><p>This is a test for rule: ${rule.name}</p></div>`;
 
-    // Replace basic variables
+    // --- FETCH ACTUAL DATA FOR TEST EMAIL ---
+    let totalPresent = 0;
+    let totalAbsent = 0;
+    let lateCount = 0;
     const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+
+    try {
+      // 1. Fetch settings for late threshold
+      const settings = await api.getAttendanceSettings();
+      const configStartTime = settings?.startTime || '09:30';
+
+      // 2. Fetch all active users (excluding management)
+      const { data: allUsers } = await supabase
+        .from('users')
+        .select('id, role')
+        .neq('role', 'management');
+
+      const totalEmployees = allUsers?.length || 0;
+      const activeStaffIds = new Set(allUsers?.map(u => u.id) || []);
+
+      // 3. Fetch today's events
+      const startOfTodayTs = startOfDay(now).toISOString();
+      const endOfTodayTs = endOfDay(now).toISOString();
+      const events = await api.getAllAttendanceEvents(startOfTodayTs, endOfTodayTs);
+
+      // 4. Fetch today's leaves
+      const leaves = await api.getLeaveRequests({ 
+        startDate: startOfTodayTs, 
+        endDate: endOfTodayTs, 
+        status: 'approved' 
+      });
+      const leavesData = Array.isArray(leaves) ? leaves : (leaves as any).data || [];
+
+      // Calculate Present
+      const todayEvents = events.filter(e => activeStaffIds.has(e.userId));
+      const presentUserIds = new Set(todayEvents.map(e => e.userId));
+      totalPresent = presentUserIds.size;
+
+      // Calculate On Leave
+      const onLeaveTodayIds = new Set(
+        leavesData
+          .filter((l: any) => activeStaffIds.has(l.userId))
+          .map((l: any) => l.userId)
+      );
+      const onLeaveCount = onLeaveTodayIds.size;
+
+      // Calculate Absent
+      totalAbsent = Math.max(0, totalEmployees - totalPresent - onLeaveCount);
+
+      // Calculate Late
+      const userFirstPunches: Record<string, string> = {};
+      todayEvents.forEach(e => {
+        if (e.type === 'punch-in') {
+          if (!userFirstPunches[e.userId] || new Date(e.timestamp) < new Date(userFirstPunches[e.userId])) {
+            userFirstPunches[e.userId] = e.timestamp;
+          }
+        }
+      });
+
+      Object.values(userFirstPunches).forEach(punchTs => {
+        const punchTime = format(new Date(punchTs), 'HH:mm');
+        const [pHour, pMin] = punchTime.split(':').map(Number);
+        const [sHour, sMin] = configStartTime.split(':').map(Number);
+        if (pHour > sHour || (pHour === sHour && pMin > sMin)) {
+          lateCount++;
+        }
+      });
+
+    } catch (dataErr) {
+      console.error('Failed to fetch data for test email summary:', dataErr);
+    }
+
+    // Replace basic variables (using global regex to replace all occurrences)
+    const dateStr = now.toLocaleDateString();
     const renderedSubject = subject
-      .replace('{date}', now.toLocaleDateString())
-      .replace('{subject}', `Test: ${rule.name}`);
+      .replace(/{date}/g, dateStr)
+      .replace(/{subject}/g, `Test: ${rule.name}`);
+
     const renderedHtml = html
-      .replace('{date}', now.toLocaleDateString())
-      .replace('{totalPresent}', '—')
-      .replace('{totalAbsent}', '—')
-      .replace('{lateCount}', '—')
-      .replace('{table}', '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
-      .replace('{message}', `This is a test email for the rule: ${rule.name}`)
-      .replace('{subject}', `Test: ${rule.name}`);
+      .replace(/{date}/g, dateStr)
+      .replace(/{totalPresent}/g, totalPresent.toString())
+      .replace(/{totalAbsent}/g, totalAbsent.toString())
+      .replace(/{lateCount}/g, lateCount.toString())
+      .replace(/{table}/g, '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
+      .replace(/{message}/g, `This is a test email for the rule: ${rule.name}`)
+      .replace(/{subject}/g, `Test: ${rule.name}`);
 
     // Fetch config to pass along using existing helper
     const config = await api.getEmailConfig();
