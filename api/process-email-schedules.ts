@@ -115,8 +115,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Render template
+      const premiumTemplate = `
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+  <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">📊 Daily Attendance Report</h1>
+    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">{date}</p>
+  </div>
+  <div style="padding: 32px;">
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+      <tr>
+        <td style="width: 19%; padding: 16px 8px; background: #f0fdf4; border-radius: 10px; text-align: center; border: 1px solid #bbf7d0;">
+          <div style="font-size: 24px; font-weight: 800; color: #059669;">{totalPresent}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Present</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fef2f2; border-radius: 10px; text-align: center; border: 1px solid #fecaca;">
+          <div style="font-size: 24px; font-weight: 800; color: #dc2626;">{totalAbsent}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Absent</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fffbeb; border-radius: 10px; text-align: center; border: 1px solid #fde68a;">
+          <div style="font-size: 24px; font-weight: 800; color: #d97706;">{lateCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Late</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #eff6ff; border-radius: 10px; text-align: center; border: 1px solid #bfdbfe;">
+          <div style="font-size: 24px; font-weight: 800; color: #2563eb;">{onLeaveCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">On Leave</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fdf2f8; border-radius: 10px; text-align: center; border: 1px solid #fbcfe8;">
+          <div style="font-size: 24px; font-weight: 800; color: #db2777;">{inactiveCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Inactive</div>
+        </td>
+      </tr>
+    </table>
+    {table}
+  </div>
+  <div style="background: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+    <p style="margin: 0; font-size: 11px; color: #9ca3af;">Automated report by Paradigm FMS • {date}</p>
+  </div>
+</div>`;
+
       let subject = template?.subject_template || rule.name;
-      let html = template?.body_template || `<div><h2>${rule.name}</h2><p>Automated report</p></div>`;
+      let html = template?.body_template || premiumTemplate;
 
       for (const [key, value] of Object.entries(reportData)) {
         subject = subject.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
@@ -244,85 +286,118 @@ async function generateDailyAttendanceReport(
   nowIST: Date,
   istOffset: number,
   todayStr: string
-): Promise<Record<string, string>> {
+): Promise<Record<string, any>> {
   // Calculate IST midnight → UTC for DB query
   const midnightIST = new Date(nowIST);
   midnightIST.setUTCHours(0, 0, 0, 0);
   const startOfTodayUTC = new Date(midnightIST.getTime() - istOffset);
 
-  // Get all active users
-  const { data: allUsers } = await supabase
+  // 1. Fetch settings for late threshold
+  const { data: settingsData } = await supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single();
+  const attendanceSettings = settingsData?.attendance_settings;
+  const configStartTime = attendanceSettings?.office?.fixedOfficeHours?.checkInTime || '09:30';
+
+  // 2. Get all active users (excluding management)
+  const { data: allUsersRaw } = await supabase
     .from('users')
-    .select('id, name, email, role_id, employee_id')
+    .select('id, name, email, employee_id, roles(display_name)')
     .eq('is_active', true)
     .order('name');
 
-  // Get today's attendance events
+  const filteredUsers = (allUsersRaw || []).filter((u: any) => {
+    const roleName = (Array.isArray(u.roles) ? u.roles[0]?.display_name : u.roles?.display_name) || '';
+    return roleName.toLowerCase() !== 'management';
+  });
+
+  const activeStaffIds = new Set(filteredUsers.map((u: any) => u.id));
+
+  // 3. Get attendance events (Today + 10 day lookback for inactive)
+  const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
   const { data: events } = await supabase
     .from('attendance_events')
     .select('user_id, type, timestamp, location_name')
-    .gt('timestamp', startOfTodayUTC.toISOString())
+    .gte('timestamp', tenDaysAgoUTC.toISOString())
     .order('timestamp', { ascending: true });
 
-  // Process: find who punched in today
-  const userEventsMap = new Map<string, any[]>();
-  (events || []).forEach((e: any) => {
-    if (!userEventsMap.has(e.user_id)) userEventsMap.set(e.user_id, []);
-    userEventsMap.get(e.user_id)!.push(e);
-  });
+  const todayEvents = (events || []).filter((e: any) => e.timestamp >= startOfTodayUTC.toISOString());
 
-  const presentUsers: any[] = [];
-  const absentUsers: any[] = [];
-  let lateCount = 0;
+  // 4. Get today's approved leaves
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('user_id')
+    .eq('status', 'approved')
+    .lte('start_date', todayStr)
+    .gte('end_date', todayStr);
 
-  (allUsers || []).forEach((user: any) => {
-    const userEvents = userEventsMap.get(user.id);
-    if (userEvents && userEvents.length > 0) {
-      const firstPunchIn = userEvents.find((e: any) => e.type === 'punch-in');
-      const lastEvent = userEvents[userEvents.length - 1];
-      
-      let punchInTime = '—';
-      let isLate = false;
-      if (firstPunchIn) {
-        const punchIST = new Date(new Date(firstPunchIn.timestamp).getTime() + istOffset);
-        punchInTime = punchIST.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-        // Consider late if after 9:30 AM
-        if (punchIST.getUTCHours() > 9 || (punchIST.getUTCHours() === 9 && punchIST.getUTCMinutes() > 30)) {
-          isLate = true;
-          lateCount++;
+  const onLeaveUserIds = new Set((leaves || []).map((l: any) => l.user_id));
+
+  // Calculations
+  const userFirstPunches: Record<string, string> = {};
+  const presentUserIds = new Set<string>();
+  todayEvents.forEach((e: any) => {
+    if (activeStaffIds.has(e.user_id)) {
+      presentUserIds.add(e.user_id);
+      if (e.type === 'punch-in') {
+        if (!userFirstPunches[e.user_id] || new Date(e.timestamp) < new Date(userFirstPunches[e.user_id])) {
+          userFirstPunches[e.user_id] = e.timestamp;
         }
       }
+    }
+  });
 
-      let punchOutTime = '—';
-      const lastPunchOut = [...userEvents].reverse().find((e: any) => e.type === 'punch-out');
-      if (lastPunchOut) {
-        const outIST = new Date(new Date(lastPunchOut.timestamp).getTime() + istOffset);
-        punchOutTime = outIST.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-      }
+  let lateCount = 0;
+  Object.values(userFirstPunches).forEach(punchTs => {
+    const punchIST = new Date(new Date(punchTs).getTime() + istOffset);
+    const punchTimeStr = punchIST.getUTCHours().toString().padStart(2, '0') + ':' + punchIST.getUTCMinutes().toString().padStart(2, '0');
+    if (punchTimeStr > configStartTime) {
+      lateCount++;
+    }
+  });
 
-      presentUsers.push({
+  const recentlyActiveUserIds = new Set((events || []).filter((e: any) => activeStaffIds.has(e.user_id)).map((e: any) => e.user_id));
+  const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
+  const totalPresent = presentUserIds.size;
+  const onLeaveCount = Array.from(onLeaveUserIds).filter(id => activeStaffIds.has(id)).length;
+  const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
+
+  // Build report table rows
+  const presentRows: string[] = [];
+  const absentRows: string[] = [];
+
+  filteredUsers.forEach((user: any) => {
+    if (presentUserIds.has(user.id)) {
+      const punchInTs = userFirstPunches[user.id];
+      const punchInTime = punchInTs 
+        ? new Date(new Date(punchInTs).getTime() + istOffset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+        : '—';
+      
+      const lastPunchOut = todayEvents.filter((e: any) => e.user_id === user.id && e.type === 'punch-out').pop();
+      const punchOutTime = lastPunchOut
+        ? new Date(new Date(lastPunchOut.timestamp).getTime() + istOffset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+        : '—';
+
+      const isLate = punchInTs && (new Date(new Date(punchInTs).getTime() + istOffset).getUTCHours().toString().padStart(2, '0') + ':' + new Date(new Date(punchInTs).getTime() + istOffset).getUTCMinutes().toString().padStart(2, '0')) > configStartTime;
+
+      presentRows.push({
         name: user.name,
         employeeId: user.employee_id || '—',
         punchIn: punchInTime,
         punchOut: punchOutTime,
-        location: firstPunchIn?.location_name || '—',
+        location: todayEvents.find((e: any) => e.user_id === user.id)?.location_name || '—',
         isLate,
-      });
-    } else {
-      absentUsers.push({
+      } as any);
+    } else if (!onLeaveUserIds.has(user.id) && recentlyActiveUserIds.has(user.id)) {
+      absentRows.push({
         name: user.name,
         employeeId: user.employee_id || '—',
-      });
+      } as any);
     }
   });
-
-  const totalPresent = presentUsers.length;
-  const totalAbsent = absentUsers.length;
 
   // Build HTML table
   const dateFormatted = nowIST.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  let table = `
+  let tableHtml = `
     <h3 style="color: #059669; margin: 0 0 12px 0; font-size: 15px;">✅ Present Staff (${totalPresent})</h3>
     <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px;">
       <thead>
@@ -337,10 +412,10 @@ async function generateDailyAttendanceReport(
       </thead>
       <tbody>`;
 
-  presentUsers.forEach((u, i) => {
+  presentRows.forEach((u: any, i) => {
     const bgColor = i % 2 === 0 ? '#ffffff' : '#f9fafb';
     const lateTag = u.isLate ? ' <span style="color: #dc2626; font-size: 10px; font-weight: 700;">⚠ LATE</span>' : '';
-    table += `
+    tableHtml += `
         <tr style="background: ${bgColor};">
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${i + 1}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; font-weight: 600; color: #111827;">${u.name}${lateTag}</td>
@@ -350,12 +425,10 @@ async function generateDailyAttendanceReport(
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280; font-size: 11px;">${u.location}</td>
         </tr>`;
   });
+  tableHtml += `</tbody></table>`;
 
-  table += `</tbody></table>`;
-
-  // Absent staff section
-  if (absentUsers.length > 0) {
-    table += `
+  if (absentRows.length > 0) {
+    tableHtml += `
     <h3 style="color: #dc2626; margin: 0 0 12px 0; font-size: 15px;">❌ Absent Staff (${totalAbsent})</h3>
     <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
       <thead>
@@ -366,18 +439,15 @@ async function generateDailyAttendanceReport(
         </tr>
       </thead>
       <tbody>`;
-
-    absentUsers.forEach((u, i) => {
-      const bgColor = i % 2 === 0 ? '#ffffff' : '#fef2f2';
-      table += `
-        <tr style="background: ${bgColor};">
+    absentRows.forEach((u: any, i) => {
+      tableHtml += `
+        <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#fef2f2'};">
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${i + 1}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; font-weight: 600; color: #111827;">${u.name}</td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #6b7280;">${u.employeeId}</td>
         </tr>`;
     });
-
-    table += `</tbody></table>`;
+    tableHtml += `</tbody></table>`;
   }
 
   return {
@@ -385,9 +455,11 @@ async function generateDailyAttendanceReport(
     totalPresent: String(totalPresent),
     totalAbsent: String(totalAbsent),
     lateCount: String(lateCount),
-    table,
+    onLeaveCount: String(onLeaveCount),
+    inactiveCount: String(inactiveCount),
+    table: tableHtml,
     subject: `Daily Attendance Report`,
-    message: `Today's attendance: ${totalPresent} present, ${totalAbsent} absent, ${lateCount} late arrivals.`,
+    message: `Attendance: ${totalPresent} Present, ${totalAbsent} Absent, ${onLeaveCount} On Leave, ${inactiveCount} Inactive.`,
   };
 }
 

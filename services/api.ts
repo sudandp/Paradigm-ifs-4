@@ -2810,6 +2810,7 @@ export const api = {
     let totalAbsent = 0;
     let lateCount = 0;
     let inactiveCount = 0;
+    let onLeaveCount = 0;
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
 
@@ -2892,11 +2893,57 @@ export const api = {
       .replace(/{date}/g, dateStr)
       .replace(/{subject}/g, `Test: ${rule.name}`);
 
-    const renderedHtml = html
+    // Premium 5-box template fallback
+    const premiumTemplate = `
+<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+  <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">📊 Daily Attendance Report</h1>
+    <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">{date}</p>
+  </div>
+  <div style="padding: 32px;">
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+      <tr>
+        <td style="width: 19%; padding: 16px 8px; background: #f0fdf4; border-radius: 10px; text-align: center; border: 1px solid #bbf7d0;">
+          <div style="font-size: 24px; font-weight: 800; color: #059669;">{totalPresent}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Present</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fef2f2; border-radius: 10px; text-align: center; border: 1px solid #fecaca;">
+          <div style="font-size: 24px; font-weight: 800; color: #dc2626;">{totalAbsent}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Absent</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fffbeb; border-radius: 10px; text-align: center; border: 1px solid #fde68a;">
+          <div style="font-size: 24px; font-weight: 800; color: #d97706;">{lateCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Late</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #eff6ff; border-radius: 10px; text-align: center; border: 1px solid #bfdbfe;">
+          <div style="font-size: 24px; font-weight: 800; color: #2563eb;">{onLeaveCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">On Leave</div>
+        </td>
+        <td style="width: 5px;"></td>
+        <td style="width: 19%; padding: 16px 8px; background: #fdf2f8; border-radius: 10px; text-align: center; border: 1px solid #fbcfe8;">
+          <div style="font-size: 24px; font-weight: 800; color: #db2777;">{inactiveCount}</div>
+          <div style="font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase;">Inactive</div>
+        </td>
+      </tr>
+    </table>
+    {table}
+  </div>
+  <div style="background: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+    <p style="margin: 0; font-size: 11px; color: #9ca3af;">Automated report by Paradigm FMS • {date}</p>
+  </div>
+</div>`;
+
+    const templateHtml = template?.body_template || premiumTemplate;
+
+    const renderedHtml = templateHtml
       .replace(/{date}/g, dateStr)
       .replace(/{totalPresent}/g, totalPresent.toString())
       .replace(/{totalAbsent}/g, totalAbsent.toString())
       .replace(/{lateCount}/g, lateCount.toString())
+      .replace(/{onLeaveCount}/g, onLeaveCount.toString())
       .replace(/{inactiveCount}/g, inactiveCount.toString())
       .replace(/{table}/g, '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
       .replace(/{message}/g, `This is a test email for the rule: ${rule.name}`)
