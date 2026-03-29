@@ -1,6 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
+import { format, startOfDay, endOfDay, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
+
+// Helper: Stub frontend-only functions to prevent build failures
+const dispatchNotificationFromRules = async (...args: any[]) => console.log('Notification dispatch stubbed in backend', ...args);
+const calculateSiteTravelTime = (events: any[]) => ({ totalHours: 0, siteHours: 0, travelHours: 0, sitePercentage: 0, travelPercentage: 0, siteVisits: 0 });
+const validateFieldStaffAttendance = (breakdown: any, rules: any) => ({ isValid: true, violations: [] });
+const getProxyUrl = (url: string) => url;
+const toSnakeCase = (obj: any) => obj;
+const toCamelCase = (obj: any) => obj;
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -79,7 +88,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(now.getTime() + istOffset);
-    const todayStr = nowIST.toISOString().split('T')[0]; // YYYY-MM-DD in IST
 
     let totalSent = 0;
 
@@ -88,14 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Check if should run now (for scheduled type)
       if (rule.trigger_type === 'scheduled') {
-        const config = rule.schedule_config || {};
-        const targetTime = config.time || '21:00';
-        const currentTime = nowIST.getUTCHours().toString().padStart(2, '0') + ':' + nowIST.getUTCMinutes().toString().padStart(2, '0');
-        
         const isForceRun = force || ruleId === rule.id;
         const shouldRun = shouldRunSchedule(rule, nowIST);
-        
-        console.log(`  → Time check: Scheduled for ${targetTime}, currently ${currentTime} (Force: ${isForceRun})`);
         
         if (!shouldRun && !isForceRun) {
           console.log(`  → Skipped (trigger time hasn't reached yet today)`);
@@ -104,11 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Check if already sent today
         if (rule.last_sent_at && !isForceRun) {
-          const lastSentIST = new Date(new Date(rule.last_sent_at).getTime() + istOffset);
-          const lastSentDate = lastSentIST.toISOString().split('T')[0];
-          // If already sent today, skip it (applies to daily, weekly, and monthly)
-          if (lastSentDate === todayStr) {
-            console.log(`  → Skipped (already sent today on ${lastSentDate})`);
+          const lastSentDate = new Date(rule.last_sent_at);
+          if (isSameDay(lastSentDate, nowIST)) {
+            console.log(`  → Skipped (already sent today)`);
             continue;
           }
         }
@@ -122,13 +122,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Generate report data
       let reportData: Record<string, string> = {
-        date: nowIST.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        date: format(nowIST, 'EEEE, MMMM do, yyyy'),
         subject: rule.name,
         message: '',
       };
 
       if (rule.report_type === 'attendance_daily') {
-        reportData = await generateDailyAttendanceReport(supabase, nowIST, istOffset, todayStr);
+        reportData = await generateDailyAttendanceReport(supabase, nowIST, istOffset);
       } else if (rule.report_type === 'attendance_monthly') {
         reportData = await generateMonthlyAttendanceReport(supabase, nowIST, istOffset);
       } else if (rule.report_type === 'document_expiry') {
@@ -145,8 +145,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Render template
       const premiumTemplate = `
 <div style="font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: auto; border: 1px solid #d1d5db; background: #ffffff;">
-
-  <!-- Top Header -->
   <div style="padding: 18px 24px; border-bottom: 3px solid #111827;">
     <table style="width: 100%;">
       <tr>
@@ -161,19 +159,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </tr>
     </table>
   </div>
-
-  <!-- Greeting Message -->
   <div style="padding: 24px 24px 8px;">
     ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
     ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
   </div>
-
-  <!-- Report Title -->
   <div style="padding: 16px 24px; border-bottom: 1px solid #e5e7eb;">
     <h3 style="margin: 0; font-size: 16px; color: #1f2937;">Daily Attendance Summary</h3>
   </div>
-
-  <!-- Summary KPI -->
   <div style="padding: 16px 24px;">
     <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
       <tr style="background: #f9fafb;">
@@ -192,11 +184,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </tr>
     </table>
   </div>
-
-  <!-- Employee Details -->
   <div style="padding: 16px 24px;">
     <h4 style="margin: 0 0 10px; font-size: 14px; color: #111827;">Employee Attendance Details</h4>
-
     <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
       <thead>
         <tr style="background: #f3f4f6;">
@@ -214,55 +203,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </tbody>
     </table>
   </div>
-
-  <!-- Notes -->
   <div style="padding: 12px 24px; border-top: 1px solid #e5e7eb;">
     <p style="margin: 0; font-size: 11px; color: #6b7280;">
       * Late is calculated based on shift start time. Attendance percentage is calculated as (Present / Total Employees) × 100.
     </p>
   </div>
-
-  <!-- Footer -->
   <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
     <table style="width: 100%; font-size: 11px;">
       <tr>
-        <td style="color: #9ca3af;">
-          Generated by <strong>Paradigm FMS</strong>
-        </td>
-        <td style="text-align: right; color: #9ca3af;">
-          Confidential Internal Report
-        </td>
+        <td style="color: #9ca3af;">Generated by <strong>Paradigm FMS</strong></td>
+        <td style="text-align: right; color: #9ca3af;">Confidential Internal Report</td>
       </tr>
     </table>
   </div>
-
 </div>`;
 
       let subject = template?.subject_template || rule.name;
-      
       let html = template?.body_template || premiumTemplate;
-      if (rule.report_type === 'attendance_daily') {
-         if (!html || !html.includes('{attendancePercentage}')) {
-             html = premiumTemplate;
-         } else if (!html.includes('<!-- Greeting Message -->') && headerText) {
-             html = html.replace('<!-- Report Title -->', `
-  <!-- Greeting Message -->
-  <div style="padding: 24px 24px 8px;">
-    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
-    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
-  </div>
 
-  <!-- Report Title -->`);
-         }
-      }
-
-      // Evaluate basic ternary conditionals e.g. {attendancePercentage > 90 ? "Yes" : "No"}  
       const evaluateConditionals = (str: string) => {
           return str.replace(/\{([a-zA-Z0-9_]+)\s*([><]=?|==|!=)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, 
             (match, varName, operator, val2Str, trueStr, falseStr) => {
               const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === varName.toLowerCase());
-              if (!dataKey) return match; // fallback if variable not found
-
+              if (!dataKey) return match;
               const val1 = parseFloat(reportData[dataKey]);
               const val2 = parseFloat(val2Str);
               let condition = false;
@@ -284,16 +247,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         html = html.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
       }
 
-      // Resolve recipients
       const emails = await resolveRecipients(supabase, rule);
-      if (emails.length === 0) {
-        console.log(`  → No recipients found`);
-        continue;
-      }
+      if (emails.length === 0) continue;
 
-      console.log(`  → Sending to ${emails.length} recipients: ${emails.join(', ')}`);
-
-      // Send email
       try {
         await transporter.sendMail({
           from: fromAddress,
@@ -303,7 +259,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           html,
         });
 
-        // Log successes
         for (const email of emails) {
           await supabase.from('email_logs').insert({
             rule_id: rule.id,
@@ -314,16 +269,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        // Update last_sent_at
         await supabase.from('email_schedule_rules')
           .update({ last_sent_at: now.toISOString() })
           .eq('id', rule.id);
 
         totalSent += emails.length;
-        console.log(`  ✅ Sent successfully`);
-
       } catch (mailErr: any) {
-        console.error(`  ❌ Failed:`, mailErr.message);
         for (const email of emails) {
           await supabase.from('email_logs').insert({
             rule_id: rule.id,
@@ -337,96 +288,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      processed: totalSent, 
-      timestamp: now.toISOString(),
-      triggeredFor: ruleId ? `Rule ${ruleId}` : 'Cron Polling'
-    });
-
+    return res.status(200).json({ success: true, processed: totalSent });
   } catch (error: any) {
-    console.error('[process-email-schedules] Error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
 
-// ═══ Schedule Timing Check ═══════════════════════════════════════════════
-
 function shouldRunSchedule(rule: any, nowIST: Date): boolean {
   const config = rule.schedule_config || {};
   const [hour, minute] = (config.time || '21:00').split(':').map(Number);
-
   const currentHour = nowIST.getUTCHours();
   const currentMinute = nowIST.getUTCMinutes();
-
-  // Check if we're past the scheduled time for today
   if (currentHour < hour || (currentHour === hour && currentMinute < minute)) return false;
-  
-  // Note: We removed the "Too late (more than 1 hour past)" check to implement "catch-up mode".
-  // If the cron schedule was delayed, it will still send as long as it hasn't sent today.
-
-  // Check frequency
   const freq = config.frequency || 'daily';
   const dayOfWeek = nowIST.getUTCDay();
   const dayOfMonth = nowIST.getUTCDate();
-
   if (freq === 'weekly' && config.dayOfWeek !== undefined && config.dayOfWeek !== dayOfWeek) return false;
   if (freq === 'monthly' && config.dayOfMonth !== undefined && config.dayOfMonth !== dayOfMonth) return false;
-
   return true;
 }
 
-// ═══ Recipient Resolution ════════════════════════════════════════════════
-
 async function resolveRecipients(supabase: any, rule: any): Promise<string[]> {
-  const emails: string[] = [];
-
-  if (rule.recipient_type === 'custom_emails') {
-    return rule.recipient_emails || [];
-  }
-
+  if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
   if (rule.recipient_type === 'role') {
-    const { data: users } = await supabase
-      .from('users')
-      .select('email')
-      .in('role_id', rule.recipient_roles || [])
-      .eq('is_active', true);
+    const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_active', true);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
-
   if (rule.recipient_type === 'users') {
-    const { data: users } = await supabase
-      .from('users')
-      .select('email')
-      .in('id', rule.recipient_user_ids || []);
+    const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
-
-  return emails;
+  return [];
 }
 
-// ═══ Daily Attendance Report Generator ═══════════════════════════════════
+async function generateDailyAttendanceReport(supabase: any, nowIST: Date, istOffset: number): Promise<Record<string, any>> {
+  const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - istOffset));
+  const todayStr = format(nowIST, 'yyyy-MM-dd');
 
-async function generateDailyAttendanceReport(
-  supabase: any,
-  nowIST: Date,
-  istOffset: number,
-  todayStr: string
-): Promise<Record<string, any>> {
-  // Calculate IST midnight → UTC for DB query
-  const midnightIST = new Date(nowIST);
-  midnightIST.setUTCHours(0, 0, 0, 0);
-  const startOfTodayUTC = new Date(midnightIST.getTime() - istOffset);
-
-  // 1. Fetch settings for late threshold
+  // 1. Fetch settings and all active business users
   const { data: settingsData } = await supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single();
-  const attendanceSettings = settingsData?.attendance_settings;
-  const configStartTime = attendanceSettings?.office?.fixedOfficeHours?.checkInTime || '09:30';
-
-  // 2. Get all active users (excluding management)
-  const { data: allUsersRaw } = await supabase
-    .from('users')
-    .select('id, name, email, employee_id, role:roles(display_name)')
+  const configStartTime = settingsData?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
+  
+  const { data: allUsersRaw } = await supabase.from('users')
+    .select('id, name, employee_id, role:roles(display_name)')
     .eq('is_active', true)
     .order('name');
 
@@ -434,22 +338,20 @@ async function generateDailyAttendanceReport(
     const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
     return roleName.toLowerCase() !== 'management';
   });
-
   const activeStaffIds = new Set(filteredUsers.map((u: any) => u.id));
 
-  // 3. Get attendance events (Today + 10 day lookback for inactive)
+  // 2. Fetch events (Today + 10 day lookback for inactivity)
   const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
-  const { data: events } = await supabase
-    .from('attendance_events')
-    .select('user_id, type, timestamp, location_name')
+  const { data: events } = await supabase.from('attendance_events')
+    .select('user_id, type, timestamp')
     .gte('timestamp', tenDaysAgoUTC.toISOString())
     .order('timestamp', { ascending: true });
 
-  const todayEvents = (events || []).filter((e: any) => e.timestamp >= startOfTodayUTC.toISOString());
+  const todayEvents = (events || []).filter((e: any) => e.timestamp >= startOfTodayUTC.toISOString() && activeStaffIds.has(e.user_id));
+  const tenDayEvents = (events || []).filter((e: any) => activeStaffIds.has(e.user_id));
 
-  // 4. Get today's approved leaves
-  const { data: leaves } = await supabase
-    .from('leave_requests')
+  // 3. Fetch today's approved leaves
+  const { data: leaves } = await supabase.from('leave_requests')
     .select('user_id')
     .eq('status', 'approved')
     .lte('start_date', todayStr)
@@ -457,60 +359,39 @@ async function generateDailyAttendanceReport(
 
   const onLeaveUserIds = new Set((leaves || []).map((l: any) => l.user_id));
 
-  // Calculations
+  // 4. Calculations
   const userFirstPunches: Record<string, string> = {};
   const presentUserIds = new Set<string>();
   todayEvents.forEach((e: any) => {
-    if (activeStaffIds.has(e.user_id)) {
-      presentUserIds.add(e.user_id);
-      if (e.type === 'punch-in') {
-        if (!userFirstPunches[e.user_id] || new Date(e.timestamp) < new Date(userFirstPunches[e.user_id])) {
-          userFirstPunches[e.user_id] = e.timestamp;
-        }
-      }
+    presentUserIds.add(e.user_id);
+    if (e.type === 'punch-in' && (!userFirstPunches[e.user_id] || new Date(e.timestamp) < new Date(userFirstPunches[e.user_id]))) {
+      userFirstPunches[e.user_id] = e.timestamp;
     }
   });
 
   let lateCount = 0;
   Object.values(userFirstPunches).forEach(punchTs => {
     const punchIST = new Date(new Date(punchTs).getTime() + istOffset);
-    const punchTimeStr = punchIST.getUTCHours().toString().padStart(2, '0') + ':' + punchIST.getUTCMinutes().toString().padStart(2, '0');
-    if (punchTimeStr > configStartTime) {
-      lateCount++;
-    }
+    if (format(punchIST, 'HH:mm') > configStartTime) lateCount++;
   });
 
-  const recentlyActiveUserIds = new Set((events || []).filter((e: any) => activeStaffIds.has(e.user_id)).map((e: any) => e.user_id));
-  const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
+  const recentlyActiveUserIds = new Set(tenDayEvents.map((e: any) => e.user_id));
   const totalPresent = presentUserIds.size;
+  const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
   const onLeaveCount = Array.from(onLeaveUserIds).filter(id => activeStaffIds.has(id)).length;
   const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
-
-  // Build report table rows
   let tableHtml = '';
   filteredUsers.forEach((user: any, i: number) => {
+    let department = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
+    if (department.includes('_')) {
+        department = department.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+
     let statusText = 'Present';
     let statusColor = '#16a34a'; // green
-    
     let punchInTime = '—';
     let punchOutTime = '—';
     let workHours = '—';
-    
-    // department logic
-    let department = '—';
-    if (user.role) {
-      if (Array.isArray(user.role)) {
-         department = user.role[0]?.display_name || '—';
-      } else if (typeof user.role === 'object') {
-         department = user.role.display_name || '—';
-      } else {
-         department = String(user.role);
-      }
-    }
-    if (typeof department === 'string') {
-        const words = department.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1));
-        department = words.join(' ');
-    }
     
     if (presentUserIds.has(user.id)) {
       const punchInTs = userFirstPunches[user.id];
@@ -520,17 +401,14 @@ async function generateDailyAttendanceReport(
       const punchOutDate = lastPunchOut ? new Date(new Date(lastPunchOut.timestamp).getTime() + istOffset) : null;
 
       if (punchInDate) {
-         punchInTime = punchInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-         
-         // isLate check
-         const punchTimeStr = punchInDate.getUTCHours().toString().padStart(2, '0') + ':' + punchInDate.getUTCMinutes().toString().padStart(2, '0');
-         if (punchTimeStr > configStartTime) {
+         punchInTime = format(punchInDate, 'hh:mm a');
+         if (format(punchInDate, 'HH:mm') > configStartTime) {
              statusText = 'Late';
              statusColor = '#d97706'; // amber
          }
       }
       if (punchOutDate) {
-         punchOutTime = punchOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+         punchOutTime = format(punchOutDate, 'hh:mm a');
       }
       
       if (punchInDate && punchOutDate) {
@@ -568,8 +446,8 @@ async function generateDailyAttendanceReport(
       tableHtml = `<tr><td colspan="7" style="border: 1px solid #e5e7eb; padding: 12px; text-align: center; color: #6b7280; font-style: italic;">No attendance data found for today.</td></tr>`;
   }
 
-  const dateFormatted = nowIST.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const generatedTime = nowIST.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dateFormatted = format(nowIST, 'EEEE, MMMM do, yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
   
   const totalEmployees = filteredUsers.length;
   const attendancePercentage = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100).toString() : '0';
@@ -618,8 +496,8 @@ async function generateMonthlyAttendanceReport(
     .lte('timestamp', endOfRangeUTC.toISOString())
     .order('timestamp', { ascending: true });
 
-  const monthName = nowIST.toLocaleString('en-IN', { month: 'long' });
-  const dateFormatted = nowIST.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+  const monthName = format(nowIST, 'MMMM');
+  const dateFormatted = format(nowIST, 'MMMM do, yyyy');
 
   // Group events by user and by day
   const userStats = new Map<string, { presentDays: number, lateCount: number, absentDays: number }>();
@@ -718,7 +596,7 @@ async function generateDocumentExpiryReport(supabase: any, nowIST: Date): Promis
         expiringSoon.push({
           name: entity.name,
           doc: 'PSARA License',
-          expiry: expiry.toLocaleDateString('en-IN'),
+          expiry: format(expiry, 'dd/MM/yyyy'),
           days
         });
       }
@@ -727,7 +605,7 @@ async function generateDocumentExpiryReport(supabase: any, nowIST: Date): Promis
 
   if (expiringSoon.length === 0) {
     return {
-      date: nowIST.toLocaleDateString('en-IN'),
+      date: format(nowIST, 'dd/MM/yyyy'),
       table: '<p style="color: #059669; font-weight: 600;">✅ No documents expiring in the next 30 days.</p>',
       entityName: 'N/A',
       documentType: 'N/A',
@@ -762,7 +640,7 @@ async function generateDocumentExpiryReport(supabase: any, nowIST: Date): Promis
   table += `</tbody></table>`;
 
   return {
-    date: nowIST.toLocaleDateString('en-IN'),
+    date: format(nowIST, 'dd/MM/yyyy'),
     table,
     entityName: expiringSoon[0].name,
     documentType: expiringSoon[0].doc,
