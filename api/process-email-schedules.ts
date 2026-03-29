@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 import { format, startOfDay, endOfDay, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 
 // Helper: Stub frontend-only functions to prevent build failures
