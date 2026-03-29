@@ -2637,8 +2637,14 @@ export const api = {
       throw new Error('SMTP not configured. Please save your email configuration first.');
     }
 
-    const { error: funcError } = await supabase.functions.invoke('send-email', {
-      body: {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify({
         to: testEmail,
         subject: '✅ Paradigm FMS — Test Email',
         html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
@@ -2665,10 +2671,13 @@ export const api = {
           fromName: config.from_name || 'Paradigm FMS',
           replyTo: config.reply_to,
         }
-      }
+      })
     });
     
-    if (funcError) throw funcError;
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Test email failed');
+    }
   },
 
   // ═══ Email Templates APIs ═══════════════════════════════════════════════
@@ -2805,17 +2814,26 @@ export const api = {
       .replace('{message}', `This is a test email for the rule: ${rule.name}`)
       .replace('{subject}', `Test: ${rule.name}`);
 
-    const { error: funcError } = await supabase.functions.invoke('send-email', {
-      body: {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify({
         to: emails,
         subject: renderedSubject,
         html: renderedHtml,
         ruleId: id,
         templateId: rule.template_id,
-      }
+      })
     });
     
-    if (funcError) throw funcError;
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Test email failed');
+    }
   },
 
   // ═══ Email Logs APIs ═══════════════════════════════════════════════════
@@ -2836,10 +2854,19 @@ export const api = {
   },
 
   sendEmail: async (params: { to: string | string[]; cc?: string[]; subject: string; html: string; attachments?: any[] }): Promise<void> => {
-    const { error: funcError } = await supabase.functions.invoke('send-email', {
-      body: params
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify(params)
     });
-    if (funcError) throw funcError;
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to send email');
+    }
   },
 
   getRecurringHolidays: async (): Promise<RecurringHolidayRule[]> => {

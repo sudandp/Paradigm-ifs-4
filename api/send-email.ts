@@ -116,11 +116,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Security Check
+  // Security Check: Accept either INTERNAL_API_KEY or a valid Supabase JWT
   const apiKey = req.headers['x-api-key'];
   const internalKey = process.env.INTERNAL_API_KEY;
-  if (internalKey && apiKey !== internalKey) {
-    console.warn('[send-email] Unauthorized request: Invalid API Key');
+  const authHeader = req.headers['authorization'];
+
+  let isAuthorized = false;
+
+  // Method 1: Internal API key (for cron jobs / server-to-server)
+  if (internalKey && apiKey === internalKey) {
+    isAuthorized = true;
+  }
+
+  // Method 2: Valid Supabase JWT (for browser requests)
+  if (!isAuthorized && authHeader && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    try {
+      const token = authHeader.replace('Bearer ', '');
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (user && !error) {
+        isAuthorized = true;
+        console.log(`[send-email] Authenticated via JWT: ${user.email}`);
+      }
+    } catch (e) {
+      console.warn('[send-email] JWT validation failed:', e);
+    }
+  }
+
+  if (!isAuthorized) {
+    console.warn('[send-email] Unauthorized request: No valid API Key or JWT');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
