@@ -48,7 +48,7 @@ import {
     startOfDay,
     endOfDay
 } from 'date-fns';
-import { Loader2, Download, Users, UserCheck, UserX, Clock, BarChart3, TrendingUp, Calendar, FileDown } from 'lucide-react';
+import { Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -326,6 +326,7 @@ interface DashboardData {
     presentToday: number;
     absentToday: number;
     onLeaveToday: number;
+    inactiveCount: number;
     attendanceTrend: { labels: string[]; present: number[]; absent: number[] };
     productivityTrend: { labels: string[]; hours: number[] };
 }
@@ -1224,8 +1225,9 @@ const AttendanceDashboard: React.FC = () => {
             const queryStart = startDate < today ? startDate : startOfToday();
             const queryEnd = endDate > today ? endDate : endOfToday();
 
-            const [events, leavesResponse, holidaysResponse] = await Promise.all([
+            const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
                 api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
+                api.getAllAttendanceEvents(subDays(new Date(), 9).toISOString(), endOfDay(new Date()).toISOString()),
                 api.getLeaveRequests({ startDate: queryStart.toISOString(), endDate: queryEnd.toISOString(), status: 'approved' }),
                 api.getAllUserHolidays()
             ]);
@@ -1267,6 +1269,10 @@ const AttendanceDashboard: React.FC = () => {
             // Use activeStaff count (excluding management) for totalEmployees
             const totalEmployees = activeStaff.length;
             const absentToday = Math.max(0, totalEmployees - presentToday - onLeaveToday);
+
+            // --- Calculate Inactive Status (No activity in last 10 days) ---
+            const recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+            const inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
 
 
             // --- Calculate Trends (for the selected dateRange only) ---
@@ -1321,6 +1327,7 @@ const AttendanceDashboard: React.FC = () => {
                 presentToday,
                 absentToday,
                 onLeaveToday,
+                inactiveCount,
                 attendanceTrend: {
                     labels,
                     present: presentTrend,
@@ -2753,12 +2760,13 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className="flex flex-col gap-8 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl">
+            <div className="flex flex-col gap-8 md:grid md:grid-cols-2 lg:grid-cols-5 md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl">
                 {[
                     { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-emerald-500" },
                     { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
                     { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
-                    { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" }
+                    { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" },
+                    { title: "Inactive (10+ Days)", value: dashboardData?.inactiveCount || 0, icon: UserMinus, color: "bg-amber-500" }
                 ].map((stat, i) => (
                     <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
                         <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
