@@ -137,9 +137,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         reportData = await generatePendingApprovalsReport(supabase);
       }
 
-      const customMessageVar = template?.variables?.find((v: any) => v.key === '_custom_message');
-      const customMessage = customMessageVar?.description || "Greetings from Paradigm! 👋\nWe hope you're having a fantastic day. Here is your comprehensive daily attendance report to keep you fully updated on today's team presence and activity! 🚀";
-      const [headerText, ...bodyParts] = customMessage.split('\n');
+      const customMessageVar = (Array.isArray(template?.variables)) ? template?.variables?.find((v: any) => v.key === '_custom_message') : null;
+      const customMessage = customMessageVar?.description || "Greetings from Paradigm! 👋\nWe hope you're having a fantastic day. Here is your report! 🚀";
+      const [headerText, ...bodyParts] = (customMessage || "").split('\n');
       const bodyText = bodyParts.join('<br />');
 
       // Render template
@@ -221,26 +221,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let subject = template?.subject_template || rule.name;
       let html = template?.body_template || premiumTemplate;
 
-      const evaluateConditionals = (str: string) => {
-          return str.replace(/\{([a-zA-Z0-9_]+)\s*([><]=?|==|!=)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, 
-            (match, varName, operator, val2Str, trueStr, falseStr) => {
-              const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === varName.toLowerCase());
-              if (!dataKey) return match;
-              const val1 = parseFloat(reportData[dataKey]);
-              const val2 = parseFloat(val2Str);
-              let condition = false;
-              if (operator === '>') condition = val1 > val2;
-              if (operator === '<') condition = val1 < val2;
-              if (operator === '>=') condition = val1 >= val2;
-              if (operator === '<=') condition = val1 <= val2;
-              if (operator === '==') condition = val1 == val2;
-              if (operator === '!=') condition = val1 != val2;
-              return condition ? trueStr : falseStr;
-          });
-      };
-
-      subject = evaluateConditionals(subject);
-      html = evaluateConditionals(html);
+      subject = evaluateConditionals(subject, reportData);
+      html = evaluateConditionals(html, reportData);
 
       for (const [key, value] of Object.entries(reportData)) {
         subject = subject.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
@@ -292,6 +274,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
+}
+
+function evaluateConditionals(str: string, reportData: Record<string, string>) {
+    return str.replace(/\{([a-zA-Z0-9_]+)\s*([><]=?|==|!=)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, 
+      (match, varName, operator, val2Str, trueStr, falseStr) => {
+        const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === varName.toLowerCase());
+        if (!dataKey) return match;
+        const val1 = parseFloat(reportData[dataKey]);
+        const val2 = parseFloat(val2Str);
+        let condition = false;
+        if (operator === '>') condition = val1 > val2;
+        if (operator === '<') condition = val1 < val2;
+        if (operator === '>=') condition = val1 >= val2;
+        if (operator === '<=') condition = val1 <= val2;
+        if (operator === '==') condition = val1 == val2;
+        if (operator === '!=') condition = val1 != val2;
+        return condition ? trueStr : falseStr;
+    });
 }
 
 function shouldRunSchedule(rule: any, nowIST: Date): boolean {
