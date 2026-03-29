@@ -17,7 +17,8 @@ import type {
 import { getObjectDiff } from '../utils/diff';
 import { 
   differenceInCalendarDays, differenceInCalendarMonths, format, startOfMonth, endOfMonth, 
-  startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays
+  startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays,
+  subDays
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
 import { offlineDb } from './offline/database';
@@ -2808,6 +2809,7 @@ export const api = {
     let totalPresent = 0;
     let totalAbsent = 0;
     let lateCount = 0;
+    let inactiveCount = 0;
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
 
@@ -2824,10 +2826,14 @@ export const api = {
       const totalEmployees = allUsers?.length || 0;
       const activeStaffIds = new Set(allUsers?.map(u => u.id) || []);
 
-      // 3. Fetch today's events
+      // 3. Fetch today's events AND recent events for inactive calculation
       const startOfTodayTs = startOfDay(now).toISOString();
       const endOfTodayTs = endOfDay(now).toISOString();
-      const events = await api.getAllAttendanceEvents(startOfTodayTs, endOfTodayTs);
+      
+      const [events, recentEvents] = await Promise.all([
+        api.getAllAttendanceEvents(startOfTodayTs, endOfTodayTs),
+        api.getAllAttendanceEvents(subDays(now, 9).toISOString(), endOfTodayTs)
+      ]);
 
       // 4. Fetch today's leaves
       const leaves = await api.getLeaveRequests({ 
@@ -2836,6 +2842,10 @@ export const api = {
         status: 'approved' 
       });
       const leavesData = Array.isArray(leaves) ? leaves : (leaves as any).data || [];
+
+      // Calculate Inactive Status (No activity in last 10 days)
+      const recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+      inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
 
       // Calculate Present
       const todayEvents = events.filter(e => activeStaffIds.has(e.userId));
@@ -2850,8 +2860,8 @@ export const api = {
       );
       const onLeaveCount = onLeaveTodayIds.size;
 
-      // Calculate Absent
-      totalAbsent = Math.max(0, totalEmployees - totalPresent - onLeaveCount);
+      // Calculate Absent (excluding those on leave and inactive users)
+      totalAbsent = Math.max(0, totalEmployees - totalPresent - onLeaveCount - inactiveCount);
 
       // Calculate Late
       const userFirstPunches: Record<string, string> = {};
@@ -2887,6 +2897,7 @@ export const api = {
       .replace(/{totalPresent}/g, totalPresent.toString())
       .replace(/{totalAbsent}/g, totalAbsent.toString())
       .replace(/{lateCount}/g, lateCount.toString())
+      .replace(/{inactiveCount}/g, inactiveCount.toString())
       .replace(/{table}/g, '<p style="color: #6b7280; font-style: italic;">Report data will be auto-generated when scheduled. This is a test email.</p>')
       .replace(/{message}/g, `This is a test email for the rule: ${rule.name}`)
       .replace(/{subject}/g, `Test: ${rule.name}`);
