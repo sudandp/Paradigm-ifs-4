@@ -2817,10 +2817,9 @@ export const api = {
       const configStartTime = settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
 
       // 2. Fetch all active users (excluding management)
-      const { data: allUsers } = await supabase
-        .from('users')
-        .select('id, role')
-        .neq('role', 'management');
+      const users = await api.getUsers({ fetchAll: true });
+      const filteredUsers = users.filter((u: any) => u.role !== 'management');
+      const allUsers = filteredUsers;
 
       const totalEmployees = allUsers?.length || 0;
       const activeStaffIds = new Set(allUsers?.map(u => u.id) || []);
