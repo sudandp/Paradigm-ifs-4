@@ -478,6 +478,23 @@ const EmailConfigPanel: React.FC = () => {
                             />
 
                             <div className="space-y-2">
+                                <label className="text-sm font-medium text-primary-text">Custom Greeting Message (Optional)</label>
+                                <textarea
+                                    className="w-full h-24 p-3 rounded-xl border border-border focus:ring-2 focus:ring-accent bg-page/30 text-sm"
+                                    value={editingTemplate.variables?.find((v: any) => v.key === '_custom_message')?.description || ''}
+                                    onChange={e => {
+                                        const vars = [...(editingTemplate.variables || [])];
+                                        const idx = vars.findIndex(v => v.key === '_custom_message');
+                                        if (idx >= 0) vars[idx].description = e.target.value;
+                                        else vars.push({ key: '_custom_message', description: e.target.value });
+                                        setEditingTemplate({ ...editingTemplate, variables: vars });
+                                    }}
+                                    placeholder="Enter a creative and energetic greeting message here!"
+                                />
+                                <p className="text-[11px] text-muted-foreground">This message naturally replaces the default introductory text at the top of the email.</p>
+                            </div>
+
+                            <div className="space-y-2">
                                 <label className="text-sm font-medium text-primary-text">HTML Body Template</label>
                                 <textarea
                                     className="w-full h-48 p-4 rounded-xl border border-border focus:ring-2 focus:ring-accent bg-page/30 font-mono text-xs"

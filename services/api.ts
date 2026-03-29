@@ -2992,6 +2992,11 @@ export const api = {
       .replace(/{subject}/g, `Test: ${rule.name}`);
 
     // Premium unified template fallback
+    const customMessageVar = template?.variables?.find((v: any) => v.key === '_custom_message');
+    const customMessage = customMessageVar?.description || "Greetings from Paradigm! 👋\nWe hope you're having a fantastic day. Here is your comprehensive daily attendance report to keep you fully updated on today's team presence and activity! 🚀";
+    const [headerText, ...bodyParts] = customMessage.split('\n');
+    const bodyText = bodyParts.join('<br />');
+
     const premiumTemplate = `
 <div style="font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: auto; border: 1px solid #d1d5db; background: #ffffff;">
 
@@ -3009,6 +3014,12 @@ export const api = {
         </td>
       </tr>
     </table>
+  </div>
+
+  <!-- Greeting Message -->
+  <div style="padding: 24px 24px 8px;">
+    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
+    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
   </div>
 
   <!-- Report Title -->
