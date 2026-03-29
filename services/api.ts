@@ -2818,6 +2818,15 @@ export const api = {
       .replace('{message}', `This is a test email for the rule: ${rule.name}`)
       .replace('{subject}', `Test: ${rule.name}`);
 
+    // Fetch config to pass along
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('email_config')
+      .eq('id', 'singleton')
+      .single();
+    
+    const config = settings?.email_config;
+
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch('/api/send-email', {
       method: 'POST',
@@ -2831,6 +2840,16 @@ export const api = {
         html: renderedHtml,
         ruleId: id,
         templateId: rule.template_id,
+        smtpConfig: config ? {
+          host: config.host,
+          port: config.port,
+          secure: config.secure,
+          user: config.user,
+          pass: config.pass,
+          fromEmail: config.from_email || config.user,
+          fromName: config.from_name || 'Paradigm FMS',
+          replyTo: config.reply_to,
+        } : undefined
       })
     });
     
@@ -2858,6 +2877,15 @@ export const api = {
   },
 
   sendEmail: async (params: { to: string | string[]; cc?: string[]; subject: string; html: string; attachments?: any[] }): Promise<void> => {
+    // Fetch config to pass along
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('email_config')
+      .eq('id', 'singleton')
+      .single();
+    
+    const config = settings?.email_config;
+
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch('/api/send-email', {
       method: 'POST',
@@ -2865,7 +2893,19 @@ export const api = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session?.access_token || ''}`,
       },
-      body: JSON.stringify(params)
+      body: JSON.stringify({
+        ...params,
+        smtpConfig: config ? {
+          host: config.host,
+          port: config.port,
+          secure: config.secure,
+          user: config.user,
+          pass: config.pass,
+          fromEmail: config.from_email || config.user,
+          fromName: config.from_name || 'Paradigm FMS',
+          replyTo: config.reply_to,
+        } : undefined
+      })
     });
     if (!response.ok) {
       const err = await response.json();
