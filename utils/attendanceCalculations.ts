@@ -13,6 +13,7 @@ export function calculateDailyHours(checkIn: string, checkOut: string): number {
 
 /**
  * Calculate working hours with multiple segments and break tracking
+ * Chronological state-based accumulator for robust calculation.
  */
 export function calculateWorkingHours(
   events: AttendanceEvent[]
@@ -24,73 +25,89 @@ export function calculateWorkingHours(
   lastBreakIn: string | null; 
   lastBreakOut: string | null 
 } {
-  // Sort events chronologically to process segments
+  // 1. Sort events chronologically to process intervals accurately
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   
-  let totalGrossWorkMinutes = 0;
+  let netWorkMinutes = 0;
   let totalBreakMinutes = 0;
+  let grossWorkMinutes = 0;
+  
   let firstBreakIn: string | null = null;
   let lastBreakIn: string | null = null;
   let lastBreakOut: string | null = null;
   
-  let workStartTime: Date | null = null;
-  let breakStartTime: Date | null = null;
-  
+  // State Trackers
+  let isPunchedIn = false;
+  let isOnBreak = false;
+  let lastEventTime: Date | null = null;
+
+  // 2. Process intervals between events
   sortedEvents.forEach(event => {
     const eventTime = new Date(event.timestamp);
     
+    if (lastEventTime) {
+      const elapsed = differenceInMinutes(eventTime, lastEventTime);
+      
+      // Accumulate logic based on PREVIOUS state during this interval
+      if (isPunchedIn && !isOnBreak) {
+        netWorkMinutes += elapsed;
+      }
+      if (isOnBreak) {
+        totalBreakMinutes += elapsed;
+      }
+      if (isPunchedIn) {
+        grossWorkMinutes += elapsed;
+      }
+    }
+
+    // 3. Update state for the NEXT interval
     switch (event.type) {
       case 'punch-in':
-        if (!workStartTime) workStartTime = eventTime;
+        isPunchedIn = true;
         break;
       case 'punch-out':
-        if (workStartTime) {
-          totalGrossWorkMinutes += differenceInMinutes(eventTime, workStartTime);
-          workStartTime = null;
-        }
+        isPunchedIn = false;
         break;
       case 'break-in':
-        breakStartTime = eventTime;
+        isOnBreak = true;
         if (!firstBreakIn) firstBreakIn = event.timestamp;
         lastBreakIn = event.timestamp;
-        lastBreakOut = null; // Reset last break out when a new break starts
+        lastBreakOut = null;
         break;
       case 'break-out':
-        if (breakStartTime) {
-          totalBreakMinutes += differenceInMinutes(eventTime, breakStartTime);
-          breakStartTime = null;
-          lastBreakOut = event.timestamp;
-        }
+        isOnBreak = false;
+        lastBreakOut = event.timestamp;
         break;
     }
+    
+    lastEventTime = eventTime;
   });
 
-  // Handle ongoing sessions (if any)
-  // Fix: Only add ongoing duration if the session started TODAY. 
-  // If it's a past check-in without a checkout, we ignore the ongoing time (completed time is 0 for that segment).
+  // 4. Handle ongoing session (from last event to 'now')
   const now = new Date();
-  if (workStartTime) {
-    if (isSameDay(now, workStartTime)) {
-       totalGrossWorkMinutes += differenceInMinutes(now, workStartTime);
+  if (lastEventTime && isSameDay(now, lastEventTime)) {
+    const elapsed = differenceInMinutes(now, lastEventTime);
+    if (isPunchedIn && !isOnBreak) {
+      netWorkMinutes += elapsed;
+    }
+    if (isOnBreak) {
+      totalBreakMinutes += elapsed;
+    }
+    if (isPunchedIn) {
+      grossWorkMinutes += elapsed;
     }
   }
-  if (breakStartTime) {
-    totalBreakMinutes += differenceInMinutes(now, breakStartTime);
-  }
 
-  // Working hours = Total gross hours - Break hours
-  // We don't cap at 9 hours here as multiple sessions might exceed it naturally
-  const workingHours = Math.max(0, (totalGrossWorkMinutes - totalBreakMinutes) / 60);
-  
   return { 
-    totalHours: totalGrossWorkMinutes / 60, 
+    totalHours: grossWorkMinutes / 60, 
     breakHours: totalBreakMinutes / 60, 
-    workingHours,
+    workingHours: netWorkMinutes / 60,
     firstBreakIn,
     lastBreakIn,
     lastBreakOut
   };
 }
+
 
 /**
  * Calculate loss of pay hours
