@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/process-email-schedules",
+      "schedule": "50 5 * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
