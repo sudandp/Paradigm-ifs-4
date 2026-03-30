@@ -1,0 +1,17 @@
+name: Email Schedule Runner
+on:
+  schedule:
+    - cron: '*/10 * * * *' # Every 10 mins
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  run-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Email Processor
+        run: |
+          curl -v -X POST "https://app.paradigmfms.com/api/process-email-schedules" \
+          -H "Content-Type: application/json" \
+          -H "x-api-key: ${{ secrets.INTERNAL_API_KEY }}" \
+          -H "User-Agent: Paradigm-Scheduler-GHA" \
+          -d "{}"
