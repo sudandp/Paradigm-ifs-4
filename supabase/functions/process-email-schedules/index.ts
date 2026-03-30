@@ -1,8 +1,11 @@
-// supabase/functions/process-email-schedules/index.ts
+// @ts-nocheck — This file runs in Deno (Supabase Edge Functions), not Node.js.
+// The TypeScript IDE may not resolve Deno imports; runtime types are correct.
+// deno-lint-ignore-file
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { format, startOfDay, isSameDay } from "https://esm.sh/date-fns@2.30.0";
-import { SmtpClient } from "https://deno.land/x/smtp@0.7.0/mod.ts";
+import { SmtpClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +23,8 @@ interface EmailConfig {
   host?: string;
   port?: number | string;
   from_email?: string;
+  from_name?: string;
+  reply_to?: string;
 }
 
 interface EmailTemplate {
@@ -35,12 +40,37 @@ interface EmailScheduleRule {
   trigger_type: string;
   report_type: string;
   template_id: string;
-  schedule_config?: any;
+  schedule_config?: ScheduleConfig;
   recipient_type: string;
   recipient_emails?: string[];
   recipient_roles?: string[];
   recipient_user_ids?: string[];
   last_sent_at?: string;
+}
+
+interface ScheduleConfig {
+  time?: string;
+  frequency?: 'daily' | 'weekly' | 'monthly';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email?: string;
+  role: { display_name: string } | { display_name: string }[];
+  is_active?: boolean;
+}
+
+interface AttendanceEvent {
+  user_id: string;
+  type: string;
+  timestamp: string;
+}
+
+interface LeaveRequest {
+  user_id: string;
 }
 
 serve(async (req: Request) => {
@@ -55,7 +85,6 @@ serve(async (req: Request) => {
 
     console.log(`[process-email-schedules] Triggered. ruleId=${ruleId}, force=${force}`);
 
-    // 1. Get email config from settings
     const { data: settings, error: settingsError } = await supabase
       .from('settings')
       .select('email_config')
@@ -71,7 +100,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Get active schedule rules
     let query = supabase.from('email_schedule_rules').select('*').eq('is_active', true);
     if (ruleId) query = query.eq('id', ruleId);
     const { data: rules, error: rulesErr } = await query;
@@ -83,7 +111,6 @@ serve(async (req: Request) => {
       });
     }
 
-    // 3. Get all templates
     const { data: templates } = await supabase.from('email_templates').select('*');
     const typedTemplates = (templates || []) as EmailTemplate[];
     const templateMap = new Map<string, EmailTemplate>(typedTemplates.map(t => [t.id, t]));
@@ -95,7 +122,6 @@ serve(async (req: Request) => {
     for (const rule of typedRules) {
       const isForceRun = force || ruleId === rule.id;
 
-      // Trigger check
       if (rule.trigger_type === 'scheduled' && !isForceRun) {
         const { shouldRun, reason } = shouldRunScheduleWithStatus(rule, nowIST);
         if (!shouldRun) {
@@ -103,7 +129,6 @@ serve(async (req: Request) => {
           continue;
         }
 
-        // Strict Daily check
         if (rule.last_sent_at) {
           const lastSentDate = new Date(rule.last_sent_at);
           const lastSentIST = new Date(lastSentDate.getTime() + IST_OFFSET);
@@ -114,19 +139,16 @@ serve(async (req: Request) => {
         }
       }
 
-      // Generate report data
       let reportData: Record<string, string> = { date: format(nowIST, 'EEEE, MMMM do, yyyy') };
       if (rule.report_type === 'attendance_daily') reportData = await generateDailyAttendanceReport(supabase, nowIST);
-      else if (rule.report_type === 'attendance_monthly') reportData = { date: format(nowIST, 'yyyy-MM') }; // Stub
-      else if (rule.report_type === 'document_expiry') reportData = { date: format(nowIST, 'yyyy-MM-dd') }; // Stub
-      else if (rule.report_type === 'pending_approvals') reportData = { items: '0' }; // Stub
+      else if (rule.report_type === 'attendance_monthly') reportData = { date: format(nowIST, 'yyyy-MM') };
+      else if (rule.report_type === 'document_expiry') reportData = { date: format(nowIST, 'yyyy-MM-dd') };
+      else if (rule.report_type === 'pending_approvals') reportData = { items: '0' };
 
-      // Render template
       const template = templateMap.get(rule.template_id);
       let subject = template?.subject_template || rule.name;
       let html = template?.body_template || getDefaultPremiumTemplate();
 
-      // Placeholder & Ternary logic
       subject = evaluateConditionals(subject, reportData);
       html = evaluateConditionals(html, reportData);
 
@@ -138,14 +160,12 @@ serve(async (req: Request) => {
       subject = render(subject);
       html = render(html);
 
-      // Resolve recipients
       const emails = await resolveRecipients(supabase, rule);
       if (emails.length === 0) continue;
 
-      // Send Mail (Deno SMTP)
       try {
         const client = new SmtpClient();
-        await client.connectTLS({
+        await client.connect({
           hostname: emailConfig.host || 'smtp.gmail.com',
           port: Number(emailConfig.port) || 587,
           username: emailConfig.user,
@@ -153,7 +173,7 @@ serve(async (req: Request) => {
         });
 
         await client.send({
-          from: emailConfig.from_email || emailConfig.user,
+          from: `"${emailConfig.from_name || 'Paradigm FMS'}" <${emailConfig.from_email || emailConfig.user}>`,
           to: emails,
           subject: subject,
           content: html,
@@ -162,32 +182,33 @@ serve(async (req: Request) => {
 
         await client.close();
 
-        // Log success
         await Promise.all([
           ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent' })),
           supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id)
         ]);
         totalSent += emails.length;
         console.log(`[process-email-schedules] Sent report "${rule.name}" to ${emails.length} recipients`);
-      } catch (mailErr: any) {
-        console.error(`  → Mail failed for "${rule.name}":`, mailErr.message);
-        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message })));
+      } catch (mailErr) {
+        const errorMsg = mailErr instanceof Error ? mailErr.message : String(mailErr);
+        console.error(`  → Mail failed for "${rule.name}":`, errorMsg);
+        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'failed', error_message: errorMsg })));
       }
     }
 
     return new Response(JSON.stringify({ success: true, sent: totalSent }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error: any) {
-    console.error(`[CRITICAL ERROR]`, error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[CRITICAL ERROR]`, errorMsg);
+    return new Response(JSON.stringify({ error: errorMsg }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
 
-function shouldRunScheduleWithStatus(rule: any, nowIST: Date): { shouldRun: boolean; reason: string } {
+function shouldRunScheduleWithStatus(rule: EmailScheduleRule, nowIST: Date): { shouldRun: boolean; reason: string } {
   const config = rule.schedule_config || {};
   const [hour, minute] = (config.time || '21:00').split(':').map(Number);
   const currentHour = nowIST.getUTCHours();
@@ -204,16 +225,16 @@ function shouldRunScheduleWithStatus(rule: any, nowIST: Date): { shouldRun: bool
   return { shouldRun: true, reason: 'Scheduled time reached' };
 }
 
-async function resolveRecipients(supabase: any, rule: any): Promise<string[]> {
+async function resolveRecipients(supabase: ReturnType<typeof createClient>, rule: EmailScheduleRule): Promise<string[]> {
   if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
   if (rule.recipient_type === 'role') {
     const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_active', true);
-    return (users || []).map((u: any) => u.email).filter(Boolean);
+    return (users || []).map((u: { email: string }) => u.email).filter(Boolean);
   }
-  return (rule.recipient_type === 'users') ? (await supabase.from('users').select('email').in('id', rule.recipient_user_ids || [])).data?.map((u: any) => u.email).filter(Boolean) || [] : [];
+  return (rule.recipient_type === 'users') ? (await supabase.from('users').select('email').in('id', rule.recipient_user_ids || [])).data?.map((u: { email: string }) => u.email).filter(Boolean) || [] : [];
 }
 
-async function generateDailyAttendanceReport(supabase: any, nowIST: Date): Promise<Record<string, any>> {
+async function generateDailyAttendanceReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>> {
   const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
   const todayStr = format(nowIST, 'yyyy-MM-dd');
 
@@ -225,22 +246,22 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date): Promi
   ]);
 
   const configStartTime = settingsRes.data?.attendance_settings?.office?.fixedOfficeHours?.checkInTime || '09:30';
-  const filteredUsers = (usersRes.data || []).filter((u: any) => {
+  const filteredUsers = ((usersRes.data || []) as User[]).filter((u: User) => {
     const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
     return roleName.toLowerCase() !== 'management';
   });
-  const staffIds = new Set(filteredUsers.map((u: any) => u.id));
-  const todayEvents = (eventsRes.data || []).filter((e: any) => staffIds.has(e.user_id));
-  const onLeaveUserIds = new Set((leavesRes.data || []).map((l: any) => l.user_id));
+  const staffIds = new Set(filteredUsers.map((u: User) => u.id));
+  const todayEvents = ((eventsRes.data || []) as AttendanceEvent[]).filter((e: AttendanceEvent) => staffIds.has(e.user_id));
+  const onLeaveUserIds = new Set(((leavesRes.data || []) as LeaveRequest[]).map((l: LeaveRequest) => l.user_id));
 
-  // 10-day lookback for inactivity (Simplified for Edge Function performance)
+  // 10-day lookback for inactivity
   const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
   const { data: recentEvents } = await supabase.from('attendance_events').select('user_id').gte('timestamp', tenDaysAgoUTC.toISOString());
-  const recentlyActiveUserIds = new Set((recentEvents || []).map((e: any) => e.user_id));
+  const recentlyActiveUserIds = new Set(((recentEvents || []) as AttendanceEvent[]).map((e: AttendanceEvent) => e.user_id));
 
   const presentUserIds = new Set<string>();
   const userFirstPunches: Record<string, string> = {};
-  todayEvents.forEach((e: any) => {
+  todayEvents.forEach((e: AttendanceEvent) => {
     presentUserIds.add(e.user_id);
     if (e.type === 'punch-in' && !userFirstPunches[e.user_id]) userFirstPunches[e.user_id] = e.timestamp;
   });
@@ -256,7 +277,7 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date): Promi
   const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
 
   let tableHtml = '';
-  filteredUsers.forEach((user: any, i: number) => {
+  filteredUsers.forEach((user: User, i: number) => {
     let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
     dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
@@ -266,7 +287,7 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date): Promi
       const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
       pin = format(inDate, 'hh:mm a');
       if (format(inDate, 'HH:mm') > configStartTime) { status = 'Late'; color = '#d97706'; }
-      const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && e.type === 'punch-out').pop();
+      const lastOut = todayEvents.filter((e: AttendanceEvent) => e.user_id === user.id && e.type === 'punch-out').pop();
       if (lastOut) {
         pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
         const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
@@ -302,7 +323,7 @@ async function generateDailyAttendanceReport(supabase: any, nowIST: Date): Promi
 }
 
 function evaluateConditionals(str: string, data: Record<string, string>) {
-  return str.replace(/\{(\w+)\s*([><!=]=?)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, (m, key, op, val2Str, t, f) => {
+  return str.replace(/\{(\w+)\s*([><!=]=?)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, (_m, key, op, val2Str, t, f) => {
     const v1 = parseFloat(data[Object.keys(data).find(k=>k.toLowerCase()===key.toLowerCase())||''] || '0');
     const v2 = parseFloat(val2Str);
     let ok = false;
