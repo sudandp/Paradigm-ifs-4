@@ -698,9 +698,9 @@ const ProfilePage: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-3 pb-2 border-b border-white/5">
                                                          <Button
                                                              onClick={() => navigate("/attendance/check-in?workType=field")}
-                                                             disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                              variant="primary"
-                                                             className={`attendance-action-btn !bg-blue-600 !border-blue-700 ${!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                             className={`attendance-action-btn !bg-blue-600 !border-blue-700 ${!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <MapPin className="mr-2 h-4 w-4" />
                                                              Site Check In
@@ -708,9 +708,9 @@ const ProfilePage: React.FC = () => {
  
                                                          <Button
                                                              onClick={() => navigate("/attendance/check-out?workType=field")}
-                                                             disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                              variant="secondary"
-                                                             className={`attendance-action-btn !bg-amber-600 !border-amber-700 !text-white ${!isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                             className={`attendance-action-btn !bg-amber-600 !border-amber-700 !text-white ${!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <MapPin className="mr-2 h-4 w-4" />
                                                              Site Check Out
@@ -723,19 +723,19 @@ const ProfilePage: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 pb-2 border-b border-white/5">
                                                          <Button
                                                              onClick={() => navigate("/attendance/check-in?action=site-ot-in")}
-                                                             disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                              variant="primary"
-                                                             className={`attendance-action-btn !bg-indigo-600 !border-indigo-700 ${!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                             className={`attendance-action-btn !bg-indigo-600 !border-indigo-700 ${!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <Clock className="mr-2 h-4 w-4" />
                                                              Site OT In
                                                          </Button>
-  
+   
                                                          <Button
                                                              onClick={() => navigate("/attendance/check-out?action=site-ot-out")}
-                                                             disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                              variant="secondary"
-                                                             className={`attendance-action-btn !bg-indigo-800 !border-indigo-900 !text-white ${!isSiteOtCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                             className={`attendance-action-btn !bg-indigo-800 !border-indigo-900 !text-white ${!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <CheckCircle className="mr-2 h-4 w-4" />
                                                              Site OT Out
@@ -1155,16 +1155,16 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-in?workType=field')}
                                                          variant="primary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
-                                                         disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
+                                                         disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site In
                                                      </Button>
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-out?workType=field')}
                                                          variant="secondary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
-                                                         disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                         disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site Out
                                                      </Button>
@@ -1177,16 +1177,16 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-in?action=site-ot-in')}
                                                          variant="primary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
-                                                         disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
+                                                         disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                      >
                                                          <Clock className="mr-2 h-4 w-4" /> Site OT In
                                                      </Button>
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-out?action=site-ot-out')}
                                                          variant="secondary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
-                                                         disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
+                                                         disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                      >
                                                          <CheckCircle className="mr-2 h-4 w-4" /> Site OT Out
                                                      </Button>
