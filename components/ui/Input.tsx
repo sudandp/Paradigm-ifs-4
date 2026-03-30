@@ -70,7 +70,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
         <button
           type="button"
           onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-muted hover:text-primary transition-colors focus:outline-none"
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-muted hover:text-emerald-500 transition-all focus:outline-none btn-icon !bg-transparent !border-none !shadow-none"
           tabIndex={-1}
         >
           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

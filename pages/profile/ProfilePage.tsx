@@ -481,8 +481,8 @@ const ProfilePage: React.FC = () => {
                             </div>
                             <h3 className="text-lg font-bold text-white">Authentication Passcode</h3>
                         </div>
-                        <div className="space-y-4">
-                            <p className="text-sm text-gray-400">Update your 4-digit numeric passcode for secure access.</p>
+                        <div className="space-y-6">
+                            <p className="text-sm text-gray-400/80 leading-relaxed">Update your 4-digit numeric passcode for secure access. This is used for attendance recording.</p>
                             
                             <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
                                 <Input 
@@ -496,28 +496,30 @@ const ProfilePage: React.FC = () => {
                                     error={passcodeErrors.oldPasscode?.message}
                                 />
                                 
-                                <div className="grid grid-cols-1 gap-4">
-                                    <Input 
-                                        label="New Passcode" 
-                                        id="newPasscode" 
-                                        type="password" 
-                                        inputMode="numeric"
-                                        maxLength={4}
-                                        placeholder="Enter new 4 digits"
-                                        registration={registerPasscode('newPasscode')}
-                                        error={passcodeErrors.newPasscode?.message}
-                                    />
-                                    
-                                    <Input 
-                                        label="Confirm New Passcode" 
-                                        id="confirmPasscode" 
-                                        type="password" 
-                                        inputMode="numeric"
-                                        maxLength={4}
-                                        placeholder="Confirm new 4 digits"
-                                        registration={registerPasscode('confirmPasscode')}
-                                        error={passcodeErrors.confirmPasscode?.message}
-                                    />
+                                <div className="space-y-4 pt-4 border-t border-emerald-500/10">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Input 
+                                            label="New Passcode" 
+                                            id="newPasscode" 
+                                            type="password" 
+                                            inputMode="numeric"
+                                            maxLength={4}
+                                            placeholder="Enter new 4 digits"
+                                            registration={registerPasscode('newPasscode')}
+                                            error={passcodeErrors.newPasscode?.message}
+                                        />
+                                        
+                                        <Input 
+                                            label="Confirm New Passcode" 
+                                            id="confirmPasscode" 
+                                            type="password" 
+                                            inputMode="numeric"
+                                            maxLength={4}
+                                            placeholder="Confirm new 4 digits"
+                                            registration={registerPasscode('confirmPasscode')}
+                                            error={passcodeErrors.confirmPasscode?.message}
+                                        />
+                                    </div>
                                 </div>
 
                                 <Button 
