@@ -29,4 +29,5 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
-          npx ts-node --compiler-options '{"module":"commonjs","esModuleInterop":true,"skipLibCheck":true}' scripts/automated_scheduler.ts
+          npx tsx scripts/automated_scheduler.ts    
+            
