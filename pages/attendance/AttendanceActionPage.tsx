@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { LogIn, LogOut } from 'lucide-react';
+import { LogIn, LogOut, Clock, CheckCircle } from 'lucide-react';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
 import { api } from '../../services/api';
 
@@ -34,9 +34,13 @@ const AttendanceActionPage: React.FC = () => {
     const isBreakIn = location.pathname.includes('break-in');
     const isBreakOut = location.pathname.includes('break-out');
     
+    const actionParam = query.get('action');
+    
     let action = isCheckIn ? (workType === 'field' ? 'Check In' : 'Punch In') : (workType === 'field' ? 'Check Out' : 'Punch Out');
     if (isBreakIn) action = 'Break In';
     if (isBreakOut) action = 'Break Out';
+    if (actionParam === 'site-ot-in') action = 'Site OT In';
+    if (actionParam === 'site-ot-out') action = 'Site OT Out';
 
     const Icon = (isCheckIn || isBreakIn || isBreakOut) ? LogIn : LogOut;
     let iconBgColor = isCheckIn ? 'bg-emerald-100' : 'bg-red-100';
@@ -48,6 +52,9 @@ const AttendanceActionPage: React.FC = () => {
     } else if (isBreakOut) {
         iconBgColor = 'bg-amber-100';
         iconColor = 'text-amber-600';
+    } else if (actionParam?.includes('site-ot')) {
+        iconBgColor = 'bg-indigo-100';
+        iconColor = 'text-indigo-600';
     }
 
     const handleConfirm = async () => {
@@ -69,6 +76,7 @@ const AttendanceActionPage: React.FC = () => {
             if (!isCheckIn && !isBreakIn && !isBreakOut) forcedType = 'punch-out';
             if (isBreakIn) forcedType = 'break-in';
             if (isBreakOut) forcedType = 'break-out';
+            if (actionParam) forcedType = actionParam;
 
             // Direct check-in OR direct check-out (if geofencing is disabled)
             const { success, message } = await toggleCheckInStatus(undefined, null, workType, undefined, forcedType);
@@ -124,8 +132,8 @@ const AttendanceActionPage: React.FC = () => {
                 <div className="flex flex-col gap-3">
                     <Button
                         onClick={handleConfirm}
-                        variant={isCheckIn ? "primary" : ((isBreakIn || isBreakOut) ? "primary" : "danger")}
-                        className="w-full !py-3 !text-lg shadow-lg"
+                        variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
+                        className={`w-full !py-3 !text-lg shadow-lg ${actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 hover:!bg-indigo-700' : ''}`}
                         isLoading={isSubmitting}
                     >
                         Yes, {action}

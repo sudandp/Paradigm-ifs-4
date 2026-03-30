@@ -1344,7 +1344,7 @@ const AttendanceSettings: React.FC = () => {
                                     {(['office', 'field', 'site'] as const).map(group => {
                                         const groupRoles = localAttendance.missedCheckoutConfig?.roleMapping?.[group] || 
                                             (group === 'office' ? ['admin', 'hr', 'finance', 'developer'] : 
-                                             group === 'field' ? ['field_staff', 'field_officer'] : 
+                                             group === 'field' ? ['field_staff', 'field_officer', 'technical_reliever'] : 
                                              ['site_manager', 'security_guard', 'supervisor']);
                                         
                                         return (

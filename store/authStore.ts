@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
-import type { User } from '../types';
+import type { User, AttendanceEventType } from '../types';
 import { supabase } from '../services/supabase';
 import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
 // FIX: Import the 'api' object to resolve 'Cannot find name' errors.
@@ -67,6 +67,8 @@ const getActionTextForType = (type: string, workType?: string): string => {
         case 'punch-out': return workType === 'field' ? 'site checked out' : 'punched out';
         case 'break-in': return 'started a break ☕';
         case 'break-out': return 'ended a break 🏁';
+        case 'site-ot-in': return 'started Site OT 🕒';
+        case 'site-ot-out': return 'ended Site OT ✅';
         default: return 'updated attendance';
     }
 };
@@ -114,6 +116,7 @@ interface AuthState {
     isPunchUnlocked: boolean;
     isFieldCheckedIn: boolean;
     isFieldCheckedOut: boolean;
+    isSiteOtCheckedIn: boolean;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
 }
@@ -150,6 +153,7 @@ export const useAuthStore = create<AuthState>()(
         isPunchUnlocked: false,
         isFieldCheckedIn: false,
         isFieldCheckedOut: false,
+        isSiteOtCheckedIn: false,
         forceLogout: async (reason) => {
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
             set({ error: reason || 'Your session has expired. Please log in again.', loading: false, user: null });
@@ -181,7 +185,8 @@ export const useAuthStore = create<AuthState>()(
             dailyUnlockRequestCount: 0,
             isPunchUnlocked: false,
             isFieldCheckedIn: false,
-            isFieldCheckedOut: false
+            isFieldCheckedOut: false,
+            isSiteOtCheckedIn: false
         }),
         setError: (error) => set({ error }),
 
@@ -457,7 +462,8 @@ export const useAuthStore = create<AuthState>()(
                         dailyUnlockRequestCount,
                         isPunchUnlocked: approvedUnlockCount > 0,
                         isFieldCheckedIn: false,
-                        isFieldCheckedOut: false
+                        isFieldCheckedOut: false,
+                        isSiteOtCheckedIn: false
                     });
                     return;
                 }
@@ -475,6 +481,11 @@ export const useAuthStore = create<AuthState>()(
                 const fieldEvents = events.filter(e => e.workType === 'field');
                 const lastFieldPunchEvent = fieldEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
                 const isFieldCheckedIn = lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-in') : false;
+                
+                // 3. Site OT Session
+                const otEvents = events.filter(e => e.type === 'site-ot-in' || e.type === 'site-ot-out');
+                const lastOtPunchEvent = otEvents.pop();
+                const isSiteOtCheckedIn = lastOtPunchEvent ? (lastOtPunchEvent.type === 'site-ot-in') : false;
 
                 // 3. Break Session
                 const breakEvents = events.filter(e => e.type === 'break-in' || e.type === 'break-out');
@@ -503,7 +514,8 @@ export const useAuthStore = create<AuthState>()(
                     dailyUnlockRequestCount,
                     isPunchUnlocked,
                     isFieldCheckedIn,
-                    isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false
+                    isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
+                    isSiteOtCheckedIn
                 });
             } catch (error) {
                 console.error("Failed to check attendance status (unexpected error):", error);
@@ -519,7 +531,7 @@ export const useAuthStore = create<AuthState>()(
             if (!user) return { success: false, message: 'User not found' };
             
             // Explicitly determine the type. If forcedType is missing, use toggle logic.
-            const newType = (forcedType || (isCheckedIn ? 'punch-out' : 'punch-in')) as 'punch-in' | 'punch-out' | 'break-in' | 'break-out';
+            const newType = (forcedType || (isCheckedIn ? 'punch-out' : 'punch-in')) as AttendanceEventType;
 
             // Check field staff restriction for office punch-in
             if (user.role === 'field_staff' && newType === 'punch-in' && (!workType || workType === 'office')) {
@@ -629,6 +641,10 @@ export const useAuthStore = create<AuthState>()(
                         mappedType = 'break_start';
                     } else if (mappedType === 'break_out') {
                         mappedType = 'break_end';
+                    } else if (mappedType === 'site_ot_in') {
+                        mappedType = 'site_ot_in';
+                    } else if (mappedType === 'site_ot_out') {
+                        mappedType = 'site_ot_out';
                     }
                     
                     // Build the self-notification message for the actor's own push notification
@@ -638,7 +654,9 @@ export const useAuthStore = create<AuthState>()(
                     const selfActionText = 
                         newType === 'punch-in' ? `${verb} in` : 
                         newType === 'punch-out' ? `${verb} out` : 
-                        newType === 'break-in' ? 'started your break ☕' : 'ended your break 🏁';
+                        newType === 'break-in' ? 'started your break ☕' : 
+                        newType === 'break-out' ? 'ended your break 🏁' :
+                        newType === 'site-ot-in' ? 'started Site OT 🕒' : 'ended Site OT ✅';
                     const timeStr = format(new Date(), 'hh:mm a');
                     const atText = locName ? ` at ${locName}` : '';
 

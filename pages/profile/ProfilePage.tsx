@@ -53,7 +53,8 @@ const ProfilePage: React.FC = () => {
         checkAttendanceStatus,
         dailyPunchCount,
         isFieldCheckedIn,
-        isFieldCheckedOut
+        isFieldCheckedOut,
+        isSiteOtCheckedIn
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
@@ -645,7 +646,7 @@ const ProfilePage: React.FC = () => {
                                                             ? 'bg-gradient-to-br from-amber-500 to-orange-600 border-amber-400/30 shadow-amber-500/20' 
                                                             : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400/30 shadow-emerald-500/20'
                                                         }
-                                                        ${(isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')) ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:brightness-110'}
+                                                        ${(isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')) ? 'bg-gray-800/40 text-white/40 cursor-not-allowed' : 'hover:brightness-110'}
                                                     `}
                                                 >
                                                     {/* Shine Effect */}
@@ -677,7 +678,7 @@ const ProfilePage: React.FC = () => {
                                                         relative overflow-hidden rounded-xl border p-0 transition-all duration-300 active:scale-[0.98] shadow-lg
                                                         flex flex-col items-center justify-center gap-1 h-[72px]
                                                         ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked)
-                                                            ? 'bg-white/5 border-white/10 text-white/30 cursor-not-allowed opacity-50' // Disabled Glass State
+                                                            ? 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed' // Disabled Glass State
                                                             : 'bg-gradient-to-br from-rose-500 to-pink-600 border-rose-400/30 shadow-rose-500/20 hover:brightness-110'
                                                         }
                                                     `}
@@ -685,21 +686,21 @@ const ProfilePage: React.FC = () => {
                                                     {(!(!effectivelyCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked)) && (
                                                         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none"></div>
                                                     )}
-                                                    <LogOut className={`h-6 w-6 ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/30' : 'text-white drop-shadow-sm'}`} />
-                                                    <span className={`font-bold text-sm tracking-wide ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/30' : 'text-white drop-shadow-sm'}`}>
+                                                    <LogOut className={`h-6 w-6 ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/40' : 'text-white drop-shadow-sm'}`} />
+                                                    <span className={`font-bold text-sm tracking-wide ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/40' : 'text-white drop-shadow-sm'}`}>
                                                         PUNCH OUT
                                                     </span>
                                                 </button>
                                             </div>
 
-                                                {/* Field Staff Buttons - Only show once session is active */}
-                                                {(user?.role === 'field_staff' || user?.role === 'operation_manager') && isCheckedIn && !isPunchBlocked && (
+                    {/* Field Staff & Technical Reliever Buttons */}
+                    {(user?.role === 'field_staff' || user?.role === 'operation_manager' || user?.role === 'technical_reliever') && isCheckedIn && !isPunchBlocked && (
                                                     <div className="grid grid-cols-2 gap-3 pb-2 border-b border-white/5">
                                                          <Button
                                                              onClick={() => navigate("/attendance/check-in?workType=field")}
                                                              disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
                                                              variant="primary"
-                                                             className={`attendance-action-btn !bg-blue-600 !border-blue-700 ${!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none opacity-50' : ''}`}
+                                                             className={`attendance-action-btn !bg-blue-600 !border-blue-700 ${!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <MapPin className="mr-2 h-4 w-4" />
                                                              Site Check In
@@ -709,10 +710,35 @@ const ProfilePage: React.FC = () => {
                                                              onClick={() => navigate("/attendance/check-out?workType=field")}
                                                              disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
                                                              variant="secondary"
-                                                             className={`attendance-action-btn !bg-amber-600 !border-amber-700 !text-white ${!isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none opacity-50' : ''}`}
+                                                             className={`attendance-action-btn !bg-amber-600 !border-amber-700 !text-white ${!isFieldCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <MapPin className="mr-2 h-4 w-4" />
                                                              Site Check Out
+                                                         </Button>
+                                                    </div>
+                                                )}
+
+                                                {/* Technical Reliever - Site OT Buttons */}
+                                                {user?.role === 'technical_reliever' && isCheckedIn && !isPunchBlocked && (
+                                                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 pb-2 border-b border-white/5">
+                                                         <Button
+                                                             onClick={() => navigate("/attendance/check-in?action=site-ot-in")}
+                                                             disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             variant="primary"
+                                                             className={`attendance-action-btn !bg-indigo-600 !border-indigo-700 ${!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                         >
+                                                             <Clock className="mr-2 h-4 w-4" />
+                                                             Site OT In
+                                                         </Button>
+  
+                                                         <Button
+                                                             onClick={() => navigate("/attendance/check-out?action=site-ot-out")}
+                                                             disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                             variant="secondary"
+                                                             className={`attendance-action-btn !bg-indigo-800 !border-indigo-900 !text-white ${!isSiteOtCheckedIn || isOnBreak || isPunchBlocked ? 'pointer-events-none !text-white/40' : ''}`}
+                                                         >
+                                                             <CheckCircle className="mr-2 h-4 w-4" />
+                                                             Site OT Out
                                                          </Button>
                                                     </div>
                                                 )}
@@ -740,7 +766,7 @@ const ProfilePage: React.FC = () => {
                                                              onClick={() => navigate('/attendance/break-in')}
                                                              disabled={(isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isActionInProgress || isPunchBlocked}
                                                              variant="primary"
-                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${((isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? 'pointer-events-none opacity-50' : ''}`}
+                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${((isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <CheckCircle className="mr-2 h-4 w-4" />
                                                              Break In
@@ -749,7 +775,7 @@ const ProfilePage: React.FC = () => {
                                                              onClick={() => navigate('/attendance/break-out')}
                                                              disabled={!isOnBreak || isActionInProgress || isPunchBlocked}
                                                              variant="primary"
-                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${(!isOnBreak || isPunchBlocked) ? 'pointer-events-none opacity-50' : ''}`}
+                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${(!isOnBreak || isPunchBlocked) ? 'pointer-events-none !text-white/40' : ''}`}
                                                          >
                                                              <CheckCircle className="mr-2 h-4 w-4" />
                                                              Break Out
@@ -1097,8 +1123,8 @@ const ProfilePage: React.FC = () => {
                                                            }}
                                                            variant="primary"
                                                            className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${
-                                                               isPunchBlocked ? '!bg-amber-600 !text-white' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'
-                                                           } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : ''}`}
+                                                               isPunchBlocked ? '!bg-amber-600 !text-white' : '!bg-emerald-600 hover:!bg-emerald-700 '
+                                                           } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                            disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
                                                        >
                                                           {isPunchBlocked ? (
@@ -1116,20 +1142,20 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/check-out?workType=office')}
                                                      variant="danger"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all !bg-rose-600 hover:!bg-rose-700 !text-white shadow-sm ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isPunchBlocked) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : ''}`}
+                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all !bg-rose-600 hover:!bg-rose-700 !text-white shadow-sm ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                      disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || (isFieldStaff && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <LogOut className="mr-2 h-4 w-4" /> Punch Out
                                                  </Button>
                                             </div>
 
-                                            {/* Field Staff Buttons */}
-                                            {user?.role === 'field_staff' && (
+                                            {/* Field Staff & Tech Reliever Buttons */}
+                                            {(user?.role === 'field_staff' || user?.role === 'technical_reliever') && (
                                                 <div className="grid grid-cols-2 gap-4 mt-4">
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-in?workType=field')}
                                                          variant="primary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
                                                          disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site In
@@ -1137,10 +1163,32 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-out?workType=field')}
                                                          variant="secondary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                          disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site Out
+                                                     </Button>
+                                                </div>
+                                            )}
+
+                                            {/* Site OT Buttons for Technical Reliever */}
+                                            {user?.role === 'technical_reliever' && (
+                                                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                                                     <Button
+                                                         onClick={() => navigate('/attendance/check-in?action=site-ot-in')}
+                                                         variant="primary"
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
+                                                         disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                     >
+                                                         <Clock className="mr-2 h-4 w-4" /> Site OT In
+                                                     </Button>
+                                                     <Button
+                                                         onClick={() => navigate('/attendance/check-out?action=site-ot-out')}
+                                                         variant="secondary"
+                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
+                                                         disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked}
+                                                     >
+                                                         <CheckCircle className="mr-2 h-4 w-4" /> Site OT Out
                                                      </Button>
                                                 </div>
                                             )}
@@ -1166,7 +1214,7 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/break-in')}
                                                      variant="secondary"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${((isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${((isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                      disabled={(isFieldStaff ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <CheckCircle className="mr-2 h-4 w-4" /> Break In
@@ -1174,7 +1222,7 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/break-out')}
                                                      variant="secondary"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none opacity-50 shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                      disabled={!isOnBreak || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <CheckCircle className="mr-2 h-4 w-4" /> Break Out

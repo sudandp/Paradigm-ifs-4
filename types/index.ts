@@ -944,7 +944,7 @@ export interface Agreement {
 
 
 // Types for Attendance
-export type AttendanceEventType = 'punch-in' | 'punch-out' | 'break-in' | 'break-out';
+export type AttendanceEventType = 'punch-in' | 'punch-out' | 'break-in' | 'break-out' | 'site-ot-in' | 'site-ot-out';
 
 export interface AttendanceEvent {
   id: string;
