@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "10.8.0",
+  "version": "10.9.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {

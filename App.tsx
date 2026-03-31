@@ -15,6 +15,7 @@ import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDevice } from './hooks/useDevice';
 import { supabase } from './services/supabase';
 import { authService } from './services/authService';
+import { GOOGLE_CONFIG } from './config/authConfig';
 // Import the API client under an alias to avoid name collisions.  Renaming
 // to `apiService` prevents conflicts with other variables or globals named `api`.
 import { api as apiService } from './services/api';
@@ -383,11 +384,7 @@ const App: React.FC = () => {
     
     // Initialize Native Google Sign-In
     if (Capacitor.isNativePlatform()) {
-      // Use the hardcoded fallback for Android if the environment variable is missing or invalid
-      const hardcodedWebClientId = '447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com';
-      const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID && !import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID.includes('your-web-id'))
-        ? import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID 
-        : hardcodedWebClientId;
+      const webClientId = GOOGLE_CONFIG.clientId;
 
       if (webClientId && !webClientId.includes('your-web-id')) {
         SocialLogin.initialize({

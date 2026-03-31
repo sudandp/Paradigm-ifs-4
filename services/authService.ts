@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import { Capacitor } from '@capacitor/core';
 import { SocialLogin } from '@capgo/capacitor-social-login';
+import { GOOGLE_CONFIG } from '../config/authConfig';
 import type { User as AppUser } from "../types";
 import type { Session, User as SupabaseUser, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
@@ -117,11 +118,7 @@ const signInWithGoogle = async () => {
     if (Capacitor.isNativePlatform()) {
         console.log("Using Native Google Auth via CapacitorSocialLogin...");
         
-        // Use the hardcoded fallback for Android if the environment variable is missing or invalid
-        const hardcodedWebClientId = '447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com';
-        const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID && !import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID.includes('your-web-id'))
-            ? import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID 
-            : hardcodedWebClientId;
+        const webClientId = GOOGLE_CONFIG.clientId;
         
         if (!webClientId || webClientId.includes('your-web-id')) {
             console.error("Native Google Login: Web Client ID is missing. Cannot proceed without browser.");
