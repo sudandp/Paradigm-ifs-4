@@ -383,7 +383,12 @@ const App: React.FC = () => {
     
     // Initialize Native Google Sign-In
     if (Capacitor.isNativePlatform()) {
-      const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+      // Use the hardcoded fallback for Android if the environment variable is missing or invalid
+      const hardcodedWebClientId = '447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com';
+      const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID && !import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID.includes('your-web-id'))
+        ? import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID 
+        : hardcodedWebClientId;
+
       if (webClientId && !webClientId.includes('your-web-id')) {
         SocialLogin.initialize({
           google: {

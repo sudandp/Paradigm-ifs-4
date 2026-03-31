@@ -117,7 +117,11 @@ const signInWithGoogle = async () => {
     if (Capacitor.isNativePlatform()) {
         console.log("Using Native Google Auth via CapacitorSocialLogin...");
         
-        const webClientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+        // Use the hardcoded fallback for Android if the environment variable is missing or invalid
+        const hardcodedWebClientId = '447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com';
+        const webClientId = (import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID && !import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID.includes('your-web-id'))
+            ? import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID 
+            : hardcodedWebClientId;
         
         if (!webClientId || webClientId.includes('your-web-id')) {
             console.error("Native Google Login: Web Client ID is missing. Cannot proceed without browser.");
@@ -151,7 +155,11 @@ const signInWithGoogle = async () => {
             }
             
             // Return the specific error message to display on screen for debugging
-            return { error: { message: `Native Auth Error: ${errorMessage}` } };
+            return { 
+                error: { 
+                    message: `Native Auth Error: ${errorMessage}. If the issue persists, ensure your SHA-1 fingerprint is registered in the Google Cloud Console for package 'com.paradigm.ifs' and Web Client ID is in Supabase Dashboard.` 
+                } 
+            };
         }
     }
     

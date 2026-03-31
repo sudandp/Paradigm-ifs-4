@@ -58,6 +58,11 @@ const getFriendlyAuthError = (errorMessage: string): string => {
         return errorMessage;
     }
 
+    // Special case for Google Sign-In generic failures on Android
+    if (msg.includes('google') && Capacitor.isNativePlatform()) {
+        return 'Google Sign-In failed. Please ensure your device has a stable internet connection and you have selected a valid account. If the problem persists, please contact admin.';
+    }
+
     return 'Something went wrong. Please try again or contact support.';
 };
 
