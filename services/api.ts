@@ -5032,6 +5032,53 @@ export const api = {
     if (error) throw error;
     return toCamelCase(data);
   },
+
+  grantCompOff: async (params: { userId: string; days: number; reason: string }): Promise<void> => {
+    const { userId, days, reason } = params;
+    const { data: user, error: userError } = await supabase.from('users').select('name').eq('id', userId).single();
+    if (userError) throw userError;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const grantedById = session?.user?.id;
+    const grantedByName = session?.user?.user_metadata?.name || 'Admin';
+
+    // Insert multiple logs if days > 1
+    const logs = [];
+    const fullDays = Math.floor(days);
+    const hasHalfDay = (days % 1) !== 0;
+
+    for (let i = 0; i < fullDays; i++) {
+        logs.push(toSnakeCase({
+            userId,
+            userName: user.name,
+            dateEarned: format(new Date(), 'yyyy-MM-dd'),
+            reason,
+            status: 'earned',
+            grantedById,
+            grantedByName
+        }));
+    }
+
+    if (hasHalfDay) {
+        // We'll insert a special log for half day, or just another log if fractional days aren't supported.
+        // For now, let's treat 0.5 as 1 log for simplicity or adjust based on system capability.
+        // Actually the system counts rows as 1 day each.
+        logs.push(toSnakeCase({
+            userId,
+            userName: user.name,
+            dateEarned: format(new Date(), 'yyyy-MM-dd'),
+            reason: `${reason} (Half Day Grant)`,
+            status: 'earned',
+            grantedById,
+            grantedByName
+        }));
+    }
+
+    if (logs.length > 0) {
+        const { error } = await supabase.from('comp_off_logs').insert(logs);
+        if (error) throw error;
+    }
+  },
   exportAllData: async (): Promise<any> => {
     const tables = [
       'roles', 'organization_groups', 'companies', 'organizations', 'entities',

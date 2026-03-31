@@ -133,24 +133,25 @@ const ApplyLeave: React.FC = () => {
                 const endDate = new Date(formData.endDate.replace(/-/g, '/'));
                 const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDate, startDate) + 1;
                 
-                const typeKeyStr = `${formData.leaveType.toLowerCase()}Total`
-                    .replace('earnedtotal', 'earnedTotal')
-                    .replace('sicktotal', 'sickTotal')
-                    .replace('floatingtotal', 'floatingTotal')
-                    .replace('compofftotal', 'compOffTotal')
-                    .replace('maternitytotal', 'maternityTotal')
-                    .replace('childcaretotal', 'childCareTotal')
-                    .replace('child caretotal', 'childCareTotal')
-                    .replace('pink leavetotal', 'pinkTotal')
-                    .replace('pinktotal', 'pinkTotal');
+                const baseType = formData.leaveType.toLowerCase().replace(/\s/g, '');
+                let balanceKeyBase = baseType;
                 
-                const usedKeyStr = typeKeyStr.replace('Total', 'Used');
-                const pendingKeyStr = typeKeyStr.replace('Total', 'Pending');
+                if (baseType === 'compoff') balanceKeyBase = 'compOff';
+                else if (baseType === 'childcare') balanceKeyBase = 'childCare';
+                else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
+                
+                const typeKeyStr = `${balanceKeyBase}Total`;
+                const usedKeyStr = `${balanceKeyBase}Used`;
+                const pendingKeyStr = `${balanceKeyBase}Pending`;
                 
                 // Expiry Check
-                const leaveTypeLower = formData.leaveType.toLowerCase().replace(' ', '') as 'earned' | 'sick' | 'floating' | 'compoff' | 'maternity' | 'childcare' | 'pinkleave';
-                const leaveTypeMapped = leaveTypeLower === 'pinkleave' ? 'pink' : leaveTypeLower;
-                const isExpired = balance.expiryStates && balance.expiryStates[leaveTypeMapped as keyof NonNullable<typeof balance.expiryStates>];
+                const leaveTypeLower = formData.leaveType.toLowerCase().replace(/\s/g, '');
+                let leaveTypeMapped = leaveTypeLower;
+                if (leaveTypeLower === 'compoff') leaveTypeMapped = 'compOff';
+                else if (leaveTypeLower === 'pinkleave') leaveTypeMapped = 'pink';
+                else if (leaveTypeLower === 'childcare') leaveTypeMapped = 'childCare';
+                
+                const isExpired = balance.expiryStates && (balance.expiryStates as any)[leaveTypeMapped];
                 
                 if (isExpired) {
                     setToast({ message: `The ${formData.leaveType} allocation has expired and is no longer available for use.`, type: 'error' });

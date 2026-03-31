@@ -26,10 +26,7 @@ const GrantCompOffPage: React.FC = () => {
 
         setIsSubmitting(true);
         try {
-            // Mock API call
-            // await api.grantCompOff({ userId: selectedUserId, days: parseFloat(days), reason });
-            console.log('Granting comp off:', { userId: selectedUserId, days, reason });
-
+            await api.grantCompOff({ userId: selectedUserId, days: parseFloat(days), reason });
             setToast({ message: 'Comp off granted successfully!', type: 'success' });
             setTimeout(() => navigate('/hr/leave-management'), 1500);
         } catch (error) {
