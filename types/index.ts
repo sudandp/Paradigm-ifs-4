@@ -1222,7 +1222,7 @@ export interface DailyAttendanceRecord {
 }
 
 // Types for Leave Management
-export type LeaveType = 'Earned' | 'Sick' | 'Floating' | 'Comp Off' | 'Loss of Pay' | 'Maternity' | 'Child Care' | 'Pink Leave';
+export type LeaveType = 'Earned' | 'Sick' | 'Floating' | 'Comp Off' | 'Loss of Pay' | 'Maternity' | 'Child Care' | 'Pink Leave' | 'WFH';
 export type LeaveRequestStatus = 'pending_manager_approval' | 'pending_hr_confirmation' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn';
 
 export interface ApprovalRecord {

@@ -666,7 +666,7 @@ export const api = {
     // Based on getInitialAppData, it fetches where id='singleton'.
     const { error } = await supabase
       .from('settings')
-      .update(toSnakeCase(settings))
+      .update({ attendance_settings: toSnakeCase(settings) })
       .eq('id', 'singleton');
 
     if (error) throw error;
@@ -2821,6 +2821,7 @@ export const api = {
     let onLeaveTodayIds = new Set<string>();
     let recentlyActiveUserIds = new Set<string>();
     let userFirstPunches: Record<string, string> = {};
+    let todayWFHUserIds = new Set<string>();
 
     try {
       // 1. Fetch settings for late threshold
@@ -2859,15 +2860,21 @@ export const api = {
       recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
       inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
 
-      // Calculate Present
+      // Calculate Present (including WFH)
+      todayWFHUserIds = new Set(
+        leavesData
+          .filter((l: any) => l.leave_type === 'WFH' || l.leaveType === 'WFH')
+          .filter((l: any) => activeStaffIds.has(l.userId))
+          .map((l: any) => l.userId)
+      );
       const todayEvents = events.filter(e => activeStaffIds.has(e.userId));
-      presentUserIds = new Set(todayEvents.map(e => e.userId));
+      presentUserIds = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayWFHUserIds)]);
       totalPresent = presentUserIds.size;
 
-      // Calculate On Leave
+      // Calculate On Leave (excluding WFH)
       onLeaveTodayIds = new Set(
         leavesData
-          .filter((l: any) => activeStaffIds.has(l.userId))
+          .filter((l: any) => activeStaffIds.has(l.userId) && l.leave_type !== 'WFH' && l.leaveType !== 'WFH')
           .map((l: any) => l.userId)
       );
       onLeaveCount = onLeaveTodayIds.size;
@@ -2924,6 +2931,7 @@ export const api = {
         }
         
         if (presentUserIds.has(user.id)) {
+          const isWFH = todayWFHUserIds.has(user.id);
           const punchInTs = userFirstPunches[user.id];
           const punchInDate = punchInTs ? new Date(punchInTs) : null;
           
@@ -2940,6 +2948,13 @@ export const api = {
                  statusColor = '#d97706'; // amber
              }
           }
+          
+          // Override status text if WFH and no late punch
+          if (isWFH && (statusText === 'Present' || !punchInDate)) {
+             statusText = 'WFH';
+             statusColor = '#059669'; // emerald
+          }
+
           if (punchOutDate) {
              punchOutTime = punchOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
           }
@@ -3307,7 +3322,7 @@ export const api = {
       ].includes(r)) return 'office';
       
       // Site Roles
-      if (['site_manager', 'site_supervisor', 'site manager', 'site supervisor'].includes(r)) return 'site';
+      if (['site_manager', 'site_supervisor', 'site manager', 'site supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'].includes(r)) return 'site';
       
       // Default to field (includes 'field_staff', 'field staff', etc.)
       return 'field';

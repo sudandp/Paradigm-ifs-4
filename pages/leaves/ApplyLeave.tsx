@@ -27,7 +27,7 @@ type LeaveRequestFormData = {
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
-    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave']).required('Leave type is required'),
+    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required'),
     endDate: yup.string().required('End date is required')
         .test('is-after-start', 'End date must be on or after start date', function (value) {
@@ -127,7 +127,7 @@ const ApplyLeave: React.FC = () => {
         try {
             // Check balance before submitting (only for new requests)
             // Skip balance check for 'Loss of Pay' as it doesn't consume balance
-            if (!isEditMode && formData.leaveType !== 'Loss of Pay') {
+            if (!isEditMode && formData.leaveType !== 'Loss of Pay' && formData.leaveType !== 'WFH') {
                 const balance = await api.getLeaveBalancesForUser(user.id);
                 const startDate = new Date(formData.startDate.replace(/-/g, '/'));
                 const endDate = new Date(formData.endDate.replace(/-/g, '/'));
@@ -208,8 +208,8 @@ const ApplyLeave: React.FC = () => {
                                     <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
                                     <option value="Comp Off">Comp Off</option>
                                     <option value="Loss of Pay">Loss of Pay</option>
-                                    {isFemale && <option value="Maternity">Maternity</option>}
                                     {isFemale && <option value="Child Care">Child Care</option>}
+                                    <option value="WFH">Work From Home (WFH)</option>
                                 </Select>
                             )} />
 

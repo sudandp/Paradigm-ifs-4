@@ -18,7 +18,7 @@ const EditLeaveTypeModal: React.FC<EditLeaveTypeModalProps> = ({
   isUpdating,
 }) => {
   const [selectedType, setSelectedType] = useState<LeaveType>(currentType);
-  const leaveTypes: LeaveType[] = ['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay'];
+  const leaveTypes: LeaveType[] = ['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'WFH'];
 
   useEffect(() => {
     if (isOpen) {

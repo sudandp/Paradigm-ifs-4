@@ -1345,7 +1345,7 @@ const AttendanceSettings: React.FC = () => {
                                         const groupRoles = localAttendance.missedCheckoutConfig?.roleMapping?.[group] || 
                                             (group === 'office' ? ['admin', 'hr', 'finance', 'developer'] : 
                                              group === 'field' ? ['field_staff', 'field_officer', 'technical_reliever'] : 
-                                             ['site_manager', 'security_guard', 'supervisor']);
+                                             ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter']);
                                         
                                         return (
                                             <div key={group} className="bg-page rounded-lg border border-border/50 flex flex-col h-full">
@@ -1361,7 +1361,7 @@ const AttendanceSettings: React.FC = () => {
                                                                 <span className="text-xs truncate" title={roleId}>{role?.displayName || roleId}</span>
                                                                 <button 
                                                                     onClick={() => {
-                                                                        const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer'], site: ['site_manager', 'security_guard', 'supervisor'] };
+                                                                        const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'] };
                                                                         const updatedGroup = groupRoles.filter(r => r !== roleId);
                                                                         setLocalAttendance(prev => ({
                                                                             ...prev,
@@ -1389,7 +1389,7 @@ const AttendanceSettings: React.FC = () => {
                                                         onChange={(e) => {
                                                             if (!e.target.value) return;
                                                             const roleId = e.target.value;
-                                                            const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer'], site: ['site_manager', 'security_guard', 'supervisor'] };
+                                                            const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'] };
                                                             const updatedGroup = [...new Set([...groupRoles, roleId])];
                                                             setLocalAttendance(prev => ({
                                                                 ...prev,

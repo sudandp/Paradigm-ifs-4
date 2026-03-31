@@ -1194,7 +1194,7 @@ const AttendanceDashboard: React.FC = () => {
 
                     if (isHoliday) {
                         status = hasActivity ? 'HP' : 'H';
-                    } else if (approvedLeave) {
+                    } else if (approvedLeave && approvedLeave.leaveType !== 'WFH') {
                         const isHalfDay = (approvedLeave as any).dayOption === 'half' || (approvedLeave as any).day_option === 'half';
                         const prefix = isHalfDay ? '1/2' : '';
                         const leaveType = approvedLeave.leaveType?.toLowerCase();
@@ -1202,8 +1202,9 @@ const AttendanceDashboard: React.FC = () => {
                         else if (leaveType === 'comp off' || leaveType === 'compoff' || leaveType === 'c/o') status = prefix + 'C/O';
                         else if (leaveType === 'loss of pay' || leaveType === 'lop') status = isHalfDay ? '1/2A' : 'A';
                         else status = prefix + 'E/L';
-                    } else if (hasActivity) {
-                        const isWorkFromHome = dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'));
+                    } else if (hasActivity || (approvedLeave && approvedLeave.leaveType === 'WFH')) {
+                        const isWorkFromHome = (approvedLeave && approvedLeave.leaveType === 'WFH') || 
+                                              dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'));
                         if (isWeekend) status = 'W/P';
                         else if (isWorkFromHome) status = 'W/H';
                         else status = 'P';
@@ -1359,14 +1360,15 @@ const AttendanceDashboard: React.FC = () => {
                 format(new Date(e.timestamp), 'yyyy-MM-dd') === todayStr && 
                 activeStaffIds.has(e.userId)
             );
-            const presentToday = new Set(todayEvents.map(e => e.userId)).size;
-
             const todayLeaves = leavesData.filter(l => {
                 const start = new Date(l.startDate);
                 const end = new Date(l.endDate);
                 return today >= start && today <= end && activeStaffIds.has(l.userId);
             });
-            const onLeaveToday = new Set(todayLeaves.map(l => l.userId)).size;
+            const todayWFHUserIds = new Set(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
+            const presentToday = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayWFHUserIds)]).size;
+
+            const onLeaveToday = new Set(todayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
 
             // Use activeStaff count (excluding management) for totalEmployees
             const totalEmployees = activeStaff.length;
@@ -1393,15 +1395,16 @@ const AttendanceDashboard: React.FC = () => {
                     format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr &&
                     activeStaffIds.has(e.userId)
                 );
-                const uniqueUsersPresent = new Set(dayEvents.map(e => e.userId)).size;
-
+                
                 // On Leave
                 const activeLeaves = leavesData.filter(l => {
                     const start = new Date(l.startDate);
                     const end = new Date(l.endDate);
                     return day >= start && day <= end && activeStaffIds.has(l.userId);
                 });
-                const usersOnLeave = new Set(activeLeaves.map(l => l.userId)).size;
+                const dayWFHUserIds = new Set(activeLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
+                const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
+                const usersOnLeave = new Set(activeLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
 
                 // Absent
                 const absent = Math.max(0, totalEmployees - uniqueUsersPresent - usersOnLeave);
