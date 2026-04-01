@@ -52,6 +52,7 @@ const EMPTY_CONFIG: SiteCostingMaster = {
   effectiveTo: '',
   billingCycle: 'Monthly',
   adminChargePercent: 10,
+  adminChargeApplicable: true,
   status: 'Draft',
   versionNo: 1,
   resources: [],
@@ -181,7 +182,7 @@ const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, wat
                   </select>
                 </div>
                 <Controller control={control} name={`resources.${index}.openShiftAllowed`}
-                  render={({ field }) => <ToggleSwitch id={`open-shift-${index}`} label="Open Shift Allowed" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                  render={({ field }) => <ToggleSwitch id={`open-shift-${index}`} label="Open Shift Allowed" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
 
                 {/* Multiple shift timings */}
                 {shifts.length > 0 && (
@@ -217,9 +218,9 @@ const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, wat
               <div className="space-y-3 p-3 bg-white rounded-lg border border-border">
                 <h5 className="font-semibold text-xs uppercase text-muted tracking-wide">Leave & Holiday</h5>
                 <Controller control={control} name={`resources.${index}.weeklyOffApplicable`}
-                  render={({ field }) => <ToggleSwitch id={`woff-${index}`} label="Weekly Off Applicable" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                  render={({ field }) => <ToggleSwitch id={`woff-${index}`} label="Weekly Off Applicable" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                 <Controller control={control} name={`resources.${index}.leaveApplicable`}
-                  render={({ field }) => <ToggleSwitch id={`leave-${index}`} label="Leave Applicable" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                  render={({ field }) => <ToggleSwitch id={`leave-${index}`} label="Leave Applicable" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                 {watch(`resources.${index}.leaveApplicable`) && (
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -253,7 +254,7 @@ const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, wat
                     placeholder="e.g. Work for 2-3 hrs max 4 hrs, claim 1 duty" />
                 </div>
                 <Controller control={control} name={`resources.${index}.uniformDeduction`}
-                  render={({ field }) => <ToggleSwitch id={`uniform-${index}`} label="Uniform Deduction" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                  render={({ field }) => <ToggleSwitch id={`uniform-${index}`} label="Uniform Deduction" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                 {watch(`resources.${index}.uniformDeduction`) && (
                   <div>
                     <label className="text-xs text-muted">Deduction Note</label>
@@ -264,11 +265,11 @@ const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, wat
                 <div className="border-t border-border pt-2 space-y-1.5">
                   <h6 className="font-medium text-xs text-muted">Verifications</h6>
                   <Controller control={control} name={`resources.${index}.employmentVerification`}
-                    render={({ field }) => <ToggleSwitch id={`emp-v-${index}`} label="Employment Verification" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                    render={({ field }) => <ToggleSwitch id={`emp-v-${index}`} label="Employment Verification" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                   <Controller control={control} name={`resources.${index}.backgroundVerification`}
-                    render={({ field }) => <ToggleSwitch id={`bg-v-${index}`} label="Background Verification" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                    render={({ field }) => <ToggleSwitch id={`bg-v-${index}`} label="Background Verification" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                   <Controller control={control} name={`resources.${index}.policeVerification`}
-                    render={({ field }) => <ToggleSwitch id={`police-v-${index}`} label="Police Verification" checked={field.value} onChange={field.onChange} disabled={isLocked} />} />
+                    render={({ field }) => <ToggleSwitch id={`police-v-${index}`} label="Police Verification" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />} />
                 </div>
               </div>
             </div>
@@ -294,6 +295,7 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
 
   const watchedResources = watch('resources');
   const watchedAdminPercent = watch('adminChargePercent');
+  const watchedAdminApplicable = watch('adminChargeApplicable');
   const watchedCharges = watch('additionalCharges');
   const watchedStatus = watch('status');
   const watchedSiteId = watch('siteId');
@@ -338,9 +340,9 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
     const resSub = res.reduce((s, r) => s + calcResourceTotal(r), 0);
     const chgTot = chg.reduce((s, c) => s + (Number(c.amount) || 0), 0);
     const sub = resSub + chgTot;
-    const adm = sub * ((Number(watchedAdminPercent) || 0) / 100);
+    const adm = watchedAdminApplicable ? (sub * ((Number(watchedAdminPercent) || 0) / 100)) : 0;
     return { resourceSubtotal: resSub, chargesTotal: chgTot, adminAmount: adm, grandTotal: sub + adm };
-  }, [watchedResources, watchedCharges, watchedAdminPercent]);
+  }, [watchedResources, watchedCharges, watchedAdminPercent, watchedAdminApplicable]);
 
   // ---- Handlers ----
   const handleNewConfig = () => { reset(EMPTY_CONFIG); setView('editor'); };
@@ -593,8 +595,15 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
                 <span className="text-muted">Subtotal</span><span className="font-semibold">{fmt(resourceSubtotal + chargesTotal)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1"><span className="text-muted">Admin</span>
-                  <input type="number" className="form-input !py-0.5 !px-1 !text-xs w-12 text-center" {...register('adminChargePercent')} disabled={isLocked} />
+                <div className="flex items-center gap-2">
+                  <Controller control={control} name="adminChargeApplicable"
+                    render={({ field }) => (
+                      <div className="scale-75 origin-left -mr-3">
+                        <ToggleSwitch id="admin-fee-toggle" label="" checked={!!field.value} onChange={field.onChange} disabled={isLocked} />
+                      </div>
+                    )} />
+                  <span className="text-muted">Admin</span>
+                  <input type="number" className="form-input !py-0.5 !px-1 !text-xs w-12 text-center" {...register('adminChargePercent')} disabled={isLocked || !watchedAdminApplicable} />
                   <span className="text-muted text-xs">%</span>
                 </div>
                 <span className="font-medium">{fmt(adminAmount)}</span>

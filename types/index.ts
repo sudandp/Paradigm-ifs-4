@@ -2327,6 +2327,7 @@ export interface SiteCostingMaster {
   effectiveTo: string;
   billingCycle: BillingCycle;
   adminChargePercent: number;
+  adminChargeApplicable?: boolean;
   status: CostingStatus;
   versionNo: number;
   resources: CostingResource[];
