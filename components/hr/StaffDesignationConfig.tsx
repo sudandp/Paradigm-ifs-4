@@ -42,8 +42,8 @@ const StaffDesignationConfig: React.FC = () => {
         }, {} as Record<string, (SiteStaffDesignation & { originalIndex: number })[]>);
     }, [watchedFields]);
 
-    const handleAddRow = () => {
-        append({ id: `new_${Date.now()}`, department: '', designation: '', permanentId: '', temporaryId: '', monthlySalary: null });
+    const handleAddRow = (dept: string = '') => {
+        append({ id: `new_${Date.now()}`, department: dept, designation: '', permanentId: '', temporaryId: '', monthlySalary: null });
     };
 
     const handleSave = async (data: { designations: SiteStaffDesignation[] }) => {
@@ -77,13 +77,25 @@ const StaffDesignationConfig: React.FC = () => {
                 ) : (
                     Object.entries(groupedDesignations).map(([department, items]) => (
                         <div key={department} className="border border-border rounded-xl">
-                            <div className="p-4 bg-page rounded-t-xl">
-                                <Input 
-                                    aria-label={`Department for ${department}`} 
-                                    id={`designations.${items[0].originalIndex}.department`} 
-                                    {...register(`designations.${items[0].originalIndex}.department`)} 
-                                    className="font-semibold text-lg !border-0 !p-0 !bg-transparent focus:!ring-0" 
-                                />
+                            <div className="p-4 bg-page rounded-t-xl flex justify-between items-center">
+                                <div className="flex-grow">
+                                    <Input 
+                                        aria-label={`Department for ${department}`} 
+                                        id={`designations.${items[0].originalIndex}.department`} 
+                                        {...register(`designations.${items[0].originalIndex}.department`)} 
+                                        className="font-semibold text-lg !border-0 !p-0 !bg-transparent focus:!ring-0" 
+                                    />
+                                </div>
+                                <Button 
+                                    type="button" 
+                                    variant="icon" 
+                                    size="sm" 
+                                    onClick={() => handleAddRow(department)} 
+                                    title={`Add designation to ${department}`}
+                                    className="hover:bg-accent/10 text-accent transition-colors"
+                                >
+                                    <Plus className="h-5 w-5" />
+                                </Button>
                             </div>
                             <div className="space-y-3 p-4">
                                 {Array.isArray(items) && items.map(item => (
@@ -113,7 +125,7 @@ const StaffDesignationConfig: React.FC = () => {
                 )}
             </div>
             
-            <Button type="button" onClick={handleAddRow} variant="outline" className="mt-4"><Plus className="mr-2 h-4 w-4" /> Add Designation</Button>
+            <Button type="button" onClick={() => handleAddRow()} variant="outline" className="mt-4"><Plus className="mr-2 h-4 w-4" /> Add Designation</Button>
         </form>
     );
 };
