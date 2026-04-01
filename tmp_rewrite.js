@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+const fs = require('fs');
+
+const targetFile = 'e:/backup/onboarding all files/Paradigm Office 4/pages/admin/RoleManagement.tsx';
+const originalContent = fs.readFileSync(targetFile, 'utf8');
+
+const importReplacement = `import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -13,50 +18,9 @@ import { useDevice } from '../../hooks/useDevice';
 import { isAdmin } from '../../utils/auth';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import ToggleSwitch from '../../components/ui/ToggleSwitch';
-import Input from '../../components/ui/Input';
+import Input from '../../components/ui/Input';`;
 
-export const allPermissions: { key: Permission; name: string; description: string }[] = [...[
-    { key: 'apply_for_leave', name: 'Apply for Leave', description: 'Allows users to request time off.' },
-    { key: 'create_enrollment', name: 'Create Enrollment', description: 'Access the multi-step form to onboard new employees.' },
-    { key: 'view_developer_settings', name: 'Developer Settings', description: 'Access API settings and other developer tools.' },
-    { key: 'download_attendance_report', name: 'Download Attendance Report', description: 'Generate and download attendance reports in CSV format.' },
-    { key: 'manage_approval_workflow', name: 'Manage Approval Workflow', description: 'Set up reporting managers for leave approvals.' },
-    { key: 'manage_attendance_rules', name: 'Manage Attendance Rules', description: 'Set work hours, holidays, and leave allocations.' },
-    { key: 'manage_enrollment_rules', name: 'Manage Enrollment Rules', description: 'Set rules for ESI/GMC, manpower limits, and documents.' },
-    { key: 'manage_insurance', name: 'Manage Insurance', description: 'Create and manage company insurance plans.' },
-    { key: 'manage_leave_requests', name: 'Manage Leave Requests', description: 'Approve or reject leave requests for employees.' },
-    { key: 'manage_modules', name: 'Manage Modules', description: 'Create, edit, and group permissions into modules.' },
-    { key: 'manage_policies', name: 'Manage Policies', description: 'Create and manage company policies.' },
-    { key: 'manage_roles_and_permissions', name: 'Manage Roles & Permissions', description: 'Access this page to edit role permissions.' },
-    { key: 'manage_sites', name: 'Manage Sites', description: 'Create, edit, and delete organizations/sites.' },
-    { key: 'manage_tasks', name: 'Manage Tasks', description: 'Create, assign, and manage all organizational tasks, including escalations.' },
-    { key: 'manage_uniforms', name: 'Manage Uniforms', description: 'Manage uniform requests and site configurations.' },
-    { key: 'manage_users', name: 'Manage Users', description: 'Create, edit, and delete user accounts.' },
-    { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.' },
-    { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.' },
-    { key: 'view_all_attendance', name: 'View All Attendance', description: 'Allows users to see attendance records for all employees.' },
-    { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.' },
-    { key: 'view_entity_management', name: 'View Entity Management', description: 'Access the HR dashboard for managing company entities.' },
-    { key: 'view_field_staff_tracking', name: 'View Field Staff Tracking', description: 'Track user check-in/out locations and activity on a map.' },
-    { key: 'view_invoice_summary', name: 'View Invoice Summary', description: 'View and generate monthly invoices for sites.' },
-    { key: 'view_own_attendance', name: 'View Own Attendance', description: 'Allows users to see their own attendance records.' },
-    { key: 'view_verification_costing', name: 'View Verification Costing', description: 'Analyze costs associated with third-party document verifications.' },
-    { key: 'view_my_team', name: 'View My Team', description: 'Access the My Team page to view detailed team metrics.' },
-    { key: 'view_field_reports', name: 'View Field Reports', description: 'Access and review daily reports submitted by field staff.' },
-    { key: 'manage_biometric_devices', name: 'Manage Biometric Devices', description: 'Add, monitor, and remove biometric devices.' },
-    { key: 'manage_geo_locations', name: 'Manage Geo Locations', description: 'Create and manage geofenced locations for attendance.' },
-    { key: 'view_my_locations', name: 'View My Locations', description: 'View assigned geofenced locations for personal attendance.' },
-    { key: 'view_profile', name: 'View Profile', description: 'Access personal profile and settings.' },
-    { key: 'access_support_desk', name: 'Access Support Desk', description: 'Allows users to access the backend support and ticketing system.' },
-    { key: 'view_mobile_nav_home', name: 'Mobile Nav: Home', description: 'Show Home tab in mobile navigation.' },
-    { key: 'view_mobile_nav_attendance', name: 'Mobile Nav: Attendance', description: 'Show Attendance tab in mobile navigation.' },
-    { key: 'view_mobile_nav_tasks', name: 'Mobile Nav: Tasks', description: 'Show Tasks tab in mobile navigation.' },
-    { key: 'view_mobile_nav_profile', name: 'Mobile Nav: Profile', description: 'Show Profile tab in mobile navigation.' },
-    { key: 'manage_finance_settings', name: 'Manage Finance Settings', description: 'Control over global finance configurations.' },
-    { key: 'view_finance_reports', name: 'View Finance Reports', description: 'Access to consolidated financial reports.' },
-    { key: 'view_attendance_tracker', name: 'View Site Attendance Tracker', description: 'Monitor and track site-level attendance records.' },
-] as const].sort((a, b) => a.name.localeCompare(b.name));
-
+const componentContent = `
 const RoleManagement: React.FC = () => {
     const { user } = useAuthStore();
     const navigate = useNavigate();
@@ -138,7 +102,6 @@ const RoleManagement: React.FC = () => {
     const selectedRole = useMemo(() => roles.find(r => r.id === selectedRoleId) || null, [roles, selectedRoleId]);
 
     const handlePermissionChange = async (roleId: UserRole, permission: Permission, checked: boolean) => {
-        if (!roles.some(r => r.id === roleId)) return; // Prevents saving if role removed
         setIsSaving(true);
         const currentPermissions = permissions[roleId] || [];
         const newPermissions = checked
@@ -156,8 +119,6 @@ const RoleManagement: React.FC = () => {
         } catch (error) {
             console.error("Failed to sync permissions:", error);
             setToast({ message: "Failed to save permissions. Please try again.", type: 'error' });
-            // Revert changes on failure
-            setRolePermissions(roleId, currentPermissions);
         } finally {
             setIsSaving(false);
         }
@@ -183,18 +144,17 @@ const RoleManagement: React.FC = () => {
             setRoles(updatedRoles);
         } catch (error) {
             setToast({ message: "Failed to save permissions.", type: 'error' });
-            setRolePermissions(roleId, currentPermissions);
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleSaveRoleName = async (newName: string) => {
-        const newId = newName.toLowerCase().replace(/\s+/g, '_');
+        const newId = newName.toLowerCase().replace(/\\s+/g, '_');
 
         if (isCloning && roleToClone) {
             if (roles.some(r => r.id === newId)) {
-                setToast({ message: `A role with ID '${newId}' already exists.`, type: 'error' });
+                setToast({ message: \`A role with ID '\${newId}' already exists.\`, type: 'error' });
                 return;
             }
             const sourcePerms = permissions[roleToClone.id] || [];
@@ -214,7 +174,7 @@ const RoleManagement: React.FC = () => {
                 return;
             }
             if (roles.some(r => r.id === newId && r.id !== currentRole.id)) {
-                setToast({ message: `A role with ID '${newId}' already exists.`, type: 'error' });
+                setToast({ message: \`A role with ID '\${newId}' already exists.\`, type: 'error' });
                 return;
             }
             const updatedRoles = roles.map(r => r.id === currentRole.id ? { ...r, displayName: newName, id: newId } : r);
@@ -225,7 +185,7 @@ const RoleManagement: React.FC = () => {
             setToast({ message: "Role renamed.", type: 'success' });
         } else {
             if (roles.some(r => r.id === newId)) {
-                setToast({ message: `A role with ID '${newId}' already exists.`, type: 'error' });
+                setToast({ message: \`A role with ID '\${newId}' already exists.\`, type: 'error' });
                 return;
             }
             const newRole: Role = { id: newId, displayName: newName, permissions: [] };
@@ -250,10 +210,8 @@ const RoleManagement: React.FC = () => {
         removeRolePermissionEntry(currentRole.id);
         if (selectedRoleId === currentRole.id && updatedRoles.length > 0) {
             setSelectedRoleId(updatedRoles[0].id);
-        } else if (updatedRoles.length === 0) {
-            setSelectedRoleId(null);
         }
-        setToast({ message: `Role '${currentRole.displayName}' deleted.`, type: 'success' });
+        setToast({ message: \`Role '\${currentRole.displayName}' deleted.\`, type: 'success' });
         setIsDeleteModalOpen(false);
     };
 
@@ -289,14 +247,14 @@ const RoleManagement: React.FC = () => {
     }
 
     return (
-        <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card min-h-[calc(100vh-100px)] flex flex-col">
+        <div className="h-[calc(100vh-80px)] md:h-[calc(100vh-96px)] flex flex-col bg-page !m-0 !p-0">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             <RoleNameModal
                 isOpen={isNameModalOpen}
                 onClose={() => { setIsNameModalOpen(false); setIsCloning(false); }}
                 onSave={handleSaveRoleName}
                 title={isCloning ? 'Clone Role' : isEditing ? 'Rename Role' : 'Add New Role'}
-                initialName={isCloning && roleToClone ? `${roleToClone.displayName} Copy` : isEditing ? currentRole?.displayName : ''}
+                initialName={isCloning && roleToClone ? \`\${roleToClone.displayName} Copy\` : isEditing ? currentRole?.displayName : ''}
             />
             <Modal
                 isOpen={isDeleteModalOpen}
@@ -307,50 +265,49 @@ const RoleManagement: React.FC = () => {
                 Are you sure you want to delete the role "{currentRole?.displayName}"? This action cannot be undone.
             </Modal>
 
-            <AdminPageHeader title="Role & Permission Management">
-                {!isMobile && <div className="text-sm text-muted">Manage roles and their access levels</div>}
-            </AdminPageHeader>
+            <div className="flex px-4 md:px-6 py-4 border-b border-border items-center justify-between bg-card flex-shrink-0">
+                <AdminPageHeader title="Role & Permission Management" subtitle="Manage roles and their access levels" />
+            </div>
 
-            <div className="flex flex-col md:flex-row gap-4 mt-3 items-start">
+            <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
                 {/* Left Sidebar - Roles */}
-                <div className="w-full md:w-80 flex-shrink-0 border border-border bg-card rounded-xl flex flex-col md:sticky md:top-[60px] max-h-[calc(100vh-20px)] overflow-hidden shadow-sm">
-                    <div className="p-2 border-b border-border flex items-center gap-2">
+                <div className="w-full md:w-80 flex-shrink-0 border-b md:border-b-0 md:border-r border-border bg-card flex flex-col h-[40vh] md:h-full">
+                    <div className="p-4 border-b border-border space-y-4">
                         <button 
                             onClick={() => { setIsEditing(false); setIsCloning(false); setCurrentRole(null); setIsNameModalOpen(true); }} 
-                            className="btn btn-primary btn-sm flex-shrink-0 px-2 h-8"
-                            title="Add Role"
+                            className="btn btn-primary w-full justify-center"
                         >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="mr-2 h-4 w-4" /> Add Role
                         </button>
-                        <div className="relative flex-1">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted" />
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
                             <Input
                                 type="text"
-                                placeholder="Search..."
+                                placeholder="Search roles..."
                                 value={roleSearchQuery}
                                 onChange={(e) => setRoleSearchQuery(e.target.value)}
-                                className="pl-8 h-8 text-sm bg-page"
+                                className="pl-9 bg-page"
                             />
                         </div>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
                         {filteredRoles.map(role => (
                             <div 
                                 key={role.id}
                                 onClick={() => setSelectedRoleId(role.id)}
-                                className={`group flex items-center justify-between py-0.5 px-2 rounded-md cursor-pointer transition-colors ${selectedRoleId === role.id ? 'bg-accent/10 text-accent font-medium' : 'hover:bg-page text-primary-text'}`}
+                                className={\`group flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors \${selectedRoleId === role.id ? 'bg-accent/10 text-accent font-medium' : 'hover:bg-page text-primary-text'}\`}
                             >
-                                <span className="truncate pr-2 text-sm">{role.displayName}</span>
+                                <span className="truncate pr-2">{role.displayName}</span>
                                 
                                 <div className="relative flex items-center" onClick={(e) => e.stopPropagation()}>
                                     {isAdmin(role.id) ? (
-                                        <ShieldCheck className={`w-4 h-4 mr-1 ${selectedRoleId === role.id ? 'text-accent' : 'text-accent/50 group-hover:text-accent'}`} />
+                                        <ShieldCheck className="w-4 h-4 text-accent/50 group-hover:text-accent mr-1" />
                                     ) : (
                                         <>
                                             <button 
                                                 onClick={() => setActiveDropdown(activeDropdown === role.id ? null : role.id)}
-                                                className={`p-1.5 rounded-md hover:bg-card border border-transparent ${activeDropdown === role.id ? 'bg-card border-border shadow-sm' : ''} ${selectedRoleId === role.id ? 'text-accent' : 'text-muted'}`}
+                                                className={\`p-1.5 rounded-md hover:bg-card border border-transparent \${activeDropdown === role.id ? 'bg-card border-border shadow-sm' : ''} \${selectedRoleId === role.id ? 'text-accent' : 'text-muted'}\`}
                                             >
                                                 <MoreVertical className="w-4 h-4" />
                                             </button>
@@ -372,24 +329,22 @@ const RoleManagement: React.FC = () => {
                 </div>
 
                 {/* Main Content - Permissions Editor */}
-                <div className="flex-1 w-full flex flex-col bg-card border border-border rounded-xl relative h-auto overflow-hidden">
+                <div className="flex-1 flex flex-col bg-page h-[60vh] md:h-full overflow-hidden relative">
                     {selectedRole ? (
                         <>
                             <div className="p-4 md:p-6 border-b border-border bg-card flex flex-col space-y-4 shadow-sm z-10 flex-shrink-0">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-xl font-bold text-primary-text flex items-center gap-2">
-                                            {selectedRole.displayName} Permissions
-                                        </h2>
+                                        <h2 className="text-xl font-bold text-primary-text">{selectedRole.displayName} Permissions</h2>
                                         <p className="text-sm text-muted mt-1">Configure what users with this role can access.</p>
                                     </div>
-                                    <div className="flex items-center gap-3 w-full md:w-auto">
+                                    <div className="flex items-center gap-3">
                                         {isSaving && (
-                                            <div className="hidden md:flex items-center text-sm font-medium text-accent animate-pulse mr-2">
+                                            <div className="flex items-center text-sm text-muted animate-pulse">
                                                 <Save className="w-4 h-4 mr-1.5" /> Saving...
                                             </div>
                                         )}
-                                        <div className="relative flex-1 md:w-64">
+                                        <div className="relative w-full md:w-64">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
                                             <Input
                                                 type="text"
@@ -402,7 +357,7 @@ const RoleManagement: React.FC = () => {
                                     </div>
                                 </div>
                                 
-                                {isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer' ? (
+                                {isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer' && (
                                     <div className="p-3 bg-accent/5 dark:bg-accent/10 border border-accent/20 rounded-lg flex items-start gap-3">
                                         <ShieldCheck className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
                                         <div className="text-sm">
@@ -410,16 +365,10 @@ const RoleManagement: React.FC = () => {
                                             <span className="text-muted">The Admin role represents super-user access and automatically inherits all system permissions. This cannot be modified.</span>
                                         </div>
                                     </div>
-                                ) : (
-                                    isSaving && isMobile && (
-                                        <div className="flex items-center justify-center p-2 text-sm font-medium text-accent bg-accent/5 rounded-lg border border-accent/10">
-                                           <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving changes...
-                                        </div>
-                                    )
                                 )}
                             </div>
 
-                            <div className="p-4 md:p-6 space-y-4 bg-page">
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar bg-page">
                                 {filteredModules.map(module => {
                                     const isExpanded = expandedModules[module.id] || permissionSearchQuery.length > 0;
                                     const modulePermissions = module.permissions;
@@ -435,18 +384,18 @@ const RoleManagement: React.FC = () => {
                                     const isRoleAdmin = isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer';
 
                                     return (
-                                        <div key={module.id} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden transform transition-all hover:border-border/80">
+                                        <div key={module.id} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
                                             <div 
                                                 className="px-5 py-4 flex items-center justify-between cursor-pointer hover:bg-page transition-colors select-none"
                                                 onClick={() => toggleModule(module.id)}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}`}>
-                                                        {isExpanded ? <ChevronDown className="w-4 h-4 transition-transform" /> : <ChevronRight className="w-4 h-4 transition-transform" />}
+                                                    <div className={\`p-1.5 rounded-lg \${isExpanded ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}\`}>
+                                                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                     </div>
                                                     <div>
-                                                        <h3 className="font-semibold text-primary-text text-sm md:text-base leading-tight md:leading-normal">{module.name}</h3>
-                                                        <p className="text-xs text-muted truncate max-w-[200px] md:max-w-md mt-0.5">{module.description}</p>
+                                                        <h3 className="font-semibold text-primary-text">{module.name}</h3>
+                                                        <p className="text-xs text-muted truncate max-w-sm md:max-w-md mt-0.5">{module.description}</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-4">
@@ -456,20 +405,18 @@ const RoleManagement: React.FC = () => {
                                                     
                                                     {/* Module select all toggle */}
                                                     <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
-                                                        <label className={`relative flex items-center justify-center cursor-pointer ${isRoleAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                        <label className={\`relative inline-flex items-center \${isRoleAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}\`}>
                                                             <input 
                                                                 type="checkbox" 
-                                                                className="sr-only"
+                                                                className="sr-only peer" 
                                                                 disabled={isRoleAdmin}
                                                                 checked={isAllChecked}
                                                                 onChange={(e) => handleToggleModulePermissions(selectedRole.id, modulePermissions, e.target.checked)}
                                                             />
-                                                            <div className={`w-5 h-5 border rounded flex items-center justify-center transition-colors ${
-                                                                isAllChecked ? 'bg-accent border-accent text-white' : 
-                                                                isIndeterminate ? 'bg-accent border-accent text-white' : 'bg-white border-gray-300'
-                                                            }`}>
-                                                                {isAllChecked && <Check className="w-3.5 h-3.5" />}
-                                                                {isIndeterminate && !isAllChecked && <div className="w-2.5 h-0.5 bg-white rounded-full" />}
+                                                            <div className={\`w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-accent-dark \${isAllChecked || isIndeterminate ? 'bg-accent' : ''} after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full peer-checked:after:border-white\`}>
+                                                                {isIndeterminate && !isAllChecked && (
+                                                                     <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-2 h-0.5 bg-white rounded-full transition-opacity z-10" />
+                                                                )}
                                                             </div>
                                                         </label>
                                                     </div>
@@ -477,7 +424,7 @@ const RoleManagement: React.FC = () => {
                                             </div>
 
                                             {isExpanded && (
-                                                <div className="px-5 pb-5 pt-2 border-t border-border bg-page/30 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-8 gap-y-4">
+                                                <div className="px-5 pb-5 pt-2 border-t border-border bg-page/30 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                                                     {modulePermissions.map(permKey => {
                                                         const permInfo = allPermissionDetailsMap.get(permKey);
                                                         if (!permInfo) return null;
@@ -495,9 +442,9 @@ const RoleManagement: React.FC = () => {
                                                         const isDisabled = isAdminLocked || (isCurrentUserRole && isCorePermission);
 
                                                         return (
-                                                            <div key={permKey} className="flex flex-col py-2 border-b border-border/50 md:border-b-0 hover:bg-page/50 rounded-lg md:p-2 -mx-2 px-2 transition-colors">
+                                                            <div key={permKey} className="flex flex-col py-2 border-b border-border/50 md:border-b-0">
                                                                 <ToggleSwitch
-                                                                    id={`perm-${permKey}`}
+                                                                    id={\`perm-\${permKey}\`}
                                                                     label={permInfo.name}
                                                                     description={permInfo.description}
                                                                     checked={isChecked}
@@ -518,7 +465,7 @@ const RoleManagement: React.FC = () => {
                                         <div className="px-5 py-4 flex items-center gap-3 border-b border-border bg-page/50">
                                             <h3 className="font-semibold text-primary-text">Uncategorized Permissions</h3>
                                         </div>
-                                        <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-8 gap-y-4 bg-page/30">
+                                        <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                                             {unassignedPermissions.map(permInfo => {
                                                 const isRoleAdmin = isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer';
                                                 const isCurrentUserRole = user?.role === selectedRole.id;
@@ -533,9 +480,9 @@ const RoleManagement: React.FC = () => {
                                                 const isDisabled = isAdminLocked || (isCurrentUserRole && isCorePermission);
 
                                                 return (
-                                                    <div key={permInfo.key} className="flex flex-col py-2 border-b border-border/50 md:border-b-0 hover:bg-page/50 rounded-lg md:p-2 -mx-2 px-2 transition-colors">
+                                                    <div key={permInfo.key} className="flex flex-col py-2 border-b border-border/50 md:border-b-0">
                                                         <ToggleSwitch
-                                                            id={`perm-${permInfo.key}`}
+                                                            id={\`perm-\${permInfo.key}\`}
                                                             label={permInfo.name}
                                                             description={permInfo.description}
                                                             checked={isChecked}
@@ -564,3 +511,20 @@ const RoleManagement: React.FC = () => {
 };
 
 export default RoleManagement;
+`;
+
+// Extract imports definition block from original file (lines 1 to 16 approximately)
+const originalFileLines = originalContent.split('\\n');
+const importEndIndex = originalFileLines.findIndex(line => line.includes('export const allPermissions'));
+
+const exportAllPermissionsBlockIndex = originalFileLines.findIndex(line => line.includes('export const allPermissions'));
+const componentStartIndex = originalFileLines.findIndex(line => line.startsWith('const RoleManagement: React.FC = () => {'));
+
+if (exportAllPermissionsBlockIndex !== -1 && componentStartIndex !== -1) {
+    const permissionsBlock = originalFileLines.slice(exportAllPermissionsBlockIndex, componentStartIndex).join('\\n');
+    const newContent = importReplacement + '\\n\\n' + permissionsBlock + componentContent;
+    fs.writeFileSync(targetFile, newContent);
+    console.log("Rewrote RoleManagement.tsx successfully");
+} else {
+    console.log("Failed to find index points.");
+}

@@ -1535,6 +1535,10 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
 
+        if (selectedStatus === 'ACTIVE_USERS') {
+            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+        }
+
         const targetUsers = filteredUsers;
 
         targetUsers.forEach(user => {
@@ -1699,7 +1703,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         // Apply status filter
-        let filteredData = selectedStatus === 'all'
+        let filteredData = (selectedStatus === 'all' || selectedStatus === 'ACTIVE_USERS')
             ? data
             : data.filter(row => row.status === selectedStatus);
 
@@ -1742,6 +1746,10 @@ const AttendanceDashboard: React.FC = () => {
         }
         if (selectedSite !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+        }
+
+        if (selectedStatus === 'ACTIVE_USERS') {
+            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
         }
 
         const targetUsers = filteredUsers;
@@ -1798,6 +1806,10 @@ const AttendanceDashboard: React.FC = () => {
         }
         if (selectedSite !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+        }
+
+        if (selectedStatus === 'ACTIVE_USERS') {
+            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
         }
 
         const targetUsers = filteredUsers;
@@ -2087,6 +2099,10 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+
+        if (selectedStatus === 'ACTIVE_USERS') {
+            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+        }
 
         const targetUserIds = new Set(filteredUsers.map(u => u.id));
         const data: SiteOtDataRow[] = [];
@@ -2920,6 +2936,7 @@ const AttendanceDashboard: React.FC = () => {
                             onChange={(e) => setSelectedStatus(e.target.value)}
                         >
                             <option value="all">All Status</option>
+                            <option value="ACTIVE_USERS">Active Users Only</option>
                             <option value="P">Present (P)</option>
                             <option value="0.5P">Half Day (0.5P)</option>
                             <option value="A">Absent (A)</option>
