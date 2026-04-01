@@ -83,28 +83,46 @@ interface ResourceRowProps {
   remove: (index: number) => void;
   isLocked: boolean;
   total: number;
+  groupedDesignations: Record<string, string[]>;
+  setValue: any;
 }
 
-const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, watch, remove, isLocked, total }) => {
+const ResourceRow: React.FC<ResourceRowProps> = ({ index, register, control, watch, remove, isLocked, total, groupedDesignations, setValue }) => {
   const [expanded, setExpanded] = useState(false);
   const shifts: ResourceShift[] = watch(`resources.${index}.shifts`) || [];
   const shiftType = watch(`resources.${index}.shiftType`);
+  const watchedDept = watch(`resources.${index}.department`);
 
-  const addShift = () => {
-    const current = shifts;
-    const newShift: ResourceShift = { name: `Shift ${current.length + 1}`, startTime: '08:00', endTime: '16:00' };
-    // We need to use the form's setValue through parent — use register nested fields
-  };
+  const departments = useMemo(() => Object.keys(groupedDesignations), [groupedDesignations]);
+  const availableDesignations = useMemo(() => (watchedDept ? groupedDesignations[watchedDept] || [] : []), [watchedDept, groupedDesignations]);
 
   return (
     <>
       {/* Main data row */}
       <tr className="hover:bg-page/30 transition-colors border-b border-border">
         <td className="px-1 py-1">
-          <input className="form-input !py-1.5 !text-sm w-full min-w-[100px]" {...register(`resources.${index}.department`)} placeholder="Dept" disabled={isLocked} />
+          <select 
+            className="form-input !py-1.5 !text-sm w-full min-w-[120px]" 
+            {...register(`resources.${index}.department`)} 
+            disabled={isLocked}
+            onChange={(e) => {
+              setValue(`resources.${index}.department`, e.target.value);
+              setValue(`resources.${index}.designation`, ''); // Clear designation on dept change
+            }}
+          >
+            <option value="">Select Dept</option>
+            {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+          </select>
         </td>
         <td className="px-1 py-1">
-          <input className="form-input !py-1.5 !text-sm w-full min-w-[140px]" {...register(`resources.${index}.designation`)} placeholder="Designation / Description" disabled={isLocked} />
+          <select 
+            className="form-input !py-1.5 !text-sm w-full min-w-[160px]" 
+            {...register(`resources.${index}.designation`)} 
+            disabled={isLocked || !watchedDept}
+          >
+            <option value="">Select Designation</option>
+            {availableDesignations.map(des => <option key={des} value={des}>{des}</option>)}
+          </select>
         </td>
         <td className="px-1 py-1">
           <select className="form-input !py-1.5 !text-sm w-full" {...register(`resources.${index}.unitType`)} disabled={isLocked}>
@@ -266,6 +284,7 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
   const [view, setView] = useState<'dashboard' | 'editor'>('dashboard');
   const [sites, setSites] = useState<any[]>(externalSites || []);
   const [configs, setConfigs] = useState<SiteCostingMaster[]>([]);
+  const [allDesignations, setAllDesignations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -280,13 +299,13 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
   const watchedSiteId = watch('siteId');
   const isLocked = watchedStatus === 'Approved';
 
-  // ---- Load ----
   useEffect(() => {
     (async () => {
       setIsLoading(true);
       try {
-        const [configsData] = await Promise.all([
+        const [configsData, designationsData] = await Promise.all([
           api.getSiteCostingConfigs().catch(() => []),
+          api.getSiteStaffDesignations().catch(() => []),
         ]);
         if (externalSites) setSites(externalSites);
         else {
@@ -295,11 +314,22 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
            setSites(sitesData);
         }
         setConfigs(configsData);
+        setAllDesignations(designationsData);
       } catch {
-        setToast({ message: 'Failed to load configurations.', type: 'error' });
+        setToast({ message: 'Failed to load configuration data.', type: 'error' });
       } finally { setIsLoading(false); }
     })();
   }, [externalSites]);
+
+  // Group designations by department for dropdowns
+  const groupedDesignations = useMemo(() => {
+    return allDesignations.reduce((acc, curr) => {
+      const dept = curr.department || 'Uncategorized';
+      if (!acc[dept]) acc[dept] = [];
+      if (curr.designation) acc[dept].push(curr.designation);
+      return acc;
+    }, {} as Record<string, string[]>);
+  }, [allDesignations]);
 
   // ---- Calculations ----
   const { resourceSubtotal, chargesTotal, adminAmount, grandTotal } = useMemo(() => {
@@ -492,11 +522,11 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase">Dept</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase">Designation / Desc.</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase w-24">Units</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-16">Qty</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-24">Rate</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted uppercase w-24">Model</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted uppercase w-28">Total</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-36">Units</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-24">Qty</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-32">Rate</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted uppercase w-36">Model</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted uppercase w-40">Total</th>
                     <th className="px-3 py-2 w-16"></th>
                   </tr>
                 </thead>
@@ -506,7 +536,7 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
                     const rowTotal = resource ? calcResourceTotal(resource) : 0;
                     return (
                       <ResourceRow key={field.id} index={index} register={register} control={control} watch={watch}
-                        remove={remove} isLocked={isLocked} total={rowTotal} />
+                        remove={remove} isLocked={isLocked} total={rowTotal} groupedDesignations={groupedDesignations} setValue={setValue} />
                     );
                   })}
                 </tbody>

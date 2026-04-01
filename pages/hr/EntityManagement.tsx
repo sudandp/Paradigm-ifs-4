@@ -140,6 +140,7 @@ const EntityManagement: React.FC = () => {
         return Array.from(new Set([...companyLocations, ...entityLocations].filter(Boolean) as string[])).sort();
     }, [groups]);
 
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
@@ -572,137 +573,186 @@ const EntityManagement: React.FC = () => {
         switch (activeSubcategory) {
             case 'client_structure':
                 return (
-                    <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
-                            <Button onClick={() => navigate('/hr/entity-management/add-group')} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-lg hover:shadow-xl transition-all duration-300"><Plus className="mr-2 h-4" />Add Group</Button>
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center border-b border-border pb-4">
+                            <div>
+                                <h4 className="text-xl font-bold text-primary-text">Client Structure</h4>
+                                <p className="text-sm text-muted">Manage your organizational hierarchy, companies, and societies.</p>
+                            </div>
+                            <Button 
+                                onClick={() => navigate('/hr/entity-management/add-group')} 
+                                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} 
+                                className="border hover:opacity-90 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                            >
+                                <Plus className="mr-2 h-5 w-5" /> Add New Group
+                            </Button>
                         </div>
-                        <div className="space-y-2">
-                            {filteredGroups.map(group => (
-                                <div key={group.id} className="border-b border-border">
-                                    <div className="p-3 flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => toggleExpand(group.id)}><ChevronRight className={`h-5 w-5 transition-transform ${expanded[group.id] ? 'rotate-90' : ''}`} /></button>
-                                            <Building className="h-5 w-5 text-muted" />
-                                            <span className="font-semibold">{group.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button size="sm" className="!p-1.5" onClick={() => setCompanyFormState({ isOpen: true, mode: 'add', groupId: group.id, groupName: group.name, initialData: null })} title="Add Company / LLP / Partnership / Society">
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
-                                            <Button variant="icon" onClick={() => setNameModalState({ isOpen: true, mode: 'edit', type: 'group', id: group.id, initialName: group.name, title: 'Edit Group Name', label: 'Group Name' })} title="Edit group name" className="p-2 hover:bg-blue-500/10 rounded-full transition-colors"><Edit className="h-5 w-5" /></Button>
-                                            <Button variant="icon" onClick={() => handleDeleteClick('group', group.id, group.name)} title="Delete group" className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
-                                        </div>
-                                    </div>
-                                    {expanded[group.id] && (
-                                        <div className="pl-6 pr-3 pb-3 space-y-2">
-                                            {group.companies.map(company => (
-                                                <div key={company.id} className="border border-border rounded-lg">
-                                                    <div className="p-2 flex items-center justify-between bg-card">
-                                                        <div className="flex items-center gap-2">
-                                                            <button onClick={() => toggleExpand(company.id)}><ChevronRight className={`h-5 w-5 transition-transform ${expanded[company.id] ? 'rotate-90' : ''}`} /></button>
-                                                            <span>
-                                                                {company.name} 
-                                                                {company.location && <span className="text-sm text-muted ml-1">({company.location})</span>}{' '}
-                                                                <span className="text-sm text-muted">({company.entities.length} societies)</span>
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Button variant="icon" size="sm" title={`View ${company.entities.length} societies`} onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}><Eye className="h-4 w-4" /></Button>
-                                                            <Button variant="icon" size="sm" onClick={() => handleAddClient(company.name)} title="Add Society"><Plus className="h-4 w-4" /></Button>
-                                                            <Button variant="icon" onClick={() => setCompanyFormState({ isOpen: true, mode: 'edit', groupId: group.id, groupName: group.name, initialData: company })} title="Edit company name" className="p-2 hover:bg-blue-500/10 rounded-full transition-colors"><Edit className="h-5 w-5" /></Button>
-                                                            <Button variant="icon" onClick={() => handleDeleteClick('company', company.id, company.name)} title="Delete Company / LLP / Partnership / Society" className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
-                                                        </div>
-                                                    </div>
-                                                    {expanded[company.id] && (
-                                                        <div className="p-2">
-                                                            {company.entities.map(client => (
-                                                                <div key={client.id} className="p-2 flex items-center justify-between hover:bg-page rounded">
-                                                                    <span>
-                                                                        {client.name}
-                                                                        {client.location && <span className="text-sm text-muted ml-1">({client.location})</span>}
-                                                                    </span>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <Button variant="icon" onClick={() => handleEditClient(client, company.name)} className="p-2 hover:bg-blue-500/10 rounded-full transition-colors"><Edit className="h-5 w-5" /></Button>
-                                                                        <Button variant="icon" onClick={() => handleDeleteClick('client', client.id, client.name)} className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+
+                        <div className="space-y-4">
+                            {filteredGroups.length === 0 ? (
+                                <div className="text-center py-12 bg-page/30 rounded-xl border border-dashed border-border">
+                                    <p className="text-muted">No groups found matching your search.</p>
                                 </div>
-                            ))}
+                            ) : (
+                                filteredGroups.map(group => (
+                                    <div key={group.id} className="bg-card border border-border shadow-md rounded-xl overflow-hidden">
+                                        <div className="p-4 flex items-center justify-between bg-page/5">
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => toggleExpand(group.id)} className="p-1 hover:bg-page rounded-md transition-colors">
+                                                    <ChevronRight className={`h-5 w-5 text-accent transition-transform duration-200 ${expanded[group.id] ? 'rotate-90' : ''}`} />
+                                                </button>
+                                                <Building className="h-5 w-5 text-muted" />
+                                                <span className="font-bold text-lg text-primary-text">{group.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button size="sm" variant="outline" className="h-9 px-3 border-accent/20 text-accent hover:bg-accent/5 font-bold" onClick={() => setCompanyFormState({ isOpen: true, mode: 'add', groupId: group.id, groupName: group.name, initialData: null })}>
+                                                    <Plus className="mr-2 h-4 w-4" /> Add Company
+                                                </Button>
+                                                <Button variant="icon" className="h-9 w-9 hover:bg-blue-500/10 text-blue-600" onClick={() => setNameModalState({ isOpen: true, mode: 'edit', type: 'group', id: group.id, initialName: group.name, title: 'Edit Group Name', label: 'Group Name' })}>
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                                <Button variant="icon" className="h-9 w-9 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('group', group.id, group.name)}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        {expanded[group.id] && (
+                                            <div className="px-4 pb-4 space-y-3">
+                                                {group.companies.map(company => (
+                                                    <div key={company.id} className="border border-border/60 rounded-lg overflow-hidden">
+                                                        <div className="p-3 flex items-center justify-between bg-page/10">
+                                                            <div className="flex items-center gap-3">
+                                                                <button onClick={() => toggleExpand(company.id)} className="p-1 hover:bg-page rounded-md transition-colors">
+                                                                    <ChevronRight className={`h-4 w-4 text-muted transition-transform duration-200 ${expanded[company.id] ? 'rotate-90' : ''}`} />
+                                                                </button>
+                                                                <span className="font-semibold text-primary-text">
+                                                                    {company.name} 
+                                                                    {company.location && <span className="text-xs font-normal text-muted ml-2 bg-page px-2 py-0.5 rounded-full border border-border">{company.location}</span>}
+                                                                </span>
+                                                                <span className="text-xs text-muted ml-2">({company.entities.length} societies)</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}><Eye className="h-4 w-4" /></Button>
+                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => handleAddClient(company.name)}><Plus className="h-4 w-4" /></Button>
+                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-blue-500/5 text-blue-500" onClick={() => setCompanyFormState({ isOpen: true, mode: 'edit', groupId: group.id, groupName: group.name, initialData: company })}><Edit className="h-4 w-4" /></Button>
+                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-red-500/5 text-red-500" onClick={() => handleDeleteClick('company', company.id, company.name)}><Trash2 className="h-4 w-4" /></Button>
+                                                            </div>
+                                                        </div>
+                                                        {expanded[company.id] && (
+                                                            <div className="p-2 space-y-1 bg-page/5">
+                                                                {company.entities.length === 0 ? (
+                                                                    <p className="text-xs text-muted text-center py-2">No societies added yet.</p>
+                                                                ) : (
+                                                                    company.entities.map(client => (
+                                                                        <div key={client.id} className="px-3 py-2 flex items-center justify-between hover:bg-page rounded-md group transition-colors">
+                                                                            <span className="text-sm text-primary-text flex items-center gap-2">
+                                                                                <Building className="h-3.5 w-3.5 text-muted/60" />
+                                                                                {client.name}
+                                                                                {client.location && <span className="text-[10px] text-muted uppercase tracking-tight ml-1 font-medium bg-page/50 px-1.5 py-0.5 rounded border border-border/40">{client.location}</span>}
+                                                                            </span>
+                                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-blue-500/10 text-blue-500" onClick={() => handleEditClient(client, company.name)}><Edit className="h-3.5 w-3.5" /></Button>
+                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('client', client.id, client.name)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 );
             case 'site_configuration':
-                // Build the site config list from entities in the hierarchy (allClients)
-                // This ensures societies added via Client Structure automatically appear here
                 const siteConfigEntities = allClients.filter(client => {
                     const matchesSearch = searchTerm.trim() ? client.name.toLowerCase().includes(searchTerm.toLowerCase()) : true;
                     const matchesLocation = selectedLocation ? client.location === selectedLocation : true;
                     return matchesSearch && matchesLocation;
                 });
                 return (
-                    <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card">
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
-                            <h4 className="text-lg font-semibold text-primary-text">Sites Configuration</h4>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <Button onClick={() => setEntityFormState({ isOpen: true, initialData: null, companyName: '' })} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-lg hover:shadow-xl transition-all duration-300">
-                                    <Plus className="mr-2 h-4 w-4" /> Add Society
+                    <div className="space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 border-b border-border pb-4">
+                            <div>
+                                <h4 className="text-xl font-bold text-primary-text mb-1">Sites Configuration</h4>
+                                <p className="text-sm text-muted">
+                                    {siteConfigEntities.length === 0 
+                                        ? 'No sites found' 
+                                        : `Showing ${siteConfigEntities.length} site${siteConfigEntities.length > 1 ? 's' : ''} across all regions`}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Button onClick={() => setEntityFormState({ isOpen: true, initialData: null, companyName: '' })} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-md hover:shadow-lg transition-all duration-300">
+                                    <Plus className="mr-2 h-5 w-5" /> Add New Site
                                 </Button>
                             </div>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-border responsive-table">
-                                <thead className="bg-page">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Site Name</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Configuration Status</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
-                                    {siteConfigEntities.map(entity => {
-                                        const isConfigured = !!entity.billingName || !!entity.siteManagement?.keyAccountManager;
-                                        return (
-                                            <tr key={entity.id}>
-                                                <td data-label="Site Name" className="px-4 py-3 font-medium">
-                                                    <div className="flex items-center gap-3">
-                                                        <Building className="h-5 w-5 text-muted" />
-                                                        <span>{entity.name}</span>
-                                                    </div>
-                                                </td>
-                                                 <td data-label="Status" className="px-4 py-3">
-                                                    {entity.status === 'draft' ? (
-                                                        <span className="flex items-center text-orange-600 bg-orange-50 px-2 py-1 rounded-full text-xs font-bold w-fit border border-orange-200"><Clock className="h-3 w-3 mr-1" /> Draft</span>
-                                                    ) : isConfigured ? (
-                                                        <span className="flex items-center text-green-600 px-2 py-1 bg-green-50 rounded-full text-xs font-bold w-fit border border-green-200"><CheckCircle className="h-3 w-3 mr-1" /> Complete</span>
-                                                    ) : (
-                                                        <span className="flex items-center text-yellow-600 px-2 py-1 bg-yellow-50 rounded-full text-xs font-bold w-fit border border-yellow-200"><AlertCircle className="h-3 w-3 mr-1" /> Incomplete</span>
-                                                    )}
-                                                </td>
-                                                <td data-label="Actions" className="px-4 py-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <Button size="sm" variant="outline" onClick={() => {
-                                                            setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '' });
-                                                        }}>
-                                                            <Eye className="mr-2 h-4 w-4" /> View / Edit
-                                                        </Button>
-                                                        <Button size="sm" variant="outline" onClick={() => handleDeleteClick('site', entity.id, entity.name)} className="text-red-500 border-red-300 hover:bg-red-50">
-                                                            <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                                        </Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+
+                        {siteConfigEntities.length === 0 ? (
+                            <div className="text-center py-20 bg-page/50 rounded-2xl border-2 border-dashed border-border/60">
+                                <Building className="h-16 w-16 mx-auto mb-4 text-muted/30" />
+                                <h5 className="text-lg font-semibold text-primary-text">No sites to configure</h5>
+                                <p className="text-muted text-sm mt-1 max-w-xs mx-auto">Try adjusting your search filters or add a new site to get started.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-card border border-border shadow-md rounded-2xl overflow-hidden transition-all duration-300">
+                                <table className="min-w-full divide-y divide-border responsive-table">
+                                    <thead className="bg-page/80">
+                                        <tr>
+                                            <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-widest w-1/2">Site / Location</th>
+                                            <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-widest w-1/4">Status</th>
+                                            <th className="px-6 py-4 text-right text-xs font-bold text-muted uppercase tracking-widest">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {siteConfigEntities.map(entity => {
+                                            const isConfigured = !!entity.billingName || !!entity.siteManagement?.keyAccountManager;
+                                            return (
+                                                <tr key={entity.id} className="hover:bg-page/50 transition-colors group">
+                                                    <td className="px-6 py-5 font-semibold text-primary-text">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="p-2.5 bg-accent/5 rounded-xl text-accent group-hover:bg-accent group-hover:text-white transition-colors duration-300">
+                                                                <Building className="h-5 w-5" />
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span>{entity.name}</span>
+                                                                <span className="text-xs font-normal text-muted mt-0.5">{entity.location || 'Default Region'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                     <td className="px-6 py-5">
+                                                        {entity.status === 'draft' ? (
+                                                            <span className="inline-flex items-center text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full text-xs font-bold border border-orange-200 shadow-sm"><Clock className="h-3.5 w-3.5 mr-1.5" /> Draft</span>
+                                                        ) : isConfigured ? (
+                                                            <span className="inline-flex items-center text-green-700 px-3 py-1.5 bg-green-50 rounded-full text-xs font-bold border border-green-200 shadow-sm"><CheckCircle className="h-3.5 w-3.5 mr-1.5" /> Fully Configured</span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center text-amber-600 px-3 py-1.5 bg-amber-50 rounded-full text-xs font-bold border border-amber-200 shadow-sm"><AlertCircle className="h-3.5 w-3.5 mr-1.5" /> Pending Data</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-5">
+                                                        <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                            <Button size="sm" variant="outline" className="h-9 font-bold px-4 border-accent/20 hover:bg-accent/5" onClick={() => {
+                                                                setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '' });
+                                                            }}>
+                                                                <Eye className="mr-2 h-4 w-4" /> Configure
+                                                            </Button>
+                                                            <Button size="sm" variant="outline" onClick={() => handleDeleteClick('site', entity.id, entity.name)} className="h-9 w-9 p-0 text-red-500 border-red-200 hover:bg-red-50 hover:border-red-400">
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 );
             case 'costing_resource': return <CostingResourceConfig sites={allClients} />;
@@ -834,38 +884,65 @@ const EntityManagement: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                <nav className="md:col-span-3 lg:col-span-2">
+            <div className="space-y-4">
+                <nav className="bg-card border border-border shadow-md rounded-xl overflow-hidden">
                     {isMobile ? (
-                        <Select
-                            label="Configuration Section"
-                            id="hr-config-select"
-                            value={activeSubcategory}
-                            onChange={e => setActiveSubcategory(e.target.value)}
-                        >
-                            {subcategories.map(sc => <option key={sc.key} value={sc.key}>{sc.label}</option>)}
-                        </Select>
+                        <div className="p-4 bg-page/50 border-b border-border">
+                            <Select
+                                id="hr-config-select"
+                                value={activeSubcategory}
+                                onChange={e => setActiveSubcategory(e.target.value)}
+                            >
+                                {subcategories.map(sc => <option key={sc.key} value={sc.key}>{sc.label}</option>)}
+                            </Select>
+                        </div>
                     ) : (
-                        <div className="space-y-1">
-                            {subcategories.map(sc => (
-                                <button
-                                    key={sc.key}
-                                    onClick={() => setActiveSubcategory(sc.key)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-left transition-colors ${activeSubcategory === sc.key
-                                        ? 'text-white'
-                                        : 'text-muted hover:bg-accent-light hover:text-accent-dark'
-                                        }`}
-                                    style={activeSubcategory === sc.key ? { backgroundColor: '#006B3F' } : {}}
-                                >
-                                    <sc.icon className="h-5 w-5" />
-                                    <span>{sc.label}</span>
-                                </button>
-                            ))}
+                        <div className="flex flex-col bg-page/10">
+                            {/* Row 1: First 7 items */}
+                            <div className="flex border-b border-border/50">
+                                {subcategories.slice(0, 7).map(sc => (
+                                    <button
+                                        key={sc.key}
+                                        onClick={() => setActiveSubcategory(sc.key)}
+                                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-4 transition-all duration-300 ${activeSubcategory === sc.key
+                                            ? 'border-accent text-accent bg-accent/5'
+                                            : 'border-transparent text-muted hover:text-primary-text hover:bg-page/50'
+                                            }`}
+                                    >
+                                        <sc.icon className={`h-4 w-4 transition-transform duration-300 ${activeSubcategory === sc.key ? 'text-accent scale-110' : 'text-muted group-hover:scale-110'}`} />
+                                        <span>{sc.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {/* Row 2: Last 7 items */}
+                            <div className="flex">
+                                {subcategories.slice(7).map(sc => (
+                                    <button
+                                        key={sc.key}
+                                        onClick={() => setActiveSubcategory(sc.key)}
+                                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-4 transition-all duration-300 ${activeSubcategory === sc.key
+                                            ? 'border-accent text-accent bg-accent/5'
+                                            : 'border-transparent text-muted hover:text-primary-text hover:bg-page/50'
+                                            }`}
+                                    >
+                                        <sc.icon className={`h-4 w-4 transition-transform duration-300 ${activeSubcategory === sc.key ? 'text-accent scale-110' : 'text-muted group-hover:scale-110'}`} />
+                                        <span>{sc.label}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </nav>
-                <main className="md:col-span-9 lg:col-span-10">
-                    {isLoading ? <Loader2 className="h-8 w-8 animate-spin text-accent mx-auto mt-16" /> : renderContent()}
+                <main className="animate-fade-in-scale">
+                    {isLoading ? (
+                        <div className="flex items-center justify-center p-20 bg-card border border-border shadow-md rounded-2xl">
+                            <Loader2 className="h-10 w-10 animate-spin text-accent" />
+                        </div>
+                    ) : (
+                        <div className="p-2 md:p-4">
+                            {renderContent()}
+                        </div>
+                    )}
                 </main>
             </div>
         </div>
