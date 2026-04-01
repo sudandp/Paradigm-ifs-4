@@ -58,6 +58,7 @@ const AttendanceSettings: React.FC = () => {
                 const mergedRoles: Role[] = [...roles];
                 
                 designations.forEach(desig => {
+                    if (!desig.designation) return;
                     const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
                     // Only add if it doesn't already exist as a role ID
                     if (!mergedRoles.some(r => r.id === slug)) {
@@ -67,6 +68,9 @@ const AttendanceSettings: React.FC = () => {
                         });
                     }
                 });
+                
+                // Sort roles alphabetically by displayName
+                mergedRoles.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
 
                 setAllRoles(mergedRoles);
                 setOrgStructure(structure);
@@ -1361,7 +1365,8 @@ const AttendanceSettings: React.FC = () => {
                                         const groupRoles = localAttendance.missedCheckoutConfig?.roleMapping?.[group] || 
                                             (group === 'office' ? ['admin', 'hr', 'finance', 'developer'] : 
                                              group === 'field' ? ['field_staff', 'field_officer', 'technical_reliever'] : 
-                                             ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter']);
+                                             ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 
+                                              'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer']);
                                         
                                         return (
                                             <div key={group} className="bg-page rounded-lg border border-border/50 flex flex-col h-full">
@@ -1369,7 +1374,7 @@ const AttendanceSettings: React.FC = () => {
                                                     <span className="text-sm font-semibold uppercase tracking-tight">{group} Staff Roles</span>
                                                     <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full">{groupRoles.length}</span>
                                                 </div>
-                                                <div className="p-3 flex-1 space-y-2 max-h-[300px] overflow-y-auto">
+                                                <div className="p-3 flex-1 space-y-2 max-h-[300px] overflow-y-auto text-primary-text">
                                                     {groupRoles.map(roleId => {
                                                         const role = allRoles.find(r => r.id === roleId);
                                                         return (
@@ -1377,7 +1382,7 @@ const AttendanceSettings: React.FC = () => {
                                                                 <span className="text-xs truncate" title={roleId}>{role?.displayName || roleId}</span>
                                                                 <button 
                                                                     onClick={() => {
-                                                                        const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'] };
+                                                                        const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'] };
                                                                         const updatedGroup = groupRoles.filter(r => r !== roleId);
                                                                         setLocalAttendance(prev => ({
                                                                             ...prev,
@@ -1405,7 +1410,7 @@ const AttendanceSettings: React.FC = () => {
                                                         onChange={(e) => {
                                                             if (!e.target.value) return;
                                                             const roleId = e.target.value;
-                                                            const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'] };
+                                                            const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'] };
                                                             const updatedGroup = [...new Set([...groupRoles, roleId])];
                                                             setLocalAttendance(prev => ({
                                                                 ...prev,
