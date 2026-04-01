@@ -6,7 +6,6 @@ import type { Insurance, InsuranceType } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
-import DatePicker from '../ui/DatePicker';
 
 const schema = yup.object({
     type: yup.string<InsuranceType>().oneOf(['GMC', 'GPA', 'WCA', 'Other']).required('Type is required'),
@@ -49,7 +48,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({ onSave, onClose, initialD
                             name="validTill"
                             control={control}
                             render={({ field }) => (
-                                <DatePicker label="Valid Till" id="validTill" value={field.value} onChange={field.onChange} error={errors.validTill?.message} />
+                                <Input type="date" label="Valid Till" id="validTill" value={field.value} onChange={field.onChange} error={errors.validTill?.message} />
                             )}
                         />
                     </div>

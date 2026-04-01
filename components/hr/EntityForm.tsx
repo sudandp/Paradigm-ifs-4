@@ -6,7 +6,7 @@ import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
-import DatePicker from '../ui/DatePicker';
+
 import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import { api } from '../../services/api';
@@ -681,7 +681,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         <Input label="Billing Name" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
                         <Input label="Location / City" id="location" registration={register('location')} error={errors.location?.message} />
                         <Controller name="siteTakeoverDate" control={control} render={({ field }) => (
-                            <DatePicker label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} />
+                            <Input type="date" label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} />
                         )} />
                     </div>
                     <Input label="Registered Address" id="registeredAddress" registration={register('registeredAddress')} error={errors.registeredAddress?.message} />
@@ -860,7 +860,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
                         <Input label="Key Account Manager (Ops Manager)" id="keyAccountManager" registration={register('siteManagement.keyAccountManager')} error={errors.siteManagement?.keyAccountManager?.message} />
                         <Controller name="siteManagement.kamEffectiveDate" control={control} render={({ field }) => (
-                            <DatePicker label="KAM Effective Date" id="kamEffectiveDate" value={field.value} onChange={field.onChange} error={errors.siteManagement?.kamEffectiveDate?.message} />
+                            <Input type="date" label="KAM Effective Date" id="kamEffectiveDate" value={field.value} onChange={field.onChange} error={errors.siteManagement?.kamEffectiveDate?.message} />
                         )} />
                     </div>
 
@@ -904,10 +904,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (
-                                    <DatePicker label="Agreement From Date" id={`agreementFrom-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />
+                                    <Input type="date" label="Agreement From Date" id={`agreementFrom-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />
                                 )} />
                                 <Controller name={`agreements.${index}.toDate`} control={control} render={({ field: f }) => (
-                                    <DatePicker label="Agreement To Date" id={`agreementTo-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />
+                                    <Input type="date" label="Agreement To Date" id={`agreementTo-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />
                                 )} />
                                 
                                 <Input label="Auto Renewal Trigger (Days before)" id={`renewalTrigger-${field.id}`} type="number" registration={register(`agreements.${index}.renewalTriggerDays` as const)} error={errors.agreements?.[index]?.renewalTriggerDays?.message} />
@@ -937,13 +937,13 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-accent/10">
                                 <Controller name={`agreements.${index}.agreementDate`} control={control} render={({ field: f }) => (
-                                    <DatePicker label="Agreement Date" id={`agreementDate-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />
+                                    <Input type="date" label="Agreement Date" id={`agreementDate-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />
                                 )} />
                                 <Controller name={`agreements.${index}.addendum1Date`} control={control} render={({ field: f }) => (
-                                    <DatePicker label="Addendum 1 Date" id={`addendum1Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />
+                                    <Input type="date" label="Addendum 1 Date" id={`addendum1Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />
                                 )} />
                                 <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (
-                                    <DatePicker label="Addendum 2 Date" id={`addendum2Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />
+                                    <Input type="date" label="Addendum 2 Date" id={`addendum2Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />
                                 )} />
                             </div>
                         </div>
@@ -975,10 +975,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             <div className="space-y-4 pl-6 animate-fade-in border-l-2 border-accent/20 ml-2">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Controller name="complianceDetails.form6ValidityFrom" control={control} render={({ field }) => (
-                                        <DatePicker label="Validity From" id="form6From" value={field.value} onChange={field.onChange} />
+                                        <Input type="date" label="Validity From" id="form6From" value={field.value} onChange={field.onChange} />
                                     )} />
                                     <Controller name="complianceDetails.form6ValidityTo" control={control} render={({ field }) => (
-                                        <DatePicker label="Validity To" id="form6To" value={field.value} onChange={field.onChange} />
+                                        <Input type="date" label="Validity To" id="form6To" value={field.value} onChange={field.onChange} />
                                     )} />
                                     <Input label="Renewal Interval (Days)" id="form6Renewal" type="number" registration={register('complianceDetails.form6RenewalInterval')} />
                                 </div>
@@ -1013,10 +1013,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             <div className="space-y-4 pl-6 animate-fade-in border-l-2 border-accent/20 ml-2">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Controller name="complianceDetails.minWageRevisionValidityFrom" control={control} render={({ field }) => (
-                                        <DatePicker label="Validity From" id="minWageFrom" value={field.value} onChange={field.onChange} />
+                                        <Input type="date" label="Validity From" id="minWageFrom" value={field.value} onChange={field.onChange} />
                                     )} />
                                     <Controller name="complianceDetails.minWageRevisionValidityTo" control={control} render={({ field }) => (
-                                        <DatePicker label="Validity To" id="minWageTo" value={field.value} onChange={field.onChange} />
+                                        <Input type="date" label="Validity To" id="minWageTo" value={field.value} onChange={field.onChange} />
                                     )} />
                                 </div>
                                 <div className="max-w-md">
@@ -1115,9 +1115,9 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                 </Select>
                                             </div>
                                             
-                                            <Controller name={`complianceDocuments.${index}.effectiveDate`} control={control} render={({ field: f }) => <DatePicker label="Effective Date" id={`docs.${index}.effective`} value={f.value} onChange={f.onChange} />} />
-                                            <Controller name={`complianceDocuments.${index}.announcedDate`} control={control} render={({ field: f }) => <DatePicker label="Announced / Circulated Date" id={`docs.${index}.announced`} value={f.value} onChange={f.onChange} />} />
-                                            <Controller name={`complianceDocuments.${index}.expiryDate`} control={control} render={({ field: f }) => <DatePicker label="Valid Till" id={`docs.${index}.expiry`} value={f.value} onChange={f.onChange} />} />
+                                            <Controller name={`complianceDocuments.${index}.effectiveDate`} control={control} render={({ field: f }) => <Input type="date" label="Effective Date" id={`docs.${index}.effective`} value={f.value} onChange={f.onChange} />} />
+                                            <Controller name={`complianceDocuments.${index}.announcedDate`} control={control} render={({ field: f }) => <Input type="date" label="Announced / Circulated Date" id={`docs.${index}.announced`} value={f.value} onChange={f.onChange} />} />
+                                            <Controller name={`complianceDocuments.${index}.expiryDate`} control={control} render={({ field: f }) => <Input type="date" label="Valid Till" id={`docs.${index}.expiry`} value={f.value} onChange={f.onChange} />} />
                                             
                                             <Input label="Editor Log (Background Cron)" id={`docs.${index}.log`} registration={register(`complianceDocuments.${index}.editorLog`)} placeholder="Internal notes or cron reference..." />
 
@@ -1286,7 +1286,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <div key={index} className={`grid grid-cols-12 gap-3 items-end p-3 rounded-lg border transition-all ${isCompanyType ? 'bg-primary/5 border-primary/20' : isFixed ? 'bg-primary/5 border-primary/20' : 'bg-accent/5 border-accent/20'}`}>
                                     <div className="col-span-11 grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <Controller name={`holidayConfig.holidays.${index}.date`} control={control} render={({ field }) => (
-                                            <DatePicker 
+                                            <Input type="date" 
                                                 label="Date" 
                                                 id={`holidayDate-${index}`} 
                                                 value={field.value} 
@@ -1358,7 +1358,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                         <Input label="Size" id={`toolSize-${index}`} registration={register(`assetTracking.tools.${index}.size` as const)} />
                                         <Input label="Quantity" id={`toolQty-${index}`} type="number" registration={register(`assetTracking.tools.${index}.quantity` as const)} />
                                         <Controller name={`assetTracking.tools.${index}.issueDate`} control={control} render={({ field: dateField }) => (
-                                            <DatePicker label="Issue Date" id={`toolDate-${index}`} value={dateField.value} onChange={dateField.onChange} />
+                                            <Input type="date" label="Issue Date" id={`toolDate-${index}`} value={dateField.value} onChange={dateField.onChange} />
                                         )} />
                                     </div>
                                     <Button type="button" variant="icon" onClick={() => removeTool(index)} className="absolute -top-2 -right-2 bg-white dark:bg-card border shadow-sm text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1390,7 +1390,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                             <option value="Old">Old</option>
                                         </Select>
                                         <Controller name={`assetTracking.equipment.${index}.issueDate`} control={control} render={({ field: dateField }) => (
-                                            <DatePicker label="Issue Date" id={`equipDate-${index}`} value={dateField.value} onChange={dateField.onChange} />
+                                            <Input type="date" label="Issue Date" id={`equipDate-${index}`} value={dateField.value} onChange={dateField.onChange} />
                                         )} />
                                     </div>
                                     <Button type="button" variant="icon" onClick={() => removeEquipment(index)} className="absolute -top-2 -right-2 bg-white dark:bg-card border shadow-sm text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1407,10 +1407,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
                         <Controller name="billingControls.billingCycleStart" control={control} render={({ field }) => (
-                            <DatePicker label="Billing Cycle Start Date" id="billingCycle" value={field.value} onChange={field.onChange} />
+                            <Input type="date" label="Billing Cycle Start Date" id="billingCycle" value={field.value} onChange={field.onChange} />
                         )} />
                         <Controller name="billingControls.salaryDate" control={control} render={({ field }) => (
-                            <DatePicker label="Salary Date" id="salaryDate" value={field.value} onChange={field.onChange} />
+                            <Input type="date" label="Salary Date" id="salaryDate" value={field.value} onChange={field.onChange} />
                         )} />
                     </div>
                     
@@ -1614,7 +1614,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                 name={`insurances.${index}.validTill`}
                                                 control={control}
                                                 render={({ field: dateField }) => (
-                                                    <DatePicker label="Valid Till" id={`ins_valid_${field.id}`} value={dateField.value} onChange={dateField.onChange} />
+                                                    <Input type="date" label="Valid Till" id={`ins_valid_${field.id}`} value={dateField.value} onChange={dateField.onChange} />
                                                 )}
                                             />
                                         </div>

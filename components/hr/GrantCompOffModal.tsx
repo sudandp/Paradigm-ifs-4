@@ -8,7 +8,6 @@ import { useAuthStore } from '../../store/authStore';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import Input from '../ui/Input';
-import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import { format } from 'date-fns';
 
@@ -96,13 +95,14 @@ const GrantCompOffModal: React.FC<GrantCompOffModalProps> = ({ isOpen, onClose, 
                     name="dateEarned"
                     control={control}
                     render={({ field }) => (
-                        <DatePicker 
+                        <Input 
+                            type="date"
                             label="Date Worked / Earned"
                             id="dateEarned"
                             value={field.value}
                             onChange={field.onChange}
                             error={errors.dateEarned?.message}
-                            maxDate={new Date()}
+                            max={format(new Date(), 'yyyy-MM-dd')}
                         />
                     )}
                 />

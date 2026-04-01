@@ -7,7 +7,6 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
-import DatePicker from '../ui/DatePicker';
 import { Plus, Trash2, ChevronDown, FileText } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
@@ -268,8 +267,8 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                                             </button>
                                         )}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (<DatePicker label="From Date" id={`agr-from-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />)} />
-                                            <Controller name={`agreements.${index}.toDate`} control={control} render={({ field: f }) => (<DatePicker label="To Date" id={`agr-to-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />)} />
+                                            <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (<Input type="date" label="From Date" id={`agr-from-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.fromDate?.message} />)} />
+                                            <Controller name={`agreements.${index}.toDate`} control={control} render={({ field: f }) => (<Input type="date" label="To Date" id={`agr-to-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.toDate?.message} />)} />
                                             <Input label="Renewal Interval (Days)" id={`agr-renewal-${index}`} type="number" registration={register(`agreements.${index}.renewalIntervalDays` as const)} error={errors.agreements?.[index]?.renewalIntervalDays?.message} />
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
@@ -277,9 +276,9 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                                             <Controller name={`agreements.${index}.scannedCopy`} control={control} render={({ field: f }) => (<UploadDocument label="Scanned Copy" file={f.value} onFileChange={f.onChange} />)} />
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-4 border-t border-border">
-                                            <Controller name={`agreements.${index}.agreementDate`} control={control} render={({ field: f }) => (<DatePicker label="Agreement Dated" id={`agr-date-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />)} />
-                                            <Controller name={`agreements.${index}.addendum1Date`} control={control} render={({ field: f }) => (<DatePicker label="Addendum 1 Dated" id={`agr-add1-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />)} />
-                                            <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (<DatePicker label="Addendum 2 Dated" id={`agr-add2-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />)} />
+                                            <Controller name={`agreements.${index}.agreementDate`} control={control} render={({ field: f }) => (<Input type="date" label="Agreement Dated" id={`agr-date-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.agreementDate?.message} />)} />
+                                            <Controller name={`agreements.${index}.addendum1Date`} control={control} render={({ field: f }) => (<Input type="date" label="Addendum 1 Dated" id={`agr-add1-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum1Date?.message} />)} />
+                                            <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (<Input type="date" label="Addendum 2 Dated" id={`agr-add2-${index}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />)} />
                                         </div>
                                     </div>
                                 ))}
@@ -300,8 +299,8 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                                             <Controller name="siteOperations.form6Applicable" control={control} render={({ field }) => ( <label className="flex items-center gap-2"><input type="checkbox" checked={field.value} onChange={field.onChange} /> Form 6 Applicable</label> )} />
                                             {form6Applicable && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 pl-6">
-                                                    <Controller name="siteOperations.form6ValidityFrom" control={control} render={({ field }) => <DatePicker label="Valid From" id="form6from" value={field.value} onChange={field.onChange} error={errors.siteOperations?.form6ValidityFrom?.message} />} />
-                                                    <Controller name="siteOperations.form6ValidityTo" control={control} render={({ field }) => <DatePicker label="Valid To" id="form6to" value={field.value} onChange={field.onChange} error={errors.siteOperations?.form6ValidityTo?.message} />} />
+                                                    <Controller name="siteOperations.form6ValidityFrom" control={control} render={({ field }) => <Input type="date" label="Valid From" id="form6from" value={field.value} onChange={field.onChange} error={errors.siteOperations?.form6ValidityFrom?.message} />} />
+                                                    <Controller name="siteOperations.form6ValidityTo" control={control} render={({ field }) => <Input type="date" label="Valid To" id="form6to" value={field.value} onChange={field.onChange} error={errors.siteOperations?.form6ValidityTo?.message} />} />
                                                     <div className="md:col-span-2"><Controller name="siteOperations.form6Document" control={control} render={({ field }) => <UploadDocument label="Form 6 Document" file={field.value} onFileChange={field.onChange} error={errors.siteOperations?.form6Document?.message as string} />} /></div>
                                                 </div>
                                             )}
@@ -310,8 +309,8 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                                             <Controller name="siteOperations.minWageRevisionApplicable" control={control} render={({ field }) => ( <label className="flex items-center gap-2"><input type="checkbox" checked={field.value} onChange={field.onChange} /> Min. Wage Revision Applicable</label> )} />
                                             {minWageApplicable && (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 pl-6">
-                                                     <Controller name="siteOperations.minWageRevisionValidityFrom" control={control} render={({ field }) => <DatePicker label="Valid From" id="minwagefrom" value={field.value} onChange={field.onChange} error={errors.siteOperations?.minWageRevisionValidityFrom?.message} />} />
-                                                     <Controller name="siteOperations.minWageRevisionValidityTo" control={control} render={({ field }) => <DatePicker label="Valid To" id="minwageto" value={field.value} onChange={field.onChange} error={errors.siteOperations?.minWageRevisionValidityTo?.message} />} />
+                                                     <Controller name="siteOperations.minWageRevisionValidityFrom" control={control} render={({ field }) => <Input type="date" label="Valid From" id="minwagefrom" value={field.value} onChange={field.onChange} error={errors.siteOperations?.minWageRevisionValidityFrom?.message} />} />
+                                                     <Controller name="siteOperations.minWageRevisionValidityTo" control={control} render={({ field }) => <Input type="date" label="Valid To" id="minwageto" value={field.value} onChange={field.onChange} error={errors.siteOperations?.minWageRevisionValidityTo?.message} />} />
                                                      <div className="md:col-span-2"><Controller name="siteOperations.minWageRevisionDocument" control={control} render={({ field }) => <UploadDocument label="Min. Wage Document" file={field.value} onFileChange={field.onChange} error={errors.siteOperations?.minWageRevisionDocument?.message as string} />} /></div>
                                                 </div>
                                             )}
@@ -329,7 +328,7 @@ export const SiteConfigurationForm: React.FC<SiteConfigurationFormProps> = ({ is
                                         {holidayFields.map((field, index) => (
                                             <div key={field.id} className="grid grid-cols-12 gap-2 items-end">
                                                 <div className="col-span-6"><Input label="Description" id={`holiday-desc-${index}`} {...register(`siteOperations.holidays.list.${index}.description`)} /></div>
-                                                <div className="col-span-5"><Controller name={`siteOperations.holidays.list.${index}.date`} control={control} render={({field: dateField}) => <DatePicker label="Date" id={`holiday-date-${index}`} value={dateField.value} onChange={dateField.onChange} />} /></div>
+                                                <div className="col-span-5"><Controller name={`siteOperations.holidays.list.${index}.date`} control={control} render={({field: dateField}) => <Input type="date" label="Date" id={`holiday-date-${index}`} value={dateField.value} onChange={dateField.onChange} />} /></div>
                                                 <div className="col-span-1"><Button type="button" variant="icon" size="sm" onClick={() => removeHoliday(index)}><Trash2 className="h-4 text-red-500"/></Button></div>
                                             </div>
                                         ))}

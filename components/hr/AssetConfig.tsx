@@ -6,7 +6,6 @@ import { api } from '../../services/api';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
-import DatePicker from '../ui/DatePicker';
 import UploadDocument from '../UploadDocument';
 import Toast from '../ui/Toast';
 import { Plus, Trash2, Save, Loader2, ChevronDown, Smartphone, Car, Laptop, HardHat, CreditCard, Cpu, CircleUserRound, Package, Eye, ArrowLeft, Search } from 'lucide-react';
@@ -111,7 +110,7 @@ const ComputerAssetForm: React.FC<{ index: number; control: any }> = ({ index, c
 
 const IdCardAssetForm: React.FC<{ index: number; control: any }> = ({ index, control }) => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-        <Controller name={`assets.${index}.issueDate`} control={control} render={({ field }) => <DatePicker label="Date Issued" id={field.name} value={field.value} onChange={field.onChange} />} />
+        <Controller name={`assets.${index}.issueDate`} control={control} render={({ field }) => <Input type="date" label="Date Issued" id={field.name} value={field.value} onChange={field.onChange} />} />
     </div>
 );
 
@@ -142,8 +141,8 @@ const VehicleAssetForm: React.FC<{ index: number; control: any }> = ({ index, co
             )} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Controller name={`assets.${index}.insuranceValidity`} control={control} render={({ field }) => <DatePicker label="Insurance Validity" id={field.name} value={field.value} onChange={field.onChange} />} />
-            <Controller name={`assets.${index}.pollutionCertValidity`} control={control} render={({ field }) => <DatePicker label="Pollution Cert. Validity" id={field.name} value={field.value} onChange={field.onChange} />} />
+            <Controller name={`assets.${index}.insuranceValidity`} control={control} render={({ field }) => <Input type="date" label="Insurance Validity" id={field.name} value={field.value} onChange={field.onChange} />} />
+            <Controller name={`assets.${index}.pollutionCertValidity`} control={control} render={({ field }) => <Input type="date" label="Pollution Cert. Validity" id={field.name} value={field.value} onChange={field.onChange} />} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Controller name={`assets.${index}.dlFrontPic`} control={control} render={({ field }) => <UploadDocument label="Picture of DL (Front)" file={field.value} onFileChange={field.onChange} />} />

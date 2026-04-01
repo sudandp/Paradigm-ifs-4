@@ -5,7 +5,6 @@ import * as yup from 'yup';
 import type { Agreement, UploadedFile } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
-import DatePicker from '../ui/DatePicker';
 import UploadDocument from '../UploadDocument';
 
 const schema = yup.object({
@@ -56,8 +55,8 @@ const AgreementForm: React.FC<AgreementFormProps> = ({ onSave, onClose, initialD
                         <fieldset className="border p-4 rounded-lg">
                             <legend className="text-md font-semibold px-2">Existing Agreement Period</legend>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                                <Controller name="fromDate" control={control} render={({ field }) => ( <DatePicker label="From Date" id="fromDate" value={field.value} onChange={field.onChange} error={errors.fromDate?.message} /> )} />
-                                <Controller name="toDate" control={control} render={({ field }) => ( <DatePicker label="To Date" id="toDate" value={field.value} onChange={field.onChange} error={errors.toDate?.message} /> )} />
+                                <Controller name="fromDate" control={control} render={({ field }) => ( <Input type="date" label="From Date" id="fromDate" value={field.value} onChange={field.onChange} error={errors.fromDate?.message} /> )} />
+                                <Controller name="toDate" control={control} render={({ field }) => ( <Input type="date" label="To Date" id="toDate" value={field.value} onChange={field.onChange} error={errors.toDate?.message} /> )} />
                                 <Input label="Renewal Interval (Days)" id="renewalIntervalDays" type="number" registration={register('renewalIntervalDays')} error={errors.renewalIntervalDays?.message} />
                             </div>
                         </fieldset>
@@ -73,9 +72,9 @@ const AgreementForm: React.FC<AgreementFormProps> = ({ onSave, onClose, initialD
                         <fieldset className="border p-4 rounded-lg">
                             <legend className="text-md font-semibold px-2">Agreement Main Details</legend>
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                                <Controller name="agreementDate" control={control} render={({ field }) => ( <DatePicker label="Agreement Dated" id="agreementDate" value={field.value} onChange={field.onChange} error={errors.agreementDate?.message} /> )} />
-                                <Controller name="addendum1Date" control={control} render={({ field }) => ( <DatePicker label="Addendum 1 Dated" id="addendum1Date" value={field.value} onChange={field.onChange} error={errors.addendum1Date?.message} /> )} />
-                                <Controller name="addendum2Date" control={control} render={({ field }) => ( <DatePicker label="Addendum 2 Dated" id="addendum2Date" value={field.value} onChange={field.onChange} error={errors.addendum2Date?.message} /> )} />
+                                <Controller name="agreementDate" control={control} render={({ field }) => ( <Input type="date" label="Agreement Dated" id="agreementDate" value={field.value} onChange={field.onChange} error={errors.agreementDate?.message} /> )} />
+                                <Controller name="addendum1Date" control={control} render={({ field }) => ( <Input type="date" label="Addendum 1 Dated" id="addendum1Date" value={field.value} onChange={field.onChange} error={errors.addendum1Date?.message} /> )} />
+                                <Controller name="addendum2Date" control={control} render={({ field }) => ( <Input type="date" label="Addendum 2 Dated" id="addendum2Date" value={field.value} onChange={field.onChange} error={errors.addendum2Date?.message} /> )} />
                              </div>
                         </fieldset>
                     </div>
