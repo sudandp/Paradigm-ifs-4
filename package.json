@@ -136,6 +136,9 @@
     "yauzl": "^3.2.1",
     "ajv": "^8.17.1",
     "esbuild": "^0.25.0",
-    "undici": "^6.21.1"
+    "undici": "^6.21.1",
+    "@xmldom/xmldom": "^0.8.12",
+    "sharp": "^0.33.5",
+    "@capacitor/project": "^1.1.0"
   }
 }

@@ -11,7 +11,7 @@ import DatePicker from '../../components/ui/DatePicker';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import Select from '../../components/ui/Select';
-import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role } from '../../types';
+import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role, SiteStaffDesignation } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -48,11 +48,27 @@ const AttendanceSettings: React.FC = () => {
         const fetchData = async () => {
             setIsLoadingRoles(true);
             try {
-                const [roles, structure] = await Promise.all([
+                const [roles, designations, structure] = await Promise.all([
                     api.getAppRoles(),
+                    api.getSiteStaffDesignations(),
                     api.getOrganizationStructure()
                 ]);
-                setAllRoles(roles);
+                
+                // Merge system roles with site staff designations
+                const mergedRoles: Role[] = [...roles];
+                
+                designations.forEach(desig => {
+                    const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
+                    // Only add if it doesn't already exist as a role ID
+                    if (!mergedRoles.some(r => r.id === slug)) {
+                        mergedRoles.push({
+                            id: slug,
+                            displayName: desig.designation
+                        });
+                    }
+                });
+
+                setAllRoles(mergedRoles);
                 setOrgStructure(structure);
                 
                 // Collect unique locations from organization structure
