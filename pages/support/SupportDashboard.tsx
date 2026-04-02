@@ -379,7 +379,7 @@ const SupportDashboard: React.FC = () => {
 
     return (
         <>
-            <div className="w-full p-4 lg:p-8 space-y-8">
+        <div className="flex-1 flex flex-col w-full p-4 lg:p-8 space-y-8">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Modals */}

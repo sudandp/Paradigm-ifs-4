@@ -50,31 +50,31 @@ const UserRow = React.memo(({
     user, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete 
 }: UserActionProps) => (
     <tr>
-        <td data-label="Name" className="px-6 py-4 font-medium">{user.name}</td>
+        <td data-label="Name" className="px-6 py-4 font-semibold text-base">{user.name}</td>
         <td data-label="Email" className="px-6 py-4 text-sm text-muted">{user.email}</td>
         <td data-label="Role" className="px-6 py-4 text-sm text-muted">
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getRoleBadgeClass(user.role)}`}>
+            <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${getRoleBadgeClass(user.role)}`}>
                 {getRoleName(user.role)}
             </span>
             {user.role === 'unverified' && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-2">Pending Approval</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-2 uppercase tracking-tight">Pending Approval</span>
             )}
         </td>
-        <td data-label="Site" className="px-6 py-4 text-sm text-muted">
+        <td data-label="Site" className="px-6 py-4 text-base text-primary-text font-medium">
             {user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}
         </td>
-        <td data-label="Biometric ID" className="px-6 py-4 text-sm font-mono text-muted">
+        <td data-label="Biometric ID" className="px-6 py-4 text-base font-mono text-muted/80">
             {user.biometricId || '-'}
         </td>
-        <td data-label="Actions" className="px-6 py-4">
-            <div className="flex items-center gap-2 md:justify-start justify-end">
+        <td data-label="Actions" className="px-6 py-3">
+            <div className="flex items-center gap-1.5 md:justify-start justify-end">
                 {user.role === 'unverified' && (
-                    <Button variant="outline" size="sm" onClick={() => handleApprove(user)} aria-label={`Approve user ${user.name}`} title={`Approve user ${user.name}`}><UserCheck className="h-4 w-4 mr-2" />Approve</Button>
+                    <Button variant="outline" size="sm" onClick={() => handleApprove(user)} aria-label={`Approve user ${user.name}`} title={`Approve user ${user.name}`} className="h-8 text-[11px] px-3"><UserCheck className="h-3.5 w-3.5 mr-1.5" />Approve</Button>
                 )}
-                <Button variant="icon" size="sm" onClick={() => handleEdit(user)} aria-label={`Edit user ${user.name}`} title={`Edit user ${user.name}`}><Edit className="h-4 w-4" /></Button>
-                <Button variant="icon" size="sm" onClick={() => handleManageLocations(user)} aria-label={`Manage Geofencing for ${user.name}`} title={`Manage Geofencing for ${user.name}`}><MapPin className="h-4 w-4 text-emerald-500" /></Button>
-                <Button variant="icon" size="sm" onClick={() => handleResetPasscode(user)} aria-label={`Reset Passcode for ${user.name}`} title={`Reset Passcode for ${user.name}`} className="hover:text-amber-600"><RotateCw className="h-4 w-4" /></Button>
-                <Button variant="icon" onClick={() => handleDelete(user)} aria-label={`Delete user ${user.name}`} title={`Delete user ${user.name}`} className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
+                <Button variant="outline" size="sm" onClick={() => handleEdit(user)} aria-label={`Edit user ${user.name}`} title={`Edit user ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-page transition-all"><Edit className="h-3.5 w-3.5 text-slate-600" /></Button>
+                <Button variant="outline" size="sm" onClick={() => handleManageLocations(user)} aria-label={`Manage Geofencing for ${user.name}`} title={`Manage Geofencing for ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-emerald-50 transition-all"><MapPin className="h-3.5 w-3.5 text-emerald-600" /></Button>
+                <Button variant="outline" size="sm" onClick={() => handleResetPasscode(user)} aria-label={`Reset Passcode for ${user.name}`} title={`Reset Passcode for ${user.name}`} className="h-8 w-8 p-0 border-border hover:text-amber-600 hover:bg-amber-50 transition-all"><RotateCw className="h-3.5 w-3.5 text-slate-500" /></Button>
+                <Button variant="outline" size="sm" onClick={() => handleDelete(user)} aria-label={`Delete user ${user.name}`} title={`Delete user ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-red-50 hover:text-red-600 transition-all"><Trash2 className="h-3.5 w-3.5 text-slate-400 group-hover:text-red-500" /></Button>
             </div>
         </td>
     </tr>
@@ -351,7 +351,7 @@ const UserManagement: React.FC = () => {
     }
 
     return (
-        <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card">
+        <div className="p-4 border-0 shadow-none lg:bg-card lg:p-6 lg:rounded-xl lg:shadow-card flex-1 flex flex-col">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <ApprovalModal
@@ -530,12 +530,12 @@ const UserManagement: React.FC = () => {
                         <table className="w-full table-auto responsive-table">
                             <thead>
                                 <tr>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">Name</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">Email</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">Role</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">Site</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">Biometric ID</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase">
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Name</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Email</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Role</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Site</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Biometric ID</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">
                                         <div className="flex items-center gap-2">
                                             Actions
                                             {hasActiveFilters && (

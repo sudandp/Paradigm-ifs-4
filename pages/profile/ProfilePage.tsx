@@ -901,47 +901,47 @@ const ProfilePage: React.FC = () => {
     }
 
     return (
-        <div className="w-full space-y-8 md:space-y-5">
+        <div className="p-3 md:p-4 flex-1 flex flex-col space-y-4">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Full-width Redesigned Web Header (Matching Reference Design) */}
-            <div className="relative overflow-hidden md:bg-white md:rounded-[32px] md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 flex flex-col">
+            <div className="relative overflow-hidden md:bg-white md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 flex flex-col">
                 
-                {/* Dual Tone Background — 55/45 horizontal split (top green, bottom white) */}
-                <div className="absolute top-0 left-0 w-full h-[55%] bg-[#006B3F] pointer-events-none"></div>
-                <div className="absolute bottom-0 left-0 w-full h-[45%] bg-white pointer-events-none"></div>
+                {/* Dual Tone Background — 50/50 horizontal split (top green, bottom white) */}
+                <div className="absolute top-0 left-0 w-full h-[50%] bg-[#006B3F] pointer-events-none transition-all duration-300"></div>
+                <div className="absolute bottom-0 left-0 w-full h-[50%] bg-white pointer-events-none transition-all duration-300"></div>
 
 
-                {/* Content Container */}
-                <div className="relative z-10 flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-8 w-full p-6 md:p-8 md:pt-12">
+                {/* Content Container — balanced padding to ensure the avatar's center aligns with the 50/50 background split */}
+                <div className="relative z-10 flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-8 w-full py-6 md:py-8 px-6">
                     {/* Squircle Avatar (The squircle shape is now handled inside AvatarUpload) */}
-                    <div className="relative scale-110 md:scale-110 flex-shrink-0">
+                    <div className="relative flex-shrink-0">
                         <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} />
                     </div>
                     
                     {/* User Info aligned next to the avatar */}
                     <div className="text-center md:text-left flex-1 md:pb-0">
                         <div className="flex flex-col md:flex-row md:items-center gap-3">
-                             <h2 className="text-[24px] md:text-[26px] font-bold text-gray-900 md:text-white tracking-tight">{user.name}</h2>
-                             <span className="inline-flex items-center px-2 py-0.5 rounded bg-white/20 text-white text-[11px] font-bold uppercase tracking-widest shadow-sm">
+                             <h2 className="text-2xl font-bold text-gray-900 md:text-white tracking-tight">{user.name}</h2>
+                             <span className="inline-flex items-center px-2 py-0.5 rounded bg-white/20 text-white text-xs font-bold uppercase tracking-widest shadow-sm">
                                 {getRoleName(user.role)}
                              </span>
                         </div>
-                        <p className="mt-1.5 text-[13px] font-normal text-gray-500 md:text-white md:opacity-90 inline-flex items-center gap-1.5">
+                        <p className="mt-1.5 text-sm font-normal text-gray-500 md:text-white md:opacity-90 inline-flex items-center gap-1.5">
                             <Mail className="w-3.5 h-3.5 flex-shrink-0 hidden md:inline-block" />
                             {user.email}
                         </p>
                         
                         {/* Desktop Avatar Controls — standardized design system */}
                         <div className="mt-5 hidden md:flex items-center justify-start gap-3">
-                            <label htmlFor="avatar-upload" className="cursor-pointer inline-flex items-center justify-center h-[42px] px-5 rounded-lg border-2 border-transparent bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                            <label htmlFor="avatar-upload" className="cursor-pointer inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-transparent bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                                 <Edit className="w-4 h-4 mr-2 flex-shrink-0" />
                                 {avatarFile ? 'Change' : 'Upload'}
                             </label>
                             <button 
                                 type="button"
                                 onClick={() => document.getElementById('avatar-hidden-capture-btn')?.click()}
-                                className="inline-flex items-center justify-center h-[42px] px-5 rounded-lg border-2 border-emerald-600 bg-white hover:bg-emerald-50 text-emerald-700 text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                                className="inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-transparent bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                             >
                                 <Camera className="w-4 h-4 mr-2 flex-shrink-0" />
                                 Capture
@@ -951,58 +951,58 @@ const ProfilePage: React.FC = () => {
                 </div>
 
                 {/* Performance Badges — centered on the green/white boundary line (desktop only) */}
-                <div className="hidden md:flex absolute top-[55%] right-8 -translate-y-1/2 z-20 items-center gap-4">
+                <div className="hidden md:flex absolute top-1/2 right-8 -translate-y-[1.75rem] z-20 items-center gap-4">
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 transform hover:scale-105 transition-all text-[#F97316] drop-shadow-md" title="Performance Score: 99">
+                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#F97316] drop-shadow-md" title="Performance Score: 99">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
                             <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
+                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
                     </div>
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 transform hover:scale-105 transition-all text-[#6366f1] drop-shadow-md" title="Attendance: 98%">
+                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#6366f1] drop-shadow-md" title="Attendance: 98%">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
                             <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
+                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
                     </div>
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-12 h-12 transform hover:scale-105 transition-all text-[#111827] drop-shadow-md" title="Response Time: 99%">
+                        <div className="relative flex justify-center items-center w-14 h-14 transform hover:scale-105 transition-all text-[#111827] drop-shadow-md" title="Response Time: 99%">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
                             <span className="relative z-10 text-white font-bold text-sm tracking-tight">{isScoresLoading ? '—' : (employeeScores?.responseScore ?? '—')}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
+                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Response</span>
                     </div>
                 </div>
 
                 {/* Mobile-only badges (inside normal flow) */}
                 <div className="md:hidden flex items-center justify-center gap-3 w-full px-6 pb-4">
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-10 h-10 text-[#F97316] drop-shadow-sm">
+                        <div className="relative flex justify-center items-center w-12 h-12 text-[#F97316] drop-shadow-sm">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
                             <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.performanceScore ?? '—')}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
+                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Performance</span>
                     </div>
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-10 h-10 text-[#6366f1] drop-shadow-sm">
+                        <div className="relative flex justify-center items-center w-12 h-12 text-[#6366f1] drop-shadow-sm">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
                             <span className="relative z-10 text-white font-bold text-[13px]">{isScoresLoading ? '—' : (employeeScores?.attendanceScore ?? '—')}</span>
                         </div>
-                        <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
+                        <span className="text-[11px] uppercase font-bold text-gray-500 tracking-widest">Attendance</span>
                     </div>
                     <div className="flex flex-col items-center gap-1.5">
-                        <div className="relative flex justify-center items-center w-10 h-10 text-[#111827] drop-shadow-sm">
+                        <div className="relative flex justify-center items-center w-12 h-12 text-[#111827] drop-shadow-sm">
                             <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full fill-current z-0">
                                 <path d="M50 0L58.8 11.5L73.5 7.6L78.4 21.6L92.4 24.3L91.2 38.6L100 50L91.2 61.4L92.4 75.7L78.4 78.4L73.5 92.4L58.8 88.5L50 100L41.2 88.5L26.5 92.4L21.6 78.4L7.6 75.7L8.8 61.4L0 50L8.8 38.6L7.6 24.3L21.6 21.6L26.5 7.6L41.2 11.5Z" />
                             </svg>
@@ -1013,13 +1013,13 @@ const ProfilePage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-5">
                 
                 {/* 70% Left Column */}
                 <div className="lg:col-span-8 space-y-6 lg:space-y-6">
 
                     {/* Side-by-Side: Profile Details & Work Hours Tracking */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                         
                     {/* Profile Details */}
                     <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
@@ -1052,7 +1052,7 @@ const ProfilePage: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex justify-end pt-5 mt-5 border-t border-gray-100">
-                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="md:!px-6 md:!py-2 md:!h-[42px] md:!text-sm md:rounded-lg w-full md:w-auto transition-all">Save Changes</Button>
+                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="md:!px-6 md:!py-2 md:!h-9 md:!text-sm md:rounded-lg w-full md:w-auto transition-all">Save Changes</Button>
                             </div>
                         </form>
                     </div>
@@ -1075,25 +1075,25 @@ const ProfilePage: React.FC = () => {
                                 {/* Small Stat Boxes */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> First In
                                         </p>
                                         <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Last Out
                                         </p>
                                         <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckOutTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> First B-In
                                         </p>
                                         <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(firstBreakInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Last B-Out
                                         </p>
                                         <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastBreakOutTime)}</p>
@@ -1136,7 +1136,7 @@ const ProfilePage: React.FC = () => {
                                                                }
                                                            }}
                                                            variant="primary"
-                                                           className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${
+                                                           className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${
                                                                isPunchBlocked ? '!bg-amber-600 !text-white' : '!bg-emerald-600 hover:!bg-emerald-700 '
                                                            } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                            disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
@@ -1156,7 +1156,7 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/check-out?workType=office')}
                                                      variant="danger"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all !bg-rose-600 hover:!bg-rose-700 !text-white shadow-sm ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all !bg-rose-600 hover:!bg-rose-700 !text-white shadow-sm ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                      disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <LogOut className="mr-2 h-4 w-4" /> Punch Out
@@ -1169,7 +1169,7 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-in?workType=field')}
                                                          variant="primary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
+                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
                                                          disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site In
@@ -1177,7 +1177,7 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-out?workType=field')}
                                                          variant="secondary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                          disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
                                                      >
                                                          <MapPin className="mr-2 h-4 w-4" /> Site Out
@@ -1191,7 +1191,7 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-in?action=site-ot-in')}
                                                          variant="primary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
+                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
                                                          disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                      >
                                                          <Clock className="mr-2 h-4 w-4" /> Site OT In
@@ -1199,7 +1199,7 @@ const ProfilePage: React.FC = () => {
                                                      <Button
                                                          onClick={() => navigate('/attendance/check-out?action=site-ot-out')}
                                                          variant="secondary"
-                                                         className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
+                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
                                                          disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
                                                      >
                                                          <CheckCircle className="mr-2 h-4 w-4" /> Site OT Out
@@ -1228,7 +1228,7 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/break-in')}
                                                      variant="secondary"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                      disabled={((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <CheckCircle className="mr-2 h-4 w-4" /> Break In
@@ -1236,7 +1236,7 @@ const ProfilePage: React.FC = () => {
                                                  <Button
                                                      onClick={() => navigate('/attendance/break-out')}
                                                      variant="secondary"
-                                                     className={`attendance-action-btn md:!h-[42px] md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
+                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isOnBreak || isActionInProgress || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
                                                      disabled={!isOnBreak || isActionInProgress || isPunchBlocked}
                                                  >
                                                      <CheckCircle className="mr-2 h-4 w-4" /> Break Out
@@ -1252,13 +1252,19 @@ const ProfilePage: React.FC = () => {
 
                     {/* Passcode Management Desktop */}
                     <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
-                        <div className="flex items-center gap-3 mb-5">
-                            <div className="p-2 bg-amber-50 rounded-lg">
-                                <Lock className="h-5 w-5 text-amber-600" />
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-amber-50 rounded-lg">
+                                    <Lock className="h-5 w-5 text-amber-600" />
+                                </div>
+                                <h3 className="text-lg md:text-base font-bold text-gray-900">Security Passcode</h3>
                             </div>
-                            <h3 className="text-lg md:text-base font-bold text-gray-900">Security Passcode</h3>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
+                                <Info className="h-3.5 w-3.5 text-amber-600" />
+                                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-tighter">Default PIN: 5687</span>
+                            </div>
                         </div>
-                        <p className="text-sm text-gray-500 mb-6">Manage your 4-digit security passcode for quick authentication.</p>
+                        <p className="text-sm text-gray-500 mb-6 leading-relaxed">Update your 4-digit security passcode for attendance authentication. Keep this private for secure check-ins.</p>
                         
                         <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1268,10 +1274,10 @@ const ProfilePage: React.FC = () => {
                                     type="password" 
                                     inputMode="numeric"
                                     maxLength={4}
-                                    placeholder="Old PIN"
+                                    placeholder="Enter current PIN"
                                     registration={registerPasscode('oldPasscode')}
                                     error={passcodeErrors.oldPasscode?.message}
-                                    className="bg-gray-50/50"
+                                    className="bg-gray-50/30"
                                 />
                                 <Input 
                                     label="New Passcode" 
@@ -1279,10 +1285,10 @@ const ProfilePage: React.FC = () => {
                                     type="password" 
                                     inputMode="numeric"
                                     maxLength={4}
-                                    placeholder="New PIN"
+                                    placeholder="Enter new 4 digits"
                                     registration={registerPasscode('newPasscode')}
                                     error={passcodeErrors.newPasscode?.message}
-                                    className="bg-gray-50/50"
+                                    className="bg-gray-50/30"
                                 />
                                 <Input 
                                     label="Confirm Passcode" 
@@ -1290,22 +1296,28 @@ const ProfilePage: React.FC = () => {
                                     type="password" 
                                     inputMode="numeric"
                                     maxLength={4}
-                                    placeholder="Confirm PIN"
+                                    placeholder="Confirm new 4 digits"
                                     registration={registerPasscode('confirmPasscode')}
                                     error={passcodeErrors.confirmPasscode?.message}
-                                    className="bg-gray-50/50"
+                                    className="bg-gray-50/30"
                                 />
                             </div>
                             <div className="flex justify-between items-center pt-4 border-t border-gray-50">
-                                <div className="flex items-center gap-2 text-xs text-gray-400">
-                                    <Info className="h-3.5 w-3.5" />
-                                    <span>Must be exactly 4 digits.</span>
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium">
+                                        <CheckCircle className="h-3 w-3 text-emerald-500" />
+                                        <span>Must be exactly 4 numeric digits.</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-amber-600 font-medium italic">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        <span>Forgot PIN? Reset via User Management or Contact Admin.</span>
+                                    </div>
                                 </div>
                                 <Button 
                                     type="submit"
                                     isLoading={isSavingPasscode}
                                     disabled={!isPasscodeDirty}
-                                    className="md:!px-8 shadow-md"
+                                    className="md:!px-8 shadow-md !bg-amber-600 hover:!bg-amber-700 transition-all font-bold"
                                 >
                                     Save Passcode
                                 </Button>

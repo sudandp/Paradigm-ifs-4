@@ -130,9 +130,9 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
           initialImage={capturedPreview || undefined}
         />
       )}
-      <div className="relative w-40 h-40 group">
+      <div className="relative w-28 h-28 group">
         <div className={`
-          w-full h-full rounded-[32px] bg-page flex items-center justify-center overflow-hidden 
+          w-full h-full rounded-2xl bg-page flex items-center justify-center overflow-hidden 
           border-2 transition-all duration-300 ring-4 ring-white shadow-xl
           ${error ? 'border-red-500' : 'border-accent/20 group-hover:border-accent/40'}
         `}>

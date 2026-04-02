@@ -920,6 +920,7 @@ const AttendanceDashboard: React.FC = () => {
     // Map of userId -> FieldAttendanceViolation[] for field staff
     const [fieldViolationsMap, setFieldViolationsMap] = useState<Record<string, FieldAttendanceViolation[]>>({});
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+    const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
 
@@ -1374,8 +1375,9 @@ const AttendanceDashboard: React.FC = () => {
             const totalEmployees = activeStaff.length;
 
             // --- Calculate Inactive Status (No activity in last 10 days) ---
-            const recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
-            const inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
+            const recentlyActiveIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+            setRecentlyActiveUserIds(recentlyActiveIds);
+            const inactiveCount = Math.max(0, totalEmployees - recentlyActiveIds.size);
 
             const absentToday = Math.max(0, totalEmployees - presentToday - onLeaveToday - inactiveCount);
 
@@ -1535,8 +1537,12 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
 
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
         if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+            filteredUsers = filteredUsers.filter(u => 
+                (u as any).isActive !== false && 
+                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+            );
         }
 
         const targetUsers = filteredUsers;
@@ -1729,7 +1735,7 @@ const AttendanceDashboard: React.FC = () => {
         }
 
         return filteredData;
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds]);
 
     // 2. Attendance Log Data (Raw Events)
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
@@ -1748,8 +1754,12 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
 
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
         if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+            filteredUsers = filteredUsers.filter(u => 
+                (u as any).isActive !== false && 
+                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+            );
         }
 
         const targetUsers = filteredUsers;
@@ -1787,7 +1797,7 @@ const AttendanceDashboard: React.FC = () => {
                 return b.time.localeCompare(a.time);
             });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, leaves, recurringHolidays, userHolidaysPool, officeHolidays, fieldHolidays]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, leaves, recurringHolidays, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds]);
 
     // 3. Monthly Report Data (Aggregated)
     const monthlyReportData: MonthlyReportRow[] = useMemo(() => {
@@ -1808,13 +1818,17 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
 
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
         if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+            filteredUsers = filteredUsers.filter(u => 
+                (u as any).isActive !== false && 
+                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+            );
         }
 
         const targetUsers = filteredUsers;
 
-        return targetUsers.map(user => {
+        const rows = targetUsers.map(user => {
             const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
             const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
             const userRules = resolveUserRules(user.id, userCategory);
@@ -2084,12 +2098,21 @@ const AttendanceDashboard: React.FC = () => {
                 lossOfPays,
                 workFromHomeDays
             };
-        }).filter(row => {
+        });
+
+        if (selectedStatus === 'ACTIVE_USERS') {
+            return rows.filter(row => {
+                const workedDays = row.presentDays + row.halfDays + row.workFromHomeDays + row.weekendPresents + row.holidayPresents;
+                return workedDays > 0;
+            });
+        }
+        
+        return rows.filter(row => {
             if (selectedStatus === 'all') return true;
             return row.statuses.includes(selectedStatus);
         });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, fieldViolationsMap]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds, fieldViolationsMap]);
 
     // 4. Site OT Report Data
     const siteOtReportData: SiteOtDataRow[] = useMemo(() => {
@@ -2100,8 +2123,12 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
 
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
         if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => (u as any).isActive !== false);
+            filteredUsers = filteredUsers.filter(u => 
+                (u as any).isActive !== false && 
+                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+            );
         }
 
         const targetUserIds = new Set(filteredUsers.map(u => u.id));
@@ -2143,7 +2170,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         return data.sort((a, b) => b.date.localeCompare(a.date));
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, recentlyActiveUserIds]);
 
 
     // Determine which PDF component to render
@@ -2397,6 +2424,14 @@ const AttendanceDashboard: React.FC = () => {
                 targetUsers = targetUsers.filter(u => u.organizationId === selectedSite);
             }
 
+            if (selectedStatus === 'ACTIVE_USERS') {
+                const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+                targetUsers = targetUsers.filter(u => 
+                    (u as any).isActive !== false && 
+                    (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                );
+            }
+
             // Exclude management if needed (usually reports exclude them)
             targetUsers = targetUsers.filter(u => u.role !== 'management' && u.role !== 'super_admin');
 
@@ -2501,7 +2536,7 @@ const AttendanceDashboard: React.FC = () => {
 
     if (isEmployeeView) {
         return (
-            <div className="p-4 space-y-6 pb-24 md:bg-transparent bg-[#041b0f]">
+            <div className="p-4 space-y-6 pb-24 md:bg-transparent bg-[#041b0f] flex-1 flex flex-col">
                 <div className="flex flex-col gap-4">
                     <h2 className="text-2xl font-bold text-primary-text">My Attendance</h2>
 
@@ -2798,7 +2833,7 @@ const AttendanceDashboard: React.FC = () => {
             />
 
             {/* Filters Section */}
-            <div className="bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 flex flex-col gap-6">
+            <div className="bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 flex-1 flex flex-col gap-6">
                 
                 {/* Date Pills - Scrollable on mobile, with date picker outside scroll container to prevent clipping */}
                 <div className="relative" ref={datePickerRef}>

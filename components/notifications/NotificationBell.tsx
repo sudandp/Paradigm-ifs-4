@@ -69,14 +69,17 @@ const NotificationBell: React.FC<{ className?: string }> = ({ className = '' }) 
                 className={`group relative p-2.5 rounded-xl transition-all duration-300 btn-icon ${
                     isPanelOpen 
                     ? 'bg-accent/10 text-accent ring-2 ring-accent/20' 
-                    : 'bg-transparent text-accent md:text-muted hover:bg-page hover:text-primary-text'
+                    : 'bg-transparent text-accent md:text-gray-500 hover:bg-page hover:text-primary-text'
                 }`}
             >
-                <Bell className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} />
+                <Bell 
+                    strokeWidth={2.5}
+                    className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'} text-slate-600 opacity-100! z-10 -translate-x-2.5 translate-y-2`} 
+                />
                 {totalUnreadCount > 0 && (
-                    <span className="absolute -top-1 left-1/2 -translate-x-1/2 flex">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                        <span className={`relative inline-flex rounded-full ${totalUnreadCount > 9 ? 'px-1.5 h-4 min-w-[1rem]' : 'h-4 w-4'} bg-red-600 text-[10px] items-center justify-center font-bold text-white shadow-lg border border-white`}>
+                    <span className="absolute top-1 right-1 flex z-20">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                        <span className={`relative inline-flex rounded-full ${totalUnreadCount > 9 ? 'px-1 h-[14.5px] min-w-[14.5px]' : 'h-[14.5px] w-[14.5px]'} bg-rose-600 text-[9px] items-center justify-center font-bold text-white shadow-sm border border-white translate-x-1`}>
                             {totalUnreadCount}
                         </span>
                     </span>

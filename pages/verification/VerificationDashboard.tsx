@@ -159,17 +159,17 @@ const VerificationDashboard: React.FC = () => {
     }, [submissions]);
 
     return (
-        <div className="py-8 px-4 sm:px-6 lg:px-8">
+        <div className="p-3 md:p-4 flex-1 flex flex-col">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
-            <div className="mb-10">
-                <h2 className="text-3xl font-bold text-gray-900 tracking-tight mb-1">Onboarding Forms</h2>
+            <div className="mb-4 flex-shrink-0">
+                <h2 className="text-2xl font-bold text-gray-900 tracking-tight mb-0.5">Onboarding Forms</h2>
                 <p className="text-gray-500 text-sm">Manage and verify employee onboarding submissions across organizations</p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/30">
-                    <div className="flex flex-col lg:flex-row justify-between items-center gap-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex-1 flex flex-col">
+                <div className="p-4 border-b border-gray-100 bg-gray-50/30 flex-shrink-0">
+                    <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
                         <div className="bg-gray-100/80 p-1 rounded-xl w-full lg:w-auto self-start">
                             <nav className="flex space-x-1" aria-label="Tabs">
                                 {filterTabs.map(tab => (
@@ -179,7 +179,7 @@ const VerificationDashboard: React.FC = () => {
                                         className={`${statusFilter === tab
                                             ? 'bg-white text-emerald-700 shadow-sm'
                                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                                            } whitespace-nowrap py-2 px-4 rounded-lg font-semibold text-sm capitalize transition-all duration-200 flex items-center gap-2`}
+                                            } whitespace-nowrap py-1.5 px-3 rounded-lg font-semibold text-[13px] capitalize transition-all duration-200 flex items-center gap-2`}
                                     >
                                         {tab}
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] ${
@@ -203,7 +203,7 @@ const VerificationDashboard: React.FC = () => {
                                 aria-label="Search onboarding forms"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
-                                className="block w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-11 pr-4 text-sm placeholder-gray-400 text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+                                className="block w-full bg-white border border-gray-200 rounded-xl py-2 pl-10 pr-4 text-[13px] placeholder-gray-400 text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
                             />
                         </div>
                     </div>
@@ -213,13 +213,13 @@ const VerificationDashboard: React.FC = () => {
                 <table className="min-w-full border-separate border-spacing-0 responsive-table">
                     <thead>
                         <tr className="bg-gray-50/50">
-                            <th scope="col" className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Employee</th>
-                            <th scope="col" className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Site</th>
+                            <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Employee</th>
+                            <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Site</th>
                             {statusFilter !== 'verified' && (
-                                <th scope="col" className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Status</th>
+                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Status</th>
                             )}
-                            <th scope="col" className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Portal Verification</th>
-                            <th scope="col" className="px-6 py-4 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Actions</th>
+                            <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Portal Verification</th>
+                            <th scope="col" className="px-5 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -238,36 +238,37 @@ const VerificationDashboard: React.FC = () => {
                         ) : (
                             filteredSubmissions.map((s) => (
                                 <tr key={s.id} className={`group hover:bg-emerald-50/30 transition-colors duration-150 ${s.requiresManualVerification ? 'bg-orange-50/50' : ''}`}>
-                                    <td data-label="Employee" className="px-6 py-5 whitespace-nowrap">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm flex-shrink-0">
+                                    <td data-label="Employee" className="px-5 py-3 whitespace-nowrap">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm flex-shrink-0">
                                                 {s.personal.firstName?.[0]}{s.personal.lastName?.[0]}
                                             </div>
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-semibold text-gray-900">{s.personal.firstName} {s.personal.lastName}</span>
+                                                    <span className="text-sm font-semibold tracking-wide capitalize">
+                                                        {s.personal.firstName} {s.personal.lastName}</span>
                                                     {s.requiresManualVerification && (
                                                         <span title="Manual verification required">
                                                             <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="text-xs font-medium text-gray-500">{s.personal.employeeId}</div>
+                                                <div className="text-sm font-bold text-gray-900">{s.personal.employeeId}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td data-label="Site" className="px-6 py-5 whitespace-nowrap">
+                                    <td data-label="Site" className="px-5 py-3 whitespace-nowrap">
                                         <div className="text-sm font-medium text-gray-700">{s.organizationName}</div>
                                     </td>
                                     {statusFilter !== 'verified' && (
-                                        <td data-label="Status" className="px-6 py-5 whitespace-nowrap">
+                                        <td data-label="Status" className="px-5 py-3 whitespace-nowrap">
                                             <StatusChip status={s.status} />
                                         </td>
                                     )}
-                                    <td data-label="Portal Verification" className="px-6 py-5 whitespace-nowrap">
+                                    <td data-label="Portal Verification" className="px-5 py-3 whitespace-nowrap">
                                         <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
                                     </td>
-                                    <td data-label="Actions" className="px-6 py-5 whitespace-nowrap text-right">
+                                    <td data-label="Actions" className="px-5 py-3 whitespace-nowrap text-right">
                                         <div className="flex items-center justify-end gap-1">
                                             <button 
                                                 onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}

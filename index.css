@@ -4,19 +4,28 @@
 @import "react-date-range/dist/theme/default.css";
 
 html {
-    zoom: 0.72;
+    min-height: 100vh;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
+    html {
+        font-size: 11px;
+    }
     body {
         min-height: 100vh;
     }
-    .min-h-screen {
-        min-height: 100vh !important;
+}
+@media (max-width: 1023px) and (min-width: 768px) {
+    html {
+        font-size: 14px;
     }
-    .h-screen {
-        height: 100vh !important;
-    }
+}
+
+.min-h-screen {
+    min-height: 100vh !important;
+}
+.h-screen {
+    height: 100vh !important;
 }
 
 @theme {

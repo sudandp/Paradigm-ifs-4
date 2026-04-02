@@ -50,25 +50,24 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
     };
 
     return (
-        <>
-            <header
-                className={`sticky top-0 z-40 transition-all duration-200 ${isMobile ? 'bg-[#041b0f] shadow-md' : 'bg-transparent shadow-none'}`}
-                style={{ paddingTop: 'calc(env(safe-area-inset-top) + 20px)' }}
-            >
-                <div className="px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center h-16">
-                        <div className="flex-1 flex justify-center md:justify-start min-w-0 px-2">
-                             {/* Logo is now only shown here on mobile, or if we want it on desktop header too? 
-                                 Original code showed it only on isMobile. Keeping that logic. */}
+        <header
+            className={`sticky top-0 z-40 transition-all duration-200 flex-shrink-0 ${isMobile ? 'bg-[#041b0f] shadow-md' : 'bg-white border-b border-gray-200/60'}`}
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        >
+            <div className="px-4 sm:px-6 lg:px-8">
+                <div className="flex items-center h-12">
+                    <div className="flex-1 flex justify-center md:justify-start min-w-0 px-2">
+                         {/* Logo is now only shown here on mobile, or if we want it on desktop header too? 
+                             Original code showed it only on isMobile. Keeping that logic. */}
                             {isMobile && (
                                 <div className="flex items-center justify-center bg-transparent p-2 border-0">
-                                    <Logo className="border-0 h-[52px]" />
+                                    <Logo className="border-0 h-[42px]" />
                                 </div>
                             )}
                         </div>
 
                         <div className="flex-none flex justify-end w-auto min-w-10">
-                            <div className="flex items-center gap-1 sm:gap-2">
+                            <div className="flex items-center gap-2 sm:gap-3">
                                 <NotificationBell />
                                 {!isMobile && user && (
                                     <div className="relative" ref={userMenuRef}>
@@ -124,8 +123,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                         </div>
                     </div>
                 </div>
-            </header>
-        </>
+        </header>
     );
 };
 

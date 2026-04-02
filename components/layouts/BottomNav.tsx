@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, CalendarCheck, ListTodo, User } from 'lucide-react';
+import { Home, CalendarCheck, LayoutGrid, User } from 'lucide-react';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { useAuthStore } from '../../store/authStore';
 import { isAdmin } from '../../utils/auth';
@@ -42,8 +42,8 @@ const BottomNav: React.FC = () => {
         },
         {
             to: '/tasks',
-            label: 'Tasks',
-            icon: ListTodo,
+            label: 'Modules',
+            icon: LayoutGrid,
             show: userPermissions.includes('view_mobile_nav_tasks' as any)
         },
         {

@@ -1,8 +1,7 @@
-
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ShieldCheck, LayoutDashboard, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import Logo from '../ui/Logo';
@@ -24,53 +23,99 @@ export interface NavLinkConfig {
     label: string;
     icon: React.ElementType;
     permission: Permission;
+    category?: string;
 }
 
 // All links are defined here, and filtered by role below.
 export const allNavLinks: NavLinkConfig[] = [
-    { to: '/verification/dashboard', label: 'All Submissions', icon: LayoutDashboard, permission: 'view_all_submissions' },
-    { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings' },
-    { to: '/attendance/dashboard', label: 'Attendance', icon: Calendar, permission: 'view_own_attendance' },
-    { to: '/hr/attendance-settings', label: 'Attendance Rules', icon: CalendarCheck2, permission: 'manage_attendance_rules' },
-    { to: '/hr/notification-management', label: 'Notifications Control', icon: Bell, permission: 'manage_attendance_rules' },
-    { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk' },
-    { to: '/hr/entity-management', label: 'Client Management', icon: Briefcase, permission: 'view_entity_management' },
-    { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: ClipboardCheck, permission: 'manage_enrollment_rules' },
-    { to: '/hr/policies-and-insurance', label: 'Policies & Insurance', icon: ShieldHalf, permission: 'manage_policies' },
-    { to: '/billing/summary', label: 'Invoice Summary', icon: FileDigit, permission: 'view_invoice_summary' },
-    { to: '/billing/cost-analysis', label: 'Verification Costing', icon: IndianRupee, permission: 'view_verification_costing' },
-    { to: '/finance?tab=attendance', label: 'Tracker', icon: ClipboardList, permission: 'view_attendance_tracker' },
-    { to: '/admin/approval-workflow', label: 'Leave Approval Settings', icon: GitBranch, permission: 'manage_approval_workflow' },
-    { to: '/hr/leave-management', label: 'Leave Management', icon: GitPullRequest, permission: 'manage_leave_requests' },
-    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_attendance_rules' },
-    { to: '/admin/modules', label: 'Module Management', icon: PackagePlus, permission: 'manage_modules' },
-    { to: '/onboarding', label: 'New Enrollment', icon: UserPlus, permission: 'create_enrollment' },
-    { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard' },
-    { to: '/my-team', label: 'My Team', icon: Users, permission: 'view_my_team' },
-    { to: '/my-team/field-reports', label: 'Field Reports', icon: FileText, permission: 'view_field_reports' },
-    { to: '/profile', label: 'My Account', icon: User, permission: 'view_profile' },
-    { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions' },
-    { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard' },
-    { to: '/admin/sites', label: 'Site Management', icon: Building, permission: 'manage_sites' },
-    { to: '/tasks', label: 'Task Management', icon: ListTodo, permission: 'manage_tasks' },
-    { to: '/uniforms', label: 'Uniform Management', icon: Shirt, permission: 'manage_uniforms' },
-    { to: '/admin/users', label: 'User Management', icon: Users, permission: 'manage_users' },
-    { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices' },
-    { to: '/hr/field-staff-tracking', label: 'User Activity Tracking', icon: MapIcon, permission: 'view_field_staff_tracking' },
-    // Manage geofenced locations for attendance
-    { to: '/hr/locations', label: 'Geo Locations', icon: MapPin, permission: 'manage_geo_locations' },
-    // User‑specific geofencing management
-    { to: '/attendance/locations', label: 'My Locations', icon: Navigation, permission: 'view_my_locations' },
-    // Device Management
-    { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'view_profile' },
-    { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_users' },
+    // Dashboards
+    { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
+    { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
+    { to: '/verification/dashboard', label: 'All Submissions', icon: LayoutDashboard, permission: 'view_all_submissions', category: 'Dashboards' },
+
+    // Attendance Logs
+    { to: '/attendance/dashboard', label: 'Attendance', icon: Calendar, permission: 'view_own_attendance', category: 'Attendance Logs' },
+    { to: '/finance?tab=attendance', label: 'Tracker', icon: ClipboardList, permission: 'view_attendance_tracker', category: 'Attendance Logs' },
+
+    // Real-time Tracking
+    { to: '/hr/field-staff-tracking', label: 'User Activity Tracking', icon: Navigation, permission: 'view_field_staff_tracking', category: 'Real-time Tracking' },
+
+    // Leaves & Rules
+    { to: '/hr/leave-management', label: 'Leave Management', icon: CalendarCheck2, permission: 'manage_leave_requests', category: 'Leaves & Rules' },
+    { to: '/admin/approval-workflow', label: 'Leave Approval Settings', icon: ClipboardCheck, permission: 'manage_approval_workflow', category: 'Leaves & Rules' },
+    { to: '/hr/attendance-settings', label: 'Attendance Rules', icon: ListTodo, permission: 'manage_attendance_rules', category: 'Leaves & Rules' },
+
+    // Employee Onboarding
+    { to: '/onboarding', label: 'New Enrollment', icon: UserPlus, permission: 'create_enrollment', category: 'Employee Onboarding' },
+    { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: FileDigit, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
+    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_attendance_rules', category: 'Employee Onboarding' },
+
+    // Site Management
+    { to: '/admin/sites', label: 'Site Management', icon: Building, permission: 'manage_sites', category: 'Site Management' },
+    { to: '/hr/entity-management', label: 'Client Management', icon: Briefcase, permission: 'view_entity_management', category: 'Site Management' },
+    { to: '/attendance/locations', label: 'My Locations', icon: MapPin, permission: 'view_my_locations', category: 'Site Management' },
+    { to: '/hr/locations', label: 'Geo Locations', icon: MapIcon, permission: 'manage_geo_locations', category: 'Site Management' },
+
+    // Operations & Team
+    { to: '/tasks', label: 'Task Management', icon: ListTodo, permission: 'manage_tasks', category: 'Operations & Team' },
+    { to: '/my-team/field-reports', label: 'Field Reports', icon: ClipboardList, permission: 'view_field_reports', category: 'Operations & Team' },
+    { to: '/my-team', label: 'My Team', icon: Users, permission: 'view_my_team', category: 'Operations & Team' },
+
+    // Uniforms & Kit
+    { to: '/uniforms', label: 'Uniform Management', icon: Shirt, permission: 'manage_uniforms', category: 'Uniforms & Kit' },
+
+    // Policies & Compliance
+    { to: '/hr/policies-and-insurance', label: 'Policies & Insurance', icon: ShieldHalf, permission: 'manage_policies', category: 'Policies & Compliance' },
+
+    // Finance & Invoicing
+    { to: '/billing/summary', label: 'Invoice Summary', icon: IndianRupee, permission: 'view_invoice_summary', category: 'Finance & Invoicing' },
+
+    // Audit & Costing
+    { to: '/billing/cost-analysis', label: 'Verification Costing', icon: ClipboardCheck, permission: 'view_verification_costing', category: 'Audit & Costing' },
+
+    // Biometric Devices
+    { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_users', category: 'Biometric Devices' },
+    { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
+    { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'view_profile', category: 'Biometric Devices' },
+
+    // Security & Roles
+    { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions', category: 'Security & Roles' },
+    { to: '/admin/users', label: 'User Management', icon: Users, permission: 'manage_users', category: 'Security & Roles' },
+    { to: '/admin/modules', label: 'Module Management', icon: PackagePlus, permission: 'manage_modules', category: 'Security & Roles' },
+
+    // System Config
+    { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },
+    { to: '/notifications', label: 'Notifications Control', icon: Bell, permission: 'manage_users', category: 'System Config' },
+
+    // Support & Profile
+    { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk', category: 'Support & Profile' },
+    { to: '/profile', label: 'My Account', icon: User, permission: 'view_profile', category: 'Support & Profile' },
 ];
+
+const CATEGORY_ICONS: Record<string, any> = {
+    'Dashboards': Home,
+    'Attendance Logs': Calendar,
+    'Real-time Tracking': Navigation,
+    'Leaves & Rules': GitPullRequest,
+    'Employee Onboarding': UserPlus,
+    'Site Management': Building,
+    'Operations & Team': ListTodo,
+    'Uniforms & Kit': Shirt,
+    'Policies & Compliance': ShieldHalf,
+    'Finance & Invoicing': IndianRupee,
+    'Audit & Costing': ClipboardCheck,
+    'Biometric Devices': Smartphone,
+    'Security & Roles': ShieldCheck,
+    'System Config': Settings,
+    'Support & Profile': LifeBuoy,
+};
 
 
 const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void, onExpand?: () => void, hideHeader?: boolean, mode?: 'light' | 'dark', isMobile?: boolean }> = React.memo(({ isCollapsed, onLinkClick, onExpand, hideHeader = false, mode = 'light', isMobile = false }) => {
     const { user } = useAuthStore();
     const { permissions } = usePermissionsStore();
 
+    const location = useLocation();
     const userPermissions = useMemo(() => {
         if (!user || !permissions) return [];
         const roleId = user.roleId?.toLowerCase() || '';
@@ -91,6 +136,53 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
             .sort((a, b) => a.label.localeCompare(b.label));
     }, [user, userPermissions]);
 
+    const groupedLinks = useMemo(() => {
+        const groups: Record<string, NavLinkConfig[]> = {};
+        availableNavLinks.forEach(link => {
+            const cat = link.category || 'Other';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(link);
+        });
+        return groups;
+    }, [availableNavLinks]);
+
+    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+    // Auto-expand the category containing the active link
+    useEffect(() => {
+        const currentPath = location.pathname;
+        const activeLink = allNavLinks.find(link => link.to === currentPath);
+        if (activeLink?.category) {
+            setExpandedCategories(prev => ({
+                ...prev,
+                [activeLink.category!]: true
+            }));
+        }
+    }, [location.pathname]);
+
+    const toggleCategory = (category: string) => {
+        setExpandedCategories(prev => {
+            const isOpening = !prev[category];
+            if (isOpening) {
+                // Accordion behavior: close others when opening
+                return { [category]: true };
+            } else {
+                return { ...prev, [category]: false };
+            }
+        });
+    };
+
+    const toggleAllCategories = () => {
+        const anyOpen = Object.values(expandedCategories).some(v => v);
+        if (anyOpen) {
+            setExpandedCategories({});
+        } else {
+            const allOpen: Record<string, boolean> = {};
+            Object.keys(groupedLinks).forEach(cat => allOpen[cat] = true);
+            setExpandedCategories(allOpen);
+        }
+    };
+
     const handleLinkClick = useCallback((e: React.MouseEvent) => {
         // Log the click for debugging
         console.log('[Sidebar] Link clicked');
@@ -100,9 +192,6 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
             onExpand();
         }
 
-        // We no longer call e.preventDefault() here. 
-        // This allows the NavLink to navigate immediately on the first click.
-        
         // On mobile, we also want to close the sidebar overlay after a link is clicked
         if (onLinkClick) {
             onLinkClick();
@@ -110,68 +199,153 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
     }, [isCollapsed, onExpand, onLinkClick]);
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full">
             {hideHeader && isCollapsed && (
-                <div className="p-4 border-b border-[#1f3d2b] bg-[#041b0f] flex justify-center h-16 items-center transition-all duration-300 flex-shrink-0">
+                <div className="p-3 border-b border-[#1f3d2b] bg-[#041b0f] flex justify-center h-12 items-center transition-all duration-300 flex-shrink-0">
                     <button onClick={() => window.location.href = '/#/profile'} className="btn-icon inline-flex items-center justify-center p-2 rounded-md text-white hover:bg-white/10 focus:outline-none" aria-label="Go to profile page">
                         <span className="sr-only">Go to profile</span>
-                        <ArrowLeft className="block h-6 w-6" />
+                        <ArrowLeft className="block h-5 w-5" />
                     </button>
                 </div>
             )}
             {hideHeader && !isCollapsed && (
-                <div className="p-4 border-b border-[#1f3d2b] bg-[#041b0f] flex justify-center h-16 items-center transition-all duration-300 flex-shrink-0">
+                <div className="p-3 border-b border-gray-100 bg-white flex justify-center h-12 items-center transition-all duration-300 flex-shrink-0">
                     {/* Empty header - just background color */}
                 </div>
             )}
             {!hideHeader && (
-                <div className={`p-4 border-b flex justify-center h-16 items-center transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
-                    {isCollapsed ? (
-                        <div className="h-8 w-8 overflow-hidden">
-                            <Logo className="h-8 max-w-none object-left object-cover" />
-                        </div>
-                    ) : (
-                        <Logo />
+                <div className={`p-2 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
+                    <div className="flex items-center justify-center flex-1">
+                        {isCollapsed ? (
+                            <div className="h-8 w-8 overflow-hidden">
+                                <Logo className="h-8 max-w-none object-left object-cover" />
+                            </div>
+                        ) : (
+                            <Logo />
+                        )}
+                    </div>
+                    {!isCollapsed && (
+                        <button 
+                            onClick={toggleAllCategories}
+                            className={`p-1.5 rounded-md transition-colors ${
+                                mode === 'light' 
+                                    ? 'text-gray-400 hover:bg-gray-100 hover:text-gray-600' 
+                                    : 'text-white/40 hover:bg-white/10 hover:text-white/70'
+                            }`}
+                            title={Object.values(expandedCategories).some(v => v) ? "Collapse All" : "Expand All"}
+                        >
+                            {Object.values(expandedCategories).some(v => v) ? <ChevronsRight className="w-4 h-4 rotate-90" /> : <GitBranch className="w-4 h-4" />}
+                        </button>
                     )}
                 </div>
             )}
-            <nav className="px-3 py-4 space-y-2">
-                {availableNavLinks.map(link => (
-                    <NavLink
-                        key={link.to}
-                        to={link.to}
-                        onClick={handleLinkClick}
-                        className={({ isActive }) =>
-                            `group flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out ${isCollapsed ? 'justify-center' : ''} ${mode === 'light'
-                                ? isActive
-                                    ? 'text-white shadow-sm border'
-                                    : 'text-gray-500 hover:bg-gray-100/60 hover:text-gray-900'
-                                : isActive
-                                    ? 'bg-[#1c3a23] text-white shadow-sm border border-white/5'
-                                    : 'text-white/80 hover:bg-white/10 hover:text-white'
-                            }`
-                        }
-                        style={({ isActive }) => {
-                            if (!isActive) return {};
-                            return mode === 'light'
-                                ? { backgroundColor: '#006B3F', borderColor: '#005632' }
-                                : {}; // Dark mode bg is handled by class
-                        }}
-                        title={link.label}
-                    >
-                        {({ isActive }) => (
-                            <>
-                                <link.icon
-                                    className={`h-5 w-5 flex-shrink-0 transition-all duration-200 ${mode === 'light'
-                                        ? isActive ? 'text-white/90' : 'text-gray-400/80 group-hover:text-gray-500'
-                                        : isActive ? 'text-white/90' : 'text-white/60 group-hover:text-white/90'
-                                        } ${isCollapsed ? '' : 'mr-3'}`}
+            
+            <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto custom-scrollbar bg-white">
+                {isCollapsed ? (
+                    // Collapsed mode: Category representative icons (only 10)
+                    Object.entries(groupedLinks).map(([category, links]) => {
+                        const Icon = CATEGORY_ICONS[category] || Grid3X3;
+                        const isCategoryActive = links.some(link => location.pathname === link.to);
+                        
+                        return (
+                            <button
+                                key={category}
+                                onClick={() => {
+                                    setExpandedCategories(prev => ({ ...prev, [category]: true }));
+                                    if (onExpand) onExpand();
+                                }}
+                                className={`group flex items-center justify-center w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out mb-2 ${
+                                    isCategoryActive
+                                        ? mode === 'light'
+                                            ? 'bg-gray-100 text-gray-900 font-semibold'
+                                            : 'bg-white/10 text-white font-semibold'
+                                        : mode === 'light'
+                                            ? 'text-gray-500 hover:bg-gray-100/60 hover:text-gray-900'
+                                            : 'text-white/80 hover:bg-white/10 hover:text-white'
+                                }`}
+                                title={category}
+                            >
+                                <Icon
+                                    className={`h-5 w-5 flex-shrink-0 transition-all duration-200 ${
+                                        isCategoryActive
+                                            ? mode === 'light' ? 'text-gray-900' : 'text-white'
+                                            : mode === 'light'
+                                                ? 'text-gray-400/80 group-hover:text-gray-500'
+                                                : 'text-white/60 group-hover:text-white/90'
+                                    }`}
                                 />
-                                {!isCollapsed && <span>{link.label}</span>}
-                            </>
-                        )}
-                    </NavLink>
-                ))}
+                            </button>
+                        );
+                    })
+                ) : (
+                    // Expanded mode: Continuous list with subtle category headers (Image 2 style)
+                    Object.entries(groupedLinks).map(([category, links], groupIdx) => {
+                        const isExpanded = expandedCategories[category] ?? false;
+                        const CategoryIcon = CATEGORY_ICONS[category] || Grid3X3;
+
+                        return (
+                            <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
+                                <button 
+                                    onClick={() => toggleCategory(category)}
+                                    className="w-full text-left px-3 py-1 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <CategoryIcon className={`h-4 w-4 transition-colors ${isExpanded ? 'text-gray-600' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                                        <span className={`text-xs font-semibold capitalize tracking-tight transition-colors ${isExpanded ? 'text-gray-700' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                            {category}
+                                        </span>
+                                    </div>
+                                    <ChevronRight 
+                                        className={`h-3 w-3 transition-transform duration-200 ${isExpanded ? 'rotate-90 text-gray-400' : 'text-gray-300 group-hover:text-gray-400'}`} 
+                                    />
+                                </button>
+                                
+                                <AnimatePresence initial={false}>
+                                    {isExpanded && (
+                                        <motion.div 
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: "auto", opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{ duration: 0.2, ease: "easeInOut" }}
+                                            className="overflow-hidden space-y-0.5"
+                                        >
+                                            {links.map(link => (
+                                                <NavLink
+                                                    key={link.to}
+                                                    to={link.to}
+                                                    onClick={handleLinkClick}
+                                                    className={({ isActive }) =>
+                                                        `group flex items-center pl-9 pr-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
+                                                            ? isActive
+                                                                ? 'bg-gray-100 text-gray-900 font-semibold'
+                                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                            : isActive
+                                                                ? 'bg-white/10 text-white font-semibold'
+                                                                : 'text-white/70 hover:bg-white/5 hover:text-white'
+                                                        }`
+                                                    }
+                                                    title={link.label}
+                                                >
+                                                    {({ isActive }) => (
+                                                        <>
+                                                            <link.icon
+                                                                className={`h-4 w-4 flex-shrink-0 transition-all duration-150 mr-2.5 ${mode === 'light'
+                                                                    ? isActive ? 'text-gray-900' : 'text-gray-400/80 group-hover:text-gray-600'
+                                                                    : isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'
+                                                                }`}
+                                                            />
+                                                            <span className="truncate">{link.label}</span>
+                                                        </>
+                                                    )}
+                                                </NavLink>
+                                            ))}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        );
+                    })
+                )}
             </nav>
         </div>
     );
@@ -279,7 +453,7 @@ const MainLayout: React.FC = () => {
         // `p-8 gap-8`, which caused the sidebar and main content to squeeze on narrow viewports. Now we apply
         // progressively larger spacing on wider screens while keeping things compact on mobile. The `min-h-screen`
         // ensures the container grows as needed instead of forcing a fixed height.
-        <div className={`flex min-h-screen overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-page'} ${!isMobile ? 'p-4 md:p-4 lg:p-8 gap-4 md:gap-4 lg:gap-8' : ''}`}>
+        <div className={`flex h-screen overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
 
             {isMobile && !isSidebarExpanded && (
                 <div
@@ -300,7 +474,7 @@ const MainLayout: React.FC = () => {
             <aside 
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-16' : 'w-64') : (isTablet ? (!isSidebarExpanded ? 'w-16' : 'w-56') : (!isSidebarExpanded ? 'w-16' : 'w-60'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
+                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-14' : 'w-60') : (isTablet ? (!isSidebarExpanded ? 'w-14' : 'w-52') : (!isSidebarExpanded ? 'w-14' : 'w-56'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
             >
                 <div className="flex-1 overflow-y-auto overflow-x-hidden">
                     <SidebarContent
@@ -335,18 +509,17 @@ const MainLayout: React.FC = () => {
                 </div>
             </aside>
 
-            <div className={`flex-1 flex flex-col ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-16' : ''}`}>
+            <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-14' : ''}`}>
                 <Header />
                 <BreakTrackingMonitor />
 
-                {/* Main Content */}
-                <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
-                    <div className={`${isTablet ? 'p-1' : 'p-4'}`}>
+                {/* Main Content Area - This fills the remaining height and provides the scrolling behavior */}
+                <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page'} relative flex flex-col`}>
+                    <div className={`flex-1 ${isTablet ? 'p-1 pb-4' : 'p-3 pb-6'}`}>
                         {/* Bordered Card Container removed to fix white screen issue */}
                         <Outlet />
                     </div>
                 </main>
-
             </div>
 
             <PingAlarmOverlay />
@@ -372,7 +545,7 @@ const MainLayout: React.FC = () => {
             )}
             {/* Scroll-to-top/bottom buttons */}
             {showScrollButtons && !isMobile && (
-                <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-2 no-print">
+                <div className="fixed bottom-[10%] right-8 z-50 flex flex-col gap-2 no-print">
                     <Button
                         variant="secondary"
                         size="sm"

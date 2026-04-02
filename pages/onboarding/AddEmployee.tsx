@@ -321,7 +321,7 @@ const AddEmployee: React.FC = () => {
                 
                 <Stepper steps={steps} currentStepIndex={currentStepIndex} onStepClick={handleStepClick} highestStepReached={highestStepReached} isMobileOptimized={true} />
                 
-                <main className="flex-1 overflow-y-auto p-4 pb-28" onKeyDown={handleKeyDown}>
+                <main className="flex-1 overflow-y-auto p-4 pb-[30px]" onKeyDown={handleKeyDown}>
                      <div className="bg-card p-6 rounded-2xl">
                         <Outlet context={{ onValidated, onSubmit: handleSubmit, isSubmitting, setToast } satisfies OutletContext} />
                     </div>
