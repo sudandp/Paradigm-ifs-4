@@ -90,10 +90,21 @@ export const pushNotificationService = {
         if (Notification.permission === 'granted') {
           const title = payload.notification?.title || payload.data?.title || 'Paradigm Office';
           const body = payload.notification?.body || payload.data?.body || '';
-          new Notification(title, {
+          const notification = new Notification(title, {
             body,
             icon: '/icons/icon-192x192.png',
+            data: payload.data, // Store data for click handler
           });
+
+          notification.onclick = (event) => {
+            event.preventDefault();
+            window.focus();
+            const link = payload.data?.link;
+            if (link) {
+              window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: link } }));
+            }
+            notification.close();
+          };
         }
       });
     }

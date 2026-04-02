@@ -12,6 +12,7 @@ import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
 import { api } from '../services/api';
 import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
+import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
 import { processDailyEvents } from '../utils/attendanceCalculations';
 import { dispatchNotificationFromRules } from '../services/notificationService';
@@ -124,6 +125,7 @@ interface AuthState {
     isSiteOtCheckedIn: boolean;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
+    syncRouteTracking: () => Promise<void>;
 }
 
 // Helper for time-based greetings
@@ -194,6 +196,25 @@ export const useAuthStore = create<AuthState>()(
             isSiteOtCheckedIn: false
         }),
         setError: (error) => set({ error }),
+
+        syncRouteTracking: async () => {
+            const { user, isFieldCheckedIn } = get();
+            if (!user || !isFieldCheckedIn) {
+                routeTrackingService.stopTracking();
+                return;
+            }
+
+            if (routeTrackingService.isActive()) return;
+
+            try {
+                const settings = await api.getAttendanceSettings();
+                const interval = settings.field.trackingIntervalMinutes || 10;
+                routeTrackingService.startTracking(user.id, interval);
+            } catch (e) {
+                console.warn('Failed to fetch tracking interval, defaulting to 10m', e);
+                routeTrackingService.startTracking(user.id, 10);
+            }
+        },
 
         loginWithEmail: async (email, password, rememberMe) => {
             set({ error: null, loading: true });
@@ -405,6 +426,7 @@ export const useAuthStore = create<AuthState>()(
             await authService.signOut();
             
             // Local state cleanup
+            routeTrackingService.stopTracking();
             get().resetAttendance();
             set({ user: null, error: null, loading: false });
         },
@@ -522,6 +544,9 @@ export const useAuthStore = create<AuthState>()(
                     isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
                     isSiteOtCheckedIn
                 });
+                
+                // Sync tracking state after status update
+                get().syncRouteTracking();
             } catch (error) {
                 console.error("Failed to check attendance status (unexpected error):", error);
                 set({ isAttendanceLoading: false });

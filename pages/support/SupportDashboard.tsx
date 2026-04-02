@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { SupportTicket, User } from '../../types';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info } from 'lucide-react';
+import { Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info, Clock } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { formatDistanceToNow } from 'date-fns';
@@ -291,8 +291,10 @@ const SupportDashboard: React.FC = () => {
     const stats = useMemo(() => {
         const userActionTickets = tickets.filter(t => t.status === 'Resolved' && t.raisedById === user?.id);
         return {
+            total: tickets.length,
             open: tickets.filter(t => t.status === 'Open').length,
             inProgress: tickets.filter(t => t.status === 'In Progress').length,
+            resolved: tickets.filter(t => (t.status === 'Resolved' || t.status === 'Closed')).length,
             pendingYourAction: userActionTickets.length,
         }
     }, [tickets, user]);
@@ -365,18 +367,6 @@ const SupportDashboard: React.FC = () => {
         }
     };
 
-    const StatCard: React.FC<{ title: string, value: number, icon: React.ReactNode, colorClass: string }> = ({ title, value, icon, colorClass }) => (
-        <div className="bg-transparent p-5 rounded-2xl flex items-center justify-between transition-all">
-            <div>
-                <p className="text-sm font-medium text-muted mb-1">{title}</p>
-                <p className={`text-3xl font-bold ${colorClass.replace('bg-', 'text-').split(' ')[0]}`}>{value}</p>
-            </div>
-            <div className={`p-3 rounded-full ${colorClass.replace('text-', 'bg-')} bg-opacity-90 shadow-sm`}>
-                {React.cloneElement(icon as React.ReactElement, { className: 'h-6 w-6 text-white' })}
-            </div>
-        </div>
-    );
-
     return (
         <>
         <div className="flex-1 flex flex-col w-full p-4 lg:p-8 space-y-8">
@@ -406,69 +396,128 @@ const SupportDashboard: React.FC = () => {
             </Modal>
 
             {/* Header Section */}
-            <div className="relative overflow-hidden rounded-3xl bg-transparent p-6 lg:p-10 transition-all">
-
-                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-                    <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-emerald-50 rounded-lg backdrop-blur-sm">
-                                <LifeBuoy className="h-6 w-6 text-emerald-600" />
-                            </div>
-                            <h2 className="text-2xl lg:text-3xl font-bold text-primary-text">Support & Audit</h2>
-                        </div>
-                        <p className="text-muted max-w-xl text-sm">
-                            Track issues, request audits, and connect with support staff in real-time.
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-                        {isMobile && (
-                            <Button
-                                onClick={() => setIsNearbyModalOpen(true)}
-                                variant="secondary"
-                                className="flex-1 lg:flex-none bg-gray-100 text-gray-900 hover:bg-gray-200 border-none shadow-none p-0 text-sm transition-colors"
-                            >
-                                <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Nearby
-                            </Button>
-                        )}
-                        {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
-                            <Button
-                                onClick={() => navigate('/support/alerts')}
-                                variant="secondary"
-                                className="flex-1 lg:flex-none bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200"
-                            >
-                                <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Broadcast Alert
-                            </Button>
-                        )}
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                    <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">Support & Audit</h2>
+                    <p className="text-gray-500 text-sm mt-1">
+                        Track issues, request audits, and connect with support staff in real-time.
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                    {isMobile && (
                         <Button
-                            onClick={() => navigate('/support/ticket/new')}
-                            className="flex-1 lg:flex-none"
+                            onClick={() => setIsNearbyModalOpen(true)}
+                            variant="secondary"
+                            className="flex-1 lg:flex-none bg-gray-100 text-gray-900 hover:bg-gray-200 border-none shadow-none p-0 text-sm transition-colors"
                         >
-                            <Plus className="mr-1.5 h-3.5 w-3.5" /> New Ticket
+                            <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Nearby
                         </Button>
+                    )}
+                    {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
+                        <Button
+                            onClick={() => navigate('/support/alerts')}
+                            variant="secondary"
+                            className="flex-1 lg:flex-none bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200"
+                        >
+                            <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Broadcast Alert
+                        </Button>
+                    )}
+                    <Button
+                        onClick={() => navigate('/support/ticket/new')}
+                        className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                        <Plus className="mr-1.5 h-3.5 w-3.5" /> New Ticket
+                    </Button>
+                </div>
+            </div>
+
+            {/* Global Filters Card */}
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="relative">
+                        <label htmlFor="search-input" className="block text-xs font-medium text-gray-500 mb-1.5">Search Tickets</label>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                                id="search-input"
+                                name="search"
+                                placeholder="Search by title, number..."
+                                className="!pl-10 bg-gray-50/50 border-gray-200 focus:bg-white transition-all"
+                                value={filters.searchTerm}
+                                onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="role-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Filter by Role</label>
+                        <Select
+                            id="role-filter-global"
+                            name="role"
+                            value={roleFilter}
+                            onChange={e => setRoleFilter(e.target.value)}
+                            className="bg-gray-50/50 border-gray-200"
+                        >
+                            <option value="all">All Roles</option>
+                            {uniqueRoles.map(r => (
+                                <option key={r} value={r}>{r.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
+                            ))}
+                        </Select>
+                    </div>
+                    <div>
+                        <label htmlFor="status-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Status</label>
+                        <Select
+                            id="status-filter-global"
+                            name="status"
+                            value={filters.status}
+                            onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+                            className="bg-gray-50/50 border-gray-200"
+                        >
+                            <option value="all">All Status</option>
+                            <option>Open</option>
+                            <option>In Progress</option>
+                            <option value="Pending Requester">Pending</option>
+                            <option>Resolved</option>
+                            <option>Closed</option>
+                        </Select>
+                    </div>
+                    <div>
+                        <label htmlFor="priority-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Priority</label>
+                        <Select
+                            id="priority-filter-global"
+                            name="priority"
+                            value={filters.priority}
+                            onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
+                            className="bg-gray-50/50 border-gray-200"
+                        >
+                            <option value="all">All Priority</option>
+                            <option>Low</option>
+                            <option>Medium</option>
+                            <option>High</option>
+                            <option>Urgent</option>
+                        </Select>
                     </div>
                 </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-                <StatCard
-                    title="Open Tickets"
-                    value={stats.open}
-                    icon={<LifeBuoy className="h-6 w-6" />}
-                    colorClass="text-rose-500"
-                />
-                <StatCard
-                    title="In Progress"
-                    value={stats.inProgress}
-                    icon={<Loader2 className="h-6 w-6" />}
-                    colorClass="text-blue-500"
-                />
-                <StatCard
-                    title="Pending Your Action"
-                    value={stats.pendingYourAction}
-                    icon={<UserCheck className="h-6 w-6" />}
-                    colorClass="text-amber-500"
-                />
+            {/* Stats Grid - Unified Horizontal Pattern */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {[
+                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, color: "bg-gray-600" },
+                    { title: "Open", value: stats.open, icon: AlertTriangle, color: "bg-rose-500" },
+                    { title: "In Progress", value: stats.inProgress, icon: Loader2, color: "bg-blue-500" },
+                    { title: "Resolved", value: stats.resolved, icon: UserCheck, color: "bg-emerald-500" },
+                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, color: "bg-amber-500" }
+                ].map((stat, i) => (
+                    <div key={i} className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+                        <div className={`p-2.5 rounded-full ${stat.color} text-white`}>
+                            <stat.icon className={`h-5 w-5 ${stat.icon === Loader2 ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                            <p className="text-[10px] sm:text-xs font-medium text-gray-500 mb-0.5 truncate uppercase tracking-wider">{stat.title}</p>
+                            <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">{stat.value}</p>
+                        </div>
+                    </div>
+                ))}
             </div>
 
 
@@ -502,28 +551,15 @@ const SupportDashboard: React.FC = () => {
                                     type="checkbox"
                                     checked={showAllScores}
                                     onChange={(e) => setShowAllScores(e.target.checked)}
-                                    className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                    className="w-4 h-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
                                 />
                                 Show All
                             </label>
                         </div>
-                        <select
-                            id="role-filter"
-                            name="role-filter"
-                            aria-label="Filter by role"
-                            value={roleFilter}
-                            onChange={e => setRoleFilter(e.target.value)}
-                            className="px-3 py-2 rounded-lg border border-border bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-accent/30"
-                        >
-                            <option value="all">All Roles</option>
-                            {uniqueRoles.map(r => (
-                                <option key={r} value={r}>{r.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</option>
-                            ))}
-                        </select>
                         {isAdmin(user?.role) && (
                             <button
                                 onClick={downloadReport}
-                                className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-all font-bold text-sm shadow-sm"
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all font-bold text-sm shadow-sm"
                             >
                                 <Download className="w-4 h-4" />
                                 Download Report
@@ -618,54 +654,13 @@ const SupportDashboard: React.FC = () => {
                 {/* Main Content - Ticket List */}
                 <div className="lg:col-span-2 space-y-6">
                     <div className="bg-transparent p-5 rounded-2xl">
-                        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                            <div className="relative flex-grow">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                <Input
-                                    id="search"
-                                    name="search"
-                                    aria-label="Search tickets"
-                                    placeholder="Search tickets..."
-                                    className="!pl-10 bg-gray-50 border-gray-200"
-                                    value={filters.searchTerm}
-                                    onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
-                                />
-                            </div>
-                            <div className="flex gap-2">
-                                <div className="w-32 sm:w-40">
-                                    <Select
-                                        id="status-filter"
-                                        name="status-filter"
-                                        aria-label="Filter by status"
-                                        value={filters.status}
-                                        onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-                                        className="bg-gray-50 border-gray-200"
-                                    >
-                                        <option value="all">All Status</option>
-                                        <option>Open</option>
-                                        <option>In Progress</option>
-                                        <option value="Pending Requester">Pending</option>
-                                        <option>Resolved</option>
-                                        <option>Closed</option>
-                                    </Select>
-                                </div>
-                                <div className="w-32 sm:w-40">
-                                    <Select
-                                        id="priority-filter"
-                                        name="priority-filter"
-                                        aria-label="Filter by priority"
-                                        value={filters.priority}
-                                        onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-                                        className="bg-gray-50 border-gray-200"
-                                    >
-                                        <option value="all">All Priority</option>
-                                        <option>Low</option>
-                                        <option>Medium</option>
-                                        <option>High</option>
-                                        <option>Urgent</option>
-                                    </Select>
-                                </div>
-                            </div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                <MessageSquare className="h-5 w-5 text-emerald-600" /> Support Tickets
+                            </h3>
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
+                                {filteredTickets.length} Results
+                            </span>
                         </div>
 
                         {isLoading ? (

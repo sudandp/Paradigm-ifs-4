@@ -185,14 +185,14 @@ const ThemeManager: React.FC = () => {
 };
 
 // Global Error Boundary to prevent white screen
-class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: any, errorInfo: any) {
@@ -201,32 +201,44 @@ class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode },
 
   render() {
     if (this.state.hasError) {
+      const errorMsg = this.state.error?.message || 'Unknown Error';
+      const isPostgrestError = this.state.error?.code?.startsWith('PGRST') || this.state.error?.status === 400 || this.state.error?.status === 406;
+
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
-          <div className="bg-white p-8 rounded-2xl shadow-xl border border-red-100 max-w-md">
+          <div className="bg-white p-8 rounded-2xl shadow-xl border border-red-100 max-w-md w-full">
             <div className="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertTriangle className="h-8 w-8 text-red-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h2>
-            <p className="text-gray-600 mb-8">
-              The application encountered an unexpected error. This often happens if your session has expired.
+            <p className="text-gray-600 mb-4 text-sm">
+              The application encountered an unexpected error. This often happens if your session has expired or there is a database mismatch.
             </p>
+            
+            <div className="mb-8 p-3 bg-gray-50 rounded-lg border border-gray-100 text-left">
+               <p className="text-[10px] uppercase font-bold text-gray-400 mb-1">Error Details</p>
+               <p className="text-xs font-mono text-gray-600 break-words">{errorMsg}</p>
+               {isPostgrestError && <p className="text-[9px] text-emerald-600 mt-2 font-medium">Tip: Try clearing your session using the button below.</p>}
+            </div>
+
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => window.location.reload()}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-600/20"
               >
                 Reload Application
               </button>
               <button 
-                onClick={() => {
+                onClick={async () => {
+                   console.log('[GlobalErrorBoundary] Performing Hard Reset...');
                    localStorage.clear();
-                   Preferences.clear();
+                   sessionStorage.clear();
+                   await Preferences.clear();
                    window.location.href = '/auth/login';
                 }}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors"
+                className="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-bold py-3 rounded-xl transition-colors"
               >
-                Go to Login
+                Reset Session & Logout
               </button>
             </div>
           </div>
@@ -1014,7 +1026,7 @@ const App: React.FC = () => {
           {/* HR */}
           <Route element={<ProtectedRoute requiredPermission="manage_attendance_rules" />}>
             <Route path="hr/attendance-settings" element={<AttendanceSettings />} />
-            <Route path="hr/notification-management" element={<NotificationsControl />} />
+            <Route path="notifications" element={<NotificationsControl />} />
             <Route path="hr/advanced-notifications" element={<AdvancedNotificationSettings />} />
             <Route path="hr/family-verification" element={<FamilyVerification />} />
           </Route>

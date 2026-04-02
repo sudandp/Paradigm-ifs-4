@@ -1015,22 +1015,22 @@ const ProfilePage: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-5">
                 
-                {/* 70% Left Column */}
-                <div className="lg:col-span-8 space-y-6 lg:space-y-6">
+                {/* Unified Horizontal Layout (All cards in 1 row) */}
+                <div className="lg:col-span-12 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 items-stretch">
 
                     {/* Side-by-Side: Profile Details & Work Hours Tracking */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                         
                     {/* Profile Details */}
-                    <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
+                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
                         <div className="flex items-center gap-3 mb-5 md:mb-5">
                             <div className="p-2 bg-blue-50 rounded-lg">
                                 <UserIcon className="h-5 w-5 text-blue-600" />
                             </div>
-                            <h3 className="text-lg md:text-base font-bold text-gray-900">Profile Details</h3>
+                            <h3 className="text-base md:text-sm font-bold text-gray-900">Profile Details</h3>
                         </div>
-                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-5 md:space-y-3">
-                            <div className="grid grid-cols-1 gap-5 md:gap-4">
+                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4 md:space-y-3">
+                            <div className="grid grid-cols-1 gap-4 md:gap-3">
                                 <div className="w-full">
                                     <Input label="Full Name" id="name" error={profileErrors.name?.message} registration={register('name')} className="bg-gray-50/50 border-gray-200 focus:bg-white transition-colors" autoComplete="name" />
                                 </div>
@@ -1051,15 +1051,15 @@ const ProfilePage: React.FC = () => {
                                     {profileErrors.gender && <p className="text-red-500 text-xs mt-1">{profileErrors.gender.message}</p>}
                                 </div>
                             </div>
-                            <div className="flex justify-end pt-5 mt-5 border-t border-gray-100">
-                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="md:!px-6 md:!py-2 md:!h-9 md:!text-sm md:rounded-lg w-full md:w-auto transition-all">Save Changes</Button>
+                            <div className="flex justify-end pt-4 mt-4 border-t border-gray-100">
+                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="md:!px-5 md:!py-0 md:!h-8 md:!text-[12px] md:rounded-lg w-full md:w-auto transition-all !bg-amber-600 hover:!bg-amber-700 font-bold">Save</Button>
                             </div>
                         </form>
                     </div>
 
                     {/* Work Hours Tracking */}
                     {user.role !== 'management' ? (
-                        <div className={`relative transition-all duration-500 md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border ${isOnBreak ? 'border-rose-500 ring-2 ring-rose-100' : 'border-gray-100'} h-full`}>
+                        <div className={`relative transition-all duration-500 md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border ${isOnBreak ? 'border-rose-500 ring-2 ring-rose-100' : 'border-gray-100'} h-full`}>
                             {isOnBreak && (
                                 <div className="absolute -top-3 left-6 z-20 bg-rose-600 text-white text-xs font-bold px-3 py-1 rounded-md shadow-sm uppercase tracking-wider">
                                     On Break
@@ -1069,34 +1069,34 @@ const ProfilePage: React.FC = () => {
                                 <div className="p-2 bg-indigo-50 rounded-lg">
                                     <ClipboardList className="h-5 w-5 text-indigo-600" />
                                 </div>
-                                <h3 className="text-base font-bold text-gray-900">Work Hours Tracking</h3>
+                                <h3 className="text-sm font-bold text-gray-900">Work Hours Tracking</h3>
                             </div>
                             <div className="space-y-6">
                                 {/* Small Stat Boxes */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> First In
                                         </p>
-                                        <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckInTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckInTime)}</p>
                                     </div>
-                                    <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Last Out
                                         </p>
-                                        <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckOutTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckOutTime)}</p>
                                     </div>
-                                    <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> First B-In
                                         </p>
-                                        <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(firstBreakInTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(firstBreakInTime)}</p>
                                     </div>
-                                    <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1.5">
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Last B-Out
                                         </p>
-                                        <p className="text-xl font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastBreakOutTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastBreakOutTime)}</p>
                                     </div>
                                 </div>
 
@@ -1248,26 +1248,21 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </div>
                     ) : <div></div>}
-                    </div> {/* End Side-by-Side Grid */}
 
                     {/* Passcode Management Desktop */}
-                    <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
+                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
                         <div className="flex items-center justify-between mb-5">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-amber-50 rounded-lg">
                                     <Lock className="h-5 w-5 text-amber-600" />
                                 </div>
-                                <h3 className="text-lg md:text-base font-bold text-gray-900">Security Passcode</h3>
-                            </div>
-                            <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
-                                <Info className="h-3.5 w-3.5 text-amber-600" />
-                                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-tighter">Default PIN: 5687</span>
+                                <h3 className="text-sm font-bold text-gray-900">Security Passcode</h3>
                             </div>
                         </div>
                         <p className="text-sm text-gray-500 mb-6 leading-relaxed">Update your 4-digit security passcode for attendance authentication. Keep this private for secure check-ins.</p>
                         
-                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-3">
+                            <div className="grid grid-cols-1 gap-3">
                                 <Input 
                                     label="Current Passcode" 
                                     id="oldPasscode-desktop" 
@@ -1304,35 +1299,35 @@ const ProfilePage: React.FC = () => {
                             </div>
                             <div className="flex justify-between items-center pt-4 border-t border-gray-50">
                                 <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium">
+                                    <div className="flex items-center gap-1.5 text-[9px] text-gray-400 font-medium leading-none">
                                         <CheckCircle className="h-3 w-3 text-emerald-500" />
                                         <span>Must be exactly 4 numeric digits.</span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-[10px] text-amber-600 font-medium italic">
+                                    <div className="flex items-center gap-1.5 text-[9px] text-amber-600 font-medium italic leading-none">
                                         <AlertTriangle className="h-3 w-3" />
                                         <span>Forgot PIN? Reset via User Management or Contact Admin.</span>
                                     </div>
                                 </div>
-                                <Button 
-                                    type="submit"
-                                    isLoading={isSavingPasscode}
-                                    disabled={!isPasscodeDirty}
-                                    className="md:!px-8 shadow-md !bg-amber-600 hover:!bg-amber-700 transition-all font-bold"
-                                >
-                                    Save Passcode
-                                </Button>
+                                    <Button 
+                                        type="submit"
+                                        isLoading={isSavingPasscode}
+                                        disabled={!isPasscodeDirty}
+                                        className="md:!px-5 md:!h-8 md:!text-[12px] !bg-amber-600 hover:!bg-amber-700 transition-all font-bold md:rounded-lg"
+                                    >
+                                        Save
+                                    </Button>
                             </div>
                         </form>
                     </div>
 
                     {/* Family Details Section (Female employees only) */}
                     {user.gender === 'Female' && (
-                        <div className="md:bg-white md:p-6 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
+                        <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 transition-shadow">
                             <div className="flex items-center gap-3 mb-5">
                                 <div className="p-2 bg-pink-50 rounded-lg">
                                     <Baby className="h-5 w-5 text-pink-600" />
                                 </div>
-                                <h3 className="text-lg md:text-base font-bold text-gray-900">Family Details</h3>
+                                <h3 className="text-sm font-bold text-gray-900">Family Details</h3>
                                 <span className="text-xs text-gray-400">({children.length}/2 children)</span>
                             </div>
 
@@ -1419,7 +1414,8 @@ const ProfilePage: React.FC = () => {
                             )}
                         </div>
                     )}
-                </div>
+                    </div> {/* End Horizontal Grid Row */}
+                </div> {/* End col-span-12 container */}
 
                 {/* Hide entirely on desktop using md:hidden as requested */}
                 <div className="lg:col-span-4 space-y-6 md:hidden">

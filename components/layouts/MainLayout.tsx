@@ -85,7 +85,7 @@ export const allNavLinks: NavLinkConfig[] = [
 
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },
-    { to: '/notifications', label: 'Notifications Control', icon: Bell, permission: 'manage_users', category: 'System Config' },
+    { to: '/notifications', label: 'Notifications Control', icon: Bell, permission: 'manage_attendance_rules', category: 'System Config' },
 
     // Support & Profile
     { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk', category: 'Support & Profile' },
@@ -313,6 +313,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                 <NavLink
                                                     key={link.to}
                                                     to={link.to}
+                                                    end
                                                     onClick={handleLinkClick}
                                                     style={{ paddingLeft: `${2.75 + (idx * 0.5)}rem` }}
                                                     className={({ isActive }) =>

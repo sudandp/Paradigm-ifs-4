@@ -28,3 +28,30 @@ messaging.onBackgroundMessage((payload) => {
 
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
+
+// Handle notification click to open page
+self.addEventListener('notificationclick', (event) => {
+  console.log('[firebase-messaging-sw.js] Notification click received.', event);
+  event.notification.close();
+
+  const data = event.notification.data || {};
+  const link = data.link || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If a window is already open, focus it and navigate
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          if ('navigate' in client) {
+            return client.navigate(link);
+          }
+        }
+      }
+      // If no window is open, open a new one
+      if (clients.openWindow) {
+        return clients.openWindow(link);
+      }
+    })
+  );
+});

@@ -982,6 +982,17 @@ export interface AttendanceEvent {
   isOt?: boolean;
 }
 
+export interface RoutePoint {
+  id: string;
+  userId: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string; // ISO String
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+}
+
 // -----------------------------------------------------------------------------
 // Geofencing Types
 //

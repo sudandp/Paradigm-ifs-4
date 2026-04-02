@@ -49,6 +49,15 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     if (!user) return;
 
     set({ isLoading: true, error: null });
+    
+    // Robust UUID check before calling API
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!user.id || !uuidRegex.test(user.id)) {
+      console.warn('[NotificationStore] Skipping fetch: Invalid user.id (UUID expected):', user.id);
+      set({ isLoading: false, notifications: [], unreadCount: 0 });
+      return;
+    }
+
     try {
       const notifications = await api.getNotifications(user.id);
       const unreadCount = notifications.filter(n => !n.isRead).length;

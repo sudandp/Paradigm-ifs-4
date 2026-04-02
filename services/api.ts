@@ -12,7 +12,7 @@ import type {
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
   NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
-  CommunicationLog, RevisionLog, UserChild
+  CommunicationLog, RevisionLog, UserChild, RoutePoint
 } from '../types';
 import { getObjectDiff } from '../utils/diff';
 import { 
@@ -320,7 +320,7 @@ export const api = {
         (error.status === 400 || error.code === '400') && 
         (error.message?.includes('invalid') || error.message?.includes('expired') || error.message?.includes('token'));
     
-    const isUnauthorized = error.status === 401 || error.code === '401';
+    const isUnauthorized = error.status === 401 || error.code === '401' || error.status === 403 || error.code === '403';
     
     if (isAuthError || isUnauthorized) {
         console.error('CRITICAL AUTH ERROR (400/401) DETECTED:', error.message);
@@ -2032,6 +2032,36 @@ export const api = {
       const cached = await offlineDb.getCache(cacheKey) || [];
       await offlineDb.setCache(cacheKey, [...cached, offlineEvent]);
     }
+  },
+
+  addRoutePoint: async (point: Omit<RoutePoint, 'id'>): Promise<void> => {
+    const status = await Network.getStatus();
+    if (!status.connected) {
+        await offlineDb.addToOutbox({ table_name: 'route_history', action: 'INSERT', payload: point });
+        return;
+    }
+    try {
+      const { error } = await supabase
+        .from('route_history')
+        .insert(toSnakeCase(point));
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Failed to submit route point to cloud, saving to outbox');
+      await offlineDb.addToOutbox({ table_name: 'route_history', action: 'INSERT', payload: point });
+    }
+  },
+
+  getRoutePoints: async (userId: string, start: string, end: string): Promise<RoutePoint[]> => {
+    const { data, error } = await supabase
+      .from('route_history')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('timestamp', start)
+      .lte('timestamp', end)
+      .order('timestamp', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map(toCamelCase) as RoutePoint[];
   },
 
   requestAttendanceUnlock: async (reason: string): Promise<void> => {
@@ -4211,6 +4241,13 @@ export const api = {
     return toCamelCase(data);
   },
   getNotifications: async (userId: string): Promise<Notification[]> => {
+    // Validate UUID to prevent 400 Bad Request errors from Supabase/PostgREST
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userId || !uuidRegex.test(userId)) {
+      console.warn('[API] getNotifications: Invalid or missing userId (UUID expected):', userId);
+      return [];
+    }
+    
     const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (error) return api.handleError(error);
     return (data || []).map(toCamelCase);

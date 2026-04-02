@@ -52,7 +52,7 @@ const UserRow = React.memo(({
     <tr>
         <td data-label="Name" className="px-6 py-4 font-semibold text-base">{user.name}</td>
         <td data-label="Email" className="px-6 py-4 text-sm text-muted">{user.email}</td>
-        <td data-label="Role" className="px-6 py-4 text-sm text-muted">
+        <td data-label="Role" className="px-6 py-4 text-sm text-muted min-w-[160px]">
             <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${getRoleBadgeClass(user.role)}`}>
                 {getRoleName(user.role)}
             </span>
@@ -67,14 +67,50 @@ const UserRow = React.memo(({
             {user.biometricId || '-'}
         </td>
         <td data-label="Actions" className="px-6 py-3">
-            <div className="flex items-center gap-1.5 md:justify-start justify-end">
+            <div className="flex items-center gap-4 md:justify-start justify-end">
                 {user.role === 'unverified' && (
-                    <Button variant="outline" size="sm" onClick={() => handleApprove(user)} aria-label={`Approve user ${user.name}`} title={`Approve user ${user.name}`} className="h-8 text-[11px] px-3"><UserCheck className="h-3.5 w-3.5 mr-1.5" />Approve</Button>
+                    <button 
+                        onClick={() => handleApprove(user)} 
+                        aria-label={`Approve ${user.name}`} 
+                        title={`Approve ${user.name}`} 
+                        className="p-1 text-emerald-600 hover:text-emerald-700 hover:scale-110 transition-all flex items-center gap-1.5"
+                    >
+                        <UserCheck className="h-5 w-5" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Approve</span>
+                    </button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => handleEdit(user)} aria-label={`Edit user ${user.name}`} title={`Edit user ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-page transition-all"><Edit className="h-3.5 w-3.5 text-slate-600" /></Button>
-                <Button variant="outline" size="sm" onClick={() => handleManageLocations(user)} aria-label={`Manage Geofencing for ${user.name}`} title={`Manage Geofencing for ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-emerald-50 transition-all"><MapPin className="h-3.5 w-3.5 text-emerald-600" /></Button>
-                <Button variant="outline" size="sm" onClick={() => handleResetPasscode(user)} aria-label={`Reset Passcode for ${user.name}`} title={`Reset Passcode for ${user.name}`} className="h-8 w-8 p-0 border-border hover:text-amber-600 hover:bg-amber-50 transition-all"><RotateCw className="h-3.5 w-3.5 text-slate-500" /></Button>
-                <Button variant="outline" size="sm" onClick={() => handleDelete(user)} aria-label={`Delete user ${user.name}`} title={`Delete user ${user.name}`} className="h-8 w-8 p-0 border-border hover:bg-red-50 hover:text-red-600 transition-all"><Trash2 className="h-3.5 w-3.5 text-slate-400 group-hover:text-red-500" /></Button>
+                <button 
+                    onClick={() => handleEdit(user)} 
+                    aria-label={`Edit ${user.name}`} 
+                    title={`Edit ${user.name}`} 
+                    className="p-1 text-slate-500 hover:text-slate-700 hover:scale-110 transition-all"
+                >
+                    <Edit className="h-5 w-5" />
+                </button>
+                <button 
+                    onClick={() => handleManageLocations(user)} 
+                    aria-label={`Geofencing ${user.name}`} 
+                    title={`Geofencing ${user.name}`} 
+                    className="p-1 text-emerald-500 hover:text-emerald-700 hover:scale-110 transition-all"
+                >
+                    <MapPin className="h-5 w-5" />
+                </button>
+                <button 
+                    onClick={() => handleResetPasscode(user)} 
+                    aria-label={`Reset ${user.name}`} 
+                    title={`Reset ${user.name}`} 
+                    className="p-1 text-amber-500 hover:text-amber-700 hover:scale-110 transition-all"
+                >
+                    <RotateCw className="h-5 w-5" />
+                </button>
+                <button 
+                    onClick={() => handleDelete(user)} 
+                    aria-label={`Delete ${user.name}`} 
+                    title={`Delete ${user.name}`} 
+                    className="p-1 text-red-500 hover:text-red-700 hover:scale-110 transition-all"
+                >
+                    <Trash2 className="h-5 w-5" />
+                </button>
             </div>
         </td>
     </tr>
@@ -106,24 +142,44 @@ const UserCard = React.memo(({
             </div>
         </div>
 
-        <div className="pt-3 border-t border-border flex justify-end gap-2 mt-auto">
+        <div className="pt-3 border-t border-border flex justify-end gap-5 mt-auto">
             {user.role === 'unverified' && (
-                <Button variant="outline" size="sm" onClick={() => handleApprove(user)} className="flex-1">
-                    <UserCheck className="h-4 w-4 mr-2" />Approve
-                </Button>
+                <button 
+                    onClick={() => handleApprove(user)} 
+                    className="flex-1 text-emerald-600 hover:text-emerald-700 font-bold flex items-center justify-center gap-2 hover:scale-105 transition-all"
+                >
+                    <UserCheck className="h-5 w-5" />
+                    <span>Approve</span>
+                </button>
             )}
-            <Button variant="icon" size="sm" onClick={() => handleEdit(user)} className="h-9 w-9 border border-border rounded-lg">
-                <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="icon" size="sm" onClick={() => handleManageLocations(user)} className="h-9 w-9 border border-border rounded-lg">
-                <MapPin className="h-4 w-4 text-emerald-500" />
-            </Button>
-            <Button variant="icon" size="sm" onClick={() => handleResetPasscode(user)} className="h-9 w-9 border border-border rounded-lg hover:text-amber-600">
-                <RotateCw className="h-4 w-4" />
-            </Button>
-            <Button variant="icon" size="sm" onClick={() => handleDelete(user)} className="h-9 w-9 border border-border rounded-lg hover:bg-red-50 text-red-500">
-                <Trash2 className="h-4 w-4" />
-            </Button>
+            <button 
+                onClick={() => handleEdit(user)} 
+                className="p-2 text-slate-500 hover:text-slate-700 hover:scale-125 transition-all"
+                aria-label="Edit"
+            >
+                <Edit className="h-6 w-6" />
+            </button>
+            <button 
+                onClick={() => handleManageLocations(user)} 
+                className="p-2 text-emerald-500 hover:text-emerald-700 hover:scale-125 transition-all"
+                aria-label="Geofencing"
+            >
+                <MapPin className="h-6 w-6" />
+            </button>
+            <button 
+                onClick={() => handleResetPasscode(user)} 
+                className="p-2 text-amber-500 hover:text-amber-700 hover:scale-125 transition-all"
+                aria-label="Reset"
+            >
+                <RotateCw className="h-6 w-6" />
+            </button>
+            <button 
+                onClick={() => handleDelete(user)} 
+                className="p-2 text-red-500 hover:text-red-700 hover:scale-125 transition-all text-red-500"
+                aria-label="Delete"
+            >
+                <Trash2 className="h-6 w-6" />
+            </button>
         </div>
     </div>
 ));
@@ -532,7 +588,7 @@ const UserManagement: React.FC = () => {
                                 <tr>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Name</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Email</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Role</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider min-w-[170px]">Role</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Site</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Biometric ID</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">
@@ -570,7 +626,7 @@ const UserManagement: React.FC = () => {
                                             className="w-full text-sm font-normal px-2 py-1.5 border border-border rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                                         />
                                     </th>
-                                    <th className="px-6 py-2">
+                                    <th className="px-6 py-2 min-w-[170px]">
                                         <select
                                             id="filter-role"
                                             name="role"

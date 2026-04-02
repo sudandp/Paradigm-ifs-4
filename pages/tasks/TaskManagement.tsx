@@ -15,7 +15,6 @@ import TableSkeleton from '../../components/skeletons/TableSkeleton';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import Pagination from '../../components/ui/Pagination';
 import Input from '../../components/ui/Input';
-import LoadingScreen from '../../components/ui/LoadingScreen';
 
 const getNextDueDateInfo = (task: Task): { date: string | null; isOverdue: boolean } => {
     const today = new Date();
@@ -88,12 +87,9 @@ const TaskManagement: React.FC = () => {
         useTaskStore.setState({ isLoading: true });
         try {
             const res = await api.getTasks({ page: currentPage, pageSize });
-            // Minimum 10 second loading time
-            await new Promise(resolve => setTimeout(resolve, 10000));
             useTaskStore.setState({ tasks: res.data, isLoading: false });
             setTotalTasks(res.total);
         } catch (error) {
-            await new Promise(resolve => setTimeout(resolve, 10000));
             useTaskStore.setState({ isLoading: false });
             setToast({ message: 'Failed to fetch tasks.', type: 'error' });
         }
@@ -220,9 +216,6 @@ const TaskManagement: React.FC = () => {
         return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[status]}`}>{status}</span>;
     };
 
-    if (isLoading) {
-        return <LoadingScreen message="Fetching tasks..." />;
-    }
 
     return (
         <div className={`min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pb-24' : `p-4 ${isDark ? 'bg-[#041b0f] border border-white/10' : 'md:bg-card'} md:p-6 md:rounded-xl md:shadow-card`}`}>
@@ -337,7 +330,14 @@ const TaskManagement: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className={`divide-y md:divide-y-0 ${isMobile ? 'divide-white/10 space-y-4 block' : (isDark ? 'divide-white/10 bg-[#041b0f]' : 'divide-border md:bg-card')}`}>
-                        {filteredTasks.map((task) => {
+                        {isLoading ? (
+                            isMobile ? (
+                                <div className="p-4"><TableSkeleton rows={5} cols={3} isMobile={true} /></div>
+                            ) : (
+                                <TableSkeleton rows={5} cols={7} />
+                            )
+                        ) : (
+                            filteredTasks.map((task) => {
                             const { date: nextDueDate, isOverdue } = getNextDueDateInfo(task);
 
                             if (isMobile) {
@@ -394,7 +394,8 @@ const TaskManagement: React.FC = () => {
                                     </td>
                                 </tr>
                             );
-                        })}
+                        })
+                    )}
                     </tbody>
                 </table>
             </div>
