@@ -148,7 +148,7 @@ const Login: React.FC = () => {
             <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-3">
                 <fieldset disabled={isFormDisabled} className="space-y-3">
                     <div className="relative group">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-[#22c55e] transition-colors pointer-events-none" />
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-[#22c55e] transition-colors pointer-events-none" />
                         <Input
                             id="email"
                             type="email"
@@ -157,11 +157,11 @@ const Login: React.FC = () => {
                             aria-label="Email address"
                             registration={registerEmail('email')}
                             error={emailErrors.email?.message}
-                            className="!pl-12 !bg-black/60 !text-white !border-white/10 focus:!border-[#22c55e] placeholder:!text-gray-500 !py-3 !rounded-xl transition-all"
+                            className="!pl-9 text-sm !bg-black/60 !text-white !border-white/10 focus:!border-[#22c55e] placeholder:!text-gray-500 !py-2 !rounded-lg sm:!rounded-xl transition-all"
                         />
                     </div>
                     <div className="relative group">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-[#22c55e] transition-colors pointer-events-none" />
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-[#22c55e] transition-colors pointer-events-none" />
                         <Input
                             id="password"
                             type="password"
@@ -171,7 +171,7 @@ const Login: React.FC = () => {
                             aria-label="Passcode or Password"
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
-                            className="!pl-12 !bg-black/60 !text-white !border-white/10 focus:!border-[#22c55e] placeholder:!text-gray-500 !py-3 !rounded-xl transition-all"
+                            className="!pl-9 text-sm !bg-black/60 !text-white !border-white/10 focus:!border-[#22c55e] placeholder:!text-gray-500 !py-2 !rounded-lg sm:!rounded-xl transition-all"
                         />
                     </div>
                     <div className="flex flex-col sm:flex-row items-center sm:items-center justify-between gap-3">

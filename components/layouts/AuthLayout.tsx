@@ -76,8 +76,8 @@ const AuthLayout: React.FC = () => {
             </div>
 
             {/* Centered content container */}
-            <div className="relative w-full max-w-2xl lg:max-w-3xl xl:max-w-4xl p-4 py-10 md:py-16">
-                <div className="auth-card-container glass-mobile w-full grid md:grid-cols-2 rounded-2xl shadow-2xl overflow-hidden md:backdrop-blur-none md:bg-[#0d2c18] border border-[#041b0f] md:border-white/10">
+            <div className="relative w-full max-w-2xl lg:max-w-3xl xl:max-w-4xl p-0 md:p-4 py-8 md:py-16 flex items-center justify-center min-h-[100dvh] md:min-h-0 mx-auto">
+                <div className="auth-card-container transform scale-[0.80] sm:scale-100 -translate-y-[17vh] md:translate-y-0 origin-center mx-auto glass-mobile w-full max-w-[90%] md:max-w-none grid md:grid-cols-2 rounded-[2.5rem] md:rounded-2xl shadow-2xl overflow-hidden md:backdrop-blur-none md:bg-[#0d2c18] border border-[#041b0f] md:border-white/10">
                     {/* Left Visual Column */}
                     <div className="hidden md:flex flex-col justify-between p-6 lg:p-10 xl:p-16 bg-gradient-to-br from-black/40 to-black/70">
                         <div>
