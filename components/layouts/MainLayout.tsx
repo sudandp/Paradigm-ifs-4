@@ -291,7 +291,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                 >
                                     <div className="flex items-center gap-2">
                                         <CategoryIcon className={`h-4 w-4 transition-colors ${isExpanded ? 'text-gray-600' : 'text-gray-400 group-hover:text-gray-500'}`} />
-                                        <span className={`text-xs font-semibold capitalize tracking-tight transition-colors ${isExpanded ? 'text-gray-700' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                        <span className={`text-sm font-semibold capitalize tracking-tight transition-colors ${isExpanded ? 'text-gray-700' : 'text-gray-400 group-hover:text-gray-600'}`}>
                                             {category}
                                         </span>
                                     </div>
@@ -309,13 +309,14 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                             transition={{ duration: 0.2, ease: "easeInOut" }}
                                             className="overflow-hidden space-y-0.5"
                                         >
-                                            {links.map(link => (
+                                            {links.map((link, idx) => (
                                                 <NavLink
                                                     key={link.to}
                                                     to={link.to}
                                                     onClick={handleLinkClick}
+                                                    style={{ paddingLeft: `${2.75 + (idx * 0.5)}rem` }}
                                                     className={({ isActive }) =>
-                                                        `group flex items-center pl-9 pr-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
+                                                        `group flex items-center pr-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
                                                             ? isActive
                                                                 ? 'bg-gray-100 text-gray-900 font-semibold'
                                                                 : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
@@ -365,32 +366,38 @@ const MainLayout: React.FC = () => {
     const mainContentRef = useRef<HTMLDivElement>(null);
     const pageScrollIntervalRef = useRef<number | null>(null);
 
-    // Initialize sidebar state based on device type. 
-    // On mobile/tablet, start collapsed (true). On desktop, start expanded (false).
+    // Sidebar state: isSidebarExpanded (UI width), isSidebarLocked (Manual lock)
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(isDesktop);
+    const [isSidebarLocked, setIsSidebarLocked] = useState(isDesktop);
     const [scrollPosition, setScrollPosition] = useState(0);
     const [showScrollButtons, setShowScrollButtons] = useState(false);
     const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Update sidebar state when switching between mobile/desktop/tablet
+    // Sync state when device type changes
     useEffect(() => {
-        // Collapse sidebar if mobile
         setIsSidebarExpanded(isDesktop);
+        setIsSidebarLocked(isDesktop);
     }, [isDesktop]);
 
     const handleMouseEnter = useCallback(() => {
-        if (isMobile) return;
+        if (isMobile || isSidebarLocked) return;
         if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
         hoverTimeoutRef.current = setTimeout(() => {
             setIsSidebarExpanded(true);
-        }, 50); // Small 50ms debounce for smoother feel
-    }, [isMobile]);
+        }, 50);
+    }, [isMobile, isSidebarLocked]);
 
     const handleMouseLeave = useCallback(() => {
-        if (isMobile) return;
+        if (isMobile || isSidebarLocked) return;
         if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
         setIsSidebarExpanded(false);
-    }, [isMobile]);
+    }, [isMobile, isSidebarLocked]);
+
+    const toggleSidebarLock = useCallback(() => {
+        const nextLocked = !isSidebarLocked;
+        setIsSidebarLocked(nextLocked);
+        setIsSidebarExpanded(nextLocked);
+    }, [isSidebarLocked]);
 
     const stopPageScrolling = useCallback(() => {
         if (pageScrollIntervalRef.current !== null) {
@@ -411,7 +418,6 @@ const MainLayout: React.FC = () => {
         pageScrollIntervalRef.current = window.setInterval(scroll, 300);
     }, [stopPageScrolling]);
 
-
     useEffect(() => {
         const handleScroll = () => {
             const mainEl = mainContentRef.current;
@@ -425,7 +431,6 @@ const MainLayout: React.FC = () => {
         mainEl?.addEventListener('scroll', handleScroll, { passive: true });
         window.addEventListener('resize', handleScroll);
 
-        // Initial check
         handleScroll();
 
         return () => {
@@ -434,7 +439,6 @@ const MainLayout: React.FC = () => {
             stopPageScrolling();
         };
     }, [stopPageScrolling]);
-
 
     useEffect(() => {
         if (user) {
@@ -449,10 +453,6 @@ const MainLayout: React.FC = () => {
     }
 
     return (
-        // Use responsive padding and gap values to improve layout on small screens. Previously the layout used fixed
-        // `p-8 gap-8`, which caused the sidebar and main content to squeeze on narrow viewports. Now we apply
-        // progressively larger spacing on wider screens while keeping things compact on mobile. The `min-h-screen`
-        // ensures the container grows as needed instead of forcing a fixed height.
         <div className={`flex h-screen overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-page'}`}>
 
             {isMobile && !isSidebarExpanded && (
@@ -462,7 +462,6 @@ const MainLayout: React.FC = () => {
                 />
             )}
 
-            {/* Backdrop for notifications on mobile/tablet */}
             {(isMobile || isTablet) && isPanelOpen && (
                 <div
                     className="fixed inset-0 bg-black/50 z-[95] transition-opacity duration-300"
@@ -470,18 +469,20 @@ const MainLayout: React.FC = () => {
                 />
             )}
 
-            {/* Sidebar - Overlay on mobile, fixed on desktop */}
             <aside 
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-14' : 'w-60') : (isTablet ? (!isSidebarExpanded ? 'w-14' : 'w-52') : (!isSidebarExpanded ? 'w-14' : 'w-56'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
+                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
             >
                 <div className="flex-1 overflow-y-auto overflow-x-hidden">
                     <SidebarContent
                         isCollapsed={!isSidebarExpanded}
                         mode={isMobile ? "dark" : "light"}
-                        onLinkClick={() => setIsSidebarExpanded(false)}
-                        onExpand={() => setIsSidebarExpanded(true)}
+                        onLinkClick={() => !isSidebarLocked && setIsSidebarExpanded(false)}
+                        onExpand={() => {
+                            setIsSidebarExpanded(true);
+                            setIsSidebarLocked(true);
+                        }}
                         hideHeader={isMobile}
                         isMobile={isMobile}
                     />
@@ -493,9 +494,9 @@ const MainLayout: React.FC = () => {
                         </div>
                     )}
                     <button
-                        onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                        className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 ${isMobile ? 'text-white/70 hover:bg-white/10' : 'text-muted hover:bg-page active:scale-95'}`}
-                        title={!isSidebarExpanded ? 'Expand sidebar' : 'Collapse sidebar'}
+                        onClick={toggleSidebarLock}
+                        className={`w-full flex items-center justify-center p-2 rounded-xl transition-all duration-200 ${isMobile ? 'text-white/70 hover:bg-white/10' : 'text-muted hover:bg-page active:scale-95'} ${isSidebarLocked ? 'bg-page/50 sm:bg-transparent' : ''}`}
+                        title={!isSidebarLocked ? 'Lock sidebar' : 'Unlock sidebar'}
                     >
                         {!isSidebarExpanded ? (
                             <div className="flex flex-col items-center gap-1.5 font-bold">
@@ -503,20 +504,18 @@ const MainLayout: React.FC = () => {
                                 <span className="text-[8px] tracking-tighter uppercase opacity-30">v{appVersion}</span>
                             </div>
                         ) : (
-                            <ChevronsLeft className="h-5 w-5" />
+                            <ChevronsLeft className={`h-5 w-5 transition-transform duration-300 ${!isSidebarLocked ? 'opacity-50' : 'opacity-100'}`} />
                         )}
                     </button>
                 </div>
             </aside>
 
-            <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-14' : ''}`}>
+            <div className={`flex-1 flex flex-col h-full overflow-hidden ${isMobile ? 'bg-[#041b0f]' : 'bg-gray-50/50'} ${isMobile && !isSidebarExpanded ? 'ml-[56px]' : ''}`}>
                 <Header />
                 <BreakTrackingMonitor />
 
-                {/* Main Content Area - This fills the remaining height and provides the scrolling behavior */}
                 <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page'} relative flex flex-col`}>
                     <div className={`flex-1 ${isTablet ? 'p-1 pb-4' : 'p-3 pb-6'}`}>
-                        {/* Bordered Card Container removed to fix white screen issue */}
                         <Outlet />
                     </div>
                 </main>
@@ -524,7 +523,6 @@ const MainLayout: React.FC = () => {
 
             <PingAlarmOverlay />
 
-            {/* Notification Sidebar - Desktop (> 1024px) */}
             {isDesktop && isPanelOpen && (
                 <>
                     <div
@@ -537,13 +535,12 @@ const MainLayout: React.FC = () => {
                 </>
             )}
 
-            {/* Notification Overlay - Mobile & Tablet */}
             {(isMobile || isTablet) && isPanelOpen && (
                 <div className={`fixed inset-y-0 right-0 z-[100] animate-slide-in-right ${isMobile ? 'w-full' : 'w-[400px]'}`}>
                     <NotificationPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} isMobile={isMobile} />
                 </div>
             )}
-            {/* Scroll-to-top/bottom buttons */}
+            
             {showScrollButtons && !isMobile && (
                 <div className="fixed bottom-[10%] right-8 z-50 flex flex-col gap-2 no-print">
                     <Button
