@@ -16,6 +16,7 @@ import {
     Legend,
 } from 'chart.js';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import Button from '../../components/ui/Button';
 
 Chart.register(
     BarController,
@@ -329,40 +330,40 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
 
 
     return (
-        <div className="bg-card p-5 rounded-xl shadow-card border border-border w-full md:max-w-[350px] flex flex-col min-h-[460px]">
-            <div className="flex items-center justify-between mb-6">
+        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-indigo-50 rounded-lg">
                         <BarChart2 className="h-4 w-4 text-indigo-600" />
                     </div>
                     <h3 className="text-sm font-semibold text-primary-text">Yearly Attendance</h3>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => changeYear(-1)} className="p-1 hover:bg-gray-100 rounded-md transition-colors">
-                        <ChevronLeft className="h-4 w-4 text-muted" />
-                    </button>
-                    <span className="text-sm font-bold text-gray-700 min-w-[40px] text-center">{currentYear}</span>
-                    <button onClick={() => changeYear(1)} className="p-1 hover:bg-gray-100 rounded-md transition-colors" disabled={currentYear >= new Date().getFullYear()}>
-                        <ChevronRight className="h-4 w-4 text-muted" />
-                    </button>
+                <div className="flex items-center gap-1">
+                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => changeYear(-1)}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-xs font-bold text-gray-700 min-w-[40px] text-center">{currentYear}</span>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => changeYear(1)} disabled={currentYear >= new Date().getFullYear()}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
                 </div>
             </div>
 
-            <div className="flex-1 relative min-h-[250px]">
+            <div className="flex-1 relative min-h-[160px]">
                 {isLoading ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
-                        <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                        <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
                     </div>
                 ) : null}
                 <canvas ref={chartRef}></canvas>
             </div>
             
-            <div className="mt-4 pt-3 border-t border-border/50 flex flex-col gap-1 text-[11px] text-muted">
+            <div className="mt-4 pt-3 border-t border-border/50 flex flex-col gap-1 text-[10px] text-muted">
                 <div className="flex justify-between items-center text-xs">
                     <span className="font-medium text-gray-600">Total Paydays:</span>
                     <span className="font-bold text-indigo-600 text-sm">{totalPayable} days</span>
                 </div>
-                <div className="flex justify-between items-center opacity-80">
+                <div className="flex justify-between items-center opacity-80 text-[10px]">
                     <span title="Worked + Leaves + Holidays + Week Offs">
                         (W: {stats.monthlyWorked.reduce((a, b) => a + b, 0)} + 
                          L: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 

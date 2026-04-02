@@ -174,6 +174,12 @@ const LeaveDashboard: React.FC = () => {
                             needsUpdate = true;
                         }
                     }
+
+                    // Enable custom holidays by default if not explicitly set to false
+                    if (catRules.enableCustomHolidays === undefined) {
+                        catRules.enableCustomHolidays = true;
+                        needsUpdate = true;
+                    }
                 });
 
                 if (needsUpdate) {
@@ -322,7 +328,7 @@ const LeaveDashboard: React.FC = () => {
 
             setCalculatedOTHours(parseFloat(totalOTHours.toFixed(1)));
             setCalculatedShortfallMins(totalShortfallMinutes);
-            setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays || false);
+            setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays ?? true);
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
@@ -568,8 +574,8 @@ const LeaveDashboard: React.FC = () => {
 
 
 
-            {/* Attendance Calendar Section */}
-            <div className="flex flex-wrap gap-6 items-start">
+            {/* Attendance Calendar Section - Grid layout matching summary cards for uniform sizing */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
                 <AttendanceCalendar 
                     leaveRequests={requests} 
                     userHolidays={userHolidays} 

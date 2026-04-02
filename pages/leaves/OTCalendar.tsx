@@ -93,31 +93,30 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
 
 
     return (
-        <div className="bg-card p-5 rounded-xl shadow-card border border-border w-full md:max-w-[350px] flex flex-col min-h-[460px]">
-            <div className="flex items-center justify-between mb-6 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-primary-text">OT Calendar</h3>
+        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full md:max-w-[260px] flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+                <h3 className="text-xs font-semibold text-primary-text">Overtime</h3>
                 <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-sm">{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-3 w-3" /></Button>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-0.5 h-5 w-5" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
+                    <span className="font-medium min-w-[70px] text-center text-[10px]">{format(viewingDate, 'MMM yyyy')}</span>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-0.5 h-5 w-5" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-3 w-3" /></Button>
                 </div>
             </div>
 
             {isLoading ? (
-                <div className="flex-1 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
+                <div className="flex-1 flex items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted" /></div>
             ) : (
-                <div className="grid grid-cols-7 gap-1 flex-1">
+                <div className="grid grid-cols-7 gap-0.5 flex-1">
                     {weekDays.map(d => (
-                        <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
+                        <div key={d} className="text-center text-[8px] font-bold text-muted uppercase tracking-wider py-0.5">{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
-                        <div key={`empty-${i}`} className="aspect-square" />
+                        <div key={`empty-${i}`} className="h-7" />
                     ))}
                     {daysInMonth.map(date => {
                         const { hoursOT, minutesOT, hasOtPunch } = getDailyOT(date);
                         const hasHoursOT = hoursOT + minutesOT > 0;
 
-                        // Color: orange for OT punch cycles, blue for hours-based OT, both = orange
                         const bgClass = hasOtPunch 
                             ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
                             : hasHoursOT 
@@ -125,23 +124,23 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                                 : 'bg-gray-50 text-gray-400 border-gray-100';
 
                         return (
-                            <div key={date.toISOString()} className={`aspect-square rounded border flex flex-col items-center justify-center transition-colors ${bgClass}`}>
-                                <span className="text-xs font-bold">{format(date, 'd')}</span>
+                            <div key={date.toISOString()} className={`h-7 rounded flex flex-col items-center justify-center transition-colors ${bgClass}`}>
+                                <span className="text-[10px] font-bold">{format(date, 'd')}</span>
                                 {hoursOT + minutesOT > 0 && (
-                                    <span className="text-[10px] font-bold mt-1">
+                                    <span className="text-[8px] font-bold">
                                         {formatOT(hoursOT, minutesOT)}
                                     </span>
                                 )}
-                                {hasOtPunch && !hasHoursOT && <span className="text-[9px] font-bold">OT</span>}
+                                {hasOtPunch && !hasHoursOT && <span className="text-[7px] font-bold">OT</span>}
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            <div className="mt-6 pt-4 border-t border-border flex items-center justify-between flex-shrink-0">
-                <span className="text-xs text-muted font-medium">Monthly Total</span>
-                <span className="text-sm font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between flex-shrink-0">
+                <span className="text-[10px] text-muted font-medium">Monthly Total</span>
+                <span className="text-xs font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>
             </div>
         </div>
     );

@@ -129,13 +129,13 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
 
 
     return (
-        <div className="bg-card p-5 rounded-xl shadow-card border border-border w-full md:max-w-[350px] flex flex-col min-h-[460px]">
-            <div className="flex items-center justify-between mb-6 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-primary-text">Comp Off Tracker</h3>
+        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-sm font-semibold text-primary-text">Comp Off</h3>
                 <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-sm">{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-3 w-3" /></Button>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
                 </div>
             </div>
 
@@ -147,13 +147,13 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                         <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
-                        <div key={`empty-${i}`} className="aspect-square" />
+                        <div key={`empty-${i}`} className="h-9" />
                     ))}
                     {daysInMonth.map(date => {
                         const status = getDayStatus(date);
                         const colorClass = getStatusColor(status);
                         return (
-                            <div key={date.toISOString()} className={`aspect-square rounded border flex flex-col items-center justify-center ${colorClass} transition-colors`}>
+                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
                             </div>
                         );
@@ -161,7 +161,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-muted-foreground uppercase font-bold tracking-tight">
+            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
                 <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Earned</div>
                 <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Taken</div>
             </div>

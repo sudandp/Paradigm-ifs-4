@@ -76,10 +76,10 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
     const startDay = getDay(startOfMonth(viewingDate));
 
     return (
-        <div className="bg-card p-5 rounded-xl shadow-card border border-border w-full md:max-w-[350px] flex flex-col min-h-[460px]">
-            <div className="flex items-center justify-between mb-6 flex-shrink-0">
+        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full md:max-w-[260px] flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-primary-text">Shortfall Tracker</h3>
+                    <h3 className="text-xs font-semibold text-primary-text">Shortfall</h3>
                     <div className="group relative">
                         <AlertCircle className="h-4 w-4 text-muted cursor-help" />
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
@@ -88,21 +88,21 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-sm">{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-3 w-3" /></Button>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-0.5 h-5 w-5" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
+                    <span className="font-medium min-w-[70px] text-center text-[10px]">{format(viewingDate, 'MMM yyyy')}</span>
+                    <Button variant="secondary" size="sm" className="btn-icon !p-0.5 h-5 w-5" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-3 w-3" /></Button>
                 </div>
             </div>
 
             {isLoading ? (
-                <div className="flex-1 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted" /></div>
+                <div className="flex-1 flex items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted" /></div>
             ) : (
-                <div className="grid grid-cols-7 gap-1 flex-1">
+                <div className="grid grid-cols-7 gap-0.5 flex-1">
                     {weekDays.map(d => (
-                        <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
+                        <div key={d} className="text-center text-[8px] font-bold text-muted uppercase tracking-wider py-0.5">{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
-                        <div key={`empty-${i}`} className="aspect-square" />
+                        <div key={`empty-${i}`} className="h-7" />
                     ))}
                     {daysInMonth.map(date => {
                         const { shortfallMinutes, h, m } = getDailyShortfall(date);
@@ -113,10 +113,10 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
                             : 'bg-gray-50 text-gray-400 border-gray-100';
 
                         return (
-                            <div key={date.toISOString()} className={`aspect-square rounded border flex flex-col items-center justify-center transition-colors ${bgClass}`}>
-                                <span className="text-xs font-bold">{format(date, 'd')}</span>
+                            <div key={date.toISOString()} className={`h-7 rounded flex flex-col items-center justify-center transition-colors ${bgClass}`}>
+                                <span className="text-[10px] font-bold">{format(date, 'd')}</span>
                                 {hasShortfall && (
-                                    <span className="text-[9px] font-bold mt-0.5">
+                                    <span className="text-[7.5px] font-bold mt-0.5 tracking-tighter">
                                         -{formatShortfall(h!, m!)}
                                     </span>
                                 )}
@@ -126,12 +126,12 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
                 </div>
             )}
 
-            <div className="mt-6 pt-4 border-t border-border space-y-2 flex-shrink-0">
+            <div className="mt-4 pt-3 border-t border-border space-y-1.5 flex-shrink-0">
                 <div className="flex items-center justify-between text-red-600">
-                    <span className="text-xs font-medium">Monthly Shortfall</span>
-                    <span className="text-sm font-bold">{monthlySummary.h}h {monthlySummary.m}m</span>
+                    <span className="text-[10px] font-medium">Monthly Shortfall</span>
+                    <span className="text-xs font-bold">{monthlySummary.h}h {monthlySummary.m}m</span>
                 </div>
-                <div className="flex items-center justify-between text-muted text-[10px]">
+                <div className="flex items-center justify-between text-muted text-[9px]">
                     <span>Est. Salary Deduction</span>
                     <span className="font-bold">{monthlySummary.estimatedDeduction} Days</span>
                 </div>
