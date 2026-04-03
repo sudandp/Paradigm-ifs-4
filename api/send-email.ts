@@ -22,6 +22,7 @@ interface EmailPayload {
   // Metadata for logging
   ruleId?: string;
   templateId?: string;
+  triggerType?: 'manual' | 'automatic';
 }
 
 interface SmtpConfig {
@@ -87,7 +88,8 @@ async function logEmail(
   status: 'sent' | 'failed',
   errorMessage?: string,
   ruleId?: string,
-  templateId?: string
+  templateId?: string,
+  triggerType?: string
 ) {
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
@@ -99,6 +101,7 @@ async function logEmail(
       error_message: errorMessage || null,
       rule_id: ruleId || null,
       template_id: templateId || null,
+      trigger_type: triggerType || null,
       created_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -220,7 +223,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Log successful delivery for each recipient
     for (const email of toAddresses) {
-      await logEmail(email, body.subject, 'sent', undefined, body.ruleId, body.templateId);
+      await logEmail(email, body.subject, 'sent', undefined, body.ruleId, body.templateId, body.triggerType);
     }
 
     return res.status(200).json({
@@ -236,7 +239,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Log failure
     const toAddresses = Array.isArray(req.body?.to) ? req.body.to : [req.body?.to].filter(Boolean);
     for (const email of toAddresses) {
-      await logEmail(email, req.body?.subject || 'Unknown', 'failed', error.message, req.body?.ruleId, req.body?.templateId);
+      await logEmail(email, req.body?.subject || 'Unknown', 'failed', error.message, req.body?.ruleId, req.body?.templateId, req.body?.triggerType);
     }
 
     return res.status(500).json({

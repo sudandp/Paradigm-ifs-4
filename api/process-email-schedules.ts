@@ -172,13 +172,13 @@ async function processSchedules(req: VercelRequest) {
 
       // Log success and update rule
       await Promise.all([
-        ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent' })),
+        ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', trigger_type: 'automatic' })),
         supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id)
       ]);
       totalSent += emails.length;
     } catch (mailErr: any) {
       console.error(`  → Mail failed:`, mailErr.message);
-      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message })));
+      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, trigger_type: 'automatic' })));
     }
   }
 

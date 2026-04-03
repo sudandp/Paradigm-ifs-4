@@ -384,7 +384,7 @@ serve(async (req: Request) => {
 async function resolveRecipients(supabase: ReturnType<typeof createClient>, rule: EmailScheduleRule): Promise<string[]> {
   if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
   if (rule.recipient_type === 'role') {
-    const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_active', true);
+    const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []);
     return (users || []).map((u: { email: string }) => u.email).filter(Boolean);
   }
   return (rule.recipient_type === 'users') ? (await supabase.from('users').select('email').in('id', rule.recipient_user_ids || [])).data?.map((u: { email: string }) => u.email).filter(Boolean) || [] : [];
@@ -397,7 +397,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
 
   const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
     supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
-    supabase.from('users').select('id, name, role:roles(display_name)').eq('is_active', true).order('name'),
+    supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
     supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
     supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
   ]);

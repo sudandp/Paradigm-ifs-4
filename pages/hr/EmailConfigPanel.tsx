@@ -945,6 +945,7 @@ const EmailConfigPanel: React.FC = () => {
                                         <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Status</th>
                                         <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Recipient</th>
                                         <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Subject</th>
+                                        <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Trigger</th>
                                         <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Sent At</th>
                                         <th className="text-left text-[10px] font-bold uppercase tracking-wider text-muted px-4 py-3">Error</th>
                                     </tr>
@@ -952,7 +953,7 @@ const EmailConfigPanel: React.FC = () => {
                                 <tbody className="divide-y divide-border">
                                     {emailLogs.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="px-4 py-12 text-center text-muted">
+                                            <td colSpan={6} className="px-4 py-12 text-center text-muted">
                                                 <Mail className="h-8 w-8 mx-auto mb-2 opacity-20" />
                                                 No emails sent yet.
                                             </td>
@@ -972,6 +973,21 @@ const EmailConfigPanel: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-3 text-sm text-primary-text font-medium">{log.recipientEmail}</td>
                                             <td className="px-4 py-3 text-sm text-muted max-w-[200px] truncate">{log.subject}</td>
+                                            <td className="px-4 py-3">
+                                                {log.triggerType === 'manual' ? (
+                                                    <span className="inline-flex px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold uppercase text-[9px] border border-slate-200">
+                                                        Manual
+                                                    </span>
+                                                ) : (log.triggerType === 'automatic' || log.ruleId) ? (
+                                                    <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-bold uppercase text-[9px] border border-indigo-100">
+                                                        Automatic
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold uppercase text-[9px] border border-slate-200">
+                                                        Manual
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="px-4 py-3 text-xs text-muted">{format(new Date(log.createdAt), 'MMM d, h:mm a')}</td>
                                             <td className="px-4 py-3 text-xs text-red-500 max-w-[180px] truncate">{log.errorMessage || '—'}</td>
                                         </tr>

@@ -524,6 +524,7 @@ export interface EmailLog {
   subject: string;
   status: 'sent' | 'failed' | 'queued';
   errorMessage?: string;
+  triggerType?: 'manual' | 'automatic';
   metadata: Record<string, any>;
   createdAt: string;
 }

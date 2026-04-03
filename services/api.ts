@@ -2678,6 +2678,7 @@ export const api = {
       body: JSON.stringify({
         to: testEmail,
         subject: '✅ Paradigm FMS — Test Email',
+        triggerType: 'manual',
         html: `<div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
           <div style="background: linear-gradient(135deg, #059669, #047857); padding: 32px; text-align: center;">
             <h1 style="color: white; margin: 0; font-size: 22px;">✅ Email Configuration Working!</h1>
@@ -3213,6 +3214,7 @@ export const api = {
         to: emails,
         subject: renderedSubjectFinal,
         html: renderedHtml,
+        triggerType: 'manual',
         ruleId: rule.id,
         templateId: rule.template_id,
         smtpConfig: config ? {
