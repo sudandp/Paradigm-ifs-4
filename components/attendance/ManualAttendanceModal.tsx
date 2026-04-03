@@ -13,6 +13,7 @@ interface ManualAttendanceModalProps {
     users: UserType[];
     currentUserRole: string;
     currentUserId: string;
+    correctionRequestId?: string;
 }
 
 const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({ 
@@ -21,7 +22,8 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     onSuccess, 
     users,
     currentUserRole,
-    currentUserId
+    currentUserId,
+    correctionRequestId
 }) => {
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -54,8 +56,25 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setExistingEventIds([]);
             setIsLoadingExisting(false);
             setToast(null);
+
+            // If correction request ID is provided, fetch details
+            if (correctionRequestId) {
+                const fetchCorrectionRequest = async () => {
+                    try {
+                        const { data } = await supabase.from('leave_requests').select('*').eq('id', correctionRequestId).single();
+                        if (data) {
+                            setSelectedUserId(data.user_id);
+                            setDate(data.start_date);
+                            setReason(`Correction for: ${data.reason}`);
+                        }
+                    } catch (err) {
+                        console.error('Error fetching correction request:', err);
+                    }
+                };
+                fetchCorrectionRequest();
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, correctionRequestId]);
 
     useEffect(() => {
         const fetchExistingLogs = async () => {
@@ -296,6 +315,11 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     console.error('Failed to send notification to manager:', notifErr);
                     // Don't fail the whole request if only notification fails
                 }
+            }
+
+            // 4. Mark correction request as made if applicable
+            if (correctionRequestId) {
+                await api.markCorrectionAsMade(correctionRequestId, currentUserId);
             }
 
             onSuccess();

@@ -4877,6 +4877,17 @@ export const api = {
       return;
     }
 
+    // If it's a Correction request, Manager approval transitions it to Pending Admin Correction.
+    if (request.leave_type === 'Correction') {
+        const { error } = await supabase.from('leave_requests').update({ 
+          status: 'pending_admin_correction', 
+          current_approver_id: null, // Admin/HR can pick it up from the inbox
+          approval_history: updatedHistory 
+        }).eq('id', id);
+        if (error) throw error;
+        return;
+    }
+
     // Workflow Logic: Manager approved -> check finalConfirmationRole
     if (finalConfirmationRole === 'reporting_manager') {
          const { error } = await supabase.from('leave_requests').update({ 
@@ -4902,6 +4913,26 @@ export const api = {
         }).eq('id', id);
         if (error) throw error;
     }
+  },
+  markCorrectionAsMade: async (id: string, adminId: string): Promise<void> => {
+    const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history').eq('id', id).single();
+    if (fetchError) throw fetchError;
+    const { data: adminData } = await supabase.from('users').select('name').eq('id', adminId).single();
+    
+    const newHistoryRecord = { 
+        approver_id: adminId, 
+        approver_name: adminData?.name || 'Admin', 
+        status: 'correction_made', 
+        timestamp: new Date().toISOString(),
+        comments: 'Attendance manually corrected by Admin'
+    };
+    const updatedHistory = [...((request.approval_history as any[]) || []), newHistoryRecord];
+
+    const { error } = await supabase.from('leave_requests').update({ 
+      status: 'correction_made', 
+      approval_history: updatedHistory 
+    }).eq('id', id);
+    if (error) throw error;
   },
   rejectLeaveRequest: async (id: string, approverId: string, reason = ''): Promise<void> => {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history').eq('id', id).single();

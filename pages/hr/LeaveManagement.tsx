@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool } from 'lucide-react';
+import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { format } from 'date-fns';
@@ -25,6 +26,8 @@ const StatusChip: React.FC<{ status: LeaveRequestStatus; approverName?: string |
         rejected: 'bg-red-100 text-red-800',
         cancelled: 'bg-gray-100 text-gray-800',
         withdrawn: 'bg-gray-100 text-gray-600',
+        pending_admin_correction: 'bg-indigo-100 text-indigo-800',
+        correction_made: 'bg-emerald-100 text-emerald-800',
     };
     
     let displayText = status.replace(/_/g, ' ');
@@ -98,7 +101,9 @@ const LeaveManagement: React.FC = () => {
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection'>('pending_manager_approval');
-    const [allUsers, setAllUsers] = useState<{ id: string; name: string; photoUrl?: string }[]>([]);
+    const [allUsers, setAllUsers] = useState<any[]>([]);
+    const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
+    const [correctionRequestId, setCorrectionRequestId] = useState<string | null>(null);
     const [userHolidays, setUserHolidays] = useState<(UserHoliday & { userName?: string })[]>([]);
     const [poolHolidays, setPoolHolidays] = useState<any[]>([]);
     const [selectedUserId, setSelectedUserId] = useState<string>('all');
@@ -141,7 +146,7 @@ const LeaveManagement: React.FC = () => {
                 } else {
                     users = await api.getTeamMembers(user?.id || '');
                 }
-                setAllUsers(users.map(u => ({ id: u.id, name: u.name, photoUrl: u.photoUrl })).sort((a, b) => a.name.localeCompare(b.name)));
+                setAllUsers(users.sort((a: any, b: any) => a.name.localeCompare(b.name)));
             } catch (e) {
                 console.error('Failed to fetch users:', e);
             }
@@ -446,6 +451,20 @@ const LeaveManagement: React.FC = () => {
                             <RotateCcw className="h-4 w-4 text-primary" />
                         </Button>
                     )}
+
+                    {/* Correct Action (Admin Correction Required) */}
+                    {request.status === 'pending_admin_correction' && (isHRAdmin || isSuperAdmin) && (
+                        <Button 
+                            size="sm" 
+                            variant="icon" 
+                            onClick={() => { setCorrectionRequestId(request.id); setIsManualEntryModalOpen(true); }} 
+                            disabled={actioningId === request.id} 
+                            title="Manually Correct Attendance" 
+                            aria-label="Perform manual correction"
+                        >
+                            <PenTool className="h-4 w-4 text-indigo-600" />
+                        </Button>
+                    )}
                 </div>
             );
         }
@@ -487,6 +506,16 @@ const LeaveManagement: React.FC = () => {
                     isUpdating={actioningId === requestToEdit.id}
                 />
             )}
+
+            <ManualAttendanceModal
+                isOpen={isManualEntryModalOpen}
+                onClose={() => { setIsManualEntryModalOpen(false); setCorrectionRequestId(null); }}
+                onSuccess={() => { fetchData(); setIsManualEntryModalOpen(false); setCorrectionRequestId(null); }}
+                users={allUsers}
+                currentUserRole={user?.role || ''}
+                currentUserId={user?.id || ''}
+                correctionRequestId={correctionRequestId || undefined}
+            />
 
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-primary-text">Leave Approval Inbox</h2>
