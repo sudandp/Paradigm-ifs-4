@@ -29,7 +29,7 @@ const AuthLayout: React.FC = () => {
                 {/* Mobile Dark Glassmorphic Card (Shrunk Mode) — Centered Logo + Left Header */}
                 <div className="relative z-10 w-full max-w-[310px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 pt-5 pb-4 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container text-left">
                     <div className="flex justify-center mb-3">
-                        <Logo className="h-[30px] opacity-100" />
+                        <Logo className="h-[33px] opacity-100" />
                     </div>
                     
                     <div className="text-left mb-3.5">
