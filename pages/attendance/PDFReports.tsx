@@ -719,13 +719,14 @@ export const CostAnalysisDocument: React.FC<{ data: any[]; stats: any; range: st
   );
 };
 
-interface BasicReportDataRow {
+export interface BasicReportDataRow {
   userName: string;
   date: string;
   status: string;
   checkIn: string;
   checkOut: string;
   duration: string;
+  locationName?: string;
 }
 
 export const BasicReportDocument: React.FC<{ 
@@ -1158,6 +1159,145 @@ export const SiteOtReportDocument: React.FC<{
           {/* Footer */}
           <Text style={styles.footer} render={({ pageNumber, totalPages }) => (
             `Paradigm Services - Confidential Report - Page ${pageNumber} of ${totalPages}`
+          )} fixed />
+        </Page>
+      ))}
+    </Document>
+  );
+};
+
+export interface AttendanceLogDataRow {
+  userName: string;
+  date: string;
+  time: string;
+  type: string;
+  locationName: string;
+  device?: string;
+  photoUrl?: string;
+}
+
+export const AttendanceLogDocument: React.FC<{
+  data: AttendanceLogDataRow[];
+  dateRange: { startDate: Date; endDate: Date };
+  generatedBy?: string;
+  logoUrl?: string;
+}> = ({ data, dateRange, generatedBy, logoUrl }) => {
+  const rowsPerPage = 22;
+  const pages: AttendanceLogDataRow[][] = [];
+  for (let i = 0; i < data.length; i += rowsPerPage) {
+    pages.push(data.slice(i, i + rowsPerPage));
+  }
+
+  return (
+    <Document>
+      {pages.map((pageData, pageIndex) => (
+        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              {logoUrl && <Image src={logoUrl} style={styles.logo} />}
+            </View>
+            <View style={styles.headerRight}>
+              <Text style={styles.title}>Detailed Attendance Log</Text>
+              <Text style={styles.subtitle}>
+                {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
+              </Text>
+              <Text style={styles.metaText}>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</Text>
+              {generatedBy && <Text style={styles.metaText}>By: {generatedBy}</Text>}
+            </View>
+          </View>
+
+          <View style={styles.table}>
+            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
+              <View style={[styles.tableColHeader, { width: '20%' }]}><Text style={styles.tableCellHeader}>Employee</Text></View>
+              <View style={[styles.tableColHeader, { width: '12%' }]}><Text style={styles.tableCellHeader}>Date</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Time</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Type</Text></View>
+              <View style={[styles.tableColHeader, { width: '28%' }]}><Text style={styles.tableCellHeader}>Location</Text></View>
+              <View style={[styles.tableColHeader, { width: '20%' }]}><Text style={styles.tableCellHeader}>Device Info</Text></View>
+            </View>
+            {pageData.map((row, idx) => (
+              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+                <View style={[styles.tableCol, { width: '20%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
+                <View style={[styles.tableCol, { width: '12%' }]}><Text style={styles.tableCell}>{row.date}</Text></View>
+                <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.time}</Text></View>
+                <View style={[styles.tableCol, { width: '10%' }]}><Text style={[styles.tableCell, { fontWeight: 'bold' }]}>{row.type.toUpperCase()}</Text></View>
+                <View style={[styles.tableCol, { width: '28%' }]}><Text style={styles.tableCellLeft}>{row.locationName}</Text></View>
+                <View style={[styles.tableCol, { width: '20%' }]}><Text style={styles.tableCell}>{row.device || '-'}</Text></View>
+              </View>
+            ))}
+          </View>
+
+          <Text style={styles.footer} render={({ pageNumber, totalPages }) => (
+            `Paradigm Services - Detailed Logs - Page ${pageNumber} of ${totalPages}`
+          )} fixed />
+        </Page>
+      ))}
+    </Document>
+  );
+};
+
+export interface WorkHoursReportDataRow {
+  userName: string;
+  department: string;
+  totalDays: number;
+  presentDays: number;
+  totalWorkingHours: number;
+  avgWorkingHours: number;
+  otHours: number;
+}
+
+export const WorkHoursReportDocument: React.FC<{
+  data: WorkHoursReportDataRow[];
+  dateRange: { startDate: Date; endDate: Date };
+  generatedBy?: string;
+  logoUrl?: string;
+}> = ({ data, dateRange, generatedBy, logoUrl }) => {
+  const rowsPerPage = 20;
+  const pages: WorkHoursReportDataRow[][] = [];
+  for (let i = 0; i < data.length; i += rowsPerPage) {
+    pages.push(data.slice(i, i + rowsPerPage));
+  }
+
+  return (
+    <Document>
+      {pages.map((pageData, pageIndex) => (
+        <Page key={pageIndex} size="A4" style={styles.page}>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              {logoUrl && <Image src={logoUrl} style={styles.logo} />}
+            </View>
+            <View style={styles.headerRight}>
+              <Text style={styles.title}>Monthly Work Hours Report</Text>
+              <Text style={styles.subtitle}>
+                {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
+              </Text>
+              <Text style={styles.metaText}>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</Text>
+            </View>
+          </View>
+
+          <View style={styles.table}>
+            <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
+              <View style={[styles.tableColHeader, { width: '25%' }]}><Text style={styles.tableCellHeader}>Employee</Text></View>
+              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Dept</Text></View>
+              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>P-Days</Text></View>
+              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Total Hrs</Text></View>
+              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Avg Hrs</Text></View>
+              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>OT Hrs</Text></View>
+            </View>
+            {pageData.map((row, idx) => (
+              <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+                <View style={[styles.tableCol, { width: '25%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.department}</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.presentDays}</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.totalWorkingHours.toFixed(1)}h</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.avgWorkingHours.toFixed(1)}h</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.otHours.toFixed(1)}h</Text></View>
+              </View>
+            ))}
+          </View>
+
+          <Text style={styles.footer} render={({ pageNumber, totalPages }) => (
+            `Paradigm Services - Productivity Report - Page ${pageNumber} of ${totalPages}`
           )} fixed />
         </Page>
       ))}

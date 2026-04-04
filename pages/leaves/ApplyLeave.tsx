@@ -182,6 +182,21 @@ const ApplyLeave: React.FC = () => {
         }
     };
 
+    const getLeaveTypeDisplay = (type: string) => {
+        switch (type) {
+            case 'Earned': return 'Earned Leave';
+            case 'Sick': return 'Sick Leave';
+            case 'Floating': return '3rd Saturday Leave';
+            case 'Pink Leave': return 'Pink Leave';
+            case 'Comp Off': return 'Comp Off';
+            case 'Loss of Pay': return 'Loss of Pay';
+            case 'Child Care': return 'Child Care Leave';
+            case 'WFH': return 'Work From Home (WFH)';
+            case 'Correction': return 'Correction';
+            default: return type;
+        }
+    };
+
     if (!user) return null;
 
     return (
@@ -196,7 +211,9 @@ const ApplyLeave: React.FC = () => {
                     <Button variant="icon" onClick={() => navigate(-1)} aria-label="Go back">
                         <ArrowLeft className="h-6 w-6" />
                     </Button>
-                    <h1 className="text-xl font-bold text-primary-text">{isEditMode ? 'Edit Leave Request' : 'Apply for Leave'}</h1>
+                    <h1 className="text-xl font-bold text-primary-text">
+                        {isEditMode ? 'Edit Leave Request' : `Applying for ${getLeaveTypeDisplay(watchLeaveType)}`}
+                    </h1>
                 </header>
 
                 <div className={`${isMobile ? 'px-4' : 'p-6'}`} style={isMobile ? { paddingTop: 'calc(5rem + env(safe-area-inset-top))' } : {}}>
@@ -249,7 +266,9 @@ const ApplyLeave: React.FC = () => {
                         </div>
 
                         <div className="bg-card/50 p-4 rounded-xl border border-border">
-                            <label className="block text-sm font-medium text-muted mb-2">Reason for Leave</label>
+                            <label className="block text-sm font-medium text-muted mb-2">
+                                {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
+                            </label>
                             <textarea 
                                 {...register('reason')} 
                                 rows={4} 

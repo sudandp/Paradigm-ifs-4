@@ -529,6 +529,22 @@ export interface EmailLog {
   createdAt: string;
 }
 
+export type AttendanceReportType = 'basic' | 'monthly' | 'log' | 'work_hours' | 'site_ot' | 'audit';
+
+export interface ReportEmailPayload {
+  to: string[];
+  subject: string;
+  html: string;
+  attachments?: {
+    filename: string;
+    content: string; // base64
+    contentType: string;
+  }[];
+  triggerType: 'manual' | 'automatic';
+  reportType?: AttendanceReportType;
+  smtpConfig?: any; // Optional override
+}
+
 // Types for Entity Management
 export type RegistrationType = 'ROC' | 'ROF' | 'Society' | 'Trust' | '';
 

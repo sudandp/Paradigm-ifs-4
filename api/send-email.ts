@@ -2,15 +2,20 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as nodemailer from 'nodemailer';
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+// Move environment variable retrieval inside functions to avoid ESM hoisting problems
+const getSupabaseConfig = () => ({
+  url: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
+  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+});
+
+import { reportGenerators, evaluateConditionals, resolveRecipients } from '../utils/reportGenerators.js';
 
 interface EmailPayload {
-  to: string | string[];
+  to?: string | string[];
   cc?: string | string[];
   bcc?: string | string[];
-  subject: string;
-  html: string;
+  subject?: string;
+  html?: string;
   text?: string;
   attachments?: Array<{
     filename: string;
@@ -21,6 +26,8 @@ interface EmailPayload {
   smtpConfig?: SmtpConfig;
   // Metadata for logging
   ruleId?: string;
+  test?: boolean;
+  testEmail?: string;
   templateId?: string;
   triggerType?: 'manual' | 'automatic';
 }
@@ -49,9 +56,16 @@ async function getSmtpConfig(): Promise<SmtpConfig> {
     replyTo: process.env.SMTP_REPLY_TO,
   };
 
+  // If env vars are present, skip DB fetch (faster for local dev)
+  if (fallback.user && fallback.pass) {
+    console.log('[send-email] Using SMTP config from environment variables');
+    return fallback;
+  }
+
   try {
-    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { url, serviceKey } = getSupabaseConfig();
+    if (url && serviceKey) {
+      const supabase = createClient(url, serviceKey);
       const { data, error } = await supabase
         .from('settings')
         .select('email_config')
@@ -92,8 +106,9 @@ async function logEmail(
   triggerType?: string
 ) {
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { url, serviceKey } = getSupabaseConfig();
+    if (!url || !serviceKey) return;
+    const supabase = createClient(url, serviceKey);
     await supabase.from('email_logs').insert({
       recipient_email: recipientEmail,
       subject,
@@ -107,6 +122,125 @@ async function logEmail(
   } catch (e) {
     console.error('[send-email] Failed to log email:', e);
   }
+}
+
+export async function sendEmailLogic(body: EmailPayload, supabaseUrl?: string, supabaseKey?: string) {
+  // Get SMTP configuration
+  const config = body.smtpConfig || await getSmtpConfig();
+  const { url: envUrl, serviceKey: envKey } = getSupabaseConfig();
+
+  if (!config.user || !config.pass) {
+    throw new Error('SMTP not configured. Please set up email credentials in Notification Management → Email settings.');
+  }
+
+  const SUPABASE_URL = supabaseUrl || envUrl;
+  const SUPABASE_SERVICE_KEY = supabaseKey || envKey;
+
+  let { to, subject, html, ruleId, test, testEmail, triggerType, templateId } = body;
+
+  // --- Special Case: Rule-based report generation ---
+  if (ruleId) {
+    console.log(`[send-email] Automated report trigger for rule: ${ruleId}`);
+    const { url, serviceKey } = getSupabaseConfig();
+    const SUPABASE_URL_REPORT = supabaseUrl || url;
+    const SUPABASE_SERVICE_KEY_REPORT = supabaseKey || serviceKey;
+
+    if (!SUPABASE_URL_REPORT || !SUPABASE_SERVICE_KEY_REPORT) {
+      throw new Error('Supabase credentials missing for report generation');
+    }
+    const supabase = createClient(SUPABASE_URL_REPORT, SUPABASE_SERVICE_KEY_REPORT);
+    
+    // Fetch Rule
+    const { data: rule, error: ruleErr } = await supabase.from('email_schedule_rules').select('*').eq('id', ruleId).single();
+    if (ruleErr || !rule) throw new Error(ruleErr?.message || 'Rule not found');
+
+    // Fetch Template
+    const tid = templateId || rule.template_id;
+    const { data: template } = await supabase.from('email_templates').select('*').eq('id', tid).single();
+    
+    // Generate Report Data
+    const now = new Date();
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(now.getTime() + IST_OFFSET);
+    
+    const generator = reportGenerators[rule.report_type as keyof typeof reportGenerators];
+    if (!generator) throw new Error(`Unsupported report type: ${rule.report_type}`);
+    
+    const reportData = await generator(supabase, nowIST);
+    
+    // Render Content
+    subject = template?.subject_template || rule.name;
+    html = template?.body_template || `<div style="font-family:sans-serif"><h2>Report: {date}</h2>{table}</div>`;
+
+    subject = evaluateConditionals(subject, reportData);
+    html = evaluateConditionals(html, reportData);
+
+    const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
+      const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
+      return dataKey ? reportData[dataKey] : match;
+    });
+
+    subject = render(subject);
+    html = render(html);
+
+    // Solve Recipients
+    if (test && testEmail) {
+      to = [testEmail];
+    } else if (!to) {
+      to = await resolveRecipients(supabase, rule);
+    }
+    
+    triggerType = test ? 'manual' : (triggerType || 'manual');
+    templateId = tid;
+  }
+
+  if (!to || !subject || !html) {
+    throw new Error('Missing required fields: to, subject, html (or ruleId)');
+  }
+
+  // Create transporter
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  // Normalize recipients
+  const toAddresses = Array.isArray(to) ? to : [to];
+  const ccAddresses = body.cc ? (Array.isArray(body.cc) ? body.cc : [body.cc]) : undefined;
+  const bccAddresses = body.bcc ? (Array.isArray(body.bcc) ? body.bcc : [body.bcc]) : undefined;
+
+  // Build mail options
+  const mailOptions: nodemailer.SendMailOptions = {
+    from: `"${config.fromName}" <${config.fromEmail}>`,
+    to: toAddresses.join(', '),
+    cc: ccAddresses?.join(', '),
+    bcc: bccAddresses?.join(', '),
+    replyTo: config.replyTo || config.fromEmail,
+    subject: subject,
+    html: html,
+    text: body.text,
+    attachments: body.attachments?.map(att => ({
+      filename: att.filename,
+      content: att.content ? Buffer.from(att.content, 'base64') : undefined,
+      path: att.path,
+    })),
+  };
+
+  // Send email
+  const info = await transporter.sendMail(mailOptions);
+  console.log('[send-email] Email sent:', info.messageId);
+
+  // Log successful delivery
+  for (const email of toAddresses) {
+    await logEmail(email, subject, 'sent', undefined, ruleId, templateId, triggerType);
+  }
+
+  return info;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -142,11 +276,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Method 2: Valid Supabase JWT (for browser requests)
-    if (!isAuthorized && authHeader && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    const { url, serviceKey } = getSupabaseConfig();
+    if (!isAuthorized && authHeader && url && serviceKey) {
       try {
         const token = authHeader.replace('Bearer ', '');
         if (token && token !== 'undefined' && token !== 'null') {
-          const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+          const supabase = createClient(url, serviceKey);
           const { data, error } = await supabase.auth.getUser(token);
           if (data?.user && !error) {
             isAuthorized = true;
@@ -169,79 +304,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const body: EmailPayload = req.body;
-
-    if (!body.to || !body.subject || !body.html) {
-      return res.status(400).json({ error: 'Missing required fields: to, subject, html' });
-    }
-
-    // Get SMTP configuration
-    const config = body.smtpConfig || await getSmtpConfig();
-
-    if (!config.user || !config.pass) {
-      return res.status(500).json({ 
-        error: 'SMTP not configured. Please set up email credentials in Notification Management → Email settings.' 
-      });
-    }
-
-    // Create transporter
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure, // true for 465, false for other ports
-      auth: {
-        user: config.user,
-        pass: config.pass,
-      },
-    });
-
-    // Normalize recipients
-    const toAddresses = Array.isArray(body.to) ? body.to : [body.to];
-    const ccAddresses = body.cc ? (Array.isArray(body.cc) ? body.cc : [body.cc]) : undefined;
-    const bccAddresses = body.bcc ? (Array.isArray(body.bcc) ? body.bcc : [body.bcc]) : undefined;
-
-    // Build mail options
-    const mailOptions: nodemailer.SendMailOptions = {
-      from: `"${config.fromName}" <${config.fromEmail}>`,
-      to: toAddresses.join(', '),
-      cc: ccAddresses?.join(', '),
-      bcc: bccAddresses?.join(', '),
-      replyTo: config.replyTo || config.fromEmail,
-      subject: body.subject,
-      html: body.html,
-      text: body.text,
-      attachments: body.attachments?.map(att => ({
-        filename: att.filename,
-        content: att.content ? Buffer.from(att.content, 'base64') : undefined,
-        path: att.path,
-      })),
-    };
-
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
-    console.log('[send-email] Email sent:', info.messageId);
-
-    // Log successful delivery for each recipient
-    for (const email of toAddresses) {
-      await logEmail(email, body.subject, 'sent', undefined, body.ruleId, body.templateId, body.triggerType);
-    }
-
+    const info = await sendEmailLogic(req.body);
     return res.status(200).json({
       success: true,
       messageId: info.messageId,
       accepted: info.accepted,
       rejected: info.rejected,
     });
-
   } catch (error: any) {
     console.error('[send-email] Error:', error);
-
-    // Log failure
-    const toAddresses = Array.isArray(req.body?.to) ? req.body.to : [req.body?.to].filter(Boolean);
-    for (const email of toAddresses) {
-      await logEmail(email, req.body?.subject || 'Unknown', 'failed', error.message, req.body?.ruleId, req.body?.templateId, req.body?.triggerType);
-    }
-
     return res.status(500).json({
       error: error.message || 'Failed to send email',
       code: error.code,

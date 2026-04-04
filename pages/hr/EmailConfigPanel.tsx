@@ -36,6 +36,92 @@ import { format } from 'date-fns';
 
 type SubTab = 'config' | 'templates' | 'schedules' | 'logs';
 
+const EmailTagInput: React.FC<{
+    label: string;
+    tags: string[];
+    onChange: (tags: string[]) => void;
+    placeholder?: string;
+}> = ({ label, tags, onChange, placeholder }) => {
+    const [inputValue, setInputValue] = useState('');
+    const [error, setError] = useState<string | null>(null);
+
+    const validateEmail = (email: string) => {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    };
+
+    const addTag = (val: string) => {
+        const trimmed = val.trim().replace(/,$/, '');
+        if (!trimmed) return;
+
+        if (!validateEmail(trimmed)) {
+            setError('Invalid email format');
+            return;
+        }
+
+        if (tags.includes(trimmed)) {
+            setError('Email already added');
+            setInputValue('');
+            return;
+        }
+
+        onChange([...tags, trimmed]);
+        setInputValue('');
+        setError(null);
+    };
+
+    const removeTag = (index: number) => {
+        onChange(tags.filter((_, i) => i !== index));
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            addTag(inputValue);
+        } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
+            removeTag(tags.length - 1);
+        }
+    };
+
+    return (
+        <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-muted uppercase tracking-wider ml-1">
+                {label}
+            </label>
+            <div className={`flex flex-wrap gap-2 p-2 bg-white border rounded-xl transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 ${error ? 'border-red-300' : 'border-border'}`}>
+                {tags.map((tag, i) => (
+                    <span 
+                        key={`${tag}-${i}`} 
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg border border-emerald-100 animate-in zoom-in-95 duration-200"
+                    >
+                        {tag}
+                        <button 
+                            type="button" 
+                            onClick={() => removeTag(i)}
+                            className="hover:bg-emerald-200/50 rounded-full p-0.5 transition-colors"
+                        >
+                            <CloseIcon className="h-3 w-3" />
+                        </button>
+                    </span>
+                ))}
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={e => {
+                        setInputValue(e.target.value);
+                        if (error) setError(null);
+                    }}
+                    onKeyDown={handleKeyDown}
+                    onBlur={() => addTag(inputValue)}
+                    placeholder={tags.length === 0 ? placeholder : "Add more..."}
+                    className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-sm p-1 placeholder:text-muted/40"
+                />
+            </div>
+            {error && <p className="text-[10px] text-red-500 font-medium ml-1">{error}</p>}
+            <p className="text-[10px] text-muted ml-1">Press Enter or comma to add multiple emails.</p>
+        </div>
+    );
+};
+
 const EmailConfigPanel: React.FC = () => {
     const { user } = useAuthStore();
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('config');
@@ -642,6 +728,9 @@ const EmailConfigPanel: React.FC = () => {
                                     <option value="">No report data</option>
                                     <option value="attendance_daily">📊 Daily Attendance Report</option>
                                     <option value="attendance_monthly">📈 Monthly Attendance Summary</option>
+                                    <option value="attendance_work_hours">⏱️ Work Hours Report (Grid)</option>
+                                    <option value="attendance_site_ot">🏗️ Site OT Report</option>
+                                    <option value="attendance_audit">🔍 Audit Log Report</option>
                                     <option value="leave_summary">🌴 Leave Summary</option>
                                     <option value="invoice_summary">💰 Invoice Summary</option>
                                 </Select>
@@ -816,17 +905,15 @@ const EmailConfigPanel: React.FC = () => {
                                 )}
 
                                 {editingSchedule.recipientType === 'custom_emails' && (
-                                    <div className="space-y-2">
-                                        <Input
-                                            label="Email Addresses (comma-separated)"
-                                            value={(editingSchedule.recipientEmails || []).join(', ')}
-                                            onChange={e => setEditingSchedule({
-                                                ...editingSchedule,
-                                                recipientEmails: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                                            })}
-                                            placeholder="ceo@company.com, hr@company.com"
-                                        />
-                                    </div>
+                                    <EmailTagInput
+                                        label="Email Addresses"
+                                        tags={editingSchedule.recipientEmails || []}
+                                        onChange={tags => setEditingSchedule({
+                                            ...editingSchedule,
+                                            recipientEmails: tags
+                                        })}
+                                        placeholder="Enter email address..."
+                                    />
                                 )}
                             </div>
 

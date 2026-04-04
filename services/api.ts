@@ -12,7 +12,8 @@ import type {
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
   NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
   GmcSubmission, UserHoliday, AttendanceUnlockRequest, LeaveType, SiteAttendanceRecord, SiteInvoiceRecord, SiteInvoiceDefault, SiteFinanceRecord,
-  CommunicationLog, RevisionLog, UserChild, RoutePoint
+  CommunicationLog, RevisionLog, UserChild, RoutePoint,
+  AttendanceReportType, ReportEmailPayload
 } from '../types';
 import { getObjectDiff } from '../utils/diff';
 import { 
@@ -2716,6 +2717,68 @@ export const api = {
     }
   },
 
+  sendReportEmail: async (payload: ReportEmailPayload): Promise<void> => {
+    // Fetch configuration if not provided
+    let smtpConfig = payload.smtpConfig;
+    if (!smtpConfig) {
+      const { data: settings } = await supabase
+        .from('settings')
+        .select('email_config')
+        .eq('id', 'singleton')
+        .single();
+      
+      const config = settings?.email_config;
+      if (!config?.user || !config?.pass) {
+        throw new Error('SMTP not configured. Please save your email configuration first.');
+      }
+      
+      smtpConfig = {
+        host: config.host || 'smtp.gmail.com',
+        port: config.port || 587,
+        secure: config.secure || false,
+        user: config.user,
+        pass: config.pass,
+        fromEmail: config.from_email || config.user,
+        fromName: config.from_name || 'Paradigm FMS',
+        replyTo: config.reply_to,
+      };
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
+      body: JSON.stringify({
+        ...payload,
+        smtpConfig
+      })
+    });
+
+    if (!response.ok) {
+       const err = await response.json();
+       throw new Error(err.error || 'Failed to send report email');
+    }
+
+    // Optional: Log the manual trigger if needed
+    if (payload.triggerType === 'manual') {
+       const user = useAuthStore.getState().user;
+       await supabase.from('email_logs').insert({
+          recipient_email: payload.to.join(', '),
+          subject: payload.subject,
+          status: 'sent',
+          trigger_type: 'manual',
+          metadata: {
+             reportType: payload.reportType,
+             triggeredBy: user?.name || user?.email,
+             attachmentCount: payload.attachments?.length || 0
+          }
+       });
+    }
+  },
+
   // ═══ Email Templates APIs ═══════════════════════════════════════════════
 
   getEmailTemplates: async (): Promise<any[]> => {
@@ -2793,453 +2856,33 @@ export const api = {
     if (error) throw error;
   },
 
-  testEmailScheduleRule: async (id: string): Promise<void> => {
-    // Get the rule, template, and recipients, then manually send
-    const { data: rule, error: ruleErr } = await supabase
-      .from('email_schedule_rules')
-      .select('*')
-      .eq('id', id)
-      .single();
-    if (ruleErr || !rule) throw ruleErr || new Error('Rule not found');
-
-    const { data: template } = await supabase
-      .from('email_templates')
-      .select('*')
-      .eq('id', rule.template_id)
-      .single();
-
-    // Resolve recipients
-    let emails: string[] = [];
-    if (rule.recipient_type === 'custom_emails') {
-      emails = rule.recipient_emails || [];
-    } else if (rule.recipient_type === 'role') {
-      const { data: users } = await supabase
-        .from('users')
-        .select('email')
-        .in('role_id', rule.recipient_roles || []);
-      emails = (users || []).map((u: any) => u.email).filter(Boolean);
-    } else if (rule.recipient_type === 'users') {
-      const { data: users } = await supabase
-        .from('users')
-        .select('email')
-        .in('id', rule.recipient_user_ids || []);
-      emails = (users || []).map((u: any) => u.email).filter(Boolean);
-    }
-
-    if (emails.length === 0) {
-      // Fallback: send to current user
-      const currentUser = useAuthStore.getState().user;
-      if (currentUser?.email) emails = [currentUser.email];
-      else throw new Error('No recipients found for this rule');
-    }
-
-    const subject = template?.subject_template || `Test: ${rule.name}`;
-    const html = template?.body_template || `<div><h2>Test Email</h2><p>This is a test for rule: ${rule.name}</p></div>`;
-
-    // --- FETCH ACTUAL DATA FOR TEST EMAIL ---
-    let totalPresent = 0;
-    let totalAbsent = 0;
-    let lateCount = 0;
-    let inactiveCount = 0;
-    let onLeaveCount = 0;
-    const now = new Date();
-    const todayStr = format(now, 'yyyy-MM-dd');
-
-    let configStartTime = '09:30';
-    let filteredUsers: any[] = [];
-    let events: any[] = [];
-    let presentUserIds = new Set<string>();
-    let onLeaveTodayIds = new Set<string>();
-    let recentlyActiveUserIds = new Set<string>();
-    let userFirstPunches: Record<string, string> = {};
-    let todayWFHUserIds = new Set<string>();
-
-    try {
-      // 1. Fetch settings for late threshold
-      const settings = await api.getAttendanceSettings();
-      if (settings?.office?.fixedOfficeHours?.checkInTime) {
-        configStartTime = settings.office.fixedOfficeHours.checkInTime;
-      }
-
-      // 2. Fetch all active users (excluding management)
-      const users = await api.getUsers({ fetchAll: true });
-      filteredUsers = users.filter((u: any) => u.role !== 'management');
-      const allUsers = filteredUsers;
-
-      const totalEmployees = allUsers?.length || 0;
-      const activeStaffIds = new Set(allUsers?.map(u => u.id) || []);
-
-      // 3. Fetch today's events AND recent events for inactive calculation
-      const startOfTodayTs = startOfDay(now).toISOString();
-      const endOfTodayTs = endOfDay(now).toISOString();
-      
-      const [fetchedEvents, recentEvents] = await Promise.all([
-        api.getAllAttendanceEvents(startOfTodayTs, endOfTodayTs),
-        api.getAllAttendanceEvents(subDays(now, 9).toISOString(), endOfTodayTs)
-      ]);
-      events = fetchedEvents;
-
-      // 4. Fetch today's leaves
-      const leaves = await api.getLeaveRequests({ 
-        startDate: startOfTodayTs, 
-        endDate: endOfTodayTs, 
-        status: 'approved' 
-      });
-      const leavesData = Array.isArray(leaves) ? leaves : (leaves as any).data || [];
-
-      // Calculate Inactive Status (No activity in last 10 days)
-      recentlyActiveUserIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
-      inactiveCount = Math.max(0, totalEmployees - recentlyActiveUserIds.size);
-
-      // Calculate Present (including WFH)
-      todayWFHUserIds = new Set(
-        leavesData
-          .filter((l: any) => l.leave_type === 'WFH' || l.leaveType === 'WFH')
-          .filter((l: any) => activeStaffIds.has(l.userId))
-          .map((l: any) => l.userId)
-      );
-      const todayEvents = events.filter(e => activeStaffIds.has(e.userId));
-      presentUserIds = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayWFHUserIds)]);
-      totalPresent = presentUserIds.size;
-
-      // Calculate On Leave (excluding WFH)
-      onLeaveTodayIds = new Set(
-        leavesData
-          .filter((l: any) => activeStaffIds.has(l.userId) && l.leave_type !== 'WFH' && l.leaveType !== 'WFH')
-          .map((l: any) => l.userId)
-      );
-      onLeaveCount = onLeaveTodayIds.size;
-
-      // Calculate Absent (excluding those on leave and inactive users)
-      totalAbsent = Math.max(0, totalEmployees - totalPresent - onLeaveCount - inactiveCount);
-
-      // Calculate Late
-      todayEvents.forEach(e => {
-        if (e.type === 'punch-in') {
-          if (!userFirstPunches[e.userId] || new Date(e.timestamp) < new Date(userFirstPunches[e.userId])) {
-            userFirstPunches[e.userId] = e.timestamp;
-          }
-        }
-      });
-
-      Object.values(userFirstPunches).forEach(punchTs => {
-        const punchTime = format(new Date(punchTs), 'HH:mm');
-        const [pHour, pMin] = punchTime.split(':').map(Number);
-        const [sHour, sMin] = configStartTime.split(':').map(Number);
-        if (pHour > sHour || (pHour === sHour && pMin > sMin)) {
-          lateCount++;
-        }
-      });
-
-    } catch (dataErr) {
-      console.error('Failed to fetch data for test email summary:', dataErr);
-    }
-
-    // Build report table rows
-    let tableHtml = '';
-    filteredUsers.forEach((user: any, i: number) => {
-        let statusText = 'Present';
-        let statusColor = '#16a34a'; // green
-        
-        let punchInTime = '—';
-        let punchOutTime = '—';
-        let workHours = '—';
-        
-        // department logic
-        let department = '—';
-        if (user.role) {
-          if (Array.isArray(user.role)) {
-             department = user.role[0]?.display_name || '—';
-          } else if (typeof user.role === 'object') {
-             department = user.role.display_name || '—';
-          } else {
-             department = String(user.role);
-          }
-        }
-        if (typeof department === 'string') {
-            const words = department.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1));
-            department = words.join(' ');
-        }
-        
-        if (presentUserIds.has(user.id)) {
-          const isWFH = todayWFHUserIds.has(user.id);
-          const punchInTs = userFirstPunches[user.id];
-          const punchInDate = punchInTs ? new Date(punchInTs) : null;
-          
-          const lastPunchOut = events.filter((e: any) => e.userId === user.id && e.type === 'punch-out').pop();
-          const punchOutDate = lastPunchOut ? new Date(lastPunchOut.timestamp) : null;
-
-          if (punchInDate) {
-             punchInTime = punchInDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-             
-             // isLate check
-             const punchTimeStr = punchInDate.getHours().toString().padStart(2, '0') + ':' + punchInDate.getMinutes().toString().padStart(2, '0');
-             if (punchTimeStr > configStartTime) {
-                 statusText = 'Late';
-                 statusColor = '#d97706'; // amber
-             }
-          }
-          
-          // Override status text if WFH and no late punch
-          if (isWFH && (statusText === 'Present' || !punchInDate)) {
-             statusText = 'WFH';
-             statusColor = '#059669'; // emerald
-          }
-
-          if (punchOutDate) {
-             punchOutTime = punchOutDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-          }
-          
-          if (punchInDate && punchOutDate) {
-              const diffMs = punchOutDate.getTime() - punchInDate.getTime();
-              if (diffMs > 0) {
-                 const hrs = Math.floor(diffMs / (1000 * 60 * 60));
-                 const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                 workHours = `${hrs}h ${mins}m`;
-              }
-          }
-        } else if (onLeaveTodayIds.has(user.id)) {
-          statusText = 'On Leave';
-          statusColor = '#2563eb'; // blue
-        } else if (recentlyActiveUserIds.has(user.id)) {
-          statusText = 'Absent';
-          statusColor = '#dc2626'; // red
-        } else {
-          statusText = 'Inactive';
-          statusColor = '#9ca3af'; // gray
-        }
-        
-        tableHtml += `
-        <tr style="background: ${i % 2 === 0 ? '#ffffff' : '#f9fafb'};">
-          <td style="border: 1px solid #e5e7eb; padding: 8px;">${i + 1}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 500; color: #111827;">${user.name || '—'}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${department}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchInTime}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${punchOutTime}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; color: #4b5563;">${workHours}</td>
-          <td style="border: 1px solid #e5e7eb; padding: 8px; color: ${statusColor}; font-weight: 600;">${statusText}</td>
-        </tr>`;
-    });
-
-    if (!tableHtml) {
-        tableHtml = `<tr><td colspan="7" style="border: 1px solid #e5e7eb; padding: 12px; text-align: center; color: #6b7280; font-style: italic;">No attendance data found for today.</td></tr>`;
-    }
-
-    // Replace basic variables (using global regex to replace all occurrences)
-    const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const generatedTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    
-    // Fallback if not fetched correctly
-    const totalEmployees = filteredUsers ? filteredUsers.length : 0;
-    const attendancePercentage = totalEmployees > 0 ? Math.round((totalPresent / totalEmployees) * 100).toString() : '0';
-
-    // Premium unified template fallback
-    const customMessageVar = template?.variables?.find((v: any) => v.key === '_custom_message');
-    const customMessage = customMessageVar?.description || "Greetings from Paradigm! 👋\nWe hope you're having a fantastic day. Here is your comprehensive daily attendance report to keep you fully updated on today's team presence and activity! 🚀";
-    const [headerText, ...bodyParts] = customMessage.split('\n');
-    const bodyText = bodyParts.join('<br />');
-
-    const premiumTemplate = `
-<div style="font-family: Arial, Helvetica, sans-serif; max-width: 900px; margin: auto; border: 1px solid #d1d5db; background: #ffffff;">
-
-  <!-- Top Header -->
-  <div style="padding: 18px 24px; border-bottom: 3px solid #111827;">
-    <table style="width: 100%;">
-      <tr>
-        <td>
-          <h2 style="margin: 0; font-size: 20px; color: #111827;">PARADIGM FMS</h2>
-          <p style="margin: 2px 0 0; font-size: 12px; color: #6b7280;">Attendance Management System</p>
-        </td>
-        <td style="text-align: right;">
-          <p style="margin: 0; font-size: 12px;"><strong>Report Date:</strong> {date}</p>
-          <p style="margin: 2px 0 0; font-size: 12px;"><strong>Generated On:</strong> {generatedTime}</p>
-        </td>
-      </tr>
-    </table>
-  </div>
-
-  <!-- Greeting Message -->
-  <div style="padding: 24px 24px 8px;">
-    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
-    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
-  </div>
-
-  <!-- Report Title -->
-  <div style="padding: 16px 24px; border-bottom: 1px solid #e5e7eb;">
-    <h3 style="margin: 0; font-size: 16px; color: #1f2937;">Daily Attendance Summary</h3>
-  </div>
-
-  <!-- Summary KPI -->
-  <div style="padding: 16px 24px;">
-    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
-      <tr style="background: #f9fafb;">
-        <th style="border: 1px solid #e5e7eb; padding: 10px;">Total Employees</th>
-        <th style="border: 1px solid #e5e7eb; padding: 10px;">Present</th>
-        <th style="border: 1px solid #e5e7eb; padding: 10px;">Absent</th>
-        <th style="border: 1px solid #e5e7eb; padding: 10px;">Late</th>
-        <th style="border: 1px solid #e5e7eb; padding: 10px;">Attendance %</th>
-      </tr>
-      <tr>
-        <td style="border: 1px solid #e5e7eb; padding: 10px;">{totalEmployees}</td>
-        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #16a34a; font-weight: bold;">{totalPresent}</td>
-        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #dc2626; font-weight: bold;">{totalAbsent}</td>
-        <td style="border: 1px solid #e5e7eb; padding: 10px; color: #d97706; font-weight: bold;">{lateCount}</td>
-        <td style="border: 1px solid #e5e7eb; padding: 10px;">{attendancePercentage}%</td>
-      </tr>
-    </table>
-  </div>
-
-  <!-- Employee Details -->
-  <div style="padding: 16px 24px;">
-    <h4 style="margin: 0 0 10px; font-size: 14px; color: #111827;">Employee Attendance Details</h4>
-
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
-      <thead>
-        <tr style="background: #f3f4f6;">
-          <th style="border: 1px solid #e5e7eb; padding: 8px;">S.No</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Employee Name</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left;">Department</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-In</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px;">Check-Out</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px;">Work Hours</th>
-          <th style="border: 1px solid #e5e7eb; padding: 8px;">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {table}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Notes -->
-  <div style="padding: 12px 24px; border-top: 1px solid #e5e7eb;">
-    <p style="margin: 0; font-size: 11px; color: #6b7280;">
-      * Late is calculated based on shift start time. Attendance percentage is calculated as (Present / Total Employees) × 100.
-    </p>
-  </div>
-
-  <!-- Footer -->
-  <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-    <table style="width: 100%; font-size: 11px;">
-      <tr>
-        <td style="color: #9ca3af;">
-          Generated by <strong>Paradigm FMS</strong>
-        </td>
-        <td style="text-align: right; color: #9ca3af;">
-          Confidential Internal Report
-        </td>
-      </tr>
-    </table>
-  </div>
-
-</div>`;
-
-    const templateHtml = template?.body_template || premiumTemplate;
-    
-    let useTemplate = templateHtml;
-    // Inject Custom Greeting Message block dynamically into loaded html if missing
-    if (rule.report_type === 'attendance_daily') {
-       if (!useTemplate || !useTemplate.includes('{attendancePercentage}')) {
-          useTemplate = premiumTemplate;
-       } else if (!useTemplate.includes('<!-- Greeting Message -->') && headerText) {
-          useTemplate = useTemplate.replace('<!-- Report Title -->', `
-  <!-- Greeting Message -->
-  <div style="padding: 24px 24px 8px;">
-    ${headerText ? `<h2 style="margin: 0 0 8px; font-size: 18px; color: #111827;">${headerText}</h2>` : ''}
-    ${bodyText ? `<p style="margin: 0; font-size: 14px; color: #4b5563; line-height: 1.5;">${bodyText}</p>` : ''}
-  </div>
-
-  <!-- Report Title -->`);
-       }
-    }
-
-    const reportDataPayload: Record<string, string> = {
-      date: dateStr,
-      generatedTime,
-      totalEmployees: totalEmployees.toString(),
-      totalPresent: totalPresent.toString(),
-      totalAbsent: totalAbsent.toString(),
-      lateCount: lateCount.toString(),
-      attendancePercentage: attendancePercentage.toString(),
-      onLeaveCount: onLeaveCount.toString(),
-      inactiveCount: inactiveCount.toString(),
-      table: tableHtml,
-      message: `This is a test email for the rule: ${rule.name}`,
-      subject: `Test: ${rule.name}`
-    };
-
-    let renderedSubjectFinal = subject;
-    let renderedHtml = useTemplate;
-
-    // Evaluate basic ternary conditionals e.g. {attendancePercentage > 90 ? "Yes" : "No"}  
-    const evaluateConditionals = (str: string) => {
-        return str.replace(/\{([a-zA-Z0-9_]+)\s*([><]=?|==|!=)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, 
-          (match, varName, operator, val2Str, trueStr, falseStr) => {
-            const dataKey = Object.keys(reportDataPayload).find(k => k.toLowerCase() === varName.toLowerCase());
-            if (!dataKey) return match; // return unchanged if var doesn't exist
-
-            const val1 = parseFloat(reportDataPayload[dataKey]);
-            const val2 = parseFloat(val2Str);
-            let condition = false;
-            if (operator === '>') condition = val1 > val2;
-            if (operator === '<') condition = val1 < val2;
-            if (operator === '>=') condition = val1 >= val2;
-            if (operator === '<=') condition = val1 <= val2;
-            if (operator === '==') condition = val1 == val2;
-            if (operator === '!=') condition = val1 != val2;
-            return condition ? trueStr : falseStr;
-        });
-    };
-
-    renderedSubjectFinal = evaluateConditionals(renderedSubjectFinal);
-    renderedHtml = evaluateConditionals(renderedHtml);
-
-    // Case-insensitive replacement for standard variables
-    for (const [key, value] of Object.entries(reportDataPayload)) {
-      renderedSubjectFinal = renderedSubjectFinal.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
-      renderedHtml = renderedHtml.replace(new RegExp(`\\{${key}\\}`, 'ig'), value);
-    }
-
-    // Fetch config to pass along using existing helper
-    const config = await api.getEmailConfig();
+  testEmailScheduleRule: async (ruleId: string): Promise<void> => {
+    const user = useAuthStore.getState().user;
+    const testEmail = user?.email || undefined;
 
     const { data: { session } } = await supabase.auth.getSession();
+    
+    // Call the Vercel API runner (server-side generation)
     const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session?.access_token || ''}`,
       },
-      body: JSON.stringify({
-        to: emails,
-        subject: renderedSubjectFinal,
-        html: renderedHtml,
-        triggerType: 'manual',
-        ruleId: rule.id,
-        templateId: rule.template_id,
-        smtpConfig: config ? {
-          host: config.host || 'smtp.gmail.com',
-          port: config.port || 587,
-          secure: config.secure || false,
-          user: config.user,
-          pass: config.pass,
-          fromEmail: config.fromEmail || config.user,
-          fromName: config.fromName || 'Paradigm FMS',
-          replyTo: config.replyTo,
-        } : undefined
+      body: JSON.stringify({ 
+        ruleId, 
+        test: true,
+        testEmail 
       })
     });
-    
+
     if (!response.ok) {
-      let errorMessage = 'Test email failed';
+      const text = await response.text();
+      let errorMessage = 'Failed to trigger test email';
       try {
-        const err = await response.json();
+        const err = JSON.parse(text);
         errorMessage = err.error || errorMessage;
-      } catch (e) {
-        // If not JSON, get the text (e.g., Vercel error page)
-        const text = await response.text();
-        errorMessage = text.substring(0, 150) || response.statusText;
-      }
+      } catch (e) {}
       throw new Error(errorMessage);
     }
   },
@@ -3287,8 +2930,15 @@ export const api = {
       })
     });
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || 'Failed to send email');
+      const text = await response.text();
+      let errorMessage = response.statusText || 'Failed to send email';
+      try {
+        const err = JSON.parse(text);
+        errorMessage = err.error || errorMessage;
+      } catch (e) {
+        errorMessage = text.substring(0, 150) || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
   },
 
