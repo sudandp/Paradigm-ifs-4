@@ -2766,7 +2766,7 @@ export const api = {
     if (payload.triggerType === 'manual') {
        const user = useAuthStore.getState().user;
        await supabase.from('email_logs').insert({
-          recipient_email: payload.to.join(', '),
+          recipient_email: Array.isArray(payload.to) ? payload.to.join(', ') : payload.to,
           subject: payload.subject,
           status: 'sent',
           trigger_type: 'manual',
@@ -3709,7 +3709,7 @@ export const api = {
     }
 
     const { data, count, error } = (await withTimeout(
-      query.order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }) as any,
+      query.order('start_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }) as any,
       15000,
       'Fetch leave requests timed out'
     )) as any;
@@ -4679,11 +4679,13 @@ export const api = {
     const { error } = await supabase.from('extra_work_logs').insert(toSnakeCase({ ...claimData, status: 'Pending' }));
     if (error) throw error;
   },
-  getExtraWorkLogs: async (filter?: { userId?: string, managerId?: string, status?: string, workDate?: string, page?: number, pageSize?: number }): Promise<{ data: ExtraWorkLog[], total: number }> => {
+  getExtraWorkLogs: async (filter?: { userId?: string, managerId?: string, status?: string, workDate?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: ExtraWorkLog[], total: number }> => {
     let query = supabase.from('extra_work_logs').select('*, user:user_id(reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id, photo_url)', { count: 'exact' });
     if (filter?.userId) query = query.eq('user_id', filter.userId);
     if (filter?.status) query = query.eq('status', filter.status);
     if (filter?.workDate) query = query.eq('work_date', filter.workDate);
+    if (filter?.startDate) query = query.gte('work_date', filter.startDate);
+    if (filter?.endDate) query = query.lte('work_date', filter.endDate);
     
     if (filter?.page && filter?.pageSize) {
       const from = (filter.page - 1) * filter.pageSize;

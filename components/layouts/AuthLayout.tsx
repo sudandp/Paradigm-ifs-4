@@ -19,31 +19,28 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen font-sans flex items-center justify-center p-6 relative overflow-hidden bg-page">
+            <div className="min-h-screen font-sans flex items-center justify-center py-6 px-2 relative overflow-auto bg-page">
                 {/* Background for Mobile */}
                 <div className="fixed inset-0 w-full h-full">
                     <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-xl"></div>
+                    <div className="absolute inset-0 bg-black/65 backdrop-blur-sm auth-bg-overlay"></div>
                 </div>
 
-                {/* Mobile Dark Glassmorphic Card */}
-                <div className="relative z-10 w-full max-w-sm bg-black/70 backdrop-blur-3xl border border-white/20 rounded-[2.5rem] p-10 shadow-[0_32px_64px_-15px_rgba(0,0,0,0.8)] auth-card-container">
-                    <div className="flex justify-center mb-12">
-                        <Logo className="h-10 opacity-100" />
+                {/* Mobile Dark Glassmorphic Card (Shrunk Mode) */}
+                <div className="relative z-10 w-full max-w-[310px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-4 pt-2 pb-1.5 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container">
+                    <div className="flex justify-center mb-0.5">
+                        <Logo className="h-5 opacity-100" />
                     </div>
                     
-                    <div className="text-center mb-10 px-2 leading-relaxed">
-                        <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">{pageInfo.title}</h2>
-                        <p className="text-white/80 text-sm font-medium">{pageInfo.subtitle}</p>
+                    <div className="text-center mb-0.5">
+                        <h2 className="text-lg font-bold text-white mb-0 tracking-tight">{pageInfo.title}</h2>
+                        <p className="text-white/70 text-[9px] font-medium leading-none">{pageInfo.subtitle}</p>
                     </div>
 
-                    <div className="auth-form-outlet leading-normal">
+                    <div className="auth-form-outlet leading-[1.1]">
                         <Outlet />
                     </div>
 
-                    <p className="mt-12 text-center text-white/30 text-[10px] font-bold tracking-[0.3em] uppercase">
-                        Paradigm Evolution 2026
-                    </p>
                 </div>
             </div>
         );

@@ -107,84 +107,84 @@ const Login: React.FC = () => {
         </svg>
     );
 
-    // --- MOBILE VIEW (Old Dark UI) ---
+    // --- MOBILE VIEW ---
     if (isMobile) {
         return (
             <>
-                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-6">
-                    <fieldset disabled={isFormDisabled} className="space-y-6">
+                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-4">
+                    <fieldset disabled={isFormDisabled} className="space-y-4">
                         <div className="relative group">
-                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/80 group-focus-within:text-emerald-400 transition-colors pointer-events-none" />
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 group-focus-within:text-emerald-400 transition-colors pointer-events-none" />
                             <Input
                                 id="email-mob"
                                 type="email"
                                 placeholder="Email address"
                                 registration={registerEmail('email')}
                                 error={emailErrors.email?.message}
-                                className="!pl-12 text-base !bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 !rounded-2xl !py-5 transition-all shadow-inner placeholder:text-white/90"
+                                className="!pl-11 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 !rounded-xl !py-3.5 transition-all placeholder:text-white/50"
                             />
                         </div>
                         <div className="relative group">
-                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/80 group-focus-within:text-emerald-400 transition-colors pointer-events-none" />
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 group-focus-within:text-emerald-400 transition-colors pointer-events-none" />
                             <Input
                                 id="password-mob"
                                 type="password"
                                 placeholder="Password"
                                 registration={registerEmail('password')}
                                 error={emailErrors.password?.message}
-                                className="!pl-12 text-base !bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 !rounded-2xl !py-5 transition-all shadow-inner placeholder:text-white/90"
+                                className="!pl-11 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 !rounded-xl !py-3.5 transition-all placeholder:text-white/50"
                             />
                         </div>
                         <div className="flex items-center justify-between px-1">
                             <Checkbox
                                 id="rememberMe-mob"
                                 label="Remember me"
-                                labelClassName="text-white text-sm font-bold cursor-pointer"
+                                labelClassName="text-white/80 text-xs font-semibold cursor-pointer"
                                 {...registerEmail('rememberMe')}
                             />
-                            <Link to="/auth/forgot-password" title="Forgot password?" className="text-sm font-black text-emerald-400 hover:text-emerald-300 tracking-tight transition-colors">
+                            <Link to="/auth/forgot-password" title="Forgot password?" className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors">
                                 Forgot password?
                             </Link>
                         </div>
                     </fieldset>
 
                     {error && (
-                        <div className="flex items-center gap-3 text-sm text-red-400 p-4 bg-red-400/10 rounded-2xl border border-red-400/20 animate-in fade-in slide-in-from-top-2">
-                            <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                            <span className="leading-tight font-bold">{error}</span>
+                        <div className="flex items-center gap-2 text-xs text-red-400 p-3 bg-red-400/10 rounded-xl border border-red-400/20">
+                            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                            <span className="leading-tight font-semibold">{error}</span>
                         </div>
                     )}
 
                     <Button
                         type="submit"
-                        className={`w-full !font-black !h-14 !rounded-2xl transition-all shadow-2xl ${isSuccess ? '!bg-emerald-500 !text-white' : '!bg-transparent !border-2 !border-emerald-500 !text-emerald-500 hover:!bg-emerald-500/10 active:scale-[0.98]'}`}
+                        className={`w-full !font-bold !h-12 !rounded-xl transition-all ${isSuccess ? '!bg-emerald-500 !text-white' : '!bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98]'}`}
                         isLoading={loading && !isSuccess}
                         disabled={isFormDisabled && !isSuccess}
                     >
-                        {isSuccess ? <Check className="w-8 h-8" /> : "Sign In"}
+                        {isSuccess ? <Check className="w-6 h-6" /> : "Sign In"}
                     </Button>
                 </form>
 
-                <div className="mt-12">
-                    <div className="flex items-center gap-4 mb-10">
-                        <div className="flex-1 h-[1.5px] bg-white/30"></div>
-                        <span className="text-[11px] text-white/70 font-black uppercase tracking-[0.4em]">OR</span>
-                        <div className="flex-1 h-[1.5px] bg-white/30"></div>
+                <div className="mt-6">
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="flex-1 h-px bg-white/20"></div>
+                        <span className="text-[10px] text-white/50 font-bold uppercase tracking-[0.3em]">OR</span>
+                        <div className="flex-1 h-px bg-white/20"></div>
                     </div>
 
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
-                        className="w-full flex items-center justify-center gap-4 bg-white text-black font-black h-14 rounded-2xl shadow-2xl hover:bg-white/90 transition-all active:scale-[0.98]"
+                        className="w-full flex items-center justify-center gap-3 bg-white/10 border border-white/15 text-white font-bold h-12 rounded-xl hover:bg-white/20 transition-all active:scale-[0.98]"
                         disabled={isFormDisabled}
                     >
                         {commonGoogleIcon}
                         Sign in with Google
                     </button>
 
-                    <div className="text-center mt-12">
-                        <p className="text-sm text-white font-bold tracking-wide">
-                            Don't have an account? <Link to="/auth/signup" className="text-emerald-400 font-black hover:text-emerald-300 ml-2 transition-colors">Sign Up</Link>
+                    <div className="text-center mt-6">
+                        <p className="text-xs text-white/70 font-medium">
+                            Don't have an account? <Link to="/auth/signup" className="text-emerald-400 font-bold hover:text-emerald-300 ml-1 transition-colors">Sign Up</Link>
                         </p>
                     </div>
                 </div>

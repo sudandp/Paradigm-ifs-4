@@ -84,7 +84,7 @@ const UpdatePassword = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={isMobile ? "space-y-4" : "space-y-6"}>
       {!isMobile && (
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
           <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Account</p>
@@ -92,22 +92,20 @@ const UpdatePassword = () => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Input id="password-new" type="password" placeholder="New Password" registration={register('password')} error={errors.password?.message} className={`!pl-4 !rounded-2xl !py-5 transition-all shadow-inner ${isMobile ? '!bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/90' : '!bg-white !text-gray-900 !border-gray-200'}`} />
-        <Input id="confirm-password-new" type="password" placeholder="Confirm New Password" registration={register('confirmPassword')} error={errors.confirmPassword?.message} className={`!pl-4 !rounded-2xl !py-5 transition-all shadow-inner ${isMobile ? '!bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/90' : '!bg-white !text-gray-900 !border-gray-200'}`} />
+      <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-4" : "space-y-6"}>
+        <Input id="password-new" type="password" placeholder="New Password" registration={register('password')} error={errors.password?.message} className={`!pl-4 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
+        <Input id="confirm-password-new" type="password" placeholder="Confirm New Password" registration={register('confirmPassword')} error={errors.confirmPassword?.message} className={`!pl-4 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
 
         {error && (
-            <div className={`flex items-center gap-3 text-sm p-4 rounded-2xl border ${isMobile ? 'text-red-400 bg-red-400/10 border-red-400/20' : 'text-red-600 bg-red-50 border-red-100'}`}>
-                <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                <span className="leading-tight font-bold">{error}</span>
+            <div className={`flex items-center gap-2 p-3 rounded-xl border ${isMobile ? 'text-xs text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span className="leading-tight font-semibold">{error}</span>
             </div>
         )}
 
-        <div className="pt-6">
-          <Button type="submit" className={`w-full !font-black !h-14 !rounded-2xl transition-all shadow-2xl ${isMobile ? '!bg-transparent !border-2 !border-emerald-500 !text-emerald-500 hover:!bg-emerald-500/10 active:scale-[0.98]' : '!bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200'}`} isLoading={isSubmitting} size="lg" disabled={!user}>
+        <Button type="submit" className={`w-full transition-all ${isMobile ? '!font-bold !h-12 !rounded-xl !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98]' : '!font-black !h-14 !rounded-2xl !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200 shadow-2xl'}`} isLoading={isSubmitting} size="lg" disabled={!user}>
             Update Password
-          </Button>
-        </div>
+        </Button>
       </form>
     </div>
   );

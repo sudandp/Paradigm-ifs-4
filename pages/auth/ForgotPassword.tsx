@@ -65,40 +65,38 @@ const ForgotPassword = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+        <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-5" : "space-y-8"}>
             <div className="text-center px-2">
-                <p className={`text-sm ${isMobile ? 'text-white/90 font-medium' : 'text-gray-500'} leading-relaxed`}>
+                <p className={`${isMobile ? 'text-xs text-white/70 font-medium' : 'text-sm text-gray-500'} leading-relaxed`}>
                     Enter your email address and we'll send you a link to reset your password.
                 </p>
             </div>
 
             <div className="relative group">
-                <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 ${isMobile ? 'text-white/80' : 'text-gray-400'} transition-colors pointer-events-none z-10`} />
+                <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 ${isMobile ? 'h-4 w-4 text-white/60' : 'h-5 w-5 text-gray-400'} transition-colors pointer-events-none z-10`} />
                 <Input
                     id="email"
                     type="email"
                     placeholder="Email Address"
                     registration={register('email')}
                     error={errors.email?.message}
-                    className={`!pl-12 !rounded-2xl !py-5 transition-all shadow-inner ${isMobile ? '!bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/90' : '!bg-white !text-gray-900 !border-gray-200'}`}
+                    className={`!pl-11 transition-all ${isMobile ? '!rounded-xl !py-3.5 !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50 text-sm' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`}
                 />
             </div>
 
             {error && (
-                <div className={`flex items-center gap-3 text-sm p-4 rounded-2xl border ${isMobile ? 'text-red-400 bg-red-400/10 border-red-400/20' : 'text-red-600 bg-red-50 border-red-100'}`}>
-                    <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                    <span className="leading-tight font-bold">{error}</span>
+                <div className={`flex items-center gap-2 p-3 rounded-xl border ${isMobile ? 'text-xs text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>
+                    <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                    <span className="leading-tight font-semibold">{error}</span>
                 </div>
             )}
 
-            <div className="pt-2">
-                <Button type="submit" className={`w-full !font-black !h-14 !rounded-2xl transition-all shadow-2xl ${isMobile ? '!bg-transparent !border-2 !border-emerald-500 !text-emerald-500 hover:!bg-emerald-500/10 active:scale-[0.98]' : '!bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200'}`} isLoading={isSubmitting} size="lg">
-                    Send Link
-                </Button>
-            </div>
+            <Button type="submit" className={`w-full transition-all ${isMobile ? '!font-bold !h-12 !rounded-xl !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98]' : '!font-black !h-14 !rounded-2xl !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200 shadow-2xl'}`} isLoading={isSubmitting} size="lg">
+                Send Link
+            </Button>
 
             <div className="text-center">
-                <Link to="/auth/login" className={`text-sm font-black transition-colors ${isMobile ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}>
+                <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-xs text-emerald-400 hover:text-emerald-300' : 'text-sm text-emerald-600 hover:text-emerald-700'}`}>
                     &larr; Back to Login
                 </Link>
             </div>

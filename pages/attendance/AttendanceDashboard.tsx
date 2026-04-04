@@ -29,6 +29,7 @@ import ManualAttendanceModal from '../../components/attendance/ManualAttendanceM
 import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
 import MonthlyHoursReport from '../../components/attendance/MonthlyHoursReport';
+import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView } from '../../components/attendance/ReportHTMLViews';
 import {
     format,
     getDaysInMonth,
@@ -1740,12 +1741,25 @@ const AttendanceDashboard: React.FC = () => {
         const orgName = selectedSite !== 'all' ? users.find(u => u.organizationId === selectedSite)?.organizationName : 'All Sites';
         const socName = selectedSociety !== 'all' ? users.find(u => u.societyId === selectedSociety)?.societyName : 'All Societies';
         const logoBase64 = logoForPdf;
+        const dr = { startDate: dateRange.startDate!, endDate: dateRange.endDate! };
 
-        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'monthly') return <MonthlyReportDocument data={monthlyReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'work_hours') return <WorkHoursReportDocument data={work_hoursReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
+        // For web preview: use standard HTML components (safe for DOM rendering)
+        if (isPreview) {
+            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'monthly') return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'work_hours') return <WorkHoursReportView data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
+            return null;
+        }
+
+        // For PDF generation: use react-pdf Document components (NOT safe for DOM rendering)
+        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'monthly') return <MonthlyReportDocument data={monthlyReportData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'work_hours') return <WorkHoursReportDocument data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
         
         return null;
@@ -2802,7 +2816,7 @@ const AttendanceDashboard: React.FC = () => {
                             </div>
                         )}
                         <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
-                            <div className={`origin-top-left sm:origin-top ${reportType === 'basic' ? 'w-full' : 'min-w-[800px] md:min-w-[1123px] transform scale-[0.6] xs:scale-[0.7] sm:scale-[0.85] md:scale-[0.9] lg:scale-100'}`}>
+                            <div className="w-full">
                                {previewContent}
                             </div>
                         </div>

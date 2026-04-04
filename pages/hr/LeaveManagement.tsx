@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import Select from '../../components/ui/Select';
@@ -17,6 +17,7 @@ import { isAdmin } from '../../utils/auth';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import EditLeaveTypeModal from '../../components/hr/EditLeaveTypeModal';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
+import { exportLeaveReportToPDF, PDFReportColumn } from '../../utils/pdfExport';
 
 const StatusChip: React.FC<{ status: LeaveRequestStatus; approverName?: string | null; approverPhotoUrl?: string | null; approvalHistory?: any[] }> = ({ status, approverName, approverPhotoUrl, approvalHistory }) => {
     const styles: Record<LeaveRequestStatus, string> = {
@@ -107,7 +108,9 @@ const LeaveManagement: React.FC = () => {
     const [userHolidays, setUserHolidays] = useState<(UserHoliday & { userName?: string })[]>([]);
     const [poolHolidays, setPoolHolidays] = useState<any[]>([]);
     const [selectedUserId, setSelectedUserId] = useState<string>('all');
-    const [selectedDate, setSelectedDate] = useState<string>('');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
+    const [activePreset, setActivePreset] = useState<string>('This Month');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -119,6 +122,13 @@ const LeaveManagement: React.FC = () => {
     const [finalConfirmationRole, setFinalConfirmationRole] = useState<string>('hr');
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [requestToEdit, setRequestToEdit] = useState<LeaveRequest | null>(null);
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        handleApplyPreset('This Month');
+    }, []);
 
     useEffect(() => {
         const checkFeature = async () => {
@@ -166,8 +176,8 @@ const LeaveManagement: React.FC = () => {
             const leaveFilter: any = { 
                 status: (filter !== 'all' && filter !== 'claims') ? filter : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
-                startDate: selectedDate || undefined,
-                endDate: selectedDate || undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
                 page: currentPage,
                 pageSize: pageSize
             };
@@ -189,7 +199,8 @@ const LeaveManagement: React.FC = () => {
             const claimsFilter = {
                 status: isApprover ? 'Pending' : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
-                workDate: selectedDate || undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
                 page: currentPage,
                 pageSize: pageSize
             };
@@ -213,11 +224,11 @@ const LeaveManagement: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [user, filter, currentPage, pageSize, selectedUserId, selectedDate]);
+    }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate]);
 
     useEffect(() => {
         setCurrentPage(1); // Reset to page 1 when filter changes
-    }, [filter, selectedUserId, selectedDate]);
+    }, [filter, selectedUserId, startDate, endDate]);
 
     useEffect(() => {
         fetchData();
@@ -326,24 +337,84 @@ const LeaveManagement: React.FC = () => {
         }
     };
 
-    const handleExportReport = async () => {
-        if (requests.length === 0) {
-            setToast({ message: 'No data available to export.', type: 'error' });
-            return;
+    // Close export menu on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setIsExportMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleApplyPreset = (preset: string) => {
+        setActivePreset(preset);
+        const today = new Date();
+        let start: Date | null = null;
+        let end: Date | null = new Date();
+
+        switch (preset) {
+            case 'Today':
+                start = today;
+                end = today;
+                break;
+            case 'Yesterday':
+                start = subDays(today, 1);
+                end = subDays(today, 1);
+                break;
+            case 'This Month':
+                start = startOfMonth(today);
+                end = endOfMonth(today);
+                break;
+            case 'Last Month':
+                const lastMonth = subDays(startOfMonth(today), 1);
+                start = startOfMonth(lastMonth);
+                end = endOfMonth(lastMonth);
+                break;
+            case 'This Year':
+                start = startOfYear(today);
+                end = endOfYear(today);
+                break;
+            case 'All Time':
+                start = null;
+                end = null;
+                break;
+            default:
+                return;
         }
 
-        const columns: GenericReportColumn[] = [
-            { header: 'Employee', key: 'userName', width: 25 },
-            { header: 'Leave Type', key: 'leaveType', width: 15 },
-            { header: 'Start Date', key: 'startDate', width: 15 },
-            { header: 'End Date', key: 'endDate', width: 15 },
-            { header: 'Option', key: 'dayOption', width: 10 },
-            { header: 'Reason', key: 'reason', width: 40 },
-            { header: 'Status', key: 'status', width: 20 },
-            { header: 'Applied On', key: 'createdAt', width: 20 },
-        ];
+        setStartDate(start ? format(start, 'yyyy-MM-dd') : '');
+        setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
+    };
 
-        const reportData = requests.map(req => ({
+    const fetchAllForExport = async (statusFilter: LeaveRequestStatus | 'all'): Promise<LeaveRequest[]> => {
+        if (!user) return [];
+        const leaveFilter: any = {
+            status: statusFilter !== 'all' ? statusFilter : undefined,
+            userId: selectedUserId !== 'all' ? selectedUserId : undefined,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            page: 1,
+            pageSize: 10000, 
+        };
+
+        if (!['admin', 'super_admin', 'hr', 'management'].includes(user.role)) {
+            const teamMembers = await api.getTeamMembers(user.id);
+            const teamIds = teamMembers.map(m => m.id);
+            if (selectedUserId !== 'all') {
+                leaveFilter.userId = teamIds.includes(selectedUserId) ? selectedUserId : 'none';
+            } else {
+                leaveFilter.userIds = teamIds;
+            }
+        }
+
+        const res = await api.getLeaveRequests(leaveFilter);
+        return res.data;
+    };
+
+    const prepareReportData = (data: LeaveRequest[]) => {
+        return data.map(req => ({
             ...req,
             startDate: format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy'),
             endDate: format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM yyyy'),
@@ -351,26 +422,126 @@ const LeaveManagement: React.FC = () => {
             status: req.status.replace(/_/g, ' ').toUpperCase(),
             dayOption: req.dayOption || 'N/A'
         }));
+    };
 
+    const REPORT_COLUMNS_EXCEL: GenericReportColumn[] = [
+        { header: 'Employee', key: 'userName', width: 25 },
+        { header: 'Leave Type', key: 'leaveType', width: 15 },
+        { header: 'Start Date', key: 'startDate', width: 15 },
+        { header: 'End Date', key: 'endDate', width: 15 },
+        { header: 'Option', key: 'dayOption', width: 10 },
+        { header: 'Reason', key: 'reason', width: 40 },
+        { header: 'Status', key: 'status', width: 20 },
+        { header: 'Applied On', key: 'createdAt', width: 20 },
+    ];
+
+    const REPORT_COLUMNS_PDF: PDFReportColumn[] = [
+        { header: 'Employee', key: 'userName', width: 35 },
+        { header: 'Leave Type', key: 'leaveType', width: 25 },
+        { header: 'Start Date', key: 'startDate', width: 28 },
+        { header: 'End Date', key: 'endDate', width: 28 },
+        { header: 'Option', key: 'dayOption', width: 18 },
+        { header: 'Reason', key: 'reason', width: 65 },
+        { header: 'Status', key: 'status', width: 40 },
+        { header: 'Applied On', key: 'createdAt', width: 30 },
+    ];
+
+    const getStatusLabel = (status: LeaveRequestStatus | 'all') => {
+        const labels: Record<string, string> = {
+            approved: 'Approved',
+            rejected: 'Rejected',
+            pending_manager_approval: 'Pending',
+            pending_hr_confirmation: 'Pending HR',
+            all: 'All',
+        };
+        return labels[status] || status.replace(/_/g, ' ');
+    };
+
+    const handleExportExcel = async (statusFilter: LeaveRequestStatus | 'all') => {
+        setIsExporting(true);
+        setIsExportMenuOpen(false);
         try {
+            const data = await fetchAllForExport(statusFilter);
+            if (data.length === 0) {
+                setToast({ message: `No ${getStatusLabel(statusFilter).toLowerCase()} leave records found.`, type: 'error' });
+                return;
+            }
+            const reportData = prepareReportData(data);
             await exportGenericReportToExcel(
                 reportData,
-                columns,
-                'Leave Requests Report',
-                { 
-                    startDate: selectedDate ? new Date(selectedDate) : new Date(new Date().getFullYear(), 0, 1), 
-                    endDate: selectedDate ? new Date(selectedDate) : new Date() 
+                REPORT_COLUMNS_EXCEL,
+                `Leave Requests — ${getStatusLabel(statusFilter)}`,
+                {
+                    startDate: startDate ? new Date(startDate) : new Date(new Date().getFullYear(), 0, 1),
+                    endDate: endDate ? new Date(endDate) : new Date(),
                 },
-                'Leave_Requests',
+                `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_${getFileSuffix()}`,
                 undefined,
                 user?.name
             );
-            setToast({ message: 'Report exported successfully.', type: 'success' });
+            setToast({ message: `${getStatusLabel(statusFilter)} leave report exported to Excel.`, type: 'success' });
         } catch (error) {
-            console.error('Export failed:', error);
-            setToast({ message: 'Failed to export report.', type: 'error' });
+            console.error('Excel export failed:', error);
+            setToast({ message: 'Failed to export Excel report.', type: 'error' });
+        } finally {
+            setIsExporting(false);
         }
     };
+
+    const handleExportPDF = async (statusFilter: LeaveRequestStatus | 'all') => {
+        setIsExporting(true);
+        setIsExportMenuOpen(false);
+        try {
+            const data = await fetchAllForExport(statusFilter);
+            if (data.length === 0) {
+                setToast({ message: `No ${getStatusLabel(statusFilter).toLowerCase()} leave records found.`, type: 'error' });
+                return;
+            }
+            const reportData = prepareReportData(data);
+            exportLeaveReportToPDF({
+                title: `Leave Requests — ${getStatusLabel(statusFilter)}`,
+                subtitle: getReportSubtitle(),
+                columns: REPORT_COLUMNS_PDF,
+                data: reportData,
+                fileName: `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_Report_${getFileSuffix()}`,
+                generatedBy: user?.name,
+            });
+            setToast({ message: `${getStatusLabel(statusFilter)} leave report exported to PDF.`, type: 'success' });
+        } catch (error) {
+            console.error('PDF export failed:', error);
+            setToast({ message: 'Failed to export PDF report.', type: 'error' });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const getReportSubtitle = () => {
+        if (!startDate && !endDate) return 'All Records';
+        if (startDate && endDate) {
+            if (startDate === endDate) return `Date: ${format(new Date(startDate), 'dd MMM yyyy')}`;
+            return `Period: ${format(new Date(startDate), 'dd MMM yyyy')} - ${format(new Date(endDate), 'dd MMM yyyy')}`;
+        }
+        if (startDate) return `Since: ${format(new Date(startDate), 'dd MMM yyyy')}`;
+        return `Until: ${format(new Date(endDate), 'dd MMM yyyy')}`;
+    };
+
+    const getFileSuffix = () => {
+        if (!startDate && !endDate) return 'All_Time';
+        if (startDate === endDate) return format(new Date(startDate), 'yyyyMMdd');
+        return `${format(new Date(startDate.replace(/-/g, '/')), 'yyyyMMdd')}_to_${format(new Date(endDate.replace(/-/g, '/')), 'yyyyMMdd')}`;
+    };
+
+    const handleExportReport = async () => {
+        await handleExportExcel(filter === 'claims' || filter === 'holiday_selection' ? 'all' : filter as LeaveRequestStatus | 'all');
+    };
+
+    type ExportStatusOption = { label: string; value: LeaveRequestStatus | 'all'; color: string; icon: string };
+    const EXPORT_STATUS_OPTIONS: ExportStatusOption[] = [
+        { label: 'Approved Leaves', value: 'approved', color: '#16a34a', icon: '✓' },
+        { label: 'Rejected Leaves', value: 'rejected', color: '#dc2626', icon: '✗' },
+        { label: 'Pending Leaves', value: 'pending_manager_approval', color: '#d97706', icon: '⏳' },
+        { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
+    ];
 
     const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection'> = ['pending_manager_approval', 'claims', 'pending_hr_confirmation', 'holiday_selection', 'approved', 'rejected', 'all']
         .filter(tab => {
@@ -558,14 +729,13 @@ const LeaveManagement: React.FC = () => {
 
             {/* Filter Bar */}
             <div className="bg-card p-5 rounded-xl border border-border shadow-sm mb-8">
-                <div className="flex flex-col lg:flex-row gap-5 items-end">
-                    <div className="w-full lg:w-72">
+                <div className="flex flex-col lg:flex-row gap-5 items-end flex-wrap lg:flex-nowrap">
+                    <div className="w-full lg:w-64">
                         <label htmlFor="filter-employee" className="block text-xs font-bold text-muted uppercase mb-2 ml-1 tracking-wider">Filter by Employee</label>
                         <div className="relative">
                             <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted pointer-events-none" />
                             <select 
                                 id="filter-employee"
-                                name="filterEmployee"
                                 value={selectedUserId}
                                 onChange={(e) => setSelectedUserId(e.target.value)}
                                 className="w-full !pl-10 pr-10 h-11 rounded-xl bg-page border border-border text-primary-text focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all appearance-none text-sm font-medium"
@@ -576,21 +746,53 @@ const LeaveManagement: React.FC = () => {
                                 ))}
                             </select>
                             <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                <ChevronDown className="h-4 w-4 text-muted" />
                             </div>
                         </div>
                     </div>
-                    
-                    <div className="w-full lg:w-56">
-                        <label htmlFor="filter-date" className="block text-xs font-bold text-muted uppercase mb-2 ml-1 tracking-wider">Filter by Date</label>
+
+                    <div className="w-full lg:w-48">
+                        <label className="block text-xs font-bold text-muted uppercase mb-2 ml-1 tracking-wider">Quick Filters</label>
+                        <div className="relative">
+                            <FilterX className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted pointer-events-none" />
+                            <select 
+                                value={activePreset}
+                                onChange={(e) => handleApplyPreset(e.target.value)}
+                                className="w-full !pl-10 pr-10 h-11 rounded-xl bg-page border border-border text-primary-text focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all appearance-none text-sm font-medium"
+                            >
+                                {['All Time', 'Today', 'Yesterday', 'This Month', 'Last Month', 'This Year'].map(p => (
+                                    <option key={p} value={p}>{p}</option>
+                                ))}
+                            </select>
+                            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="h-4 w-4 text-muted" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-full lg:w-44">
+                        <label htmlFor="filter-start-date" className="block text-xs font-bold text-muted uppercase mb-2 ml-1 tracking-wider">Start Date</label>
                         <div className="relative">
                             <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted pointer-events-none" />
                             <input 
-                                id="filter-date"
-                                name="filterDate"
+                                id="filter-start-date"
                                 type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
+                                value={startDate}
+                                onChange={(e) => { setStartDate(e.target.value); setActivePreset('Custom'); }}
+                                className="w-full !pl-10 pr-4 h-11 rounded-xl bg-page border border-border text-primary-text focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm font-medium"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="w-full lg:w-44">
+                        <label htmlFor="filter-end-date" className="block text-xs font-bold text-muted uppercase mb-2 ml-1 tracking-wider">End Date</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted pointer-events-none" />
+                            <input 
+                                id="filter-end-date"
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => { setEndDate(e.target.value); setActivePreset('Custom'); }}
                                 className="w-full !pl-10 pr-4 h-11 rounded-xl bg-page border border-border text-primary-text focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm font-medium"
                             />
                         </div>
@@ -599,9 +801,9 @@ const LeaveManagement: React.FC = () => {
                     <div className="flex gap-3 w-full lg:w-auto">
                         <Button 
                             variant="secondary" 
-                            onClick={() => { setSelectedUserId('all'); setSelectedDate(''); }}
+                            onClick={() => { setSelectedUserId('all'); setStartDate(''); setEndDate(''); setActivePreset('All Time'); }}
                             className="h-11 px-5 rounded-xl flex-1 lg:flex-none font-semibold border-border bg-page hover:bg-page/80"
-                            disabled={selectedUserId === 'all' && !selectedDate}
+                            disabled={selectedUserId === 'all' && !startDate && !endDate}
                         >
                             <FilterX className="h-4 w-4 mr-2" /> Clear
                         </Button>
@@ -613,6 +815,61 @@ const LeaveManagement: React.FC = () => {
                             <Loader2 className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : 'hidden'}`} />
                             Refresh
                         </Button>
+                    </div>
+
+                    {/* Export Dropdown */}
+                    <div className="relative w-full lg:w-auto" ref={exportMenuRef}>
+                        <Button
+                            variant="secondary"
+                            onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                            className="h-11 w-full lg:w-auto px-5 rounded-xl font-semibold border border-border bg-page hover:bg-page/80 transition-all"
+                            disabled={isExporting}
+                        >
+                            {isExporting ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                                <Download className="h-4 w-4 mr-2" />
+                            )}
+                            Export Report
+                            <ChevronDown className={`h-4 w-4 ml-2 transition-transform duration-200 ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                        </Button>
+
+                        {isExportMenuOpen && (
+                            <div className="absolute right-0 top-full mt-2 w-72 bg-card rounded-xl border border-border shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="px-4 py-3 border-b border-border bg-page/50">
+                                    <p className="text-xs font-bold text-muted uppercase tracking-wider">Export Leave Report</p>
+                                </div>
+                                <div className="p-2">
+                                    {EXPORT_STATUS_OPTIONS.map(opt => (
+                                        <div key={opt.value} className="mb-1 last:mb-0">
+                                            <div className="flex items-center gap-2 px-3 py-2">
+                                                <span className="text-sm" style={{ color: opt.color }}>{opt.icon}</span>
+                                                <span className="text-sm font-medium text-primary-text flex-1">{opt.label}</span>
+                                                <button
+                                                    onClick={() => handleExportPDF(opt.value)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                                                    title={`Export ${opt.label} as PDF`}
+                                                >
+                                                    <FileText className="h-3.5 w-3.5" />
+                                                    PDF
+                                                </button>
+                                                <button
+                                                    onClick={() => handleExportExcel(opt.value)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                                    title={`Export ${opt.label} as Excel`}
+                                                >
+                                                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                                                    Excel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="px-4 py-2 border-t border-border bg-page/30">
+                                    <p className="text-[10px] text-muted">Exports all matching records, not just the current page.</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
