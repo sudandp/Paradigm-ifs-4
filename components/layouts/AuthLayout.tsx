@@ -26,18 +26,18 @@ const AuthLayout: React.FC = () => {
                     <div className="absolute inset-0 bg-black/65 backdrop-blur-sm auth-bg-overlay"></div>
                 </div>
 
-                {/* Mobile Dark Glassmorphic Card (Shrunk Mode) */}
-                <div className="relative z-10 w-full max-w-[310px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-4 pt-2 pb-1.5 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container">
-                    <div className="flex justify-center mb-0.5">
-                        <Logo className="h-5 opacity-100" />
+                {/* Mobile Dark Glassmorphic Card (Shrunk Mode) — Centered Logo + Left Header */}
+                <div className="relative z-10 w-full max-w-[310px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 pt-5 pb-4 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container text-left">
+                    <div className="flex justify-center mb-3">
+                        <Logo className="h-[30px] opacity-100" />
                     </div>
                     
-                    <div className="text-center mb-0.5">
-                        <h2 className="text-lg font-bold text-white mb-0 tracking-tight">{pageInfo.title}</h2>
-                        <p className="text-white/70 text-[9px] font-medium leading-none">{pageInfo.subtitle}</p>
+                    <div className="text-left mb-3.5">
+                        <h2 className="text-xl font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
+                        <p className="text-white/70 text-[11px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
                     </div>
 
-                    <div className="auth-form-outlet leading-[1.1]">
+                    <div className="auth-form-outlet leading-normal">
                         <Outlet />
                     </div>
 

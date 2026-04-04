@@ -1181,44 +1181,44 @@ body {
        This block MUST stay at the END of the mobile media query.
        ═══════════════════════════════════════════════════════════════════ */
 
-    /* 1. Card container — override [class*="card"], [class*="container"] */
-    .auth-card-container {
-        background: rgba(0, 0, 0, 0.7) !important;
-        backdrop-filter: blur(24px) !important;
-        -webkit-backdrop-filter: blur(24px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 1.125rem !important; /* Shrunk radius */
-        box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.8) !important;
-        background-image: none !important;
-        opacity: 1 !important;
-        animation: none !important;
-        transform: none !important;
-        width: auto !important;
-        margin: 0 !important;
-        padding-bottom: 1.125rem !important;
-    }
+    /* 1. Card container — Height reduced ~10% for Goldilocks fit */
+     .auth-card-container {
+         background: rgba(0, 0, 0, 0.72) !important;
+         backdrop-filter: blur(24px) !important;
+         -webkit-backdrop-filter: blur(24px) !important;
+         border: 1px solid rgba(255, 255, 255, 0.08) !important;
+         border-radius: 1rem !important;
+         box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.8) !important;
+         background-image: none !important;
+         opacity: 1 !important;
+         animation: none !important;
+         transform: none !important;
+         width: auto !important;
+         margin: 0 !important;
+         padding: 1.5rem 1.25rem !important;
+     }
     .auth-card-container * {
         animation: none !important;
         opacity: 1 !important;
     }
 
-    /* 2. Background overlay — override .fixed.inset-0 transparency */
+    /* 2. Background overlay */
     .auth-bg-overlay {
-        background-color: rgba(0, 0, 0, 0.75) !important; /* Darker backdrop */
+        background-color: rgba(0, 0, 0, 0.75) !important;
         backdrop-filter: blur(4px) !important;
         -webkit-backdrop-filter: blur(4px) !important;
     }
 
-    /* 3. Inputs — override global `input { bg: #0d2c18, padding: 14px 16px }` */
+    /* 3. Inputs */
     .auth-card-container input,
     .auth-card-container textarea,
     .auth-card-container select {
-        background-color: rgba(255, 255, 255, 0.05) !important;
+        background-color: rgba(255, 255, 255, 0.06) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 0.5rem !important;
         color: #ffffff !important;
-        padding: 0.5rem 0.75rem 0.5rem 2.25rem !important; /* Compact padding */
-        font-size: 0.8125rem !important;
+        padding: 0.625rem 0.75rem 0.625rem 2.25rem !important;
+        font-size: 9px !important;
         transition: all 0.2s ease !important;
         text-overflow: ellipsis !important;
         white-space: nowrap !important;
@@ -1229,45 +1229,50 @@ body {
         background-color: rgba(255, 255, 255, 0.08) !important;
         border-color: rgba(16, 185, 129, 0.4) !important;
         box-shadow: none !important;
-        overflow: visible !important; /* Full visibility on focus */
+        overflow: visible !important;
     }
     .auth-card-container input::placeholder,
     .auth-card-container textarea::placeholder {
-        color: rgba(255, 255, 255, 0.35) !important; /* Differentiated from value */
+        color: rgba(255, 255, 255, 0.35) !important;
         font-weight: 400 !important;
     }
 
-    /* 4. Form — override global `form { padding-bottom: 40px }` */
+    /* 4. Form padding reset */
     .auth-card-container form,
     .auth-card-container .form-container {
         padding-bottom: 0 !important;
     }
 
-    /* 5. Headings — Unified Typography Scale (Shrunk) */
+    /* 5. Typography — Shifted Left */
     .auth-card-container h2 {
         font-size: 1.125rem !important;
         font-weight: 800 !important;
         line-height: 1.2 !important;
         letter-spacing: -0.01em !important;
+        text-align: left !important;
     }
     .auth-card-container h3 {
         font-size: 0.875rem !important;
         font-weight: 600 !important;
+        text-align: left !important;
     }
 
-    /* 6. Spacing — override global `.space-y-6 > * + * { margin-top: 1rem }` */
-    /* 6. Spacing — Standardized multiples of 12 (Shrunk Baseline) */
-    .auth-card-container .space-y-4 > * + * {
-        margin-top: 0.75rem !important;
-    }
-    .auth-card-container .space-y-5 > * + * {
+
+    /* 6. Spacing — Slightly reduced height request */
+    .auth-card-container .space-y-3 > * + * {
         margin-top: 1rem !important;
     }
+    .auth-card-container .space-y-4 > * + * {
+        margin-top: 1rem !important;
+    }
+    .auth-card-container .space-y-5 > * + * {
+        margin-top: 1.125rem !important;
+    }
     .auth-card-container .space-y-6 > * + * {
-        margin-top: 1.25rem !important;
+        margin-top: 1.125rem !important;
     }
 
-    /* 7. Submit button — Cleaner UI, Compact Height */
+    /* 7. Primary button */
     .auth-card-container button[type="submit"],
     .auth-card-container .btn {
         background-color: #10b981 !important;
@@ -1275,9 +1280,9 @@ body {
         border: none !important;
         border-radius: 0.5rem !important;
         font-weight: 700 !important;
-        font-size: 0.8125rem !important;
-        padding: 0 1.25rem !important;
-        height: 2.25rem !important; /* Shrunk Height */
+        font-size: 0.875rem !important;
+        padding: 0 1.5rem !important;
+        height: 2.5rem !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -1289,26 +1294,26 @@ body {
         transform: none !important;
     }
 
-    /* 8. Red danger button (logout page) */
+    /* 8. Danger button */
     .auth-card-container button[class*="bg-red"],
     .auth-card-container .btn[class*="bg-red"] {
         background-color: #ef4444 !important;
-        box-shadow: 0 4px 15px -3px rgba(239, 68, 68, 0.4) !important;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
     }
     .auth-card-container button[class*="bg-red"]:hover {
         background-color: #dc2626 !important;
     }
 
-    /* 9. Google sign-in button — Outlined Style (Shrunk) */
+    /* 9. Google button — outlined */
     .auth-card-container button[type="button"] {
         background-color: transparent !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        color: #f8fafc !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
         border-radius: 0.5rem !important;
         font-weight: 600 !important;
-        font-size: 0.75rem !important;
+        font-size: 0.8125rem !important;
         padding: 0 1.25rem !important;
-        height: 2.25rem !important;
+        height: 2.5rem !important;
         white-space: nowrap !important;
         box-shadow: none !important;
     }
@@ -1316,18 +1321,16 @@ body {
         background-color: rgba(255, 255, 255, 0.04) !important;
     }
 
-    /* 10. SVG icons — override global `button svg { width: 1.25rem, height: 1.25rem }` */
+    /* 10. SVG icons */
     .auth-card-container button svg,
     .auth-card-container .btn svg {
-        width: 1.25rem !important;
-        height: 1.25rem !important;
+        width: 1.125rem !important;
+        height: 1.125rem !important;
     }
-    /* Form field icons (Mail, Lock, etc.) — keep small */
     .auth-card-container .group svg {
         width: 1rem !important;
         height: 1rem !important;
     }
-    /* Logout icon — controlled by component */
     .auth-card-container .rounded-full svg {
         width: 2rem !important;
         height: 2rem !important;
@@ -1338,70 +1341,62 @@ body {
         color: #ffffff !important;
     }
     .auth-card-container p, .auth-card-container span, .auth-card-container label {
-        color: rgba(255, 255, 255, 0.8) !important;
+        color: rgba(255, 255, 255, 0.7) !important;
     }
     .auth-card-container a {
         color: #34d399 !important;
     }
 
-    /* 12. Misc — dividers (Equal width flex lines) */
+    /* 12. OR divider */
     .auth-card-container .flex.items-center.gap-3 {
         display: flex !important;
         align-items: center !important;
         gap: 0.75rem !important;
-        margin: 1.25rem 0 !important;
     }
     .auth-card-container .flex.items-center.gap-3 div[class*="flex-1"] {
         flex: 1 !important;
         height: 1px !important;
-        background-color: rgba(255, 255, 255, 0.15) !important;
+        background-color: rgba(255, 255, 255, 0.12) !important;
     }
+
+    /* 13. Disabled state */
     .auth-card-container button:disabled {
         opacity: 0.5 !important;
         background-color: #4b5563 !important;
     }
 
-    /* 13. Padding overrides — Condensed baseline */
-    .auth-card-container.px-4 {
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-    }
-    .auth-card-container.pt-8,
-    .auth-card-container.pt-3,
-    .auth-card-container.pt-2 {
-        padding-top: 0.5rem !important;
-    }
-
-    /* 14. Browser autofill — Chrome forces white/blue bg on saved credentials */
+    /* 14. Autofill */
     .auth-card-container input:-webkit-autofill,
     .auth-card-container input:-webkit-autofill:hover,
     .auth-card-container input:-webkit-autofill:focus,
     .auth-card-container input:-webkit-autofill:active {
-        -webkit-box-shadow: 0 0 0 30px rgba(255, 255, 255, 0.1) inset !important;
+        -webkit-box-shadow: 0 0 0 30px rgba(255, 255, 255, 0.06) inset !important;
         -webkit-text-fill-color: #ffffff !important;
         transition: background-color 5000s ease-in-out 0s !important;
-        background-color: rgba(255, 255, 255, 0.1) !important;
+        background-color: rgba(255, 255, 255, 0.06) !important;
     }
 
-    /* 15. Font-size reset — override global `body { font-size: 15px }` */
+    /* 15. Base font-size */
     .auth-card-container {
-        font-size: 14px !important;
+        font-size: 13px !important;
     }
     .auth-card-container p,
     .auth-card-container span,
     .auth-card-container label {
-        font-size: 0.75rem !important;
+        font-size: 0.7rem !important;
     }
 
-    /* 16. Checkbox & Forgot Password Stacking (Phase 6 Centered Fix) */
+    /* 16. Remember me + Forgot password — stacked and centered */
     .auth-card-container .flex.items-center.justify-between {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: 0.375rem !important;
+        gap: 0.5rem !important;
         overflow: visible !important;
     }
+
+    /* 17. Checkbox */
     .auth-card-container input[type="checkbox"] {
         padding: 0 !important;
         width: 0.875rem !important;
@@ -1409,11 +1404,10 @@ body {
         min-width: 0.875rem !important;
         border-radius: 0.2rem !important;
     }
-    /* Checkbox & Text positioning */
     .auth-card-container .flex.items-start {
         display: flex !important;
-        align-items: center !important; /* Important fix for vertical centering */
-        gap: 0.5rem !important;
+        align-items: center !important;
+        gap: 0.375rem !important;
     }
     .auth-card-container .ml-3 {
         margin-left: 0 !important;
