@@ -2,116 +2,104 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Logo from '../ui/Logo';
 import { useAuthLayoutStore } from '../../store/authLayoutStore';
-import { Download } from 'lucide-react';
-import AppDownloadModal from '../ui/AppDownloadModal';
+import { useDevice } from '../../hooks/useDevice';
 
 const AuthLayout: React.FC = () => {
-    const { backgroundImages } = useAuthLayoutStore();
-    const [currentImageIndex, setCurrentImageIndex] = useState(0);
-    const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+    const { isMobile } = useDevice();
     const location = useLocation();
 
-    useEffect(() => {
-        // Only run the interval if there's more than one image to cycle through
-        if (backgroundImages.length > 1) {
-            const timer = setInterval(() => {
-                setCurrentImageIndex(prevIndex => (prevIndex + 1) % backgroundImages.length);
-            }, 5000); // Change image every 5 seconds
-            return () => clearInterval(timer);
-        }
-    }, [backgroundImages.length]);
-
-    const properties = useMemo(() => {
-        if (backgroundImages && backgroundImages.length > 0) {
-            return backgroundImages;
-        }
-        // Provide a default fallback if the store is empty for some reason
-        return ['https://picsum.photos/seed/default_fallback_1/1200/900'];
-    }, [backgroundImages]);
-
     const pageInfo = useMemo(() => {
-        if (location.pathname.includes('signup')) {
-            return { title: 'Create an Account', subtitle: 'Join our platform to get started.' };
-        }
-        if (location.pathname.includes('forgot-password')) {
-            return { title: 'Forgot Password?', subtitle: 'No worries, we\'ll send you reset instructions.' };
-        }
-        if (location.pathname.includes('update-password')) {
-            return { title: 'Set a New Password', subtitle: 'Please enter your new password.' };
-        }
-        if (location.pathname.includes('logout')) {
-            return { title: 'Log Out', subtitle: 'Are you sure you want to log out? You will need to sign in again to access your account.' };
-        }
-        // Default to login
+        const path = location.pathname;
+        if (path.includes('signup')) return { title: 'Create Account', subtitle: 'Join the Paradigm family today.' };
+        if (path.includes('forgot-password')) return { title: 'Reset Password', subtitle: 'Enter your email to receive instructions.' };
+        if (path.includes('update-password')) return { title: 'New Password', subtitle: 'Create a secure new password for your account.' };
+        if (path.includes('logout')) return { title: 'Log Out', subtitle: 'Are you sure you want to sign out?' };
         return { title: 'Sign In', subtitle: 'Enter your credentials to access your account.' };
     }, [location.pathname]);
 
+    if (isMobile) {
+        return (
+            <div className="min-h-screen font-sans flex items-center justify-center p-6 relative overflow-hidden bg-page">
+                {/* Background for Mobile */}
+                <div className="fixed inset-0 w-full h-full">
+                    <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-xl"></div>
+                </div>
+
+                {/* Mobile Dark Glassmorphic Card */}
+                <div className="relative z-10 w-full max-w-sm bg-black/70 backdrop-blur-3xl border border-white/20 rounded-[2.5rem] p-10 shadow-[0_32px_64px_-15px_rgba(0,0,0,0.8)] auth-card-container">
+                    <div className="flex justify-center mb-12">
+                        <Logo className="h-10 opacity-100" />
+                    </div>
+                    
+                    <div className="text-center mb-10 px-2 leading-relaxed">
+                        <h2 className="text-3xl font-bold text-white mb-3 tracking-tight">{pageInfo.title}</h2>
+                        <p className="text-white/80 text-sm font-medium">{pageInfo.subtitle}</p>
+                    </div>
+
+                    <div className="auth-form-outlet leading-normal">
+                        <Outlet />
+                    </div>
+
+                    <p className="mt-12 text-center text-white/30 text-[10px] font-bold tracking-[0.3em] uppercase">
+                        Paradigm Evolution 2026
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="min-h-screen font-sans flex items-center justify-center bg-page relative">
-            {/* Full-screen background carousel */}
+        <div className="min-h-screen font-sans flex items-center justify-center bg-gray-100 relative overflow-hidden">
+            {/* Desktop Background */}
             <div className="fixed inset-0 w-full h-full">
-                {properties.map((imageUrl, index) => (
-                    <img
-                        key={index}
-                        src={imageUrl}
-                        alt={`Background ${index + 1}`}
-                        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${index === currentImageIndex ? 'opacity-100' : 'opacity-0'
-                            }`}
-                        onError={(e) => {
-                           const target = e.target as HTMLImageElement;
-                           target.style.display = 'none'; // simple fallback: hide broken images
-                           
-                           // Auto-clean: Remove this broken image from the store if it's not a default one containing 'picsum'
-                           // We use a small timeout to avoid state updates during render
-                           if (!imageUrl.includes('picsum.photos')) {
-                               setTimeout(() => {
-                                   useAuthLayoutStore.getState().removeBackgroundImage(index);
-                               }, 0);
-                           }
-                        }}
-                    />
-                ))}
-                <div className="absolute inset-0 bg-black/30"></div> {/* Dark overlay */}
+                <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"></div>
             </div>
 
-            {/* Centered content container */}
-            <div className="relative w-full max-w-2xl lg:max-w-3xl xl:max-w-4xl p-0 md:p-4 py-8 md:py-16 flex items-center justify-center min-h-[100dvh] md:min-h-0 mx-auto">
-                <div className="auth-card-container transform scale-[0.80] sm:scale-100 -translate-y-[17vh] md:translate-y-0 origin-center mx-auto glass-mobile w-full max-w-[90%] md:max-w-none grid md:grid-cols-2 rounded-[2.5rem] md:rounded-2xl shadow-2xl overflow-hidden md:backdrop-blur-none md:bg-[#0d2c18] border border-[#041b0f] md:border-white/10">
-                    {/* Left Visual Column */}
-                    <div className="hidden md:flex flex-col justify-between p-6 lg:p-10 xl:p-16 bg-gradient-to-br from-black/40 to-black/70">
-                        <div>
-                            <Logo className="h-8 lg:h-12 xl:h-14" />
-                            <h1 className="text-xl lg:text-2xl xl:text-4xl font-bold text-white mt-6 lg:mt-8 leading-tight drop-shadow-lg">
-                                Welcome to the Future of Onboarding.
-                            </h1>
-                            <p className="text-white/80 mt-4 max-w-md drop-shadow-lg text-xs lg:text-sm xl:text-base">
-                                Streamlining the journey for every new member of the Paradigm family.
-                            </p>
+            {/* Desktop Split-Layout Card */}
+            <div className="relative w-full max-w-5xl p-6 flex items-center justify-center">
+                <div className="w-full grid md:grid-cols-[1fr_1.15fr] rounded-[2.5rem] shadow-[0_35px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden bg-white">
+                    {/* Left Brand Panel */}
+                    <div className="flex flex-col justify-between p-12 bg-[#041b0f] relative">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full -ml-32 -mb-32 blur-3xl"></div>
+
+                        <div className="relative z-10">
+                            <Logo className="h-10 brightness-0 invert" />
+                            <div className="mt-24">
+                                <h1 className="text-4xl font-bold text-white leading-tight">
+                                    Welcome to the Future of Onboarding.
+                                </h1>
+                                <p className="text-emerald-100/60 mt-6 max-w-xs text-base">
+                                    Streamlining the journey for every new member of the Paradigm family.
+                                </p>
+                            </div>
                         </div>
 
-                        <div>
-                            <p className="text-white/50 text-[10px] lg:text-xs mt-4">© {new Date().getFullYear()} Paradigm Services. All rights reserved.</p>
+                        <div className="relative z-10">
+                            <p className="text-emerald-100/30 text-xs uppercase tracking-widest font-bold">
+                                Paradigm Evolution 2026
+                            </p>
                         </div>
                     </div>
 
-                    {/* Right Form Column with Glassmorphism effect */}
-                    <div className="p-6 lg:p-10 xl:p-16 flex flex-col justify-center bg-[#050505]/90 backdrop-blur-xl border-l border-white/10">
-                        <div className="w-full max-w-md mx-auto transform scale-[0.95]">
-                            {/* Mobile Logo Visibility Fix */}
-                            <div className="flex justify-center mb-6">
-                                <Logo className="h-10 lg:h-12" />
+                    {/* Right Interaction Panel */}
+                    <div className="p-16 flex flex-col justify-center bg-white">
+                        <div className="w-full max-w-sm mx-auto">
+                            <h2 className="text-4xl font-bold text-gray-900 mb-2">{pageInfo.title}</h2>
+                            <p className="text-gray-500 mb-10 text-base font-medium">{pageInfo.subtitle}</p>
+                            
+                            <div className="auth-form-outlet">
+                                <Outlet />
                             </div>
-                            <h2 className="text-xl lg:text-2xl xl:text-3xl font-bold text-white mb-2">{pageInfo.title}</h2>
-                            <p className="text-gray-300 mb-4 lg:mb-6 xl:mb-8 text-xs lg:text-sm xl:text-base">{pageInfo.subtitle}</p>
-                            <Outlet />
                         </div>
                     </div>
                 </div>
             </div>
-
         </div>
     );
 };
+
 
 export default AuthLayout;

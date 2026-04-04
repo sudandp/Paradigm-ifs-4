@@ -816,8 +816,8 @@ const AttendanceDashboard: React.FC = () => {
             ]);
 
             setAttendanceEvents(events);
-            // Extract the data array from the paginated response
-            const leavesData = Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data;
+            // Extract the data array from the paginated response and filter out any null/undefined entries
+            const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
             setLeaves(leavesData);
             setUserHolidaysPool(holidaysResponse || []);
 
@@ -840,7 +840,7 @@ const AttendanceDashboard: React.FC = () => {
                 format(new Date(e.timestamp), 'yyyy-MM-dd') === todayStr && 
                 activeStaffIds.has(e.userId)
             );
-            const todayLeaves = leavesData.filter(l => {
+            const todayLeaves = leavesData.filter(l => l && l.startDate && l.endDate).filter(l => {
                 const start = new Date(l.startDate);
                 const end = new Date(l.endDate);
                 return today >= start && today <= end && activeStaffIds.has(l.userId);
@@ -929,8 +929,7 @@ const AttendanceDashboard: React.FC = () => {
         } catch (error) {
             console.error("Failed to load dashboard data", error);
         } finally {
-            // Minimum 10 second loading time
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            // No intentional delay needed in production
             setIsLoading(false);
         }
     }, [isEmployeeView, selectedSite, selectedSociety, selectedRole]);
@@ -1039,7 +1038,7 @@ const AttendanceDashboard: React.FC = () => {
                 );
 
                 // Check for approved leaves
-                const hasApprovedLeave = leaves.some(l => 
+                const hasApprovedLeave = leaves.filter(l => l && l.startDate && l.endDate).some(l => 
                     l.userId === user.id && 
                     l.status === 'approved' &&
                     isWithinInterval(day, { 
@@ -1432,7 +1431,7 @@ const AttendanceDashboard: React.FC = () => {
                 const isCompanyHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
 
                 // Find approved leaves for this user on this day and get the leave type
-                const approvedLeave = leaves.find(l => 
+                const approvedLeave = leaves.filter(l => l && l.startDate && l.endDate).find(l => 
                     String(l.userId) === String(user.id) && 
                     l.status === 'approved' &&
                     isWithinInterval(day, { 
@@ -1707,11 +1706,11 @@ const AttendanceDashboard: React.FC = () => {
                 const event = userEvents[i];
                 if (event.type === 'site-ot-in') {
                     const nextEvent = userEvents[i + 1];
-                    let site_otOut: string | null = null;
+                    let siteOtOut: string | null = null;
                     let duration: string | null = null;
                     
                     if (nextEvent && nextEvent.type === 'site-ot-out') {
-                        site_otOut = format(new Date(nextEvent.timestamp), 'HH:mm');
+                        siteOtOut = format(new Date(nextEvent.timestamp), 'HH:mm');
                         const diffInMins = differenceInMinutes(new Date(nextEvent.timestamp), new Date(event.timestamp));
                         const hours = Math.floor(diffInMins / 60);
                         const mins = diffInMins % 60;
@@ -1722,8 +1721,8 @@ const AttendanceDashboard: React.FC = () => {
                     data.push({
                         userName: user.name,
                         date: format(new Date(event.timestamp), 'yyyy-MM-dd'),
-                        site_otIn: format(new Date(event.timestamp), 'HH:mm'),
-                        site_otOut,
+                        siteOtIn: format(new Date(event.timestamp), 'HH:mm'),
+                        siteOtOut,
                         duration,
                         locationName: event.locationName || 'N/A'
                     });
@@ -1742,11 +1741,11 @@ const AttendanceDashboard: React.FC = () => {
         const socName = selectedSociety !== 'all' ? users.find(u => u.societyId === selectedSociety)?.societyName : 'All Societies';
         const logoBase64 = logoForPdf;
 
-        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} title="Basic Attendance Report" subtitle={reportDateRange} logo={logoBase64} organization={orgName} society={socName} generatedBy={user?.name} />;
-        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} title="Attendance Log Report" subtitle={reportDateRange} logo={logoBase64} organization={orgName} society={socName} generatedBy={user?.name} />;
-        if (reportType === 'monthly') return <MonthlyReportDocument data={monthlyReportData} title="Monthly Attendance Summary" subtitle={reportDateRange} logo={logoBase64} organization={orgName} society={socName} generatedBy={user?.name} />;
-        if (reportType === 'work_hours') return <WorkHoursReportDocument data={work_hoursReportData} title="Work Hours Report" subtitle={reportDateRange} logo={logoBase64} organization={orgName} society={socName} generatedBy={user?.name} />;
-        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} title="Site OT Report" subtitle={reportDateRange} logo={logoBase64} organization={orgName} society={socName} generatedBy={user?.name} />;
+        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'monthly') return <MonthlyReportDocument data={monthlyReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'work_hours') return <WorkHoursReportDocument data={work_hoursReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
         
         return null;
@@ -2135,7 +2134,7 @@ const AttendanceDashboard: React.FC = () => {
             // Format report name for subject if not provided
             const reportName = reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Report';
             
-            const response = await api.sendReportEmail({
+            await api.sendReportEmail({
                 ...payload,
                 reportType,
                 filters: {
@@ -2151,12 +2150,8 @@ const AttendanceDashboard: React.FC = () => {
                 }
             });
 
-            if (response.success) {
-                setToast({ message: `Report successfully sent to ${payload.to}`, type: 'success' });
-                setIsMailModalOpen(false);
-            } else {
-                throw new Error(response.error || 'Failed to send email');
-            }
+            setToast({ message: `Report successfully sent to ${payload.to}`, type: 'success' });
+            setIsMailModalOpen(false);
         } catch (error: any) {
             console.error('Mail Report Error:', error);
             setToast({ message: error.message || 'Failed to send report email', type: 'error' });
@@ -2910,7 +2905,7 @@ const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSe
                     </button>
                     <button
                         disabled={isSending || !email}
-                        onClick={() => onSend({ to: email, subject, body: message })}
+                        onClick={() => onSend({ to: [email], subject, body: message, triggerType: 'manual' })}
                         className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                     >
                         {isSending ? (

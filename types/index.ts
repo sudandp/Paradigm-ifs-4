@@ -532,9 +532,10 @@ export interface EmailLog {
 export type AttendanceReportType = 'basic' | 'monthly' | 'log' | 'work_hours' | 'site_ot' | 'audit';
 
 export interface ReportEmailPayload {
-  to: string[];
+  to: string | string[];
   subject: string;
-  html: string;
+  html?: string;
+  body?: string;
   attachments?: {
     filename: string;
     content: string; // base64
@@ -543,6 +544,7 @@ export interface ReportEmailPayload {
   triggerType: 'manual' | 'automatic';
   reportType?: AttendanceReportType;
   smtpConfig?: any; // Optional override
+  filters?: Record<string, any>;
 }
 
 // Types for Entity Management

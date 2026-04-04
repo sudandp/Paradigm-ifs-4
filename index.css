@@ -797,7 +797,7 @@ body {
     select::-ms-expand {
         display: none;
     }
-    .fixed.inset-0, [class*="backdrop"], .modal-backdrop, .overlay {
+    .fixed.inset-0:not(.fixed.inset-0.w-full.h-full), .modal-backdrop, .overlay {
         background-color: transparent !important;
         backdrop-filter: none !important;
     }

@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-// Fix: Use inline type import for SubmitHandler
 import { useForm, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { authService } from '../../services/authService';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-
+import { useDevice } from '../../hooks/useDevice';
 
 const validationSchema = yup.object({
   password: yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
@@ -21,35 +20,16 @@ interface UpdatePasswordForm {
   confirmPassword: string;
 }
 
-const getFriendlyAuthError = (errorCode: string): string => {
-  const msg = errorCode.toLowerCase();
-
-  if (msg.includes('weak password')) {
-    return 'Password is too weak. Please use at least 6 characters.';
-  }
-  if (msg.includes('requires a recent login')) {
-    return 'For your security, please sign in again to continue.';
-  }
-
-  console.error("Unhandled auth error:", errorCode);
-  return 'Something went wrong. Please try again.';
-};
-
 const UpdatePassword = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const { isMobile } = useDevice();
 
   useEffect(() => {
-    // With Supabase's PASSWORD_RECOVERY flow, the user is already authenticated
-    // at this point. If there's no user, it means the recovery flow was invalid
-    // or has expired.
-    if (!user) {
-      setError('Invalid or expired password reset session. Please request a new password reset link.');
-    }
+    if (!user) setError('Invalid or expired reset session. Please request a new link.');
   }, [user]);
-
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<UpdatePasswordForm>({
     resolver: yupResolver(validationSchema) as unknown as Resolver<UpdatePasswordForm>,
@@ -58,9 +38,8 @@ const UpdatePassword = () => {
   const onSubmit: SubmitHandler<UpdatePasswordForm> = async (data) => {
     setError('');
     const { error: updateError } = await authService.updateUserPassword(data.password);
-
     if (updateError) {
-      setError(getFriendlyAuthError(updateError.message));
+      setError(updateError.message);
     } else {
       setSuccess(true);
       await logout();
@@ -69,68 +48,63 @@ const UpdatePassword = () => {
   };
 
   if (success) {
-
     return (
-      <div className="text-center">
-        <CheckCircle className="mx-auto h-12 w-12 text-accent" />
-        <h3 className="mt-4 text-lg font-semibold text-white">Password Updated!</h3>
-        <p className="mt-2 text-sm text-gray-300">
-          Your password has been changed successfully. You will be redirected to the login page shortly.
-        </p>
-        <div className="mt-6">
-          <Link to="/auth/login" className="font-medium text-white/80 hover:text-white">
-            &larr; Back to Login Now
-          </Link>
+      <div className="text-center py-8">
+        <div className={`${isMobile ? 'bg-emerald-500/10' : 'bg-emerald-50'} w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6`}>
+          <CheckCircle className={`h-10 w-10 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
         </div>
+        <h3 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Updated!</h3>
+        <p className={`mt-4 text-sm leading-relaxed ${isMobile ? 'text-gray-400' : 'text-gray-600'}`}>
+          Password changed successfully. Redirecting...
+        </p>
       </div>
     );
   }
 
-  if (error && !user) { // If auth session is invalid
+  if (error && !user) {
     return (
-      <div className="text-center">
-        <h3 className="text-3xl font-bold text-white">Link Expired</h3>
-        <p className="text-sm text-gray-300 mt-1">This password reset link is no longer valid.</p>
-        <div className="mt-6 flex flex-col gap-4">
-          <Link to="/auth/forgot-password" className="font-medium text-white/80 hover:text-white">
-            Request a new link
+      <div className="text-center py-8">
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isMobile ? 'bg-red-500/10' : 'bg-red-50'}`}>
+          <AlertTriangle className={`h-10 w-10 ${isMobile ? 'text-red-400' : 'text-red-600'}`} />
+        </div>
+        <h3 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Link Expired</h3>
+        <p className={`mt-4 text-sm leading-relaxed ${isMobile ? 'text-gray-400' : 'text-gray-600'}`}>
+          This link is no longer valid.
+        </p>
+        <div className="mt-8 space-y-4">
+          <Link to="/auth/forgot-password" className={`inline-block w-full text-center py-4 font-bold rounded-xl shadow-lg transition-all ${isMobile ? 'border border-emerald-500 !text-emerald-400' : 'bg-emerald-600 text-white'}`}>
+            Request New Link
           </Link>
-          <div className="auth-separator">OR</div>
-          <Button onClick={() => navigate('/auth/login')} className="w-full" size="lg">
+          <button onClick={() => navigate('/auth/login')} className={`w-full py-4 text-sm font-bold transition-colors ${isMobile ? 'text-white/40' : 'text-gray-500'}`}>
             Back to Sign In
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <p className="text-sm text-center text-gray-300 -mt-6 mb-6">for <span className="font-semibold text-white">{user?.email}</span>.</p>
+    <div className="space-y-6">
+      {!isMobile && (
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6">
+          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Account</p>
+          <p className="text-sm font-semibold text-gray-900">{user?.email}</p>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <Input
-          id="password"
-          type="password"
-          placeholder="New Password"
-          aria-label="New Password"
-          autoComplete="new-password"
-          registration={register('password')}
-          error={errors.password?.message}
-          className="pl-4 !bg-white/10 !text-white !border-white/20 placeholder:!text-gray-300"
-        />
-        <Input
-          id="confirmPassword"
-          type="password"
-          placeholder="Confirm New Password"
-          aria-label="Confirm New Password"
-          autoComplete="new-password"
-          registration={register('confirmPassword')}
-          error={errors.confirmPassword?.message}
-          className="pl-4 !bg-white/10 !text-white !border-white/20 placeholder:!text-gray-300"
-        />
-        {error && <p className="text-sm text-red-400 text-center">{error}</p>}
-        <div>
-          <Button type="submit" className="w-full" isLoading={isSubmitting} size="lg" disabled={!user}>
+        <Input id="password-new" type="password" placeholder="New Password" registration={register('password')} error={errors.password?.message} className={`!pl-4 !rounded-2xl !py-5 transition-all shadow-inner ${isMobile ? '!bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/90' : '!bg-white !text-gray-900 !border-gray-200'}`} />
+        <Input id="confirm-password-new" type="password" placeholder="Confirm New Password" registration={register('confirmPassword')} error={errors.confirmPassword?.message} className={`!pl-4 !rounded-2xl !py-5 transition-all shadow-inner ${isMobile ? '!bg-black/40 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/90' : '!bg-white !text-gray-900 !border-gray-200'}`} />
+
+        {error && (
+            <div className={`flex items-center gap-3 text-sm p-4 rounded-2xl border ${isMobile ? 'text-red-400 bg-red-400/10 border-red-400/20' : 'text-red-600 bg-red-50 border-red-100'}`}>
+                <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                <span className="leading-tight font-bold">{error}</span>
+            </div>
+        )}
+
+        <div className="pt-6">
+          <Button type="submit" className={`w-full !font-black !h-14 !rounded-2xl transition-all shadow-2xl ${isMobile ? '!bg-transparent !border-2 !border-emerald-500 !text-emerald-500 hover:!bg-emerald-500/10 active:scale-[0.98]' : '!bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200'}`} isLoading={isSubmitting} size="lg" disabled={!user}>
             Update Password
           </Button>
         </div>
