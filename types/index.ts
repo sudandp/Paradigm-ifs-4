@@ -1089,6 +1089,7 @@ export interface StaffAttendanceRules {
   weeklyOffDays?: number[]; // [0] for Sunday, [0,6] for Sunday and Saturday
   // Field Staff Site/Travel Tracking
   minimumSitePercentage?: number; // e.g., 75 - minimum % of time that must be on-site
+  minimumSiteHours?: number; // New: Absolute minimum site hours required
   maximumTravelPercentage?: number; // e.g., 25 - maximum % of time for travel
   enableSiteTimeTracking?: boolean; // Enable site vs travel validation for field staff
   enableViolationBlocking?: boolean; // Whether violations should block the user and hold salary

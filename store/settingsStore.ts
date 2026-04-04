@@ -112,6 +112,7 @@ const initialAttendance: AttendanceSettings = {
       max: 9,
     },
     minimumSitePercentage: 75,
+    minimumSiteHours: 6,
     maximumTravelPercentage: 25,
     enableSiteTimeTracking: true,
     maxHolidaysPerCategory: 10,

@@ -10,63 +10,105 @@ export interface SiteTravelBreakdown {
   siteVisits: number;
 }
 
-/**
- * Calculate site vs travel time from check-in/out events
- * 
- * Logic:
- * - Site time = Sum of (checkout - checkin) for each location
- * - Travel time = Sum of (next_checkin - previous_checkout)
- * 
- * @param events All check-in/check-out events for a day
- * @returns Breakdown of site vs travel time
- */
 export function calculateSiteTravelTime(events: AttendanceEvent[]): SiteTravelBreakdown {
-  // Filter only check-in and check-out events, sort by time
-  const checkEvents = events
-    .filter(e => e.type === 'punch-in' || e.type === 'punch-out')
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   let totalSiteMinutes = 0;
   let totalTravelMinutes = 0;
+  let totalBreakMinutes = 0;
   let siteVisits = 0;
-  let lastCheckout: Date | null = null;
-  let lastCheckin: Date | null = null;
 
-  for (const event of checkEvents) {
+  // State Trackers
+  let isDayActive = false;
+  let isAtSite = false;
+  let isOnBreak = false;
+  let lastEventTime: Date | null = null;
+
+  sortedEvents.forEach(event => {
     const eventTime = new Date(event.timestamp);
 
-    if (event.type === 'punch-in') {
-      // If there was a previous checkout, calculate travel time
-      if (lastCheckout) {
-        const travelMinutes = differenceInMinutes(eventTime, lastCheckout);
-        totalTravelMinutes += Math.max(0, travelMinutes);
+    if (lastEventTime) {
+      const elapsed = differenceInMinutes(eventTime, lastEventTime);
+
+      if (isOnBreak) {
+        totalBreakMinutes += elapsed;
+      } else if (isAtSite) {
+        totalSiteMinutes += elapsed;
+      } else if (isDayActive) {
+        totalTravelMinutes += elapsed;
       }
-      lastCheckin = eventTime;
-      siteVisits++;
-    } else if (event.type === 'punch-out') {
-      // If there was a matching checkin, calculate site time
-      if (lastCheckin) {
-        const siteMinutes = differenceInMinutes(eventTime, lastCheckin);
-        totalSiteMinutes += Math.max(0, siteMinutes);
-        lastCheckin = null; // Reset checkin
-      }
-      lastCheckout = eventTime;
+    }
+
+    // Update state for next interval
+    switch (event.type) {
+      case 'punch-in':
+        if (event.workType === 'field') {
+          isAtSite = true;
+          siteVisits++;
+        } else {
+          isDayActive = true;
+        }
+        break;
+      case 'punch-out':
+        if (event.workType === 'field') {
+          isAtSite = false;
+        } else {
+          isDayActive = false;
+          isAtSite = false; // Punching out of day also ends site visit
+        }
+        break;
+      case 'site-ot-in':
+        isAtSite = true;
+        siteVisits++;
+        break;
+      case 'site-ot-out':
+        isAtSite = false;
+        break;
+      case 'break-in':
+        isOnBreak = true;
+        break;
+      case 'break-out':
+        isOnBreak = false;
+        break;
+    }
+
+    lastEventTime = eventTime;
+  });
+
+  // Handle ongoing session if it's the current day
+  const now = new Date();
+  if (lastEventTime && isSameDay(now, lastEventTime)) {
+    const elapsed = differenceInMinutes(now, lastEventTime);
+    if (isOnBreak) {
+      totalBreakMinutes += elapsed;
+    } else if (isAtSite) {
+      totalSiteMinutes += elapsed;
+    } else if (isDayActive) {
+      totalTravelMinutes += elapsed;
     }
   }
 
-  const totalMinutes = totalSiteMinutes + totalTravelMinutes;
-  const totalHours = totalMinutes / 60;
+  const totalHours = (totalSiteMinutes + totalTravelMinutes + totalBreakMinutes) / 60;
   const siteHours = totalSiteMinutes / 60;
   const travelHours = totalTravelMinutes / 60;
+  const totalActiveMinutes = totalSiteMinutes + totalTravelMinutes;
 
   return {
     totalHours,
     siteHours,
     travelHours,
-    sitePercentage: totalMinutes > 0 ? (totalSiteMinutes / totalMinutes) * 100 : 0,
-    travelPercentage: totalMinutes > 0 ? (totalTravelMinutes / totalMinutes) * 100 : 0,
+    sitePercentage: totalActiveMinutes > 0 ? (totalSiteMinutes / totalActiveMinutes) * 100 : 0,
+    travelPercentage: totalActiveMinutes > 0 ? (totalTravelMinutes / totalActiveMinutes) * 100 : 0,
     siteVisits,
   };
+}
+
+function isSameDay(date1: Date, date2: Date): boolean {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
 }
 
 /**
@@ -76,6 +118,7 @@ export function validateFieldStaffAttendance(
   breakdown: SiteTravelBreakdown,
   rules: {
     minimumSitePercentage: number;
+    minimumSiteHours?: number;
     minimumHoursFullDay: number;
     minimumHoursHalfDay: number;
   }
@@ -89,6 +132,13 @@ export function validateFieldStaffAttendance(
   // Check site percentage
   if (breakdown.sitePercentage < rules.minimumSitePercentage) {
     violations.push('site_time_low');
+  }
+
+  // Check absolute site hours (if rule is set)
+  if (rules.minimumSiteHours && breakdown.siteHours < rules.minimumSiteHours) {
+    if (!violations.includes('site_time_low')) {
+      violations.push('site_time_low'); // Reuse site_time_low or add a new violation type if needed
+    }
   }
   
   // Check total hours
