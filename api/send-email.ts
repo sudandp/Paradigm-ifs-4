@@ -213,28 +213,37 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     tls: { rejectUnauthorized: false }
   });
 
+  const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();
+  
   const mailOptions: any = {
-    from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser}>`,
+    from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${fromEmail}>`,
     to: toAddresses.join(', '),
     subject, 
     html, 
-    replyTo: config.replyTo || config.smtpReplyTo || config.fromEmail || config.user
+    replyTo: config.replyTo || config.smtpReplyTo || fromEmail
   };
   if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
 
   const info = await transporter.sendMail(mailOptions);
 
-  // Log successful delivery
-  await Promise.all(toAddresses.map(email => 
-    supabase.from('email_logs').insert({
-      recipient_email: email, 
-      subject, 
-      status: 'sent', 
-      rule_id: ruleId || null, 
-      trigger_type: triggerType || 'manual',
-      created_at: new Date().toISOString()
-    })
-  ));
+  // Log successful delivery - Removing trigger_type column (missing in DB) and using metadata instead
+  try {
+    await Promise.all(toAddresses.map(email => 
+      supabase.from('email_logs').insert({
+        recipient_email: email, 
+        subject, 
+        status: 'sent', 
+        rule_id: ruleId || null, 
+        metadata: { 
+          trigger_type: triggerType || 'manual',
+          vercel_env: process.env.VERCEL_ENV || 'development'
+        },
+        created_at: new Date().toISOString()
+      })
+    ));
+  } catch (logLog) {
+    console.error('[send-email] Logging failed but email was likely sent:', logLog);
+  }
   
   return info;
 }
