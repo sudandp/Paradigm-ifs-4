@@ -301,19 +301,41 @@ serve(async (req: Request) => {
 
       // ── Render template ──
       const template = templateMap.get(rule.template_id);
+      if (!template && !rule.report_type.startsWith('attendance')) {
+          console.log(`  [WARN] No template found for rule "${rule.name}" (ID: ${rule.template_id})`);
+      }
+
       let subject = template?.subject_template || rule.name;
-      let html = template?.body_template || getDefaultPremiumTemplate();
+      
+      // Use premium template for monthly report if no database template exists or specifically requested
+      let html = template?.body_template;
+      if (!html || rule.report_type === 'attendance_monthly') {
+        console.log(`  [INFO] Using default premium template for ${rule.report_type}`);
+        html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
+      }
 
+      console.log(`  [DEBUG] reportData keys: ${Object.keys(reportData).join(', ')}`);
+
+      // Helper to replace placeholders {Key} or {key}
+      const render = (text: string, data: Record<string, string>) => {
+        if (!text) return '';
+        return text.replace(/\{(\w+)\}/g, (match, key) => {
+          const dataKey = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
+          if (dataKey) {
+              console.log(`    Replacing {${key}} -> ${data[dataKey]}`);
+              return data[dataKey];
+          }
+          return match;
+        });
+      };
+
+      // First pass: conditionals
       subject = evaluateConditionals(subject, reportData);
-      html = evaluateConditionals(html, reportData);
+      html = evaluateConditionals(html, reportData || {});
 
-      const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
-        const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
-        return dataKey ? reportData[dataKey] : match;
-      });
-
-      subject = render(subject);
-      html = render(html);
+      // Second pass: simple variable replacement
+      subject = render(subject, reportData || {});
+      html = render(html, reportData || {});
 
       // ── Resolve recipients ──
       let emails = await resolveRecipients(supabase, rule);
@@ -499,109 +521,171 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
 }
 
 // ─── Generate Monthly Attendance Report (Grid Style) ────────────────────────
+// ─── Generate Monthly Attendance Report (Grid Style) ────────────────────────
 async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>> {
   const firstDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
   const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
   const monthStr = format(nowIST, 'MMMM yyyy');
   const daysInMonth = lastDayOfMonth.getDate();
+  const today = new Date(nowIST.getTime());
+  today.setUTCHours(0,0,0,0);
 
-  const [usersRes, eventsRes, leavesRes, settingsRes] = await Promise.all([
+  const [usersRes, eventsRes, leavesRes, settingsRes, holidaysRes, recurringHolidaysRes] = await Promise.all([
     supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
     supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
-    supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type').eq('status', 'approved').gte('end_date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
-    supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single()
+    supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+    supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
+    supabase.from('holidays').select('*').gte('date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+    supabase.from('recurring_holidays').select('*')
   ]);
 
   const users = (usersRes.data || []) as User[];
   const events = (eventsRes.data || []) as AttendanceEvent[];
   const leaves = (leavesRes.data || []) as any[];
+  const holidays = (holidaysRes.data || []) as any[];
+  const recurringHolidays = (recurringHolidaysRes.data || []) as any[];
   const attendanceSettings = settingsRes.data?.attendance_settings;
 
-  let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;">
+  // Calculate aggregates for placeholders
+  let totalPresentCount = 0;
+  let totalAbsentCount = 0;
+  let totalLateCount = 0;
+
+  let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 10px; border: 1px solid #ddd;">
     <thead>
-      <tr style="background: #e5e7eb; color: #111827;">
-        <th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
+      <tr style="background: #f3f4f6; color: #111827; border-bottom: 2px solid #374151;">
+        <th style="border: 1px solid #ccc; padding: 6px 4px; text-align: left; width: 140px;">Employee Name</th>`;
   
   for (let d = 1; d <= daysInMonth; d++) {
-    tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
+    tableHtml += `<th style="border: 1px solid #ccc; padding: 2px; text-align: center; width: 22px; font-size: 9px;">${d}</th>`;
   }
-  tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">P</th>
-        <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">1/2-P</th>
-        <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">W/H</th>
-        <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">A</th>
-        <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">WO</th>
-        <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd; font-weight: 800;">Tot</th>
+  tableHtml += `
+        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #dcfce7; color: #166534; width: 30px;">P</th>
+        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fee2e2; color: #991b1b; width: 30px;">A</th>
+        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #f3f4f6; color: #4b5563; width: 30px;">W/O</th>
+        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fef9c3; color: #854d0e; width: 30px;">H</th>
+        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #374151; color: #fff; width: 40px; font-weight: bold;">Pay</th>
       </tr>
     </thead>
     <tbody>`;
 
+  const configStartTime = attendanceSettings?.office?.fixedOfficeHours?.checkInTime || '09:30';
+
   users.forEach((user, idx) => {
-    tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f3f4f6'};">
-      <td style="border: 1px solid #bbb; padding: 4px; font-weight: 600;">${user.name}</td>`;
+    tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f9fafb'};">
+      <td style="border: 1px solid #ddd; padding: 6px 4px; font-weight: 500; font-size: 11px;">${user.name}</td>`;
     
-    let presentCount = 0;
-    let halfDayCount = 0;
-    let absentCount = 0;
-    let leaveCount = 0;
-    let weeklyOffCount = 0;
-    let totalWorkHours = 0;
+    let userPresent = 0;
+    let userHalfDay = 0;
+    let userAbsent = 0;
+    let userWeeklyOff = 0;
+    let userHoliday = 0;
+    let userPaidLeave = 0;
 
     for (let d = 1; d <= daysInMonth; d++) {
       const currentDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
-      const isSunday = currentDate.getUTCDay() === 0;
+      const isFuture = currentDate > today;
       const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const isSunday = currentDate.getDay() === 0;
+      
+      if (isFuture) {
+        tableHtml += `<td style="border: 1px solid #eee; padding: 2px; text-align: center; color: #ccc;">—</td>`;
+        continue;
+      }
+
       const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
       const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
-
-      let status = 'A';
-      let color = '#dc2626';
+      const isPublicHoliday = holidays.find(h => h.date === dateStr);
       
+      let status = '';
+      let color = '#ccc';
+      let bgColor = 'transparent';
+
       const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
       const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
 
       if (punchIn && punchOut) {
         const durationHours = (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000;
-        totalWorkHours += durationHours;
+        const punchInTime = format(new Date(new Date(punchIn.timestamp).getTime() + IST_OFFSET), 'HH:mm');
+        
+        if (punchInTime > configStartTime) totalLateCount++;
+
         if (durationHours >= 5) {
           status = 'P';
           color = '#16a34a';
-          presentCount++;
+          userPresent++;
+          totalPresentCount++;
         } else if (durationHours > 1) {
-          status = '0.5-P';
+          status = '1/2P';
           color = '#d97706';
-          halfDayCount++;
+          userHalfDay++;
+          totalPresentCount += 0.5;
+        } else {
+          status = 'A';
+          color = '#dc2626';
+          userAbsent++;
+          totalAbsentCount++;
         }
       } else if (dayLeave) {
-        status = 'L';
-        color = '#2563eb';
-        leaveCount++;
+        const isHalfDay = dayLeave.day_option === 'half';
+        const leaveType = dayLeave.leave_type?.toLowerCase() || '';
+        
+        if (leaveType === 'loss of pay' || leaveType === 'lop') {
+          status = isHalfDay ? '1/2A' : 'A';
+          color = '#dc2626';
+          userAbsent += isHalfDay ? 0.5 : 1;
+          totalAbsentCount += isHalfDay ? 0.5 : 1;
+        } else {
+          status = isHalfDay ? '1/2L' : 'L';
+          color = '#2563eb';
+          userPaidLeave += isHalfDay ? 0.5 : 1;
+        }
+      } else if (isPublicHoliday) {
+        status = 'H';
+        color = '#854d0e';
+        bgColor = '#fef9c3';
+        userHoliday++;
       } else if (isSunday) {
         status = 'WO';
         color = '#6b7280';
-        weeklyOffCount++;
+        userWeeklyOff++;
       } else {
-        absentCount++;
+        status = 'A';
+        color = '#dc2626';
+        userAbsent++;
+        totalAbsentCount++;
       }
 
-      tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; font-weight: bold; font-size: 8px;">${status}</td>`;
+      tableHtml += `<td style="border: 1px solid #ddd; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 9px;">${status || '—'}</td>`;
     }
 
-    const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount;
+    const payableDays = userPresent + (userHalfDay * 0.5) + userWeeklyOff + userHoliday + userPaidLeave;
 
-    tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${presentCount}</td>
-      <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #d97706;">${halfDayCount}</td>
-      <td style="border: 1px solid #bbb; padding: 4px; text-align: center;">${Math.round(totalWorkHours)}</td>
-      <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${absentCount}</td>
-      <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #6b7280;">${weeklyOffCount}</td>
-      <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${grandTotal}</td>
+    tableHtml += `
+      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${userPresent + (userHalfDay*0.5)}</td>
+      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${userAbsent}</td>
+      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; color: #6b7280;">${userWeeklyOff}</td>
+      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; color: #854d0e;">${userHoliday}</td>
+      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: 800; background: #f3f4f6; color: #111827;">${payableDays}</td>
     </tr>`;
   });
 
   tableHtml += `</tbody></table>`;
 
+  const totalEmployees = users.length;
+  const daysSoFar = today.getDate();
+  const totalPossibleDays = totalEmployees * daysSoFar;
+  const attendancePercentage = totalPossibleDays > 0 ? Math.round((totalPresentCount / totalPossibleDays) * 100).toString() : '0';
+
   return {
     date: monthStr,
-    totalEmployees: String(users.length),
+    reportDate: format(nowIST, 'dd MMM yyyy'),
+    generatedTime: format(nowIST, 'hh:mm a'),
+    totalEmployees: String(totalEmployees),
+    totalPresent: String(Math.round(totalPresentCount)),
+    totalAbsent: String(Math.round(totalAbsentCount)),
+    lateCount: String(totalLateCount),
+    attendancePercentage: attendancePercentage,
     table: tableHtml
   };
 }
@@ -798,14 +882,58 @@ function evaluateConditionals(str: string, data: Record<string, string>) {
 
 // ─── Default Template ───────────────────────────────────────────────────────
 function getDefaultPremiumTemplate() {
-  return `<div style="font-family:sans-serif;max-width:800px;margin:auto;border:1px solid #eee;padding:20px">
-    <h2>Report: {date}</h2>
-    <table style="width:100%;border-collapse:collapse">
-      <tr style="background:#f4f4f4"><th>Metric</th><th>Value</th></tr>
-      <tr><td>Attendance</td><td>{attendancePercentage}%</td></tr>
-      <tr><td>Present</td><td>{totalPresent}</td></tr>
-      <tr><td>Absent</td><td>{totalAbsent}</td></tr>
-    </table>
-    <div style="margin-top:20px">{table}</div>
+  return `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background-color: #005d22; padding: 24px; color: white; display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Paradigm Office Services</h1>
+        <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">Attendance Intelligence Report • {Date}</p>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 12px; opacity: 0.8;">Report Generated</div>
+        <div style="font-weight: 600;">{reportDate} at {generatedTime}</div>
+      </div>
+    </div>
+    
+    <div style="padding: 24px;">
+      <!-- Stats Row -->
+      <div style="display: flex; gap: 16px; margin-bottom: 24px;">
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Attendance</div>
+          <div style="font-size: 24px; font-weight: 700; color: #005d22;">{attendancePercentage}%</div>
+        </div>
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Present</div>
+          <div style="font-size: 24px; font-weight: 700; color: #16a34a;">{totalPresent}</div>
+        </div>
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Absent</div>
+          <div style="font-size: 24px; font-weight: 700; color: #dc2626;">{totalAbsent}</div>
+        </div>
+        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Late Arrivals</div>
+          <div style="font-size: 24px; font-weight: 700; color: #d97706;">{lateCount}</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 600;">Monthly Attendance Grid</h3>
+        <div style="font-size: 11px; color: #64748b;">
+          Legend: <span style="color: #16a34a; font-weight: bold;">P</span> Present | <span style="color: #d97706; font-weight: bold;">1/2P</span> Half Day | <span style="color: #dc2626; font-weight: bold;">A</span> Absent | <span style="color: #6b7280; font-weight: bold;">WO</span> Weekly Off | <span style="color: #854d0e; font-weight: bold; background: #fef9c3;">H</span> Holiday
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;">
+        {table}
+      </div>
+
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
+        This is an automated report from the Paradigm Attendance System. All times are in IST.
+      </div>
+    </div>
   </div>`;
 }
+
+function getMonthlyReportPremiumTemplate() {
+  return getDefaultPremiumTemplate(); // Already premium now
+}
+

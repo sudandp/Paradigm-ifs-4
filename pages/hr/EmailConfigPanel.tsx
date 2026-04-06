@@ -255,19 +255,26 @@ const EmailConfigPanel: React.FC = () => {
             setToast({ message: 'Rule name is required.', type: 'error' });
             return;
         }
+        if (!editingSchedule?.templateId && editingSchedule?.triggerType !== 'document_expiry') {
+            setToast({ message: 'Please select an email template.', type: 'error' });
+            return;
+        }
         setIsSaving(true);
         try {
+            console.log('Saving schedule:', editingSchedule);
             const saved = await api.saveEmailScheduleRule(editingSchedule);
             if (editingSchedule.id) {
-                setScheduleRules(scheduleRules.map(r => r.id === saved.id ? saved : r));
+                setScheduleRules(prev => prev.map(r => r.id === saved.id ? saved : r));
+                setToast({ message: 'Schedule rule updated successfully!', type: 'success' });
             } else {
-                setScheduleRules([saved, ...scheduleRules]);
+                setScheduleRules(prev => [saved, ...prev]);
+                setToast({ message: 'New schedule rule created!', type: 'success' });
             }
             setEditingSchedule(null);
             setShowScheduleForm(false);
-            setToast({ message: 'Schedule rule saved!', type: 'success' });
         } catch (err: any) {
-            setToast({ message: `Failed: ${err.message}`, type: 'error' });
+            console.error('Save schedule error:', err);
+            setToast({ message: `Failed to save: ${err.message || 'Unknown error'}`, type: 'error' });
         } finally {
             setIsSaving(false);
         }
@@ -963,33 +970,44 @@ const EmailConfigPanel: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-3 ml-4">
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
                                                 onClick={() => handleTestSchedule(rule.id)}
-                                                className="text-xs font-bold"
+                                                className="text-[10px] h-8 px-3 font-black tracking-tighter"
                                                 title="Send test email now"
                                             >
                                                 TEST
                                             </Button>
-                                            <button onClick={() => { setEditingSchedule(rule); setShowScheduleForm(true); }} className="p-2 hover:bg-accent/10 rounded-full text-accent">
+                                            <button 
+                                                onClick={() => { setEditingSchedule(rule); setShowScheduleForm(true); }} 
+                                                className="p-2.5 hover:bg-accent/10 rounded-xl text-accent transition-colors border border-transparent hover:border-accent/20"
+                                                title="Edit Rule"
+                                            >
                                                 <Pencil className="h-4 w-4" />
                                             </button>
-                                            <Checkbox
-                                                id={`sch-active-${rule.id}`}
-                                                label=""
-                                                checked={rule.isActive}
-                                                onChange={async (e) => {
-                                                    try {
-                                                        const updated = await api.saveEmailScheduleRule({ ...rule, isActive: e.target.checked });
-                                                        setScheduleRules(scheduleRules.map(r => r.id === rule.id ? updated : r));
-                                                    } catch (err) {
-                                                        setToast({ message: 'Failed to toggle.', type: 'error' });
-                                                    }
-                                                }}
-                                            />
-                                            <button onClick={() => handleDeleteSchedule(rule.id)} className="p-2 hover:bg-red-50 rounded-full text-red-500">
+                                            <div className="px-1">
+                                                <Checkbox
+                                                    id={`sch-active-${rule.id}`}
+                                                    label=""
+                                                    checked={rule.isActive}
+                                                    onChange={async (e) => {
+                                                        try {
+                                                            const updated = await api.saveEmailScheduleRule({ ...rule, isActive: e.target.checked });
+                                                            setScheduleRules(prev => prev.map(r => r.id === rule.id ? updated : r));
+                                                            setToast({ message: `Schedule ${e.target.checked ? 'activated' : 'deactivated'}`, type: 'success' });
+                                                        } catch (err) {
+                                                            setToast({ message: 'Failed to toggle status.', type: 'error' });
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                            <button 
+                                                onClick={() => handleDeleteSchedule(rule.id)} 
+                                                className="p-2.5 hover:bg-red-50 rounded-xl text-red-500 transition-colors border border-transparent hover:border-red-100"
+                                                title="Delete Rule"
+                                            >
                                                 <Trash2 className="h-4 w-4" />
                                             </button>
                                         </div>
