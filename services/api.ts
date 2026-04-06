@@ -2872,9 +2872,6 @@ export const api = {
   },
 
   testEmailScheduleRule: async (ruleId: string): Promise<void> => {
-    const user = useAuthStore.getState().user;
-    const testEmail = user?.email || undefined;
-
     const { data: { session } } = await supabase.auth.getSession();
     
     // Call the Vercel API runner (server-side generation)
@@ -2886,8 +2883,7 @@ export const api = {
       },
       body: JSON.stringify({ 
         ruleId, 
-        test: true,
-        testEmail 
+        test: true
       })
     });
 

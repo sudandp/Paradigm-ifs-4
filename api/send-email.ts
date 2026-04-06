@@ -198,7 +198,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     if (test && testEmail) to = [testEmail];
     else if (!to) to = await resolveRecipientsInternal(supabase, rule);
     
-    if (!triggerType) triggerType = 'automatic';
+    if (!triggerType) triggerType = test ? 'manual' : 'automatic';
   }
 
   const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
