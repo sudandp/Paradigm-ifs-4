@@ -94,7 +94,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // Check Timing for this specific group
-      const checkoutTime = rules.fixedOfficeHours?.checkOutTime || '19:00';
+      const checkoutTime = rules.fixedOfficeHours?.checkOutTime || '19:30';
       // Handle both ':' and '.' as separators
       const timeParts = checkoutTime.includes('.') ? checkoutTime.split('.') : checkoutTime.split(':');
       const [confHour, confMinute] = timeParts.map(Number);
@@ -173,45 +173,55 @@ Deno.serve(async (req: Request) => {
 
             // If checked in within last 24 hours
             if (hoursDiff < 24) {
-                // Calculate target UTC for this group's checkout time
-                const targetIST = new Date(istDate);
-                targetIST.setUTCHours(confHour, confMinute, 0, 0);
-                const targetUTC = new Date(targetIST.getTime() - istOffset);
+                // Calculate punch-out timestamp
+                let punchOutTimestamp;
+                if (isManualOverride) {
+                    punchOutTimestamp = now.toISOString();
+                } else {
+                    const targetIST = new Date(istDate);
+                    targetIST.setUTCHours(confHour, confMinute, 0, 0);
+                    const targetUTC = new Date(targetIST.getTime() - istOffset);
+                    punchOutTimestamp = targetUTC.toISOString();
+                }
                 
                 // 1. Insert Check-out
                 const { error: insertError } = await supabaseClient
                     .from('attendance_events')
                     .insert({
                         user_id: user.id,
-                        timestamp: targetUTC.toISOString(),
+                        timestamp: punchOutTimestamp,
                         type: 'punch-out',
-                        location_name: 'Auto Check-out',
-                        reason: 'Auto-checkout: Shift End',
+                        location_name: isManualOverride ? 'Manual Force Check-out' : 'Auto Check-out',
+                        reason: isManualOverride ? 'Force Punch-out: Admin Trigger' : 'Auto-checkout: Shift End',
                         is_manual: true,
                         device_info: { device: 'System', os: 'Cron', browser: 'EdgeFunction' },
                         work_type: lastEvent.work_type // Inherit work type
                     });
-
+                
                 if (!insertError) {
                     processed++;
                     groupProcessedUsers.push(user.name);
                     
                     // 2. Log to Audit
                     await supabaseClient.from('attendance_audit_logs').insert({
-                        action: 'AUTO_MISSED_CHECKOUT',
+                        action: isManualOverride ? 'MANUAL_FORCE_CHECKOUT' : 'AUTO_MISSED_CHECKOUT',
                         performed_by: '00000000-0000-0000-0000-000000000000',
                         target_user_id: user.id,
                         details: { 
-                            message: `Auto check-out triggered at ${checkoutTime} (${group} staff)`,
+                            message: isManualOverride 
+                                ? `Manual force check-out triggered at ${istDate.toLocaleTimeString()} (${group} staff)` 
+                                : `Auto check-out triggered at ${checkoutTime} (${group} staff)`,
                             original_event: lastEvent.type,
                             original_timestamp: lastEvent.timestamp
                         }
                     });
-
+                
                     // 3. Notification
                     await supabaseClient.from('notifications').insert({
                         user_id: user.id,
-                        message: `Notice: You were automatically checked out at ${checkoutTime} as per ${group} hours.`,
+                        message: isManualOverride 
+                            ? `Notice: You were manually checked out by an administrator at ${istDate.toLocaleTimeString()}.` 
+                            : `Notice: You were automatically checked out at ${checkoutTime} as per ${group} hours.`,
                         type: 'info',
                         is_read: false
                     });

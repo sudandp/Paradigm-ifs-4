@@ -372,7 +372,7 @@ const AttendanceSettings: React.FC = () => {
     };
 
     const handleTriggerMissedCheckouts = async () => {
-        if (!window.confirm('This will record a manual check-out at 7:00 PM for all configured staff who haven\'t checked out today. Continue?')) {
+        if (!window.confirm('This will record a manual force check-out at the CURRENT TIME for all configured staff who haven\'t checked out today. Continue?')) {
             return;
         }
 
@@ -1445,7 +1445,7 @@ const AttendanceSettings: React.FC = () => {
                                     Auto-Checkout Active
                                 </p>
                                 <p className="text-xs text-muted mt-1">
-                                    The system automatically checks out eligible staff at your configured <strong>Check-out End Time</strong> (currently {localAttendance.office.fixedOfficeHours?.checkOutTime || '19:00'}).
+                                    The system automatically checks out eligible staff at your configured <strong>Check-out End Time</strong> (currently {localAttendance.office.fixedOfficeHours?.checkOutTime || '19:30'}).
                                     This check runs every 15 minutes. You can also use the button below to manually run the trigger immediately for testing or overrides.
                                 </p>
                             </div>
