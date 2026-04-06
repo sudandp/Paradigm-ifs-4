@@ -276,15 +276,18 @@ const EntityManagement: React.FC = () => {
                         // e.g. "doc_doc_1711544123456" → "doc_1711544123456"
                         const id = path.substring(path.indexOf('_') + 1);
                         if (path.startsWith('doc_')) {
-                            updatedClientData.complianceDocuments = updatedClientData.complianceDocuments?.map(d => 
+                            if (!updatedClientData.complianceDocuments) updatedClientData.complianceDocuments = [];
+                            updatedClientData.complianceDocuments = updatedClientData.complianceDocuments.map(d => 
                                 d.id === id ? { ...d, documentUrls: [...(d.documentUrls || []), ...newUrls] } : d
                             );
                         } else if (path.startsWith('ins_')) {
-                            updatedClientData.insurances = updatedClientData.insurances?.map(i => 
+                            if (!updatedClientData.insurances) updatedClientData.insurances = [];
+                            updatedClientData.insurances = updatedClientData.insurances.map(i => 
                                 i.id === id ? { ...i, documentUrls: [...(i.documentUrls || []), ...newUrls] } : i
                             );
                         } else if (path.startsWith('pol_')) {
-                            updatedClientData.policies = updatedClientData.policies?.map(p => 
+                            if (!updatedClientData.policies) updatedClientData.policies = [];
+                            updatedClientData.policies = updatedClientData.policies.map(p => 
                                 p.id === id ? { ...p, documentUrls: [...(p.documentUrls || []), ...newUrls] } : p
                             );
                         }

@@ -1819,7 +1819,7 @@ export const api = {
   },
   saveEntity: async (entity: Partial<Entity>): Promise<Entity> => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id, agreements, status: _status, ...rest } = entity;
+    const { id, agreements, ...rest } = entity;
     const status = await Network.getStatus();
     
     const entityToSave = { 
@@ -1850,7 +1850,10 @@ export const api = {
       query = supabase.from('entities').insert({ ...dbData, id: id?.startsWith('new_') ? `ent_${Date.now()}` : id });
     }
     const { data, error } = await query.select().single();
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error saving entity:', error);
+      throw error;
+    }
     return toCamelCase(data);
   },
   deleteEntity: async (id: string): Promise<void> => {
