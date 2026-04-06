@@ -67,11 +67,16 @@ const SiteDashboard: React.FC = () => {
     }, [fetchSubmissions]);
 
     const filteredSubmissions = useMemo(() => {
-        return submissions.filter(s =>
-        (s.personal.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.employeeId.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+        return submissions.filter(s => {
+            const firstName = s.personal?.firstName || '';
+            const lastName = s.personal?.lastName || '';
+            const employeeId = s.personal?.employeeId || '';
+            const term = searchTerm.toLowerCase();
+
+            return firstName.toLowerCase().includes(term) ||
+                   lastName.toLowerCase().includes(term) ||
+                   employeeId.toLowerCase().includes(term);
+        });
     }, [submissions, searchTerm]);
 
     const currentOrgName = organizations.find(o => o.id === selectedOrgId)?.shortName || user?.organizationName;
@@ -170,8 +175,8 @@ const SiteDashboard: React.FC = () => {
                             filteredSubmissions.map((s) => (
                                 <tr key={s.id}>
                                     <td data-label="Employee" className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm font-medium text-primary-text">{s.personal.firstName} {s.personal.lastName}</div>
-                                        <div className="text-sm text-muted">{s.personal.employeeId}</div>
+                                        <div className="text-sm font-medium text-primary-text">{s.personal?.firstName || 'Unknown'} {s.personal?.lastName || ''}</div>
+                                        <div className="text-sm text-muted">{s.personal?.employeeId || 'N/A'}</div>
                                     </td>
                                     <td data-label="Status" className="px-6 py-4 whitespace-nowrap">
                                         <StatusChip status={s.status} />
