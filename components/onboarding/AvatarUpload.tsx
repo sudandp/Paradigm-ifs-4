@@ -161,7 +161,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
       </div>
       <button id="avatar-hidden-capture-btn" className="hidden" onClick={handleCaptureClick} type="button"></button>
       <div className="flex items-center space-x-2 md:hidden">
-        <label htmlFor={inputId} className={`cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent px-4 py-2 text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        <label htmlFor={inputId} className={`w-32 h-10 cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
           <Edit className="w-4 h-4 mr-2" />
           {file ? 'Change' : 'Upload'}
         </label>
@@ -170,7 +170,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
           type="button"
           onClick={handleCaptureClick}
           disabled={isLoading}
-          className={`avatar-capture-btn inline-flex items-center justify-center px-4 py-2 font-semibold rounded-full transition-colors duration-200 text-sm border border-red-200 !text-red-600 hover:!bg-red-50 !bg-card/70 backdrop-blur-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`avatar-capture-btn w-32 h-10 inline-flex items-center justify-center font-semibold rounded-full transition-colors duration-200 text-sm border border-red-200 !text-red-600 hover:!bg-red-50 !bg-card/70 backdrop-blur-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <Camera className="w-4 h-4 mr-2" />
           Capture

@@ -175,41 +175,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
     const rules = attendance[category];
     const categoryHolidays = category === 'office' ? officeHolidays : category === 'field' ? fieldHolidays : siteHolidays;
 
-    // PRE-CALCULATE daysPresentInWeek for the first week if it started in the previous month
-    const monthStartDate = new Date(year, month - 1, 1);
-    const weekStartDate = startOfWeek(monthStartDate, { weekStartsOn: 1 }); // Monday
-    
-    if (isAfter(monthStartDate, weekStartDate)) {
-        let checkDate = weekStartDate;
-        while (isAfter(monthStartDate, checkDate) && !isSameDay(monthStartDate, checkDate)) {
-            const dateStr = format(checkDate, 'yyyy-MM-dd');
-            const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
-            if (dayEvents.length > 0) {
-                const { workingHours: netHours } = processDailyEvents(dayEvents);
-                if (netHours >= (rules.minimumHoursHalfDay || 4)) {
-                    daysPresentInWeek++;
-                }
-            }
-            checkDate = new Date(checkDate.getTime() + 24 * 60 * 60 * 1000);
-        }
-    }
-
-    // Process each day of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const currentDate = new Date(year, month - 1, day);
-      const isSunday = currentDate.getDay() === 0; // 0 = Sunday
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
-      
-      const approvedLeave = userLeaves.find((l: any) => 
-          isWithinInterval(currentDate, {
-              start: startOfDay(new Date(l.startDate)),
-              end: endOfDay(new Date(l.endDate))
-          })
-      );
-      
-      // Helper for robust holiday/leave date matching
-      const matchesDate = (targetDate: any, compareDay: Date) => {
+  // Helper for robust holiday/leave date matching
+  const matchesDate = (targetDate: any, compareDay: Date) => {
     if (!targetDate) return false;
     try {
       const compareStr = format(compareDay, 'yyyy-MM-dd');
@@ -241,6 +208,74 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
       return false;
     }
   };
+
+    // PRE-CALCULATE daysPresentInWeek for the first week if it started in the previous month
+    const monthStartDate = new Date(year, month - 1, 1);
+    const weekStartDate = startOfWeek(monthStartDate, { weekStartsOn: 1 }); // Monday
+    
+    if (isAfter(monthStartDate, weekStartDate)) {
+        let checkDate = weekStartDate;
+        while (isAfter(monthStartDate, checkDate) && !isSameDay(monthStartDate, checkDate)) {
+            const dateStr = format(checkDate, 'yyyy-MM-dd');
+            const checkDayName = format(checkDate, 'EEEE').toLowerCase();
+            const checkIsWeekend = checkDate.getDay() === 0;
+
+            if (checkIsWeekend) {
+                daysPresentInWeek = 0;
+            } else {
+                const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
+                
+                // 1. Activity check
+                let hasActivityCheck = false;
+                if (dayEvents.length > 0) {
+                    const { workingHours: netHours } = processDailyEvents(dayEvents);
+                    if (netHours >= (rules.minimumHoursHalfDay || 4)) {
+                        hasActivityCheck = true;
+                    }
+                }
+
+                // 2. Holiday check
+                const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
+                    const [m, d] = fh.date.split('-').map(Number);
+                    return checkDate.getMonth() === (m - 1) && checkDate.getDate() === d;
+                });
+                const isConfiguredHolidayCheck = categoryHolidays.some(h => matchesDate(h.date, checkDate));
+                const isRecurringHolidayCheck = (user.gender?.toLowerCase() !== 'female') && recurringHolidays.some(rule => {
+                    if (rule.day.toLowerCase() !== checkDayName) return false;
+                    const occurrence = Math.ceil(checkDate.getDate() / 7);
+                    const ruleType = rule.type || 'office';
+                    return rule.n === occurrence && ruleType === (category === 'site' ? 'office' : category);
+                });
+
+                // 3. Leave check
+                const hasApprovedLeaveCheck = userLeaves.some((l: any) => 
+                    isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                    l.status === 'approved' &&
+                    !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || l.leave_type || '').toLowerCase())
+                );
+
+                if (hasActivityCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || isRecurringHolidayCheck || hasApprovedLeaveCheck) {
+                    daysPresentInWeek++;
+                }
+            }
+            checkDate = new Date(checkDate.getTime() + 24 * 60 * 60 * 1000);
+        }
+    }
+
+    // Process each day of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const currentDate = new Date(year, month - 1, day);
+      const isSunday = currentDate.getDay() === 0; // 0 = Sunday
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
+      
+      const approvedLeave = userLeaves.find((l: any) => 
+          isWithinInterval(currentDate, {
+              start: startOfDay(new Date(l.startDate)),
+              end: endOfDay(new Date(l.endDate))
+          })
+      );
+      
 
       // 1. Check FIXED holidays
       const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
@@ -313,6 +348,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
               status = 'H';
               if (!isFuture) holidaysCount++;
           }
+          daysPresentInWeek++; // Holidays count for W/O
       } else if (isRecurringHoliday) {
           if (hasActivity) {
               status = 'HP'; // Or FHP? The diff says HP.
@@ -321,28 +357,32 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
               status = 'F/H';
               if (!isFuture) floatingHolidays++;
           }
+          daysPresentInWeek++; // Floating holidays count for W/O
       } else if (approvedLeave) {
           const isHalfDayLeave = approvedLeave.dayOption === 'half';
           const increment = isHalfDayLeave ? 0.5 : 1;
           const prefix = isHalfDayLeave ? '1/2' : '';
           const leaveType = (approvedLeave.leaveType || (approvedLeave as any).leave_type || '').toLowerCase();
+          const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(leaveType);
           
           if (leaveType === 'sick' || leaveType === 'sick leave') {
               status = prefix + 'S/L';
               sickLeaves += increment;
           } else if (leaveType === 'comp off' || leaveType === 'comp-off' || leaveType === 'compoff' || leaveType === 'c/o') {
               status = prefix + 'C/O';
-              compOffs++; // comp-off remains 1 log per day/half-day usually, but matching behavior
+              compOffs++; 
           } else if (leaveType === 'floating' || leaveType === 'floating holiday') {
               status = prefix + 'F/H';
               floatingHolidays += increment;
-          } else if (leaveType === 'loss of pay' || leaveType === 'lop') {
+          } else if (isLOP) {
               status = isHalfDayLeave ? '1/2A' : 'A';
               lossOfPay += increment; 
           } else {
               status = prefix + 'E/L';
               earnedLeaves += increment;
           }
+
+          if (!isLOP) daysPresentInWeek += increment; // Paid leaves count for W/O
 
           // If half day leave, we still want to see if they worked
           if (isHalfDayLeave && hasActivity) {
@@ -498,7 +538,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
 
       } else if (isSunday) {
           if (!isFuture) {
-              if (daysPresentInWeek >= 4) {
+              if (daysPresentInWeek >= 3) {
                   status = 'W/O';
                   weekOffs++; // Increment weekOffs counter
               } else {

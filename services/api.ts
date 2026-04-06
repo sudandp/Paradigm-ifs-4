@@ -369,8 +369,20 @@ export const api = {
     
     throw new Error('You are offline and no cached application data is available. Please connect to the internet.');
   },
-
-  // --- Site Attendance Tracker ---
+  getAttendanceAuditLogs: async (startDate: string, endDate: string): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('attendance_audit_logs') // Ensure this table exists in your DB
+      .select('*')
+      .gte('created_at', startDate)
+      .lte('created_at', endDate)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.warn("Could not fetch attendance audit logs", error);
+      return [];
+    }
+    return (data || []).map(toCamelCase);
+  },
   getSiteAttendanceRecords: async (): Promise<SiteAttendanceRecord[]> => {
     return fetchWithCache('site_attendance_records', async () => {
       const { data, error } = await supabase

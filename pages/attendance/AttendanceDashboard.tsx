@@ -41,6 +41,8 @@ import {
     startOfYear,
     endOfYear,
     subDays,
+    startOfWeek,
+    isAfter,
     eachDayOfInterval,
     differenceInHours,
     differenceInMinutes,
@@ -348,6 +350,18 @@ const AttendanceDashboard: React.FC = () => {
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
     const { permissions } = usePermissionsStore();
+    const OFFICE_ROLES = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance', 'accountant', 'accounts', 'manager'];
+    const isOfficeUser = (role?: string) => {
+        if (!role) return true;
+        const r = role.toLowerCase();
+        if (OFFICE_ROLES.includes(r)) return true;
+        // If role contains field/site/project/engineer, it's definitely a field user
+        if (r.includes('field') || r.includes('site') || r.includes('project') || r.includes('engineer') || r.includes('supervisor')) return false;
+        // Default to office if not explicitly a field role and not in office list? 
+        // Actually, better to keep it consistent with MonthlyHoursReport.tsx
+        return true; 
+    };
+
     const { attendance, recurringHolidays, officeHolidays, fieldHolidays } = useSettingsStore();
 
     const [users, setUsers] = useState<User[]>([]);
@@ -492,8 +506,7 @@ const AttendanceDashboard: React.FC = () => {
         const targetUser = userId ? users.find(u => u.id === userId) : user;
         if (!targetUser) return attendance.office;
 
-        const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
-        const userCategory = userCategoryOverride || (officeRoles.includes(targetUser.role?.toLowerCase() || '') ? 'office' : 'field');
+        const userCategory = userCategoryOverride || (isOfficeUser(targetUser.role) ? 'office' : 'field');
 
         // Priority order: Entity > Company > Location > Global
         
@@ -544,8 +557,7 @@ const AttendanceDashboard: React.FC = () => {
             if (!isEmployeeView || !user || !dateRange.startDate || !dateRange.endDate) return;
 
             // Resolve rules once for the current viewing user
-            const officeRoles = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance'];
-            const isOfficeRole = officeRoles.includes(user.role?.toLowerCase() || '');
+            const isOfficeRole = isOfficeUser(user.role);
             const userCategory = isOfficeRole ? 'office' : 'field'; 
             const userRules = resolveUserRules(user.id, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
@@ -622,9 +634,7 @@ const AttendanceDashboard: React.FC = () => {
 
                     // Check Holidays/Weekends
                     const dayName = format(day, 'EEEE');
-                    const officeRoles = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance'];
-                    const isOfficeRole = officeRoles.includes(user.role?.toLowerCase() || '');
-                    const userCategoryInner = isOfficeRole ? 'office' : 'field'; 
+                    const userCategoryInner = isOfficeUser(user.role) ? 'office' : 'field'; 
                     
                     // Already resolved above for this user
                     const weeklyOffDays = userRules.weeklyOffDays || [0];
@@ -806,7 +816,9 @@ const AttendanceDashboard: React.FC = () => {
 
             // Determine query range
             const today = new Date();
-            const queryStart = startDate < today ? startDate : startOfToday();
+            // Look back 7 days from the requested start date to calculate W/O thresholds correctly for the first week
+            const lookBackStart = subDays(startDate, 7);
+            const queryStart = lookBackStart < today ? lookBackStart : startOfToday();
             const queryEnd = endDate > today ? endDate : endOfToday();
 
             const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
@@ -822,17 +834,22 @@ const AttendanceDashboard: React.FC = () => {
             setLeaves(leavesData);
             setUserHolidaysPool(holidaysResponse || []);
 
-            // Fetch field violations for field staff users (for site-time-percentage status)
-            const fieldRoles = ['field_staff', 'site_manager'];
-            const fieldUsers = usersRef.current.filter(u => fieldRoles.includes(u.role?.toLowerCase() || ''));
+            // Fetch field violations for all non-office staff (for site-time-percentage status)
+            const fieldUsers = currentUsers.filter(u => !isOfficeUser(u.role));
+            
             const violationsMap: Record<string, FieldAttendanceViolation[]> = {};
-            await Promise.all(fieldUsers.map(async (fu) => {
-                try {
-                    violationsMap[fu.id] = await api.getFieldViolations(fu.id);
-                } catch {
-                    violationsMap[fu.id] = [];
-                }
-            }));
+            if (fieldUsers.length > 0) {
+                await Promise.all(fieldUsers.map(async (fu) => {
+                    try {
+                        const violations = await api.getFieldViolations(fu.id);
+                        // Robust ID matching: Use string version of ID for map keys
+                        violationsMap[String(fu.id).toLowerCase()] = violations;
+                    } catch (error) {
+                        console.error(`Error fetching violations for ${fu.name}:`, error);
+                        violationsMap[String(fu.id).toLowerCase()] = [];
+                    }
+                }));
+            }
             setFieldViolationsMap(violationsMap);
 
             // --- Calculate "Today" Stats ---
@@ -933,7 +950,7 @@ const AttendanceDashboard: React.FC = () => {
             // No intentional delay needed in production
             setIsLoading(false);
         }
-    }, [isEmployeeView, selectedSite, selectedSociety, selectedRole]);
+    }, [isEmployeeView, selectedSite, selectedSociety, selectedRole, users]);
 
     const reportTypeId = useId();
     const employeeId = useId();
@@ -947,7 +964,7 @@ const AttendanceDashboard: React.FC = () => {
         if (dateRange.startDate && dateRange.endDate) {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
-    }, [dateRange, fetchDashboardData, selectedSite, selectedSociety, selectedRole]);
+    }, [dateRange, fetchDashboardData, selectedSite, selectedSociety, selectedRole, users]);
 
     const availableRoles = useMemo(() => {
         const roles = new Set(users.map(u => u.role).filter(Boolean));
@@ -1056,8 +1073,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Check for holidays/weekends first
                 const dayName = format(day, 'EEEE');
-                const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
-                const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+                const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
 
                 // RESOLVE RULES FOR THIS USER
                 const userRules = resolveUserRules(user.id, userCategory);
@@ -1289,21 +1305,12 @@ const AttendanceDashboard: React.FC = () => {
 
         const days = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate });
         
-        // Exclude management users from monthly reports
         let filteredUsers = users.filter(u => u.role !== 'management');
 
-        if (selectedUser !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
-        }
-        if (selectedRole !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
-        }
-        if (selectedSite !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
-        }
-        if (selectedSociety !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
-        }
+        if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
+        if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
+        if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+        if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
         if (selectedStatus === 'ACTIVE_USERS') {
@@ -1313,11 +1320,8 @@ const AttendanceDashboard: React.FC = () => {
             );
         }
 
-        const targetUsers = filteredUsers;
-
-        const rows = targetUsers.map(user => {
-            const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
-            const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+        const rows = filteredUsers.map(user => {
+            const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
             const userRules = resolveUserRules(user.id, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
 
@@ -1329,9 +1333,6 @@ const AttendanceDashboard: React.FC = () => {
             let holidays = 0;
             let weekendPresents = 0;
             let holidayPresents = 0;
-
-            let daysPresentInWeek = 0; // Track for WO rule
-            // New counters
             let sickLeaves = 0;
             let earnedLeaves = 0;
             let floatingHolidays = 0;
@@ -1339,226 +1340,182 @@ const AttendanceDashboard: React.FC = () => {
             let lossOfPays = 0;
             let workFromHomeDays = 0;
 
+            // Track days present in rolling week for W/O threshold.
+            let daysPresentInWeek = 0; 
+            if (dateRange.startDate) {
+                const weekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
+                if (isAfter(dateRange.startDate, weekStart)) {
+                    let checkDate = weekStart;
+                    while (isAfter(dateRange.startDate, checkDate) && !isSameDay(dateRange.startDate, checkDate)) {
+                        const dateStr = format(checkDate, 'yyyy-MM-dd');
+                        const checkDayName = format(checkDate, 'EEEE');
+                        const checkUserCategory = isOfficeUser(user.role) ? 'office' : 'field';
+                        const checkUserRules = resolveUserRules(user.id, checkUserCategory);
+                        const checkWeeklyOffDays = checkUserRules.weeklyOffDays || [0];
+                        const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
+                        
+                        if (checkIsWeekend) {
+                            daysPresentInWeek = 0; // Reset on weekends
+                        } else {
+                            const prevDayEvents = attendanceEvents.filter(e =>
+                                String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
+                            );
+                            
+                            // 1. Activity check
+                            let hasActivityCheck = false;
+                            if (prevDayEvents.length > 0) {
+                                const { workingHours } = calculateWorkingHours(prevDayEvents);
+                                if (workingHours >= (userRules.minimumHoursHalfDay || 3)) {
+                                    hasActivityCheck = true;
+                                }
+                            }
+
+                            // 2. Holiday check
+                            const isRecurringHolidayCheck = recurringHolidays.some(rule => {
+                                if (rule.day.toLowerCase() !== checkDayName.toLowerCase()) return false;
+                                const occurrence = Math.ceil(checkDate.getDate() / 7);
+                                return rule.n === occurrence && (rule.type || 'office') === checkUserCategory;
+                            });
+                            const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
+                                const [m, d] = fh.date.split('-').map(Number);
+                                return checkDate.getMonth() === (m - 1) && checkDate.getDate() === d;
+                            });
+                            const isConfiguredHolidayCheck = (checkUserCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
+                                const hVal = String(h.date).split(' ')[0].split('T')[0];
+                                return hVal === dateStr;
+                            });
+
+                            // 3. Leave check
+                            const hasApprovedLeaveCheck = leaves.some(l => 
+                                String(l.userId) === String(user.id) && l.status === 'approved' &&
+                                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                                !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
+                            );
+
+                            if (hasActivityCheck || isRecurringHolidayCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || hasApprovedLeaveCheck) {
+                                daysPresentInWeek++;
+                            }
+                        }
+                        checkDate = addDays(checkDate, 1);
+                    }
+                }
+            }
+
             days.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
-                
-                // Helper for robust holiday/leave date matching
+                const dayName = format(day, 'EEEE');
+                const isWeekend = weeklyOffDays.includes(day.getDay());
+
                 const matchesDate = (targetDate: any, compareDay: Date) => {
                     if (!targetDate) return false;
                     try {
                         const compareStr = format(compareDay, 'yyyy-MM-dd');
-                        const compareMMDD = format(compareDay, '-MM-dd');
-                        
-                        // Handle multiple formats: String, Date, objects
                         const dateVal = String(targetDate).split(' ')[0].split('T')[0];
-
-                        // 1. Exact match
                         if (dateVal === compareStr) return true;
-                        
-                        // 2. Partial match for year-agnostic pool holidays
-                        if (dateVal.includes(compareMMDD)) return true;
-                        if (dateVal.endsWith(compareMMDD)) return true;
-
-                        // 3. Pool format starting with '-'
-                        if (dateVal.startsWith('-')) {
-                            return compareStr.endsWith(dateVal);
-                        }
-
-                        // 4. Fallback for any weird separator
-                        const normalizedCompare = compareStr.replace(/-/g, '');
-                        const normalizedTarget = dateVal.replace(/[-\/]/g, '');
-                        if (normalizedTarget.includes(normalizedCompare)) return true;
-
+                        const compareMMDD = format(compareDay, '-MM-dd');
+                        if (dateVal.includes(compareMMDD) || dateVal.endsWith(compareMMDD)) return true;
+                        if (dateVal.startsWith('-') && compareStr.endsWith(dateVal)) return true;
                         return false;
-                    } catch (e) {
-                        return false;
-                    }
+                    } catch (e) { return false; }
                 };
 
                 const dayEvents = attendanceEvents.filter(e =>
                     String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
                 );
-
                 const hasActivity = dayEvents.length > 0;
 
-                // Determine day type (Weekend, Holiday, Regular)
-                const dayName = format(day, 'EEEE');
-                const isWeekend = weeklyOffDays.includes(day.getDay());
-
-                const userCategoryInner = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
-
-                // 1. Check Recurring holiday (Floating Holiday)
                 const isRecurringHoliday = recurringHolidays.some(rule => {
                     if (rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
-                    const dayDate = day.getDate();
-                    const occurrence = Math.ceil(dayDate / 7);
+                    const occurrence = Math.ceil(day.getDate() / 7);
                     const ruleType = rule.type || 'office';
-                    if (rule.n === occurrence && ruleType === userCategoryInner) {
-                        if (userRules && userRules.floatingLeavesExpiryDate) {
+                    if (rule.n === occurrence && ruleType === userCategory) {
+                        if (userRules?.floatingLeavesExpiryDate) {
                             const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
-                            if (startOfDay(day) > expiryDate) {
-                                return false;
-                            }
+                            if (startOfDay(day) > expiryDate) return false;
                         }
                         return true;
                     }
                     return false;
                 });
 
-                // 2. Check FIXED holidays
                 const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
                     const [m, d] = fh.date.split('-').map(Number);
                     return day.getMonth() === (m - 1) && day.getDate() === d;
                 });
 
-                // 3. Check POOL holidays (User selected)
                 const isPoolHoliday = userHolidaysPool.some(uh => {
                     const uhUserId = uh.userId || (uh as any).user_id;
                     const holidayDate = uh.holidayDate || (uh as any).holiday_date;
-                    if (!uhUserId || !holidayDate) return false;
-                    
-                    // ROBUST ID MATCHING: Use toLowerCase() and trim for UUID comparison
-                    const matchId1 = String(uhUserId).trim().toLowerCase();
-                    const matchId2 = String(user.id).trim().toLowerCase();
-                    
-                    return matchId1 === matchId2 && matchesDate(holidayDate, day);
+                    return uhUserId && String(uhUserId).toLowerCase() === String(user.id).toLowerCase() && matchesDate(holidayDate, day);
                 });
 
-                // 4. Check Configured holidays (Admin settings)
-                const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => 
-                    matchesDate(h.date, day)
-                );
-
+                const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => matchesDate(h.date, day));
                 const isCompanyHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
 
-                // Find approved leaves for this user on this day and get the leave type
-                const approvedLeave = leaves.filter(l => l && l.startDate && l.endDate).find(l => 
-                    String(l.userId) === String(user.id) && 
-                    l.status === 'approved' &&
-                    isWithinInterval(day, { 
-                        start: startOfDay(new Date(l.startDate)), 
-                        end: endOfDay(new Date(l.endDate)) 
-                    })
+                const approvedLeave = leaves.find(l => 
+                    String(l.userId) === String(user.id) && l.status === 'approved' &&
+                    isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) })
                 );
 
                 let status = '';
 
-                // NEW PERMANENT PRIORITY: Holiday > Approved Leave > Work Activity > Weekend > Absent
                 if (isCompanyHoliday) {
-                    if (hasActivity) {
-                        status = 'HP';
-                        holidayPresents++;
-                    } else {
-                        status = 'H';
-                        holidays++;
-                    }
+                    if (hasActivity) { status = 'HP'; holidayPresents++; }
+                    else { status = 'H'; holidays++; }
+                    daysPresentInWeek++; // Holidays count for W/O threshold
                 } else if (isRecurringHoliday) {
-                    if (hasActivity) {
-                        status = 'HP';
-                        holidayPresents++;
-                    } else {
-                        status = 'F/H';
-                        floatingHolidays++;
-                    }
+                    if (hasActivity) { status = 'HP'; holidayPresents++; }
+                    else { status = 'F/H'; floatingHolidays++; }
+                    daysPresentInWeek++; // Floating Holidays count for W/O threshold
                 } else if (approvedLeave) {
                     const isHalfDay = approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half';
                     const increment = isHalfDay ? 0.5 : 1;
                     const prefix = isHalfDay ? '1/2' : '';
                     const leaveType = approvedLeave.leaveType?.toLowerCase();
+                    const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(leaveType || '');
                     
-                    if (leaveType === 'sick') {
-                        status = prefix + 'S/L';
-                        sickLeaves += increment;
-                    } else if (leaveType === 'comp off' || leaveType === 'comp-off' || leaveType === 'compoff' || leaveType === 'c/o') {
-                        status = prefix + 'C/O';
-                        compOffs++; // Usually comp-off is 1 log per half/full day as per existing logic
-                    } else if (leaveType === 'floating' || leaveType === 'floating holiday') {
-                        status = prefix + 'F/H';
-                        floatingHolidays += increment;
-                    } else if (leaveType === 'loss of pay' || leaveType === 'loss-of-pay' || leaveType === 'lop') {
-                        status = isHalfDay ? '1/2A' : 'A';
-                        absentDays += increment;
-                        lossOfPays += increment;
-                    } else {
-                        status = prefix + 'E/L';
-                        earnedLeaves += increment;
-                    }
+                    if (leaveType === 'sick') { status = prefix + 'S/L'; sickLeaves += increment; }
+                    else if (leaveType?.includes('comp')) { status = prefix + 'C/O'; compOffs += increment; }
+                    else if (leaveType?.includes('float')) { status = prefix + 'F/H'; floatingHolidays += increment; }
+                    else if (isLOP) { 
+                        status = isHalfDay ? '1/2A' : 'A'; absentDays += increment; lossOfPays += increment; 
+                    } else { status = prefix + 'E/L'; earnedLeaves += increment; }
 
-                    // For half-day leaves, if they worked, handle status merging (like MonthlyHoursReport)
+                    if (!isLOP) daysPresentInWeek += increment; // Paid leaves count for W/O threshold
+
                     if (isHalfDay && hasActivity) {
                          const { workingHours } = calculateWorkingHours(dayEvents);
-                         if (workingHours >= 4) {
-                             status = 'P ' + status;
-                             presentDays += 0.5;
-                         } else if (workingHours > 0) {
-                             status = '1/2P ' + status;
-                         }
+                         if (workingHours >= 4) { status = 'P ' + status; presentDays += 0.5; }
+                         else if (workingHours > 0) { status = '1/2P ' + status; }
                     }
                 } else if (hasActivity) {
-                    // Calculate worked hours
-                    const sortedEvents = dayEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    const checkInEvent = sortedEvents.find(e => e.type === 'punch-in');
-                    const checkOutEvent = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
-                    
                     const { workingHours } = calculateWorkingHours(dayEvents);
-                    const workedMinutes = workingHours * 60;
+                    const minHoursFullDay = userRules.minimumHoursFullDay || 6;
+                    const minHoursHalfDay = userRules.minimumHoursHalfDay || 3;
                     
-                    const workedHours = workedMinutes / 60;
-                    const minHoursFullDay = 6;
-                    const minHoursHalfDay = 3;
-                    
-                    const isFullDay = workedHours >= minHoursFullDay;
-                    const isHalfDay = !isFullDay && workedHours >= minHoursHalfDay;
-                    const isWorkFromHome = checkInEvent?.locationName?.toLowerCase().includes('work from home') ||
-                                          checkOutEvent?.locationName?.toLowerCase().includes('work from home');
-                    
-                    if (isWeekend) {
-                        status = 'WOP';
-                        weekendPresents++;
-                    } else if (isWorkFromHome) {
-                        status = 'W/H';
-                        workFromHomeDays++; 
-                    } else if (userCategory === 'field' && attendance.field?.enableSiteTimeTracking) {
-                        // FIELD STAFF: Use site-time-percentage logic
-                        const userViolations = fieldViolationsMap[user.id] || [];
-                        const dayViolation = userViolations.find(v => v.date === dateStr);
-                        const fieldResult = getFieldStaffStatus(dayEvents, attendance.field, dayViolation);
+                    if (isWeekend) { status = 'WOP'; weekendPresents++; }
+                    else if (dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'))) { status = 'W/H'; workFromHomeDays++; }
+                    else if (userCategory === 'field' && attendance.field?.enableSiteTimeTracking) {
+                        const userIdKey = String(user.id).toLowerCase();
+                        const dayViolation = (fieldViolationsMap[userIdKey] || []).find(v => v.date === dateStr);
+                        const fieldResult = getFieldStaffStatus(dayEvents, attendance?.field, dayViolation);
                         status = fieldResult.status;
-
-                        if (status === 'P') {
-                            presentDays++;
-                        } else if (status === '1/2P' || status === '0.5P') {
-                            halfDays++;
-                        }
+                        if (status === 'P') presentDays++; else if (status.includes('1/2P')) halfDays++;
                     } else {
-                        if (isFullDay) {
-                            status = 'P';
-                            presentDays++;
-                        } else if (isHalfDay) {
-                            status = '0.5P';
-                            halfDays++;
-                        } else {
-                            status = 'P'; // Treat minimal activity as P for safety if threshold not met? Or A?
-                            presentDays++;
-                        }
+                        if (workingHours >= minHoursFullDay) { status = 'P'; presentDays++; }
+                        else if (workingHours >= minHoursHalfDay) { status = '0.5P'; halfDays++; }
+                        else { status = 'P'; presentDays++; } 
                     }
-
-                    if (workedHours >= minHoursHalfDay) {
-                        daysPresentInWeek++;
-                    }
+                    if (workingHours >= minHoursHalfDay) daysPresentInWeek++;
                 } else if (isWeekend) {
-                    const isFirstWeekend = day.getDate() <= 7;
-                    if (isFirstWeekend || daysPresentInWeek >= (userRules.weekendPresentThreshold ?? 4)) {
-                        status = 'W/O';
-                        weekOffs++;
+                    if (daysPresentInWeek >= (userRules.weekendPresentThreshold ?? 3)) {
+                        status = 'W/O'; weekOffs++;
                     } else {
-                        status = 'A';
-                        absentDays++;
+                        status = 'A'; absentDays++;
                     }
                     daysPresentInWeek = 0;
                 } else {
-                    status = 'A';
-                    absentDays++;
+                    status = 'A'; absentDays++;
                 }
                 
                 statuses.push(status);
@@ -1598,7 +1555,7 @@ const AttendanceDashboard: React.FC = () => {
             if (selectedStatus === 'all') return true;
             return row.statuses.includes(selectedStatus);
         });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds, fieldViolationsMap]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds, fieldViolationsMap, attendance]);
 
     // 4. Work Hours Report Data (Aggregated)
     const work_hoursReportData: WorkHoursReportDataRow[] = useMemo(() => {
@@ -1643,8 +1600,7 @@ const AttendanceDashboard: React.FC = () => {
                     else if (workingHours > 0) presentDays += 0.5;
 
                     // OT calculation
-                    const officeRoles = ['admin', 'super_admin', 'hr', 'finance'];
-                    const userCategory = officeRoles.includes(user.role?.toLowerCase() || '') ? 'office' : 'field';
+                    const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
                     const userRules = resolveUserRules(user.id, userCategory);
                     const threshold = userRules.minimumHoursFullDay || 8;
                     if (workingHours > threshold) {
@@ -1673,7 +1629,7 @@ const AttendanceDashboard: React.FC = () => {
                 otHours
             };
         });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, leaves, recentlyActiveUserIds]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, leaves, recentlyActiveUserIds, attendance]);
 
     // 5. Site OT Report Data
     const site_otReportData: SiteOtDataRow[] = useMemo(() => {
