@@ -137,8 +137,19 @@ async function processSchedules(req: VercelRequest) {
 
     // Render template
     const template = templateMap.get(rule.template_id);
+    
+    // Inject custom message from template variables if available
+    if (template?.variables) {
+      const customVar = (template.variables as any[]).find(v => v.key === '_custom_message' || v.key === 'customMessage');
+      if (customVar) {
+        (reportData as any).customMessage = customVar.description;
+        (reportData as any).customGreeting = customVar.description;
+      }
+    }
+
     let subject = template?.subject_template || rule.name;
     let html = template?.body_template || getDefaultPremiumTemplate();
+
 
     // 1. Evaluate conditionals first
     subject = evaluateConditionals(subject, reportData);

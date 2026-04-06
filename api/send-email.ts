@@ -26,7 +26,7 @@ function evaluateConditionalsInternal(str: string, data: Record<string, string>)
 const reportGenerators = {
   attendance_daily: async (supabase: SupabaseClient, nowIST: Date) => {
     const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
-    const todayStr = nowIST.toISOString().substring(0, 10);
+    const todayStr = getISTDateString(nowIST);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
       supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified'),
@@ -44,19 +44,16 @@ const reportGenerators = {
     const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
     const { data: recentEvents } = await supabase.from('attendance_events').select('user_id').gte('timestamp', tenDaysAgoUTC.toISOString());
     const recentlyActiveUserIds = new Set((recentEvents || []).map((e: any) => e.user_id));
+    
     const presentUserIds = new Set<string>();
     const userFirstPunches: Record<string, string> = {};
     todayEvents.forEach((e: any) => {
       presentUserIds.add(e.user_id);
       if ((e.type === 'punch-in' || e.type === 'check_in') && !userFirstPunches[e.user_id]) userFirstPunches[e.user_id] = e.timestamp;
     });
-    let lateCount = 0;
-    Object.values(userFirstPunches).forEach(ts => {
-      const inDate = new Date(new Date(ts).getTime() + IST_OFFSET);
-      const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
-      if (inTime > configStartTime) lateCount++;
-    });
+
     let tableHtml = '';
+    let lateCount = 0;
     filteredUsers.forEach((user: any, i: number) => {
       let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
       dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -66,7 +63,7 @@ const reportGenerators = {
         const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
         pin = format(inDate, 'hh:mm a');
         const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
-        if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; }
+        if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; lateCount++; }
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
         if (lastOut) {
           pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
@@ -78,15 +75,17 @@ const reportGenerators = {
       else { status = 'Inactive'; color = '#9ca3af'; }
       tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="border:1px solid #eee;padding:8px">${i+1}</td><td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td><td style="border:1px solid #eee;padding:8px">${dept}</td><td style="border:1px solid #eee;padding:8px">${pin}</td><td style="border:1px solid #eee;padding:8px">${pout}</td><td style="border:1px solid #eee;padding:8px">${wh}</td><td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td></tr>`;
     });
+    
     const totalPresent = presentUserIds.size;
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
+    const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount);
 
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
-      totalAbsent: String(Math.max(0, filteredUsers.length - totalPresent - onLeaveCount)),
+      totalAbsent: String(totalAbsent),
       lateCount: String(lateCount),
       attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
       onLeaveCount: String(onLeaveCount),
@@ -98,14 +97,12 @@ const reportGenerators = {
     const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
     const monthStr = format(nowIST, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
-    const [usersRes, eventsRes, leavesRes] = await Promise.all([
+    const [usersRes, eventsRes] = await Promise.all([
       supabase.from('users').select('id, name').neq('role_id', 'unverified').order('name'),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()),
-      supabase.from('leave_requests').select('user_id, start_date, end_date').eq('status', 'approved')
     ]);
     const users = usersRes.data || [];
     const events = eventsRes.data || [];
-    const leaves = leavesRes.data || [];
     let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;"><thead><tr style="background: #e5e7eb; color: #111827;"><th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     for (let d = 1; d <= daysInMonth; d++) tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
     tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">Tot</th></tr></thead><tbody>`;
@@ -122,6 +119,9 @@ const reportGenerators = {
     });
     tableHtml += `</tbody></table>`;
     return { date: monthStr, totalEmployees: String(users.length), table: tableHtml };
+  },
+  document_expiry: async (supabase: SupabaseClient, nowIST: Date) => {
+    return { date: format(nowIST, 'yyyy-MM-dd'), items: '0' };
   }
 };
 
@@ -138,20 +138,18 @@ async function resolveRecipientsInternal(supabase: SupabaseClient, rule: any): P
   return [];
 }
 
-const getSupabaseConfig = () => ({
-  url: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
-  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+const getSupabaseConfig = (urlOverride?: string, keyOverride?: string) => ({
+  url: urlOverride || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
+  serviceKey: keyOverride || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 });
 
-async function getSmtpConfig() {
-  const { url, serviceKey } = getSupabaseConfig();
-  const supabase = createClient(url, serviceKey);
+async function getSmtpConfig(supabase: SupabaseClient) {
   const { data } = await supabase.from('settings').select('email_config').eq('id', 'singleton').maybeSingle();
   const cfg = data?.email_config || {};
   return {
     host: cfg.host || process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(cfg.port || process.env.SMTP_PORT || '465'),
-    secure: cfg.secure ?? (process.env.SMTP_SECURE === 'true' || true),
+    port: parseInt(cfg.port || process.env.SMTP_PORT || '587'),
+    secure: cfg.secure ?? (process.env.SMTP_SECURE === 'true' || false),
     user: cfg.user || process.env.SMTP_USER || '',
     pass: cfg.pass || process.env.SMTP_PASS || '',
     fromEmail: cfg.from_email || cfg.user || process.env.SMTP_FROM_EMAIL || '',
@@ -160,12 +158,85 @@ async function getSmtpConfig() {
   };
 }
 
-async function logEmail(supabase: SupabaseClient, recipient: string, subject: string, status: string, error?: string, ruleId?: string) {
-  try {
-    await supabase.from('email_logs').insert({
-      recipient_email: recipient, subject, status, error_message: error || null, rule_id: ruleId || null, created_at: new Date().toISOString()
+export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseServiceKey?: string) {
+  const { url, serviceKey } = getSupabaseConfig(supabaseUrl, supabaseServiceKey);
+  const supabase = createClient(url, serviceKey);
+  
+  let { to, cc, subject, html, ruleId, test, testEmail, smtpConfig, triggerType } = body;
+  
+  // Use provided SMTP config (from UI) or fallback to DB
+  const config = smtpConfig || await getSmtpConfig(supabase);
+  
+  if (!config.user || !config.pass) throw new Error('SMTP credentials not found.');
+
+  if (ruleId) {
+    const { data: rule } = await supabase.from('email_schedule_rules').select('*').eq('id', ruleId).single();
+    if (!rule) throw new Error('Rule not found');
+    
+    const { data: template } = rule.template_id ? await supabase.from('email_templates').select('*').eq('id', rule.template_id).single() : { data: null };
+    
+    const generator = (reportGenerators as any)[rule.report_type] || reportGenerators.attendance_daily;
+    const nowIST = new Date(new Date().getTime() + IST_OFFSET);
+    const reportData = await generator(supabase, nowIST);
+
+    // Support for custom message Injection from template variables
+    if (template?.variables) {
+       const customMsgVar = template.variables.find((v: any) => v.key === '_custom_message' || v.key === 'customMessage');
+       if (customMsgVar) reportData.customMessage = customMsgVar.description;
+    }
+
+    subject = evaluateConditionalsInternal(template?.subject_template || rule.name, reportData);
+    html = evaluateConditionalsInternal(template?.body_template || '<h2>Report</h2>{table}', reportData);
+
+    const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
+      const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
+      return dataKey ? (reportData as any)[dataKey] : match;
     });
-  } catch (e) { console.error('[send-email] Log error:', e); }
+    subject = render(subject);
+    html = render(html);
+
+    if (test && testEmail) to = [testEmail];
+    else if (!to) to = await resolveRecipientsInternal(supabase, rule);
+    
+    if (!triggerType) triggerType = 'automatic';
+  }
+
+  const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
+  if (toAddresses.length === 0) throw new Error('No valid recipients found');
+  const ccAddresses = (Array.isArray(cc) ? cc : [cc]).filter(e => typeof e === 'string' && e.includes('@'));
+
+  const transporter = nodemailer.createTransport({
+    host: config.host || config.smtpHost, 
+    port: config.port || config.smtpPort, 
+    secure: config.secure !== undefined ? config.secure : config.smtpSecure,
+    auth: { user: config.user || config.smtpUser, pass: config.pass || config.smtpPass },
+    tls: { rejectUnauthorized: false }
+  });
+
+  const mailOptions: any = {
+    from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser}>`,
+    to: toAddresses.join(', '),
+    subject, 
+    html, 
+    replyTo: config.replyTo || config.smtpReplyTo || config.fromEmail || config.user
+  };
+  if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
+
+  const info = await transporter.sendMail(mailOptions);
+
+  // Log successful delivery
+  await Promise.all(toAddresses.map(email => 
+    supabase.from('email_logs').insert({
+      recipient_email: email, 
+      subject, 
+      status: 'sent', 
+      rule_id: ruleId || null, 
+      trigger_type: triggerType || 'manual',
+      created_at: new Date().toISOString()
+    })
+  ));
+  
+  return info;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -176,56 +247,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   
   try {
     const { url, serviceKey } = getSupabaseConfig();
-    const supabase = createClient(url, serviceKey);
-    const config = await getSmtpConfig();
-    
-    if (!config.user || !config.pass) throw new Error('SMTP credentials not found in database or environment.');
-
-    let { to, subject, html, ruleId, test, testEmail } = req.body;
-
-    if (ruleId) {
-      const { data: rule } = await supabase.from('email_schedule_rules').select('*').eq('id', ruleId).single();
-      if (!rule) throw new Error('Rule not found');
-      
-      const { data: template } = rule.template_id ? await supabase.from('email_templates').select('*').eq('id', rule.template_id).single() : { data: null };
-      
-      const generator = reportGenerators[rule.report_type as keyof typeof reportGenerators] || reportGenerators.attendance_daily;
-      const nowIST = new Date(new Date().getTime() + IST_OFFSET);
-      const reportData = await generator(supabase, nowIST);
-
-      subject = evaluateConditionalsInternal(template?.subject_template || rule.name, reportData);
-      html = evaluateConditionalsInternal(template?.body_template || '<h2>Report</h2>{table}', reportData);
-
-      const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
-        const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
-        return dataKey ? (reportData as any)[dataKey] : match;
-      });
-      subject = render(subject);
-      html = render(html);
-
-      if (test && testEmail) to = [testEmail];
-      else if (!to) to = await resolveRecipientsInternal(supabase, rule);
-    }
-
-    const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
-    if (toAddresses.length === 0) throw new Error('No valid recipients found');
-
-    const transporter = nodemailer.createTransport({
-      host: config.host, port: config.port, secure: config.secure,
-      auth: { user: config.user, pass: config.pass },
-      tls: { rejectUnauthorized: false }
-    });
-
-    const info = await transporter.sendMail({
-      from: `"${config.fromName}" <${config.fromEmail}>`,
-      to: toAddresses.join(', '),
-      subject, html, replyTo: config.replyTo
-    });
-
-    for (const email of toAddresses) await logEmail(supabase, email, subject, 'sent', undefined, ruleId);
-    
+    const info = await sendEmailLogic(req.body, url, serviceKey);
     return res.status(200).json({ success: true, messageId: info.messageId });
-
   } catch (error: any) {
     console.error('[send-email] Error:', error);
     return res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
