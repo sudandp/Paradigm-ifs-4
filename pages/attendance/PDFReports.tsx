@@ -810,6 +810,7 @@ export interface MonthlyReportRow {
   compOffs: number;
   lossOfPays: number;
   workFromHomeDays: number;
+  overtimeDays: number;
 }
 
 export const MonthlyReportDocument: React.FC<{
@@ -842,12 +843,16 @@ export const MonthlyReportDocument: React.FC<{
             {days.map((d, i) => (
               <View key={i} style={[styles.tableColHeader, { flex: 1 }]}><Text style={styles.tableCellHeader}>{format(d, 'd')}</Text></View>
             ))}
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>P</Text></View>
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>1/2P</Text></View>
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>W/H</Text></View>
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>A</Text></View>
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>WO</Text></View>
-            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>Tot</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>P</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>1/2P</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>P(1)</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>C/O</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>E/L</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>S/L</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>A</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>WO</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>H</Text></View>
+            <View style={[styles.tableColHeader, { width: '25px' }]}><Text style={styles.tableCellHeader}>Pay</Text></View>
           </View>
 
           {data.map((row, idx) => (
@@ -856,11 +861,15 @@ export const MonthlyReportDocument: React.FC<{
               {row.statuses.map((st, i) => (
                 <View key={i} style={[styles.tableCol, { flex: 1 }]}><Text style={styles.statusCell}>{st}</Text></View>
               ))}
-              <View style={[styles.tableCol, { width: '25px' }]}><Text style={styles.tableCell}>{row.presentDays}</Text></View>
-              <View style={[styles.tableCol, { width: '25px' }]}><Text style={styles.tableCell}>{row.halfDays}</Text></View>
-              <View style={[styles.tableCol, { width: '25px' }]}><Text style={styles.tableCell}>{row.workFromHomeDays}</Text></View>
-              <View style={[styles.tableCol, { width: '25px' }]}><Text style={styles.tableCell}>{row.absentDays}</Text></View>
-              <View style={[styles.tableCol, { width: '25px' }]}><Text style={styles.tableCell}>{row.weekOffs}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.presentDays}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.halfDays}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.overtimeDays}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.compOffs}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.earnedLeaves}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.sickLeaves}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.absentDays}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.weekOffs}</Text></View>
+              <View style={[styles.tableCol, { width: '22px' }]}><Text style={styles.tableCell}>{row.holidays}</Text></View>
               <View style={[styles.tableCol, { width: '25px' }]}><Text style={[styles.tableCell, { fontWeight: 'bold' }]}>{row.totalPayableDays}</Text></View>
             </View>
           ))}

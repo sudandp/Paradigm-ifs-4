@@ -19,6 +19,7 @@ export interface MonthlyReportRow {
     floatingHolidays: number;
     lossOfPays: number;
     workFromHomeDays: number;
+    overtimeDays: number;
 }
 
 export interface LeaveBalanceRow {
@@ -226,7 +227,7 @@ export const exportAttendanceToExcel = async (
     const dayNumbers = [
         '', // Employee Name column
         ...dayInterval.map(date => format(date, 'd')),
-        ...new Array(12).fill('') // Summary columns (removed LOP)
+        ...new Array(14).fill('') // Summary columns (P, 1/2P, OT, C/O, E/L, S/L, A, WO, H, WOP, HP, F/H, W/H, Total)
     ];
     headerRow1.values = dayNumbers;
     headerRow1.height = 20;
@@ -248,7 +249,7 @@ export const exportAttendanceToExcel = async (
     const mainHeaders = [
         'Employee Name',
         ...dayInterval.map(date => format(date, 'EEE')),
-        'P', '1/2P', 'W/H', 'A', 'WO', 'H', 'WOP', 'HP', 'S/L', 'E/L', 'F/H', 'C/O', 'Total'
+        'P', '1/2P', 'P(1)', 'C/O', 'E/L', 'S/L', 'A', 'WO', 'H', 'WOP', 'HP', 'F/H', 'W/H', 'Total'
     ];
     headerRow2.values = mainHeaders;
     headerRow2.height = 25;
@@ -266,7 +267,7 @@ export const exportAttendanceToExcel = async (
         worksheet.getColumn(i).width = 5;
     }
     // Summary columns widths
-    const lastColIndex = dayInterval.length + 15; // Removed LOP
+    const lastColIndex = dayInterval.length + 16; // Summary columns count: 14 + Employee col
     for (let i = dayInterval.length + 2; i <= lastColIndex; i++) {
         worksheet.getColumn(i).width = 7;
     }
@@ -285,16 +286,17 @@ export const exportAttendanceToExcel = async (
             ...row.statuses,
             row.presentDays,
             row.halfDays,
-            row.workFromHomeDays,
+            row.overtimeDays || 0,
+            row.compOffs,
+            row.earnedLeaves,
+            row.sickLeaves,
             row.absentDays,
             row.weekOffs,
             row.holidays,
             row.weekendPresents,
             row.holidayPresents,
-            row.sickLeaves,
-            row.earnedLeaves,
             row.floatingHolidays,
-            row.compOffs,
+            row.workFromHomeDays,
             row.totalPayableDays
         ];
         const excelRow = worksheet.getRow(currentRow);
@@ -302,16 +304,16 @@ export const exportAttendanceToExcel = async (
         excelRow.height = 22;
 
         // Apply background colors to special columns
-        const col_SL = dayInterval.length + 11;
-        const col_EL = dayInterval.length + 12;
-        const col_FH = dayInterval.length + 13;
-        const col_CO = dayInterval.length + 14;
-        const col_Total = dayInterval.length + 15;
+        const col_OT = dayInterval.length + 4;
+        const col_CO = dayInterval.length + 5;
+        const col_EL = dayInterval.length + 6;
+        const col_SL = dayInterval.length + 7;
+        const col_Total = dayInterval.length + 16;
 
-        excelRow.getCell(col_SL).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } }; // Light Green
-        excelRow.getCell(col_EL).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3F2FD' } }; // Light Blue
-        excelRow.getCell(col_FH).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9C4' } }; // Light Yellow
+        excelRow.getCell(col_OT).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2F1' } }; // Light Teal
         excelRow.getCell(col_CO).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E5F5' } }; // Light Purple
+        excelRow.getCell(col_EL).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3F2FD' } }; // Light Blue
+        excelRow.getCell(col_SL).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } }; // Light Green
         excelRow.getCell(col_Total).font = { bold: true };
 
         // Borders and alignment for all cells in row
@@ -337,16 +339,17 @@ export const exportAttendanceToExcel = async (
         ...new Array(dayInterval.length).fill(''),
         data.reduce((acc, row) => acc + row.presentDays, 0),
         data.reduce((acc, row) => acc + row.halfDays, 0),
-        data.reduce((acc, row) => acc + row.workFromHomeDays, 0),
+        data.reduce((acc, row) => acc + (row.overtimeDays || 0), 0),
+        data.reduce((acc, row) => acc + row.compOffs, 0),
+        data.reduce((acc, row) => acc + row.earnedLeaves, 0),
+        data.reduce((acc, row) => acc + row.sickLeaves, 0),
         data.reduce((acc, row) => acc + row.absentDays, 0),
         data.reduce((acc, row) => acc + row.weekOffs, 0),
         data.reduce((acc, row) => acc + row.holidays, 0),
         data.reduce((acc, row) => acc + row.weekendPresents, 0),
         data.reduce((acc, row) => acc + row.holidayPresents, 0),
-        data.reduce((acc, row) => acc + row.sickLeaves, 0),
-        data.reduce((acc, row) => acc + row.earnedLeaves, 0),
         data.reduce((acc, row) => acc + row.floatingHolidays, 0),
-        data.reduce((acc, row) => acc + row.compOffs, 0),
+        data.reduce((acc, row) => acc + row.workFromHomeDays, 0),
         data.reduce((acc, row) => acc + row.totalPayableDays, 0)
     ];
     totalRow.values = totalData;

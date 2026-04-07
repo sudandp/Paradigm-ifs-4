@@ -1339,6 +1339,7 @@ const AttendanceDashboard: React.FC = () => {
             let compOffs = 0;
             let lossOfPays = 0;
             let workFromHomeDays = 0;
+            let overtimeDays = 0;
 
             // Track days present in rolling week for W/O threshold.
             let daysPresentInWeek = 0; 
@@ -1493,16 +1494,17 @@ const AttendanceDashboard: React.FC = () => {
                     const minHoursFullDay = userRules.minimumHoursFullDay || 6;
                     const minHoursHalfDay = userRules.minimumHoursHalfDay || 3;
                     
-                    if (isWeekend) { status = 'WOP'; weekendPresents++; }
+                    if (isWeekend) { status = 'WOP'; weekendPresents++; overtimeDays++; }
                     else if (dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'))) { status = 'W/H'; workFromHomeDays++; }
                     else if (userCategory === 'field' && attendance.field?.enableSiteTimeTracking) {
                         const userIdKey = String(user.id).toLowerCase();
                         const dayViolation = (fieldViolationsMap[userIdKey] || []).find(v => v.date === dateStr);
                         const fieldResult = getFieldStaffStatus(dayEvents, attendance?.field, dayViolation);
                         status = fieldResult.status;
-                        if (status === 'P') presentDays++; else if (status.includes('1/2P')) halfDays++;
+                        if (status === 'P') { presentDays++; if (workingHours > 14) overtimeDays++; }
+                        else if (status.includes('1/2P')) halfDays++;
                     } else {
-                        if (workingHours >= minHoursFullDay) { status = 'P'; presentDays++; }
+                        if (workingHours >= minHoursFullDay) { status = 'P'; presentDays++; if (workingHours > 14) overtimeDays++; }
                         else if (workingHours >= minHoursHalfDay) { status = '0.5P'; halfDays++; }
                         else { status = 'P'; presentDays++; } 
                     }
@@ -1522,7 +1524,7 @@ const AttendanceDashboard: React.FC = () => {
             });
 
             const totalPayableDays = presentDays + weekOffs + holidays + weekendPresents + holidayPresents + (halfDays * 0.5) 
-                                     + sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays;
+                                     + sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays + overtimeDays;
 
             return {
                 userName: user.name,
@@ -1540,7 +1542,8 @@ const AttendanceDashboard: React.FC = () => {
                 floatingHolidays,
                 compOffs,
                 lossOfPays,
-                workFromHomeDays
+                workFromHomeDays,
+                overtimeDays
             };
         });
 

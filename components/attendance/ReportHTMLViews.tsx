@@ -160,8 +160,11 @@ export const MonthlyStatusView: React.FC<{
         if (s === 'H' || s === 'HP') return 'text-orange-500';
         if (s.includes('F/H')) return 'text-yellow-600';
         if (s.includes('1/2')) return 'text-blue-500';
+        if (s.includes('WOP')) return 'text-teal-600';
         if (s.includes('P')) return 'text-green-600';
-        if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return 'text-blue-600';
+        if (s.includes('S/L')) return 'text-purple-600';
+        if (s.includes('E/L')) return 'text-indigo-600';
+        if (s.includes('C/O')) return 'text-cyan-600';
         if (s === '-') return 'text-gray-300';
         return 'text-gray-700';
     };
@@ -177,11 +180,16 @@ export const MonthlyStatusView: React.FC<{
                             {dayHeaders.map(d => (
                                 <th key={d} className="px-0.5 py-1.5 border border-gray-200 font-semibold text-center text-gray-400 min-w-[22px]">{d}</th>
                             ))}
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-blue-50 text-blue-800 min-w-[28px]">P</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-green-50 text-green-800 min-w-[28px]">P</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-blue-50 text-blue-700 min-w-[28px]">1/2P</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-teal-50 text-teal-700 min-w-[28px]">P(1)</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-cyan-50 text-cyan-700 min-w-[28px]">C/O</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-indigo-50 text-indigo-700 min-w-[28px]">E/L</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-purple-50 text-purple-700 min-w-[28px]">S/L</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-red-50 text-red-700 min-w-[28px]">A</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-gray-50 min-w-[28px]">W/O</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-gray-50 text-gray-600 min-w-[28px]">W/O</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-orange-50 text-orange-700 min-w-[28px]">H</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-green-50 text-green-700 min-w-[36px]">Pay</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-emerald-50 text-emerald-700 min-w-[36px]">Pay</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -193,11 +201,16 @@ export const MonthlyStatusView: React.FC<{
                                         <span className={getStatusColor(status)}>{status}</span>
                                     </td>
                                 ))}
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-blue-700 bg-blue-50/30">{row.presentDays}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-green-700 bg-green-50/30">{row.presentDays}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-blue-700 bg-blue-50/30">{row.halfDays}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-teal-700 bg-teal-50/30">{row.overtimeDays || 0}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-cyan-700 bg-cyan-50/30">{row.compOffs || 0}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-indigo-700 bg-indigo-50/30">{row.earnedLeaves || 0}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-purple-700 bg-purple-50/30">{row.sickLeaves || 0}</td>
                                 <td className="px-1 py-1 border border-gray-200 text-center font-bold text-red-500">{row.absentDays}</td>
                                 <td className="px-1 py-1 border border-gray-200 text-center text-gray-500">{row.weekOffs}</td>
                                 <td className="px-1 py-1 border border-gray-200 text-center text-orange-600">{row.holidays}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-green-700 bg-green-50/30">{row.totalPayableDays}</td>
+                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-emerald-700 bg-emerald-50/30">{row.totalPayableDays}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -209,6 +222,10 @@ export const MonthlyStatusView: React.FC<{
                 <span className="flex items-center gap-1 text-blue-500"><span className="w-2 h-2 rounded bg-blue-500 inline-block" /> 1/2P: Half Day</span>
                 <span className="flex items-center gap-1 text-gray-400"><span className="w-2 h-2 rounded bg-gray-400 inline-block" /> W/O: Weekly Off</span>
                 <span className="flex items-center gap-1 text-orange-500"><span className="w-2 h-2 rounded bg-orange-500 inline-block" /> H: Holiday</span>
+                <span className="flex items-center gap-1 text-teal-600"><span className="w-2 h-2 rounded bg-teal-600 inline-block" /> P(1): OT / ExtraP</span>
+                <span className="flex items-center gap-1 text-purple-600"><span className="w-2 h-2 rounded bg-purple-600 inline-block" /> S/L: Sick Leave</span>
+                <span className="flex items-center gap-1 text-indigo-600"><span className="w-2 h-2 rounded bg-indigo-600 inline-block" /> E/L: Earned Leave</span>
+                <span className="flex items-center gap-1 text-cyan-600"><span className="w-2 h-2 rounded bg-cyan-600 inline-block" /> C/O: Comp Off</span>
             </div>
             <Footer label="Paradigm Services - Monthly Status Report" />
         </div>

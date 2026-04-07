@@ -143,12 +143,16 @@ export const reportGenerators = {
     for (let d = 1; d <= daysInMonth; d++) {
       tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
     }
-    tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">P</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">1/2-P</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">W/H</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">A</th>
+    tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #d1fae5; color: #065f46;">P</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #dbeafe; color: #1e40af;">1/2P</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">P(1)</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #cffafe; color: #0e7490;">C/O</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #e0e7ff; color: #3730a3;">E/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #f3e8ff; color: #6b21a8;">S/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #fee2e2; color: #991b1b;">A</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">WO</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd; font-weight: 800;">Tot</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ffedd5; color: #9a3412;">H</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd; font-weight: 800;">Pay</th>
         </tr>
       </thead>
       <tbody>`;
@@ -163,6 +167,11 @@ export const reportGenerators = {
       let leaveCount = 0;
       let weeklyOffCount = 0;
       let totalWorkHours = 0;
+      let overtimeCount = 0;
+      let sickLeaveCount = 0;
+      let earnedLeaveCount = 0;
+      let compOffCount = 0;
+      let holidayCount = 0;
 
       for (let d = 1; d <= daysInMonth; d++) {
         const currentDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
@@ -180,18 +189,26 @@ export const reportGenerators = {
         if (punchIn && punchOut) {
           const durationHours = (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000;
           totalWorkHours += durationHours;
-          if (durationHours >= 5) {
+          if (isSunday) {
+            status = 'WOP';
+            color = '#0d9488';
+            presentCount++;
+            overtimeCount++;
+          } else if (durationHours >= 5) {
             status = 'P';
             color = '#16a34a';
             presentCount++;
+            if (durationHours > 14) overtimeCount++;
           } else if (durationHours > 1) {
-            status = '0.5-P';
+            status = '0.5P';
             color = '#d97706';
             halfDayCount++;
           }
         } else if (dayLeave) {
-          status = 'L';
-          color = '#2563eb';
+          const lt = (dayLeave.leave_type || '').toLowerCase();
+          if (lt === 'sick') { status = 'S/L'; color = '#7c3aed'; sickLeaveCount++; }
+          else if (lt.includes('comp')) { status = 'C/O'; color = '#0891b2'; compOffCount++; }
+          else { status = 'E/L'; color = '#4f46e5'; earnedLeaveCount++; }
           leaveCount++;
         } else if (isSunday) {
           status = 'WO';
@@ -204,13 +221,17 @@ export const reportGenerators = {
         tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; font-weight: bold; font-size: 8px;">${status}</td>`;
       }
 
-      const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount;
+      const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount + weeklyOffCount + holidayCount;
 
       tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${presentCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #d97706;">${halfDayCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center;">${Math.round(totalWorkHours)}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0d9488;">${overtimeCount}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0891b2;">${compOffCount}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #4f46e5;">${earnedLeaveCount}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #7c3aed;">${sickLeaveCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${absentCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #6b7280;">${weeklyOffCount}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #ea580c;">${holidayCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${grandTotal}</td>
       </tr>`;
     });
