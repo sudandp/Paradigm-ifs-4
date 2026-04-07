@@ -350,7 +350,7 @@ serve(async (req: Request) => {
       // Force inject greeting if the user has a custom HTML body but didn't include either placeholder
       const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
       if (template?.body_template && !hasGreetingPlaceholder) {
-          const greetingBlock = `\n<div style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px auto; max-width: 800px; color: #1e3a8a; font-size: 14px;">\n  {greetingMessage}\n</div>\n`;
+          const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  {greetingMessage}\n</div>\n`;
           if (html.match(/<body[^>]*>/i)) {
               html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
           } else {
