@@ -225,14 +225,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             } else {
                 const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
                 
-                // 1. Activity check
-                let hasActivityCheck = false;
-                if (dayEvents.length > 0) {
-                    const { workingHours: netHours } = processDailyEvents(dayEvents);
-                    if (netHours >= (rules.minimumHoursHalfDay || 4)) {
-                        hasActivityCheck = true;
-                    }
-                }
+                // 1. Activity check - any activity counts as presence
+                const hasActivityCheck = dayEvents.length > 0;
 
                 // 2. Holiday check
                 const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
@@ -275,43 +269,33 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
               end: endOfDay(new Date(l.endDate))
           })
       );
-      
 
-      // 1. Check FIXED holidays
+      // 1. Check holidays
       const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
           const [m, d] = fh.date.split('-').map(Number);
           return currentDate.getMonth() === (m - 1) && currentDate.getDate() === d;
       });
 
-      // 2. Check POOL holidays (User selected)
       const isPoolHoliday = userHolidays.some(uh => {
           const uhUserId = uh.userId || (uh as any).user_id;
           const holidayDate = uh.holidayDate || (uh as any).holiday_date;
           return String(uhUserId) === String(user.id) && matchesDate(holidayDate, currentDate);
       });
 
-      // 3. Check Configured holidays (Admin settings)
-      const isConfiguredHoliday = categoryHolidays.some(h => 
-          matchesDate(h.date, currentDate)
-      );
+      const isConfiguredHoliday = categoryHolidays.some(h => matchesDate(h.date, currentDate));
 
-      // 4. Check Recurring holiday (Floating Holiday - Male only)
       const isRecurringHoliday = (user.gender?.toLowerCase() !== 'female') && recurringHolidays.some(rule => {
           if (rule.day.toLowerCase() !== format(currentDate, 'EEEE').toLowerCase()) return false;
-          
-          // Check expiry
           if (rules.floatingLeavesExpiryDate) {
               const expiryDate = startOfDay(new Date(rules.floatingLeavesExpiryDate));
               if (startOfDay(currentDate) > expiryDate) return false;
           }
-
           const occurrence = Math.ceil(currentDate.getDate() / 7);
           const ruleType = rule.type || 'office';
           return rule.n === occurrence && ruleType === (category === 'site' ? 'office' : category); 
       });
 
       const isHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
-
       const hasActivity = dayEvents.length > 0;
       let status = '-';
       const today = startOfDay(new Date());
@@ -332,7 +316,6 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
       let currentDayShortfall = '-';
       let currentDayShift = '-';
 
-      // Helper to format time
       const formatTime = (hrs: number) => {
         const totalMinutes = Math.round(hrs * 60);
         const h = Math.floor(totalMinutes / 60);
@@ -348,16 +331,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
               status = 'H';
               if (!isFuture) holidaysCount++;
           }
-          daysPresentInWeek++; // Holidays count for W/O
+          daysPresentInWeek++; 
       } else if (isRecurringHoliday) {
           if (hasActivity) {
-              status = 'HP'; // Or FHP? The diff says HP.
-              if (!isFuture) holidayPresents++; // Count as holiday present
+              status = 'HP';
+              if (!isFuture) holidayPresents++;
           } else {
               status = 'F/H';
               if (!isFuture) floatingHolidays++;
           }
-          daysPresentInWeek++; // Floating holidays count for W/O
+          daysPresentInWeek++;
       } else if (approvedLeave) {
           const isHalfDayLeave = approvedLeave.dayOption === 'half';
           const increment = isHalfDayLeave ? 0.5 : 1;
@@ -382,26 +365,17 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
               earnedLeaves += increment;
           }
 
-          if (!isLOP) daysPresentInWeek += increment; // Paid leaves count for W/O
+          if (!isLOP) daysPresentInWeek += increment;
 
-          // If half day leave, we still want to see if they worked
           if (isHalfDayLeave && hasActivity) {
             const { 
-              checkIn, 
-              checkOut, 
-              firstBreakIn, 
-              lastBreakIn, 
-              breakOut: lastBreakOut, 
-              workingHours: netHours, 
-              breakHours, 
-              totalHours: grossHours 
+              checkIn, checkOut, firstBreakIn, lastBreakIn, workingHours: netHours, breakHours, totalHours: grossHours 
             } = processDailyEvents(dayEvents);
     
             totalNetWorkDuration += netHours;
             totalGrossWorkDuration += grossHours;
             totalBreakDuration += breakHours;
             
-            // For half-day leave, they are "Present" for the other half if they work >= 4h
             if (netHours >= 4) {
                status = 'P ' + status;
                presentDays += 0.5;
@@ -413,41 +387,31 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
             currentDayGrossDuration = grossHours > 0 ? formatTime(grossHours) : '-';
             currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
-            currentDayBreakOut = lastBreakOut ? format(new Date(lastBreakOut), 'HH:mm') : '-';
+            currentDayBreakOut = (processDailyEvents(dayEvents) as any).breakOut ? format(new Date((processDailyEvents(dayEvents) as any).breakOut), 'HH:mm') : '-';
             currentDayBreakDuration = breakHours > 0 ? formatTime(breakHours) : '-';
             currentDayNetWorkedHours = netHours > 0 ? formatTime(netHours) : '-';
             
-            // For OT on half-day leave: anything above 4h or just keep use same rule?
-            // Usually OT is calculated against full shift. But let's assume 8h target.
-            const targetNetHours = 4; // Because 4h is covered by leave
+            const targetNetHours = 4;
             const shortfall = Math.max(0, targetNetHours - netHours);
             currentDayShortfall = (shortfall > 0 && netHours > 0) ? formatTime(shortfall) : '-';
             
-            // OT logic
             const maxDailyHours = rules.dailyWorkingHours?.max || 9;
-            const ot = Math.max(0, netHours - (maxDailyHours / 2)); // Shift A is usually 9h, so 4.5h is half?
+            const ot = Math.max(0, netHours - (maxDailyHours / 2));
             totalOT += ot;
             currentDayOT = ot > 0 ? formatTime(ot) : '-';
           }
       } else if (hasActivity) {
         const { 
-          checkIn, 
-          checkOut, 
-          firstBreakIn, 
-          lastBreakIn, 
-          breakOut: lastBreakOut, 
-          workingHours: netHours, 
-          breakHours, 
-          totalHours: grossHours 
+          checkIn, checkOut, firstBreakIn, lastBreakIn, workingHours: netHours, breakHours, totalHours: grossHours 
         } = processDailyEvents(dayEvents);
 
+        const lastBreakOut = (processDailyEvents(dayEvents) as any).breakOut;
         const duration = netHours;
         currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
         currentDayBreakOut = lastBreakOut ? format(new Date(lastBreakOut), 'HH:mm') : '-';
         let ot = 0;
 
         if (checkIn && checkOut) {
-          // Calculate OT
           const maxDailyHours = rules.dailyWorkingHours?.max || 9;
           ot = Math.max(0, netHours - maxDailyHours);
           
@@ -455,17 +419,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           totalGrossWorkDuration += grossHours;
           totalBreakDuration += breakHours;
           totalOT += ot;
-
-          // Count as present only if >= half day hours
-          if (duration >= (rules.minimumHoursHalfDay || 4)) {
-              presentDays++;
-          }
         }
 
-        // Track days present in current week for W/O calculation
-        if (duration >= (rules.minimumHoursHalfDay || 4)) {
-            daysPresentInWeek++;
-        }
+        // Presence counts for ANY activity
+        presentDays++;
+        daysPresentInWeek++;
 
         // Determine shift type
         let shift = '-';
@@ -473,22 +431,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           const checkInDate = new Date(checkIn);
           const hour = checkInDate.getHours();
           const minutes = checkInDate.getMinutes();
-          const timeVal = hour + minutes / 60; // Decimal time for comparison
+          const timeVal = hour + minutes / 60;
 
-          // Shift A: 7 AM start (+/-). Cutoff < 8:30
-          // GS: 9 AM start (+/-). 8:30 - 11:30
-          // Shift B: 1 PM start (+/-). 11:30 - 20:00
-          // Shift C: 9 PM start (+/-). > 20:00
-
-          if (timeVal >= 5 && timeVal < 8.5) { // 05:00 to 08:30
-             shift = 'Shift A'; 
-          } else if (timeVal >= 8.5 && timeVal < 11.5) { // 08:30 to 11:30 (9am +/- 2ish)
-             shift = 'GS';
-          } else if (timeVal >= 11.5 && timeVal < 20) { // 11:30 to 20:00
-             shift = 'Shift B';
-          } else {
-             shift = 'Shift C'; // Night
-          }
+          if (timeVal >= 5 && timeVal < 8.5) { shift = 'Shift A'; }
+          else if (timeVal >= 8.5 && timeVal < 11.5) { shift = 'GS'; }
+          else if (timeVal >= 11.5 && timeVal < 20) { shift = 'Shift B'; }
+          else { shift = 'Shift C'; }
         }
         if (shift !== '-') {
           shiftCounts[shift] = (shiftCounts[shift] || 0) + 1;
@@ -499,28 +447,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             status = 'WOP';
             if (!isFuture) weekendPresents++;
         } else if (category === 'field' && rules.enableSiteTimeTracking) {
-            // FIELD STAFF: Use site-time-percentage logic
             const dayViolation = fieldViolations.find(v => v.date === dateStr);
             const fieldResult = getFieldStaffStatus(dayEvents, rules, dayViolation);
             status = fieldResult.status;
-
-            if (status === 'P') {
-                // presentDays already incremented above via duration check
-            } else if (status === '1/2P') {
-                halfDays++;
-            }
+            if (status === '1/2P') halfDays++;
         } else {
-            // OFFICE / SITE STAFF: Use hours-based logic
-            const fullDayHours = 8; 
-
-            if (duration >= fullDayHours) {
-                status = 'P';
-            } else if (duration > 0) {
-                status = '1/2P';
-                halfDays++; 
-            } else {
-                status = 'A';
-            }
+            // Mark as 'P' for any activity
+            status = 'P';
         }
 
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
@@ -530,25 +463,23 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         currentDayNetWorkedHours = netHours > 0 ? formatTime(netHours) : '-';
         currentDayOT = ot > 0 ? formatTime(ot) : '-';
         
-        const targetNetHours = 8; // User requested 8h net work target for shortfall
+        const targetNetHours = 8;
         const shortfall = Math.max(0, targetNetHours - netHours);
         currentDayShortfall = (shortfall > 0 && netHours > 0 && !isSunday && !isHoliday && !isRecurringHoliday) ? formatTime(shortfall) : '-';
-        
         currentDayShift = shift || '-';
 
       } else if (isSunday) {
           if (!isFuture) {
               if (daysPresentInWeek >= 3) {
                   status = 'W/O';
-                  weekOffs++; // Increment weekOffs counter
+                  weekOffs++;
               } else {
                   status = 'A';
                   absentDays++;
               }
           }
-          daysPresentInWeek = 0; // Reset for next week
+          daysPresentInWeek = 0; // Reset
       } else {
-          // Normal day, no events, no holiday, no leave
           if (!isFuture && !isToday) {
             status = 'A';
             absentDays++;

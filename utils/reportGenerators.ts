@@ -131,8 +131,8 @@ export const reportGenerators = {
     const [usersRes, eventsRes, leavesRes, holidaysRes, recurringHolidaysRes] = await Promise.all([
       supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', bufferStartDate.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type').eq('status', 'approved').gte('end_date', format(bufferStartDate, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
-      supabase.from('holidays').select('*').gte('date', format(bufferStartDate, 'yyyy-MM-dd')).lte('date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+      supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type').eq('status', 'approved').gte('end_date', getISTDateString(bufferStartDate)).lte('start_date', getISTDateString(lastDayOfMonth)),
+      supabase.from('holidays').select('*').gte('date', getISTDateString(bufferStartDate)).lte('date', getISTDateString(lastDayOfMonth)),
       supabase.from('recurring_holidays').select('*')
     ]);
 
@@ -189,7 +189,7 @@ export const reportGenerators = {
       if (firstDay > startOfFirstWeek) {
         let check = new Date(startOfFirstWeek);
         while (check < firstDay) {
-          const cStr = format(check, 'yyyy-MM-dd');
+          const cStr = getISTDateString(check);
           const isSun = check.getDay() === 0;
           if (isSun) {
             daysPresentInWeek = 0;
@@ -199,12 +199,10 @@ export const reportGenerators = {
             const isH = holidays.find(h => h.date === cStr);
 
             let worked = false;
-            const pIn = dayEvs.find(e => e.type === 'punch-in' || e.type === 'check_in');
-            const pOut = dayEvs.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
+            const hasActivity = dayEvs.length > 0;
             
-            if (pIn && pOut) {
-              const dur = (new Date(pOut.timestamp).getTime() - new Date(pIn.timestamp).getTime()) / 3600000;
-              if (dur >= 3) worked = true;
+            if (hasActivity) {
+              worked = true;
             } else if (dayLv && !['loss of pay', 'loss-of-pay', 'lop'].includes((dayLv.leave_type || '').toLowerCase())) {
               worked = true;
             } else if (isH) {
@@ -223,7 +221,7 @@ export const reportGenerators = {
         
         if (isMonday) daysPresentInWeek = 0;
 
-        const dateStr = format(currentDate, 'yyyy-MM-dd');
+        const dateStr = getISTDateString(currentDate);
         const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
         const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
         const isPublicHoliday = holidays.find(h => h.date === dateStr);
@@ -236,8 +234,8 @@ export const reportGenerators = {
         const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
         const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
 
-        if (punchIn && punchOut) {
-          const durationHours = (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000;
+        if (punchIn || punchOut) {
+          const durationHours = (punchIn && punchOut) ? (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000 : 0;
           totalWorkHours += durationHours;
           if (isSunday) {
             status = 'WOP';
@@ -245,7 +243,7 @@ export const reportGenerators = {
             presentCount++;
             overtimeCount++;
             dayWorked = true;
-          } else if (durationHours >= 5) {
+          } else if (durationHours >= 5 || (!punchOut && punchIn)) {
             status = 'P';
             color = '#16a34a';
             presentCount++;
@@ -255,6 +253,12 @@ export const reportGenerators = {
             status = '0.5P';
             color = '#d97706';
             halfDayCount++;
+            dayWorked = true;
+          } else if (punchIn || punchOut) {
+            // Catch-all for any activity that doesn't meet the 5h/1h rules above
+            status = 'P';
+            color = '#16a34a';
+            presentCount++;
             dayWorked = true;
           }
         } else if (dayLeave) {

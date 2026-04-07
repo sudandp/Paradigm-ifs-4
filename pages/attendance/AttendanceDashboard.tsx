@@ -1392,14 +1392,8 @@ const AttendanceDashboard: React.FC = () => {
                                 String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
                             );
                             
-                            // 1. Activity check
-                            let hasActivityCheck = false;
-                            if (prevDayEvents.length > 0) {
-                                const { workingHours } = calculateWorkingHours(prevDayEvents);
-                                if (workingHours >= (userRules.minimumHoursHalfDay || 3)) {
-                                    hasActivityCheck = true;
-                                }
-                            }
+                            // 1. Activity check - any punch event counts as presence
+                            const hasActivityCheck = prevDayEvents.length > 0;
 
                             // 2. Holiday check
                             const isRecurringHolidayCheck = recurringHolidays.some(rule => {
@@ -1542,7 +1536,7 @@ const AttendanceDashboard: React.FC = () => {
                         else if (workingHours >= minHoursHalfDay) { status = '0.5P'; halfDays++; }
                         else { status = 'P'; presentDays++; } 
                     }
-                    if (workingHours >= minHoursHalfDay) daysPresentInWeek++;
+                    daysPresentInWeek++; // Any activity counts toward W/O threshold
                 } else if (isWeekend) {
                     if (daysPresentInWeek >= (userRules.weekendPresentThreshold ?? 3)) {
                         status = 'W/O'; weekOffs++;
