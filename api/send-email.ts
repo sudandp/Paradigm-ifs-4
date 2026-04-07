@@ -180,13 +180,39 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     const reportData = await generator(supabase, nowIST);
 
     // Support for custom message Injection from template variables
-    if (template?.variables) {
-       const customMsgVar = template.variables.find((v: any) => v.key === '_custom_message' || v.key === 'customMessage');
-       if (customMsgVar) reportData.customMessage = customMsgVar.description;
+    let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
+    if (template?.variables && Array.isArray(template.variables)) {
+        const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
+        if (customMsgObj && customMsgObj.description) {
+            let evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, reportData || {});
+            greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+        }
+    }
+    
+    reportData.greetingMessage = greetingMessage;
+    reportData.customGreeting = greetingMessage;
+
+    html = template?.body_template;
+    if (!html || rule.report_type === 'attendance_monthly') {
+        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Monthly Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Attendance Grid</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
+
+        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Intelligence Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Staff Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Present</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Late</div><div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
+
+        html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
+    }
+
+    const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
+    if (template?.body_template && !hasGreetingPlaceholder) {
+        const greetingBlock = `\n<div style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px auto; max-width: 800px; color: #1e3a8a; font-size: 14px;">\n  {greetingMessage}\n</div>\n`;
+        if (html.toLowerCase().includes('<body')) {
+            html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+        } else {
+            html = greetingBlock + html;
+        }
     }
 
     subject = evaluateConditionalsInternal(template?.subject_template || rule.name, reportData);
-    html = evaluateConditionalsInternal(template?.body_template || '<h2>Report</h2>{table}', reportData);
+    html = evaluateConditionalsInternal(html, reportData);
 
     const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
       const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
