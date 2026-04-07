@@ -195,8 +195,14 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     subject = render(subject);
     html = render(html);
 
-    if (test && testEmail) to = [testEmail];
-    else if (!to) to = await resolveRecipientsInternal(supabase, rule);
+    if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
+      to = [testEmail];
+      console.log(`[send-email] Test mode: Overriding recipients with ${testEmail}`);
+    } else if (!to || (Array.isArray(to) && to.length === 0)) {
+      to = await resolveRecipientsInternal(supabase, rule);
+      console.log(`[send-email] Resolved recipients from rule ${ruleId}: ${to.join(', ')}`);
+    }
+
     
     if (!triggerType) triggerType = 'automatic';
   }

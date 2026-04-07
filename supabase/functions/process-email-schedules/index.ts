@@ -341,9 +341,11 @@ serve(async (req: Request) => {
       let emails = await resolveRecipients(supabase, rule);
       
       // If this is a test and a specific test email was provided, use it
-      if (test && testEmail) {
+      if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
         emails = [testEmail];
+        console.log(`  [TEST MODE] Overriding recipients with ${testEmail}`);
       }
+
 
       console.log(`  Recipients resolved: ${emails.length} email(s) → [${emails.join(', ')}]`);
       
