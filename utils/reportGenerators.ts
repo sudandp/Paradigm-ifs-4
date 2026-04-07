@@ -125,15 +125,22 @@ export const reportGenerators = {
     const monthStr = format(nowIST, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
 
-    const [usersRes, eventsRes, leavesRes] = await Promise.all([
+    const bufferStartDate = new Date(firstDayOfMonth);
+    bufferStartDate.setDate(firstDayOfMonth.getDate() - 7);
+
+    const [usersRes, eventsRes, leavesRes, holidaysRes, recurringHolidaysRes] = await Promise.all([
       supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
-      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
-      supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type').eq('status', 'approved').gte('end_date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd'))
+      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', bufferStartDate.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type').eq('status', 'approved').gte('end_date', format(bufferStartDate, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+      supabase.from('holidays').select('*').gte('date', format(bufferStartDate, 'yyyy-MM-dd')).lte('date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+      supabase.from('recurring_holidays').select('*')
     ]);
 
     const users = (usersRes.data || []) as any[];
     const events = (eventsRes.data || []) as any[];
     const leaves = (leavesRes.data || []) as any[];
+    const holidays = (holidaysRes.data || []) as any[];
+    const recurringHolidays = (recurringHolidaysRes.data || []) as any[];
 
     let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;">
       <thead>
@@ -189,14 +196,18 @@ export const reportGenerators = {
           } else {
             const dayEvs = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === cStr);
             const dayLv = leaves.find(l => l.user_id === user.id && cStr >= l.start_date && cStr <= l.end_date);
+            const isH = holidays.find(h => h.date === cStr);
+
+            let worked = false;
             const pIn = dayEvs.find(e => e.type === 'punch-in' || e.type === 'check_in');
             const pOut = dayEvs.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
             
-            let worked = false;
             if (pIn && pOut) {
               const dur = (new Date(pOut.timestamp).getTime() - new Date(pIn.timestamp).getTime()) / 3600000;
               if (dur >= 3) worked = true;
             } else if (dayLv && !['loss of pay', 'loss-of-pay', 'lop'].includes((dayLv.leave_type || '').toLowerCase())) {
+              worked = true;
+            } else if (isH) {
               worked = true;
             }
             if (worked) daysPresentInWeek++;
@@ -215,10 +226,12 @@ export const reportGenerators = {
         const dateStr = format(currentDate, 'yyyy-MM-dd');
         const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
         const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
+        const isPublicHoliday = holidays.find(h => h.date === dateStr);
 
         let status = 'A';
         let color = '#dc2626';
         let dayWorked = false;
+        let bgColor = 'transparent';
         
         const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
         const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
@@ -248,16 +261,20 @@ export const reportGenerators = {
           const lt = (dayLeave.leave_type || '').toLowerCase();
           const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(lt);
           if (lt === 'sick') { status = 'S/L'; color = '#7c3aed'; sickLeaveCount++; }
-          else if (lt.includes('comp')) { status = 'C/O'; color = '#0891b2'; compOffCount++; }
+          else if (lt.includes('comp') || lt === 'c/o') { status = 'C/O'; color = '#0891b2'; compOffCount++; }
           else if (isLOP) { status = 'A'; color = '#dc2626'; absentCount++; }
           else { status = 'E/L'; color = '#4f46e5'; earnedLeaveCount++; }
           
           if (!isLOP) {
             leaveCount++;
             dayWorked = true;
-          } else {
-             // Already counted as absent above
           }
+        } else if (isPublicHoliday) {
+          status = 'H';
+          color = '#854d0e';
+          bgColor = '#fef9c3';
+          holidayCount++;
+          dayWorked = true;
         } else if (isSunday) {
           if (daysPresentInWeek >= 3) {
             status = 'WO';
@@ -274,7 +291,7 @@ export const reportGenerators = {
 
         if (dayWorked) daysPresentInWeek++;
 
-        tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; font-weight: bold; font-size: 8px;">${status}</td>`;
+        tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 8px;">${status}</td>`;
       }
 
       const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount + weeklyOffCount + holidayCount + overtimeCount;

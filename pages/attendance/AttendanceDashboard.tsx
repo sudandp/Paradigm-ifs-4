@@ -770,7 +770,7 @@ const AttendanceDashboard: React.FC = () => {
                         for (let i = index - 1; i >= lookBackLimit; i--) {
                             // Check if the status starts with 'P' or is 'W/H', 'W/P', 'HP', '0.5P' etc.
                             const s = logs[i].status;
-                            if (s === 'P' || s === 'W/H' || s === 'W/P' || s === 'HP' || s === '0.5P' || s === '1/2P') {
+                            if (s === 'P' || s === 'W/H' || s === 'W/P' || s === 'HP' || s === '0.5P' || s === '1/2P' || s.includes('S/L') || s.includes('E/L') || s.includes('C/O') || s === 'H') {
                                 presentCount++;
                             }
                         }

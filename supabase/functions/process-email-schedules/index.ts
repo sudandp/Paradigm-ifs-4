@@ -579,12 +579,15 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
   const today = new Date(nowIST.getTime());
   today.setUTCHours(0,0,0,0);
 
+  const bufferStartDate = new Date(firstDayOfMonth);
+  bufferStartDate.setDate(firstDayOfMonth.getDate() - 7);
+
   const [usersRes, eventsRes, leavesRes, settingsRes, holidaysRes, recurringHolidaysRes] = await Promise.all([
     supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
-    supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
-    supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+    supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', bufferStartDate.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
+    supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', format(bufferStartDate, 'yyyy-MM-dd')).lte('start_date', format(lastDayOfMonth, 'yyyy-MM-dd')),
     supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
-    supabase.from('holidays').select('*').gte('date', format(firstDayOfMonth, 'yyyy-MM-dd')).lte('date', format(lastDayOfMonth, 'yyyy-MM-dd')),
+    supabase.from('holidays').select('*').gte('date', format(bufferStartDate, 'yyyy-MM-dd')).lte('date', format(lastDayOfMonth, 'yyyy-MM-dd')),
     supabase.from('recurring_holidays').select('*')
   ]);
 
@@ -631,8 +634,39 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
     let userHoliday = 0;
     let userPaidLeave = 0;
 
+    let daysPresentInWeek = 0;
+    // Overlapping week before month starts
+    const startOfFirstWeek = new Date(firstDayOfMonth);
+    startOfFirstWeek.setDate(firstDayOfMonth.getDate() - (firstDayOfMonth.getDay() === 0 ? 6 : firstDayOfMonth.getDay() - 1)); // Mon
+    
+    if (firstDayOfMonth > startOfFirstWeek) {
+      let check = new Date(startOfFirstWeek);
+      while (check < firstDayOfMonth) {
+        const cStr = format(check, 'yyyy-MM-dd');
+        if (check.getDay() === 0) {
+          daysPresentInWeek = 0;
+        } else {
+          const dayEvs = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === cStr);
+          const dayLv = leaves.find(l => l.user_id === user.id && cStr >= l.start_date && cStr <= l.end_date);
+          const isH = holidays.find(h => h.date === cStr);
+          
+          let worked = false;
+          const pIn = dayEvs.find(e => e.type === 'punch-in' || e.type === 'check_in');
+          const pOut = dayEvs.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
+          if ((pIn && pOut) || (dayLv && dayLv.leave_type?.toLowerCase() !== 'lop') || isH) {
+            worked = true;
+          }
+          if (worked) daysPresentInWeek++;
+        }
+        check.setDate(check.getDate() + 1);
+      }
+    }
+
     for (let d = 1; d <= daysInMonth; d++) {
       const currentDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
+      const isMonday = currentDate.getDay() === 1;
+      if (isMonday) daysPresentInWeek = 0;
+      
       const isFuture = currentDate > today;
       const dateStr = format(currentDate, 'yyyy-MM-dd');
       const isSunday = currentDate.getDay() === 0;
@@ -695,14 +729,25 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         bgColor = '#fef9c3';
         userHoliday++;
       } else if (isSunday) {
-        status = 'WO';
-        color = '#6b7280';
-        userWeeklyOff++;
+        if (daysPresentInWeek >= 3) {
+          status = 'WO';
+          color = '#6b7280';
+          userWeeklyOff++;
+        } else {
+          status = 'A';
+          color = '#dc2626';
+          userAbsent++;
+          totalAbsentCount++;
+        }
       } else {
         status = 'A';
         color = '#dc2626';
         userAbsent++;
         totalAbsentCount++;
+      }
+
+      if (['P', '1/2P', 'L', '1/2L', 'H'].some(s => status.includes(s))) {
+        daysPresentInWeek++;
       }
 
       tableHtml += `<td style="border: 1px solid #ddd; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 9px;">${status || '—'}</td>`;
