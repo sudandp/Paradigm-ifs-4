@@ -444,6 +444,33 @@ const AttendanceDashboard: React.FC = () => {
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [reportPageSize, setReportPageSize] = useState<number>(20);
 
+    // --- Pending Filter States (to implement Apply button logic) ---
+    const [pendingDateRange, setPendingDateRange] = useState<Range>(dateRange);
+    const [pendingActiveDateFilter, setPendingActiveDateFilter] = useState(activeDateFilter);
+    const [pendingReportType, setPendingReportType] = useState<AttendanceReportType>(reportType);
+    const [pendingSelectedSite, setPendingSelectedSite] = useState(selectedSite);
+    const [pendingSelectedSociety, setPendingSelectedSociety] = useState(selectedSociety);
+    const [pendingSelectedRole, setPendingSelectedRole] = useState(selectedRole);
+    const [pendingSelectedUser, setPendingSelectedUser] = useState(selectedUser);
+    const [pendingSelectedStatus, setPendingSelectedStatus] = useState(selectedStatus);
+    const [pendingSelectedRecordType, setPendingSelectedRecordType] = useState(selectedRecordType);
+    const [pendingReportPageSize, setPendingReportPageSize] = useState(reportPageSize);
+
+    const handleApplyFilters = () => {
+        setDateRange(pendingDateRange);
+        setActiveDateFilter(pendingActiveDateFilter);
+        setReportType(pendingReportType);
+        setSelectedSite(pendingSelectedSite);
+        setSelectedSociety(pendingSelectedSociety);
+        setSelectedRole(pendingSelectedRole);
+        setSelectedUser(pendingSelectedUser);
+        setSelectedStatus(pendingSelectedStatus);
+        setSelectedRecordType(pendingSelectedRecordType);
+        setReportPageSize(pendingReportPageSize);
+        
+        setToast({ message: 'Filters applied successfully', type: 'success' });
+    };
+
 
     // --- Fetch Audit Logs ---
     const fetchAuditLogs = useCallback(async () => {
@@ -747,7 +774,7 @@ const AttendanceDashboard: React.FC = () => {
                                 presentCount++;
                             }
                         }
-                        if (presentCount < (userRules.weekendPresentThreshold ?? 4)) {
+                        if (presentCount < (userRules.weekendPresentThreshold ?? 3)) {
                             log.status = 'A';
                         }
                     }
@@ -974,7 +1001,7 @@ const AttendanceDashboard: React.FC = () => {
 
 
     const handleSetDateFilter = (filter: string) => {
-        setActiveDateFilter(filter);
+        setPendingActiveDateFilter(filter);
         const today = new Date();
         let startDate = startOfToday();
         let endDate = endOfToday();
@@ -995,14 +1022,17 @@ const AttendanceDashboard: React.FC = () => {
             endDate = today;
         }
 
-        setDateRange({ startDate, endDate, key: 'selection' });
+        setPendingDateRange({ startDate, endDate, key: 'selection' });
     };
 
     const handleCustomDateChange = (item: RangeKeyDict) => {
-        setDateRange(item.selection);
-        setActiveDateFilter('Custom');
+        setPendingDateRange(item.selection);
+        setPendingActiveDateFilter('Custom');
         setIsDatePickerOpen(false);
     };
+
+    // Use memoized array for DateRangePicker
+    const pendingDateRangeArray = useMemo(() => [pendingDateRange], [pendingDateRange]);
 
     const statDateLabel = useMemo(() => {
         const endDate = dateRange.endDate!;
@@ -1356,7 +1386,7 @@ const AttendanceDashboard: React.FC = () => {
                         const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
                         
                         if (checkIsWeekend) {
-                            daysPresentInWeek = 0; // Reset on weekends
+                            // No longer resetting here to ensure cumulative work days are preserved for weekend checks
                         } else {
                             const prevDayEvents = attendanceEvents.filter(e =>
                                 String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
@@ -1403,6 +1433,10 @@ const AttendanceDashboard: React.FC = () => {
             }
 
             days.forEach(day => {
+                // Reset work days count at the start of each week (Monday)
+                if (day.getDay() === 1) {
+                    daysPresentInWeek = 0;
+                }
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const dayName = format(day, 'EEEE');
                 const isWeekend = weeklyOffDays.includes(day.getDay());
@@ -1515,7 +1549,7 @@ const AttendanceDashboard: React.FC = () => {
                     } else {
                         status = 'A'; absentDays++;
                     }
-                    daysPresentInWeek = 0;
+                    // Removed immediate reset here to allow multi-day weekends (Sat/Sun) to both be W/O if threshold met Mon-Fri
                 } else {
                     status = 'A'; absentDays++;
                 }
@@ -2447,7 +2481,7 @@ const AttendanceDashboard: React.FC = () => {
                                 type="button"
                                 onClick={() => handleSetDateFilter(filter)}
                                 className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                                    activeDateFilter === filter
+                                    pendingActiveDateFilter === filter
                                         ? "bg-[#22c55e] text-white shadow-md border-none"
                                         : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
                                 }`}
@@ -2460,14 +2494,14 @@ const AttendanceDashboard: React.FC = () => {
                                 type="button"
                                 onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
                                 className={`whitespace-nowrap flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                                    activeDateFilter === 'Custom'
+                                    pendingActiveDateFilter === 'Custom'
                                         ? "bg-[#22c55e] text-white shadow-md border-none"
                                         : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
                                 }`}
                             >
                                 <Calendar className="h-4 w-4" />
-                                {activeDateFilter === 'Custom'
-                                    ? `${format(dateRange.startDate!, 'dd MMM')} - ${format(dateRange.endDate!, 'dd MMM')}`
+                                {pendingActiveDateFilter === 'Custom'
+                                    ? `${format(pendingDateRange.startDate!, 'dd MMM')} - ${format(pendingDateRange.endDate!, 'dd MMM')}`
                                     : 'Custom Range'}
                             </Button>
                         </div>
@@ -2477,7 +2511,7 @@ const AttendanceDashboard: React.FC = () => {
                             <DateRangePicker
                                 onChange={handleCustomDateChange}
                                 months={1}
-                                ranges={dateRangeArray}
+                                ranges={pendingDateRangeArray}
                                 direction="horizontal"
                                 maxDate={new Date()}
                             />
@@ -2486,15 +2520,15 @@ const AttendanceDashboard: React.FC = () => {
                 </div>
 
                 {/* Dropdowns Grid */}
-                <div className="grid grid-cols-2 md:flex md:flex-wrap items-end gap-x-3 gap-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-x-3 gap-y-4">
                     <div className="col-span-1">
                         <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
                         <select
                             id={reportTypeId}
                             name="reportType"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={reportType}
-                            onChange={(e) => setReportType(e.target.value as any)}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingReportType}
+                            onChange={(e) => setPendingReportType(e.target.value as any)}
                         >
                             <option value="basic">Basic Report</option>
                             <option value="log">Attendance Log</option>
@@ -2510,12 +2544,12 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id="site-select"
                             name="site"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedSite}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedSite}
                             onChange={(e) => {
-                                setSelectedSite(e.target.value);
-                                setSelectedSociety('all'); // Reset society when site changes
-                                setSelectedUser('all');
+                                setPendingSelectedSite(e.target.value);
+                                setPendingSelectedSociety('all'); // Reset pending society
+                                setPendingSelectedUser('all');
                             }}
                         >
                             <option value="all">All Sites</option>
@@ -2530,16 +2564,16 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id="society-select"
                             name="society"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedSociety}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedSociety}
                             onChange={(e) => {
-                                setSelectedSociety(e.target.value);
-                                setSelectedUser('all');
+                                setPendingSelectedSociety(e.target.value);
+                                setPendingSelectedUser('all');
                             }}
                         >
                             <option value="all">All Societies</option>
                             {societies
-                                .filter(s => selectedSite === 'all' || s.organizationId === selectedSite)
+                                .filter(s => pendingSelectedSite === 'all' || s.organizationId === pendingSelectedSite)
                                 .map(soc => (
                                     <option key={soc.id} value={soc.id}>{soc.name}</option>
                                 ))
@@ -2548,14 +2582,15 @@ const AttendanceDashboard: React.FC = () => {
                     </div>
 
                     <div className="col-span-1">
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
                         <select
                             id={roleId}
                             name="role"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedRole}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedRole}
                             onChange={(e) => {
-                                setSelectedRole(e.target.value);
-                                setSelectedUser('all');
+                                setPendingSelectedRole(e.target.value);
+                                setPendingSelectedUser('all');
                             }}
                         >
                             <option value="all">All Roles</option>
@@ -2572,16 +2607,16 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id={employeeId}
                             name="employee"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedUser}
-                            onChange={(e) => setSelectedUser(e.target.value)}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedUser}
+                            onChange={(e) => setPendingSelectedUser(e.target.value)}
                         >
                             <option value="all">All Employees</option>
                             {users
                                 .filter(u => 
-                                    (selectedRole === 'all' || u.role === selectedRole) && 
-                                    (selectedSite === 'all' || u.organizationId === selectedSite) &&
-                                    (selectedSociety === 'all' || u.societyId === selectedSociety)
+                                    (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
+                                    (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
+                                    (pendingSelectedSociety === 'all' || u.societyId === pendingSelectedSociety)
                                 )
                                 .sort((a, b) => a.name.localeCompare(b.name))
                                 .map(u => (
@@ -2596,9 +2631,9 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id={statusId}
                             name="status"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedStatus}
-                            onChange={(e) => setSelectedStatus(e.target.value)}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedStatus}
+                            onChange={(e) => setPendingSelectedStatus(e.target.value)}
                         >
                             <option value="all">All Status</option>
                             <option value="ACTIVE_USERS">Active Users Only</option>
@@ -2623,9 +2658,9 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id={recordTypeId}
                             name="recordType"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={selectedRecordType}
-                            onChange={(e) => setSelectedRecordType(e.target.value)}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingSelectedRecordType}
+                            onChange={(e) => setPendingSelectedRecordType(e.target.value)}
                         >
                             <option value="all">All Records</option>
                             <option value="complete">Complete (Punch-in & Punch-out)</option>
@@ -2640,14 +2675,24 @@ const AttendanceDashboard: React.FC = () => {
                         <select
                             id="pageSize-select"
                             name="pageSize"
-                            className="w-full md:w-auto border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={reportPageSize}
-                            onChange={(e) => setReportPageSize(Number(e.target.value))}
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingReportPageSize}
+                            onChange={(e) => setPendingReportPageSize(Number(e.target.value))}
                         >
                             <option value={20}>20 Records</option>
                             <option value={50}>50 Records</option>
                             <option value={100}>100 Records</option>
                         </select>
+                    </div>
+
+                    <div className="col-span-2 md:col-span-1 xl:ml-auto">
+                        <Button
+                            onClick={handleApplyFilters}
+                            className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white shadow-lg flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold"
+                        >
+                            <Filter className="w-4 h-4" />
+                            Apply Filters
+                        </Button>
                     </div>
                 </div>
             </div>

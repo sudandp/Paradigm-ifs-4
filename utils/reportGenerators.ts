@@ -145,7 +145,7 @@ export const reportGenerators = {
     }
     tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #d1fae5; color: #065f46;">P</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #dbeafe; color: #1e40af;">1/2P</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">P(1)</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">OT (P)</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #cffafe; color: #0e7490;">C/O</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #e0e7ff; color: #3730a3;">E/L</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #f3e8ff; color: #6b21a8;">S/L</th>
@@ -173,15 +173,52 @@ export const reportGenerators = {
       let compOffCount = 0;
       let holidayCount = 0;
 
+      let daysPresentInWeek = 0;
+      // Pre-calculate work days in the overlapping week before the month starts
+      const firstDay = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
+      const startOfFirstWeek = new Date(firstDay);
+      startOfFirstWeek.setDate(firstDay.getDate() - (firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1)); // Mon
+      
+      if (firstDay > startOfFirstWeek) {
+        let check = new Date(startOfFirstWeek);
+        while (check < firstDay) {
+          const cStr = format(check, 'yyyy-MM-dd');
+          const isSun = check.getDay() === 0;
+          if (isSun) {
+            daysPresentInWeek = 0;
+          } else {
+            const dayEvs = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === cStr);
+            const dayLv = leaves.find(l => l.user_id === user.id && cStr >= l.start_date && cStr <= l.end_date);
+            const pIn = dayEvs.find(e => e.type === 'punch-in' || e.type === 'check_in');
+            const pOut = dayEvs.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
+            
+            let worked = false;
+            if (pIn && pOut) {
+              const dur = (new Date(pOut.timestamp).getTime() - new Date(pIn.timestamp).getTime()) / 3600000;
+              if (dur >= 3) worked = true;
+            } else if (dayLv && !['loss of pay', 'loss-of-pay', 'lop'].includes((dayLv.leave_type || '').toLowerCase())) {
+              worked = true;
+            }
+            if (worked) daysPresentInWeek++;
+          }
+          check.setDate(check.getDate() + 1);
+        }
+      }
+
       for (let d = 1; d <= daysInMonth; d++) {
         const currentDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
-        const isSunday = currentDate.getUTCDay() === 0;
+        const isSunday = currentDate.getDay() === 0;
+        const isMonday = currentDate.getDay() === 1;
+        
+        if (isMonday) daysPresentInWeek = 0;
+
         const dateStr = format(currentDate, 'yyyy-MM-dd');
         const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
         const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
 
         let status = 'A';
         let color = '#dc2626';
+        let dayWorked = false;
         
         const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
         const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
@@ -194,34 +231,53 @@ export const reportGenerators = {
             color = '#0d9488';
             presentCount++;
             overtimeCount++;
+            dayWorked = true;
           } else if (durationHours >= 5) {
             status = 'P';
             color = '#16a34a';
             presentCount++;
             if (durationHours > 14) overtimeCount++;
+            dayWorked = true;
           } else if (durationHours > 1) {
             status = '0.5P';
             color = '#d97706';
             halfDayCount++;
+            dayWorked = true;
           }
         } else if (dayLeave) {
           const lt = (dayLeave.leave_type || '').toLowerCase();
+          const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(lt);
           if (lt === 'sick') { status = 'S/L'; color = '#7c3aed'; sickLeaveCount++; }
           else if (lt.includes('comp')) { status = 'C/O'; color = '#0891b2'; compOffCount++; }
+          else if (isLOP) { status = 'A'; color = '#dc2626'; absentCount++; }
           else { status = 'E/L'; color = '#4f46e5'; earnedLeaveCount++; }
-          leaveCount++;
+          
+          if (!isLOP) {
+            leaveCount++;
+            dayWorked = true;
+          } else {
+             // Already counted as absent above
+          }
         } else if (isSunday) {
-          status = 'WO';
-          color = '#6b7280';
-          weeklyOffCount++;
+          if (daysPresentInWeek >= 3) {
+            status = 'WO';
+            color = '#6b7280';
+            weeklyOffCount++;
+          } else {
+            status = 'A';
+            color = '#dc2626';
+            absentCount++;
+          }
         } else {
           absentCount++;
         }
 
+        if (dayWorked) daysPresentInWeek++;
+
         tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; font-weight: bold; font-size: 8px;">${status}</td>`;
       }
 
-      const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount + weeklyOffCount + holidayCount;
+      const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount + weeklyOffCount + holidayCount + overtimeCount;
 
       tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${presentCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #d97706;">${halfDayCount}</td>

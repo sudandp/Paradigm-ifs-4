@@ -845,7 +845,7 @@ export const MonthlyReportDocument: React.FC<{
             ))}
             <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>P</Text></View>
             <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>1/2P</Text></View>
-            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>P(1)</Text></View>
+            <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>OT (P)</Text></View>
             <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>C/O</Text></View>
             <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>E/L</Text></View>
             <View style={[styles.tableColHeader, { width: '22px' }]}><Text style={styles.tableCellHeader}>S/L</Text></View>

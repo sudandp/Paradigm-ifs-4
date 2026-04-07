@@ -249,7 +249,7 @@ export const exportAttendanceToExcel = async (
     const mainHeaders = [
         'Employee Name',
         ...dayInterval.map(date => format(date, 'EEE')),
-        'P', '1/2P', 'P(1)', 'C/O', 'E/L', 'S/L', 'A', 'WO', 'H', 'WOP', 'HP', 'F/H', 'W/H', 'Total'
+        'P', '1/2P', 'OT (P)', 'C/O', 'E/L', 'S/L', 'A', 'WO', 'H', 'WOP', 'HP', 'F/H', 'W/H', 'Total'
     ];
     headerRow2.values = mainHeaders;
     headerRow2.height = 25;

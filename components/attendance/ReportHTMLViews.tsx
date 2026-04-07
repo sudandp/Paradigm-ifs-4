@@ -182,7 +182,7 @@ export const MonthlyStatusView: React.FC<{
                             ))}
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-green-50 text-green-800 min-w-[28px]">P</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-blue-50 text-blue-700 min-w-[28px]">1/2P</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-teal-50 text-teal-700 min-w-[28px]">P(1)</th>
+                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-teal-50 text-teal-700 min-w-[28px]">OT (P)</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-cyan-50 text-cyan-700 min-w-[28px]">C/O</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-indigo-50 text-indigo-700 min-w-[28px]">E/L</th>
                             <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-purple-50 text-purple-700 min-w-[28px]">S/L</th>
@@ -222,7 +222,7 @@ export const MonthlyStatusView: React.FC<{
                 <span className="flex items-center gap-1 text-blue-500"><span className="w-2 h-2 rounded bg-blue-500 inline-block" /> 1/2P: Half Day</span>
                 <span className="flex items-center gap-1 text-gray-400"><span className="w-2 h-2 rounded bg-gray-400 inline-block" /> W/O: Weekly Off</span>
                 <span className="flex items-center gap-1 text-orange-500"><span className="w-2 h-2 rounded bg-orange-500 inline-block" /> H: Holiday</span>
-                <span className="flex items-center gap-1 text-teal-600"><span className="w-2 h-2 rounded bg-teal-600 inline-block" /> P(1): OT / ExtraP</span>
+                <span className="flex items-center gap-1 text-teal-600"><span className="w-2 h-2 rounded bg-teal-600 inline-block" /> OT (P): OT / ExtraP</span>
                 <span className="flex items-center gap-1 text-purple-600"><span className="w-2 h-2 rounded bg-purple-600 inline-block" /> S/L: Sick Leave</span>
                 <span className="flex items-center gap-1 text-indigo-600"><span className="w-2 h-2 rounded bg-indigo-600 inline-block" /> E/L: Earned Leave</span>
                 <span className="flex items-center gap-1 text-cyan-600"><span className="w-2 h-2 rounded bg-cyan-600 inline-block" /> C/O: Comp Off</span>
