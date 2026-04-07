@@ -156,6 +156,87 @@ const EmailConfigPanel: React.FC = () => {
     const [editingSchedule, setEditingSchedule] = useState<Partial<EmailScheduleRule> | null>(null);
     const [previewHtml, setPreviewHtml] = useState<string | null>(null);
 
+    const handlePreview = (template: Partial<EmailTemplate>) => {
+        let customGreeting = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
+        
+        if (template.variables) {
+            const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
+            if (customMsgObj && customMsgObj.description) {
+                customGreeting = customMsgObj.description.replace(/\n/g, '<br/>');
+            }
+        }
+
+        let html = template.bodyTemplate || '';
+        
+        const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
+
+        if (!html) {
+            html = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    @media only screen and (max-width: 600px) {
+      .stats-container { display: block !important; }
+      .stat-card { margin-bottom: 12px !important; width: 100% !important; }
+      .header-content { display: block !important; text-align: center !important; }
+      .header-right { text-align: center !important; margin-top: 12px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9;">
+  <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;">
+      <div class="header-content" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);">
+            <img src="https://app.paradigmfms.com/logos/pms-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
+            <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span>
+          </div>
+        </div>
+        <div class="header-right" style="text-align: right;">
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Intelligence Report</div>
+          <div style="font-size: 16px; font-weight: 600;">{reportDate}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div style="padding: 32px;">
+      <div style="margin-bottom: 32px;">
+        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div>
+        <p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">
+          ${customGreeting}
+        </p>
+      </div>
+
+      <div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+        <div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;">
+          <h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3>
+        </div>
+        <div style="padding: 32px; text-align: center; color: #94a3b8; border-bottom: 1px solid #e2e8f0;">
+          [ Data Table Will Be Rendered Here ]
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+        } else if (!hasGreetingPlaceholder) {
+             const greetingBlock = `\n<div style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px auto; max-width: 800px; color: #1e3a8a; font-size: 14px;">\n  ${customGreeting}\n</div>\n`;
+             if (html.toLowerCase().includes('<body')) {
+                 html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+             } else {
+                 html = greetingBlock + html;
+             }
+        } else {
+             html = html.replace(/\{greetingMessage\}/g, customGreeting);
+             html = html.replace(/\{customGreeting\}/g, customGreeting);
+        }
+
+        setPreviewHtml(html);
+    };
+
     useEffect(() => {
         fetchAllData();
     }, []);
@@ -598,7 +679,7 @@ const EmailConfigPanel: React.FC = () => {
                                 <Button
                                     variant="secondary"
                                     size="sm"
-                                    onClick={() => setPreviewHtml(editingTemplate.bodyTemplate || '')}
+                                    onClick={() => handlePreview(editingTemplate)}
                                 >
                                     <Eye className="h-3 w-3 mr-1" /> Preview
                                 </Button>
@@ -624,7 +705,7 @@ const EmailConfigPanel: React.FC = () => {
                                             {tmpl.category.replace('_', ' ')}
                                         </span>
                                         <div className="flex gap-1">
-                                            <button onClick={() => setPreviewHtml(tmpl.bodyTemplate)} className="p-1.5 hover:bg-slate-100 rounded-lg text-muted" title="Preview">
+                                            <button onClick={() => handlePreview(tmpl)} className="p-1.5 hover:bg-slate-100 rounded-lg text-muted" title="Preview">
                                                 <Eye className="h-3.5 w-3.5" />
                                             </button>
                                             <button onClick={() => { setEditingTemplate(tmpl); setShowTemplateForm(true); }} className="p-1.5 hover:bg-accent/10 rounded-lg text-accent" title="Edit">

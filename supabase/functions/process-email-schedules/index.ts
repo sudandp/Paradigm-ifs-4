@@ -329,6 +329,35 @@ serve(async (req: Request) => {
         });
       };
 
+      // Extract and process custom greeting message
+      let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
+
+      if (template?.variables && Array.isArray(template.variables)) {
+        const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
+        if (customMsgObj && customMsgObj.description) {
+            // First evaluate conditionals in the custom message
+            let evaluatedMsg = evaluateConditionals(customMsgObj.description, reportData || {});
+            
+            // Replace newlines with <br/> for proper HTML rendering
+            greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+        }
+      }
+      
+      // Inject the greeting into reportData so it can be evaluated in the template
+      reportData.greetingMessage = greetingMessage;
+      reportData.customGreeting = greetingMessage;
+
+      // Force inject greeting if the user has a custom HTML body but didn't include either placeholder
+      const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
+      if (template?.body_template && !hasGreetingPlaceholder) {
+          const greetingBlock = `\n<div style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px auto; max-width: 800px; color: #1e3a8a; font-size: 14px;">\n  {greetingMessage}\n</div>\n`;
+          if (html.match(/<body[^>]*>/i)) {
+              html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+          } else {
+              html = greetingBlock + html;
+          }
+      }
+
       // First pass: conditionals
       subject = evaluateConditionals(subject, reportData);
       html = evaluateConditionals(html, reportData || {});
@@ -475,6 +504,24 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
   const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
   const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
   const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
+
+  if (totalPresent === 0 && onLeaveCount === 0 && !todayEvents.length) {
+    return {
+      date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+      generatedTime: format(nowIST, 'hh:mm a'),
+      totalEmployees: String(filteredUsers.length),
+      totalPresent: '0',
+      totalAbsent: String(filteredUsers.length),
+      lateCount: '0',
+      attendancePercentage: '0',
+      onLeaveCount: '0',
+      inactiveCount: '0',
+      table: `<tr><td colspan="7" style="padding: 24px; text-align: center; color: #64748b; background: #f8fafc;">
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">No Attendance Activity Today</div>
+        <div style="font-size: 12px; opacity: 0.8;">This could be due to a public holiday, weekend, or a sync issue with biometric devices.</div>
+      </td></tr>`
+    };
+  }
 
   let tableHtml = '';
   filteredUsers.forEach((user: User, i: number) => {
@@ -884,55 +931,95 @@ function evaluateConditionals(str: string, data: Record<string, string>) {
 
 // ─── Default Template ───────────────────────────────────────────────────────
 function getDefaultPremiumTemplate() {
-  return `<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-    <div style="background-color: #005d22; padding: 24px; color: white; display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Paradigm Office Services</h1>
-        <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">Attendance Intelligence Report • {Date}</p>
-      </div>
-      <div style="text-align: right;">
-        <div style="font-size: 12px; opacity: 0.8;">Report Generated</div>
-        <div style="font-weight: 600;">{reportDate} at {generatedTime}</div>
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @media only screen and (max-width: 600px) {
+      .stats-container { display: block !important; }
+      .stat-card { margin-bottom: 12px !important; width: 100% !important; }
+      .header-content { display: block !important; text-align: center !important; }
+      .header-right { text-align: center !important; margin-top: 12px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9;">
+  <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;">
+      <div class="header-content" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <!-- Logo Placeholder -->
+          <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);">
+            <img src="https://app.paradigmfms.com/logos/pms-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
+            <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span>
+          </div>
+        </div>
+        <div class="header-right" style="text-align: right;">
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Intelligence Report</div>
+          <div style="font-size: 16px; font-weight: 600;">{reportDate}</div>
+        </div>
       </div>
     </div>
     
-    <div style="padding: 24px;">
-      <!-- Stats Row -->
-      <div style="display: flex; gap: 16px; margin-bottom: 24px;">
-        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
-          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Attendance</div>
-          <div style="font-size: 24px; font-weight: 700; color: #005d22;">{attendancePercentage}%</div>
+    <div style="padding: 32px;">
+      <!-- Greeting / Meta -->
+      <div style="margin-bottom: 32px;">
+        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div>
+        <p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">
+          {greetingMessage}
+        </p>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;">
+        <div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Staff Presence</div>
+          <div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div>
         </div>
-        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
-          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Present</div>
-          <div style="font-size: 24px; font-weight: 700; color: #16a34a;">{totalPresent}</div>
+        <div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Total Present</div>
+          <div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div>
         </div>
-        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
-          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Absent</div>
-          <div style="font-size: 24px; font-weight: 700; color: #dc2626;">{totalAbsent}</div>
-        </div>
-        <div style="flex: 1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center;">
-          <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 4px;">Late Arrivals</div>
-          <div style="font-size: 24px; font-weight: 700; color: #d97706;">{lateCount}</div>
+        <div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Total Late</div>
+          <div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div>
         </div>
       </div>
 
-      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 600;">Monthly Attendance Grid</h3>
-        <div style="font-size: 11px; color: #64748b;">
-          Legend: <span style="color: #16a34a; font-weight: bold;">P</span> Present | <span style="color: #d97706; font-weight: bold;">1/2P</span> Half Day | <span style="color: #dc2626; font-weight: bold;">A</span> Absent | <span style="color: #6b7280; font-weight: bold;">WO</span> Weekly Off | <span style="color: #854d0e; font-weight: bold; background: #fef9c3;">H</span> Holiday
+      <!-- Table Section -->
+      <div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+        <div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;">
+          <h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3>
+        </div>
+        <div style="overflow-x: auto;">
+          {table}
         </div>
       </div>
 
-      <div style="overflow-x: auto;">
-        {table}
+      <!-- CTA Button -->
+      <div style="text-align: center; margin-bottom: 40px;">
+        <a href="https://app.paradigmfms.com" style="display: inline-block; background-color: #059669; color: white; padding: 14px 32px; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
+          Open System Dashboard
+        </a>
       </div>
 
-      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
-        This is an automated report from the Paradigm Attendance System. All times are in IST.
+      <!-- Footer -->
+      <div style="padding-top: 32px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.8;">
+        <div style="margin-bottom: 8px; font-weight: 600; color: #64748b;">Paradigm Facility Management Services</div>
+        <div style="margin-bottom: 16px;">This is a system-generated secure audit report. No reply is required.</div>
+        <div style="display: inline-flex; gap: 8px; justify-content: center;">
+          <span style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px;">Timezone: IST</span>
+          <span style="background: #f1f5f9; padding: 4px 8px; border-radius: 6px;">Report ID: #PRD-{generatedTime}</span>
+        </div>
       </div>
     </div>
-  </div>`;
+  </div>
+</body>
+</html>`;
 }
 
 function getMonthlyReportPremiumTemplate() {
