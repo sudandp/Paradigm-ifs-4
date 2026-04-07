@@ -97,6 +97,7 @@ const reportGenerators = {
     const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
     const monthStr = format(nowIST, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
+    let totalPresentSum = 0;
     const [usersRes, eventsRes] = await Promise.all([
       supabase.from('users').select('id, name').neq('role_id', 'unverified').order('name'),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()),
@@ -116,9 +117,23 @@ const reportGenerators = {
         else { tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #dc2626;">A</td>`; }
       }
       tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${presentCount}</td></tr>`;
+      totalPresentSum += presentCount;
     });
     tableHtml += `</tbody></table>`;
-    return { date: monthStr, totalEmployees: String(users.length), table: tableHtml };
+    const totalPossible = users.length * daysInMonth;
+    const attendancePercentage = totalPossible > 0 ? Math.round((totalPresentSum / totalPossible) * 100) : 0;
+    const totalAbsent = totalPossible - totalPresentSum;
+    return { 
+      date: monthStr, 
+      reportDate: format(nowIST, 'dd MMM yyyy'),
+      generatedTime: format(nowIST, 'hh:mm a'),
+      totalEmployees: String(users.length), 
+      table: tableHtml,
+      attendancePercentage: String(attendancePercentage),
+      totalAbsent: String(totalAbsent),
+      lateCount: "0",
+      totalPresent: String(totalPresentSum)
+    };
   },
   document_expiry: async (supabase: SupabaseClient, nowIST: Date) => {
     return { date: format(nowIST, 'yyyy-MM-dd'), items: '0' };

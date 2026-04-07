@@ -234,6 +234,32 @@ const EmailConfigPanel: React.FC = () => {
              html = html.replace(/\{customGreeting\}/g, customGreeting);
         }
 
+        // Mock data replacement for standard variables
+        const mockData: Record<string, string> = {
+            attendancePercentage: '92',
+            totalPresent: '46',
+            totalAbsent: '4',
+            lateCount: '2',
+            totalEmployees: '50',
+            date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+            generatedTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+        };
+        
+        // Evaluate conditionals
+        html = html.replace(/\{(\w+)\s*([><!=]=?)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, (_m, key, op, val2Str, t, f) => {
+            const v1 = parseFloat(mockData[Object.keys(mockData).find(k=>k.toLowerCase()===key.toLowerCase())||''] || '0');
+            const v2 = parseFloat(val2Str);
+            let ok = false;
+            if(op==='>')ok=v1>v2; else if(op==='<')ok=v1<v2; else if(op==='>=')ok=v1>=v2; else if(op==='<=')ok=v1<=v2; else if(op==='==')ok=v1==v2; else if(op==='!=')ok=v1!=v2;
+            return ok ? t : f;
+        });
+
+        // Evaluate plain text variable tags
+        html = html.replace(/\{(\w+)\}/g, (match, key) => {
+            const dataKey = Object.keys(mockData).find(k => k.toLowerCase() === key.toLowerCase());
+            return dataKey ? mockData[dataKey] : match;
+        });
+
         setPreviewHtml(html);
     };
 
