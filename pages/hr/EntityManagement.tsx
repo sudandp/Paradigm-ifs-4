@@ -247,7 +247,7 @@ const EntityManagement: React.FC = () => {
     // Client/Entity handlers
     const handleAddClient = (companyName: string) => setEntityFormState({ isOpen: true, initialData: null, companyName });
     const handleEditClient = (entity: Entity, companyName: string) => setEntityFormState({ isOpen: true, initialData: entity, companyName });
-    const handleSaveClient = async (clientData: Entity, pendingFiles: Record<string, File | File[]>) => {
+    const handleSaveClient = async (clientData: Entity, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => {
         try {
             let company = groups.flatMap(g => g.companies).find(c => c.name === entityFormState.companyName);
             
@@ -268,7 +268,11 @@ const EntityManagement: React.FC = () => {
                     if (path.startsWith('doc_') || path.startsWith('ins_') || path.startsWith('pol_')) {
                         // Multi-file upload for Compliance Documents, Insurances, or Policies
                         const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
-                        const uploadPromises = files.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, path));
+                        const newFiles = files.filter(f => f.file) as UploadedFile[];
+                        const uploadPromises = newFiles.map(f => {
+                            const file = f.file!;
+                            return api.uploadDocument(file, 'compliance-documents', undefined, path);
+                        });
                         const results = await Promise.all(uploadPromises);
                         const newUrls = results.map(r => r.url);
 
@@ -293,8 +297,10 @@ const EntityManagement: React.FC = () => {
                         }
                     } else if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
                         // Single file registration/statutory docs
-                        const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
-                        const uploadResult = await api.uploadDocument(file as File, 'onboarding-documents', undefined, path);
+                        const f = (Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles) as UploadedFile;
+                        const file = f?.file;
+                        if (!file) continue;
+                        const uploadResult = await api.uploadDocument(file, 'onboarding-documents', undefined, path);
                         
                         const mapping: Record<string, string> = {
                             cinDoc: 'cinDocUrl',
@@ -308,13 +314,18 @@ const EntityManagement: React.FC = () => {
                         (updatedClientData as any)[mapping[path]] = uploadResult.url;
                     } else if (path === 'logo') {
                         // Society Logo
-                        const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
-                        const uploadResult = await api.uploadLogo(file as File);
+                        const f = (Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles) as UploadedFile;
+                        const file = f?.file;
+                        if (!file) continue;
+                        const uploadResult = await api.uploadLogo(file);
                         updatedClientData.logoUrl = uploadResult;
                     } else {
                         // Legacy/Generic nested path handling
                         const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
-                        const uploadResult = await api.uploadDocument(files[0] as File, 'onboarding-documents', undefined, path);
+                        const f = files[0] as UploadedFile;
+                        const file = f?.file;
+                        if (!file) continue;
+                        const uploadResult = await api.uploadDocument(file, 'onboarding-documents', undefined, path);
                         
                         const pathParts = path.split('.');
                         let current: any = updatedClientData;
@@ -408,7 +419,7 @@ const EntityManagement: React.FC = () => {
         setDeleteModalState({ isOpen: false, type: 'group', id: '', name: '' });
     };
 
-    const handleSaveCompanyData = async (data: Partial<Company>, pendingFiles: Record<string, File | File[]> = {}) => {
+    const handleSaveCompanyData = async (data: Partial<Company>, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => {
         try {
             const { mode, groupId } = companyFormState;
             const newGroups = [...groups];
@@ -420,16 +431,22 @@ const EntityManagement: React.FC = () => {
             
             // 1. Upload Logo if present
             if (pendingFiles['logo'] && !Array.isArray(pendingFiles['logo'])) {
-                const logoUrl = await api.uploadLogo(pendingFiles['logo'] as File);
-                updatedData.logoUrl = logoUrl;
+                const logoFile = (pendingFiles['logo'] as UploadedFile).file;
+                if (logoFile) {
+                    const logoUrl = await api.uploadLogo(logoFile);
+                    updatedData.logoUrl = logoUrl;
+                }
             }
 
             // 1b. Registration & Statutory Documents
             const fileEntries = Object.entries(pendingFiles);
             for (const [path, fileOrFiles] of fileEntries) {
-                if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'gstDoc', 'panDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
-                    const file = Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles;
-                    const { url } = await api.uploadDocument(file as File);
+                if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'gstDoc', 'panDoc', 'epfoDoc', 'esicDoc', 'shramDoc', 'logo'].includes(path)) {
+                    const fileObj = (Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles) as UploadedFile;
+                    const file = fileObj?.file;
+                    if (!file) continue;
+                    
+                    const { url } = await api.uploadDocument(file);
                     
                     const mapping: Record<string, { field: string; nested?: string }> = {
                         cinDoc: { field: 'cinDocUrl' },
@@ -460,13 +477,19 @@ const EntityManagement: React.FC = () => {
                     const pendingForDoc = pendingFiles[`doc_${doc.id}`];
                     if (pendingForDoc) {
                         if (Array.isArray(pendingForDoc)) {
-                            // Upload multiple files to compliance-documents bucket
-                            const uploadPromises = pendingForDoc.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `doc_${doc.id}`));
+                            // Upload multiple files 
+                            const newFiles = (pendingForDoc as UploadedFile[]).filter(f => f.file);
+                            const uploadPromises = newFiles.map(f => {
+                                const file = f.file!;
+                                return api.uploadDocument(file, 'compliance-documents', undefined, `doc_${doc.id}`);
+                            });
                             const results = await Promise.all(uploadPromises);
                             doc.documentUrls = [...(doc.documentUrls || []), ...results.map(r => r.url)];
                         } else {
                             // Single file fallback
-                            const { url } = await api.uploadDocument(pendingForDoc as File, 'compliance-documents', undefined, `doc_${doc.id}`);
+                            const file = (pendingForDoc as UploadedFile).file;
+                            if (!file) continue;
+                            const { url } = await api.uploadDocument(file, 'compliance-documents', undefined, `doc_${doc.id}`);
                             doc.documentUrls = [...(doc.documentUrls || []), url];
                         }
                     }
@@ -479,11 +502,17 @@ const EntityManagement: React.FC = () => {
                     const pendingForIns = pendingFiles[`ins_${ins.id}`];
                     if (pendingForIns) {
                         if (Array.isArray(pendingForIns)) {
-                            const uploadPromises = pendingForIns.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `ins_${ins.id}`));
+                            const newFiles = (pendingForIns as UploadedFile[]).filter(f => f.file);
+                            const uploadPromises = newFiles.map(f => {
+                                const file = f.file!;
+                                return api.uploadDocument(file, 'compliance-documents', undefined, `ins_${ins.id}`);
+                            });
                             const results = await Promise.all(uploadPromises);
                             ins.documentUrls = [...(ins.documentUrls || []), ...results.map(r => r.url)];
                         } else {
-                            const { url } = await api.uploadDocument(pendingForIns as File, 'compliance-documents', undefined, `ins_${ins.id}`);
+                            const file = (pendingForIns as UploadedFile).file;
+                            if (!file) continue;
+                            const { url } = await api.uploadDocument(file, 'compliance-documents', undefined, `ins_${ins.id}`);
                             ins.documentUrls = [...(ins.documentUrls || []), url];
                         }
                     }
@@ -496,11 +525,17 @@ const EntityManagement: React.FC = () => {
                     const pendingForPol = pendingFiles[`pol_${pol.id}`];
                     if (pendingForPol) {
                         if (Array.isArray(pendingForPol)) {
-                            const uploadPromises = pendingForPol.map(file => api.uploadDocument(file as File, 'compliance-documents', undefined, `pol_${pol.id}`));
+                            const newFiles = (pendingForPol as UploadedFile[]).filter(f => f.file);
+                            const uploadPromises = newFiles.map(f => {
+                                const file = f.file!;
+                                return api.uploadDocument(file, 'compliance-documents', undefined, `pol_${pol.id}`);
+                            });
                             const results = await Promise.all(uploadPromises);
                             pol.documentUrls = [...(pol.documentUrls || []), ...results.map(r => r.url)];
                         } else {
-                            const { url } = await api.uploadDocument(pendingForPol as File, 'compliance-documents', undefined, `pol_${pol.id}`);
+                            const file = (pendingForPol as UploadedFile).file;
+                            if (!file) continue;
+                            const { url } = await api.uploadDocument(file, 'compliance-documents', undefined, `pol_${pol.id}`);
                             pol.documentUrls = [...(pol.documentUrls || []), url];
                         }
                     }

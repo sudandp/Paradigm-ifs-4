@@ -15,11 +15,12 @@ import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench,
 import Toast from '../ui/Toast';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
+import { getProxyUrl, getUploadedFileFromUrl } from '../../utils/fileUrl';
 
 interface EntityFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Entity, pendingFiles: Record<string, File | File[]>) => void;
+  onSave: (data: Entity, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => void;
   initialData: Entity | null;
   companyName: string;
   companies?: Company[];
@@ -356,7 +357,7 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
   const [activeTab, setActiveTab] = useState<Tab>('General');
   const [completedTabs, setCompletedTabs] = useState<Set<Tab>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingFiles, setPendingFiles] = useState<Record<string, File | File[]>>({});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, UploadedFile | UploadedFile[]>>({});
   const [allDesignations, setAllDesignations] = useState<SiteStaffDesignation[]>([]);
   const [docFilters, setDocFilters] = useState({
     type: '',
@@ -512,7 +513,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
 }, [initialData, reset, isOpen]);
 
 
-  const handleFileUpload = (field: string, file: File | File[] | null) => {
+  const handleFileUpload = (field: string, file: UploadedFile | UploadedFile[] | null) => {
     setPendingFiles(prev => {
         const next = { ...prev };
         if (file) next[field] = file;
@@ -719,8 +720,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name="cinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="CIN Document" 
-                                            file={pendingFiles['cinDoc'] && !Array.isArray(pendingFiles['cinDoc']) ? { file: pendingFiles['cinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('cinDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['cinDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('cinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -729,8 +730,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name="dinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="DIN Document" 
-                                            file={pendingFiles['dinDoc'] && !Array.isArray(pendingFiles['dinDoc']) ? { file: pendingFiles['dinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('dinDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['dinDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('dinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -739,8 +740,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name="tinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="TIN Document" 
-                                            file={pendingFiles['tinDoc'] && !Array.isArray(pendingFiles['tinDoc']) ? { file: pendingFiles['tinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('tinDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['tinDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('tinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -749,8 +750,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name="udyogDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="Udyog Document" 
-                                            file={pendingFiles['udyogDoc'] && !Array.isArray(pendingFiles['udyogDoc']) ? { file: pendingFiles['udyogDoc'] as File, preview: '', name: 'New Udyog', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('udyogDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['udyogDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('udyogDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -775,8 +776,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name={"epfoDocUrl" as any} control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="EPFO Document" 
-                                            file={pendingFiles['epfoDoc'] && !Array.isArray(pendingFiles['epfoDoc']) ? { file: pendingFiles['epfoDoc'] as File, preview: '', name: 'EPFO', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('epfoDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['epfoDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('epfoDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -785,8 +786,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name={"esicDocUrl" as any} control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="ESIC Document" 
-                                            file={pendingFiles['esicDoc'] && !Array.isArray(pendingFiles['esicDoc']) ? { file: pendingFiles['esicDoc'] as File, preview: '', name: 'ESIC', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('esicDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['esicDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('esicDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -795,8 +796,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     <Controller name={"eShramDocUrl" as any} control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="E-Shram Document" 
-                                            file={pendingFiles['shramDoc'] && !Array.isArray(pendingFiles['shramDoc']) ? { file: pendingFiles['shramDoc'] as File, preview: '', name: 'Shram', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
-                                            onFileChange={(f) => { handleFileUpload('shramDoc', f?.file || null); if (!f) field.onChange(''); }}
+                                            file={(pendingFiles['shramDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('shramDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -809,8 +810,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         <UploadDocument 
                             label="Society Logo" 
                             variant="compact"
-                            file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: '', name: 'Logo', type: 'image/png', size: 0 } : (field.value ? { preview: field.value, name: 'Current Logo', type: 'image/png', size: 0 } as UploadedFile : null)}
-                            onFileChange={(f) => { handleFileUpload('logo', f?.file || null); if (!f) field.onChange(''); }}
+                            file={(pendingFiles['logo'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
+                            onFileChange={(f) => { handleFileUpload('logo', f); if (!f) field.onChange(''); }}
                             allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
                         />
                         )} />
@@ -917,20 +918,16 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-accent/10">
                                 <UploadDocument 
                                     label="Agreement Word Copy (Soft Copy)" 
-                                    file={watch(`agreements.${index}.wordCopyUrl` as any) ? { name: 'Current Document', preview: watch(`agreements.${index}.wordCopyUrl` as any)!, type: 'application/msword', size: 0 } as UploadedFile : null} 
+                                    file={(pendingFiles[`agreements.${index}.wordCopy`] as UploadedFile) || getUploadedFileFromUrl(watch(`agreements.${index}.wordCopyUrl` as any) as string)} 
                                     onFileChange={(f) => {
-                                        if (f?.file) {
-                                            handleFileUpload(`agreements.${index}.wordCopy`, f.file);
-                                        }
+                                        handleFileUpload(`agreements.${index}.wordCopy`, f);
                                     }} 
                                 />
                                 <UploadDocument 
                                     label="Signed Agreement Copy (Scan)" 
-                                    file={watch(`agreements.${index}.signedCopyUrl` as any) ? { name: 'Signed Document', preview: watch(`agreements.${index}.signedCopyUrl` as any)!, type: 'application/pdf', size: 0 } as UploadedFile : null} 
+                                    file={(pendingFiles[`agreements.${index}.signedCopy`] as UploadedFile) || getUploadedFileFromUrl(watch(`agreements.${index}.signedCopyUrl` as any) as string)} 
                                     onFileChange={(f) => {
-                                        if (f?.file) {
-                                            handleFileUpload(`agreements.${index}.signedCopy`, f.file);
-                                        }
+                                        handleFileUpload(`agreements.${index}.signedCopy`, f);
                                     }} 
                                 />
                             </div>
@@ -985,11 +982,9 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <div className="max-w-md">
                                     <UploadDocument 
                                         label="Form 6 Document" 
-                                        file={watch('complianceDetails.form6DocumentUrl') ? { name: 'Current Document', type: 'application/pdf', size: 0, preview: watch('complianceDetails.form6DocumentUrl') || '', url: watch('complianceDetails.form6DocumentUrl') || '' } : null} 
+                                        file={(pendingFiles['complianceDetails.form6Document'] as UploadedFile) || getUploadedFileFromUrl(watch('complianceDetails.form6DocumentUrl'))} 
                                         onFileChange={(file) => {
-                                            if (file?.file) {
-                                                handleFileUpload('complianceDetails.form6Document', file.file);
-                                            }
+                                            handleFileUpload('complianceDetails.form6Document', file);
                                         }}
                                     />
                                 </div>
@@ -1022,11 +1017,9 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <div className="max-w-md">
                                     <UploadDocument 
                                         label="Min Wage Revision Document" 
-                                        file={watch('complianceDetails.minWageRevisionDocumentUrl') ? { name: 'Current Document', type: 'application/pdf', size: 0, preview: watch('complianceDetails.minWageRevisionDocumentUrl') || '', url: watch('complianceDetails.minWageRevisionDocumentUrl') || '' } : null} 
+                                        file={(pendingFiles['complianceDetails.minWageRevisionDocument'] as UploadedFile) || getUploadedFileFromUrl(watch('complianceDetails.minWageRevisionDocumentUrl'))} 
                                         onFileChange={(file) => {
-                                            if (file?.file) {
-                                                handleFileUpload('complianceDetails.minWageRevisionDocument', file.file);
-                                            }
+                                            handleFileUpload('complianceDetails.minWageRevisionDocument', file);
                                         }}
                                     />
                                 </div>
@@ -1125,12 +1118,12 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                 <Controller name={`complianceDocuments.${index}.documentUrls`} control={control} render={({ field: f }) => {
                                                     const docVal = watch(`complianceDocuments.${index}`);
                                                     const businessId = docVal?.id || field.id;
-                                                    const pendingList = pendingFiles[`doc_${businessId}`] as File[];
+                                                    const pendingList = pendingFiles[`doc_${businessId}`] as UploadedFile[];
                                                     const existingUrls = f.value || [];
                                                     
                                                     const displayFiles: UploadedFile[] = [
-                                                        ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url } as UploadedFile)),
-                                                        ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf } as UploadedFile)) : [])
+                                                        ...existingUrls.map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                        ...(Array.isArray(pendingList) ? pendingList : [])
                                                     ];
 
                                                     return (
@@ -1138,8 +1131,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                             label="Upload Document Capture" 
                                                             files={displayFiles}
                                                             onFilesChange={(newFileList) => {
-                                                                const filesOnly = newFileList.map(nf => nf.file).filter(Boolean) as File[];
-                                                                handleFileUpload(`doc_${businessId}`, filesOnly);
+                                                                handleFileUpload(`doc_${businessId}`, newFileList);
                                                                 f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
                                                             }}
                                                         />
@@ -1337,15 +1329,15 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20">
-                            <UploadDocument 
+                             <UploadDocument 
                                 label="DC Copy 1" 
-                                file={watch('assetTracking.dcCopy1Url') ? { name: 'DC Copy 1', type: 'image/jpeg', size: 0, preview: watch('assetTracking.dcCopy1Url') || '', url: watch('assetTracking.dcCopy1Url') || '' } : null} 
-                                onFileChange={(file) => file?.file && handleFileUpload('assetTracking.dcCopy1', file.file)}
+                                file={(pendingFiles['assetTracking.dcCopy1'] as UploadedFile) || getUploadedFileFromUrl(watch('assetTracking.dcCopy1Url'))} 
+                                onFileChange={(file) => handleFileUpload('assetTracking.dcCopy1', file)}
                             />
                             <UploadDocument 
                                 label="DC Copy 2" 
-                                file={watch('assetTracking.dcCopy2Url') ? { name: 'DC Copy 2', type: 'image/jpeg', size: 0, preview: watch('assetTracking.dcCopy2Url') || '', url: watch('assetTracking.dcCopy2Url') || '' } : null} 
-                                onFileChange={(file) => file?.file && handleFileUpload('assetTracking.dcCopy2', file.file)}
+                                file={(pendingFiles['assetTracking.dcCopy2'] as UploadedFile) || getUploadedFileFromUrl(watch('assetTracking.dcCopy2Url'))} 
+                                onFileChange={(file) => handleFileUpload('assetTracking.dcCopy2', file)}
                             />
                         </div>
 
@@ -1627,11 +1619,11 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                             const insVal = watch(`insurances.${index}`);
                                             const businessId = insVal?.id || field.id;
                                             const urls = f.value || [];
-                                            const pending = pendingFiles[`ins_${businessId}`] as File[];
+                                            const pending = pendingFiles[`ins_${businessId}`] as UploadedFile[];
                                             
                                             const displayFiles: UploadedFile[] = [
-                                                ...(urls as string[]).map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url } as UploadedFile)),
-                                                ...(Array.isArray(pending) ? (pending as File[]).map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf } as UploadedFile)) : [])
+                                                ...(urls as string[]).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                ...(Array.isArray(pending) ? pending : [])
                                             ];
 
                                             return (
@@ -1639,8 +1631,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                     label="Insurance Policy Documents"
                                                     files={displayFiles}
                                                     onFilesChange={(newFiles: UploadedFile[]) => {
-                                                        const files = newFiles.map(uf => uf.file).filter(Boolean) as File[];
-                                                        handleFileUpload(`ins_${businessId}`, files);
+                                                        handleFileUpload(`ins_${businessId}`, newFiles);
                                                         f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
                                                     }}
                                                 />
@@ -1711,11 +1702,11 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                             const polVal = watch(`policies.${index}`);
                                             const businessId = polVal?.id || field.id;
                                             const urls = f.value || [];
-                                            const pending = pendingFiles[`pol_${businessId}`] as File[];
+                                            const pending = pendingFiles[`pol_${businessId}`] as UploadedFile[];
                                             
                                             const displayFiles: UploadedFile[] = [
-                                                ...(urls as string[]).map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url } as UploadedFile)),
-                                                ...(Array.isArray(pending) ? (pending as File[]).map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf } as UploadedFile)) : [])
+                                                ...(urls as string[]).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                ...(Array.isArray(pending) ? pending : [])
                                             ];
 
                                             return (
@@ -1723,8 +1714,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                                     label="Policy Documents"
                                                     files={displayFiles}
                                                     onFilesChange={(newFiles: UploadedFile[]) => {
-                                                        const files = newFiles.map(uf => uf.file).filter(Boolean) as File[];
-                                                        handleFileUpload(`pol_${businessId}`, files);
+                                                        handleFileUpload(`pol_${businessId}`, newFiles);
                                                         f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
                                                     }}
                                                 />

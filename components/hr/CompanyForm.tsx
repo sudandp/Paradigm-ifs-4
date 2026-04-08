@@ -13,12 +13,12 @@ import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye, C
 import CompanyProfilePreview from './CompanyProfilePreview';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
-import { getProxyUrl } from '../../utils/fileUrl';
+import { getProxyUrl, getUploadedFileFromUrl } from '../../utils/fileUrl';
 
 interface CompanyFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<Company>, pendingFiles: Record<string, File | File[]>) => void;
+  onSave: (data: Partial<Company>, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => void;
   initialData: Partial<Company> | null;
   groupName: string;
   existingLocations: string[];
@@ -122,7 +122,7 @@ type Tab = 'Details' | 'Contacts' | 'License' | 'Documents' | 'Holidays' | 'Poli
 const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, initialData, groupName, existingLocations }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('Details');
-  const [pendingFiles, setPendingFiles] = useState<Record<string, File | File[]>>({});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, UploadedFile | UploadedFile[]>>({});
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   
   const { register, handleSubmit, formState: { errors }, reset, control, watch } = useForm<Partial<Company>>({
@@ -194,7 +194,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   const formData = watch();
   
   const logoPreview = pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) 
-    ? URL.createObjectURL(pendingFiles['logo'] as File) 
+    ? (pendingFiles['logo'] as UploadedFile).preview
     : formData.logoUrl;
 
   const onSubmit: SubmitHandler<Partial<Company>> = (data) => {
@@ -217,8 +217,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   const setFile = (key: string, file: UploadedFile | null) => {
     setPendingFiles(prev => {
         const next = { ...prev };
-        if (file?.file) {
-            next[key] = file.file;
+        if (file) {
+            next[key] = file;
         } else {
             delete next[key];
         }
@@ -229,9 +229,8 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   const setFiles = (key: string, uploadedFiles: UploadedFile[]) => {
     setPendingFiles(prev => {
         const next = { ...prev };
-        const files = uploadedFiles.map(uf => uf.file).filter(Boolean) as File[];
-        if (files.length > 0) {
-            next[key] = files;
+        if (uploadedFiles.length > 0) {
+            next[key] = uploadedFiles;
         } else {
             delete next[key];
         }
@@ -350,7 +349,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="cinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="CIN Document" 
-                                            file={pendingFiles['cinDoc'] && !Array.isArray(pendingFiles['cinDoc']) ? { file: pendingFiles['cinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['cinDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
                                             onFileChange={(f) => { setFile('cinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -360,7 +359,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="dinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="DIN Document" 
-                                            file={pendingFiles['dinDoc'] && !Array.isArray(pendingFiles['dinDoc']) ? { file: pendingFiles['dinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['dinDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
                                             onFileChange={(f) => { setFile('dinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -370,7 +369,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="tinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="TIN Document" 
-                                            file={pendingFiles['tinDoc'] && !Array.isArray(pendingFiles['tinDoc']) ? { file: pendingFiles['tinDoc'] as File, preview: '', name: 'New Doc', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['tinDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
                                             onFileChange={(f) => { setFile('tinDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -380,7 +379,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="gstDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="GST Attachment" 
-                                            file={pendingFiles['gstDoc'] && !Array.isArray(pendingFiles['gstDoc']) ? { file: pendingFiles['gstDoc'] as File, preview: '', name: 'New GST', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['gstDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
                                             onFileChange={(f) => { setFile('gstDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -390,7 +389,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="panDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="PAN Attachment" 
-                                            file={pendingFiles['panDoc'] && !Array.isArray(pendingFiles['panDoc']) ? { file: pendingFiles['panDoc'] as File, preview: '', name: 'New PAN', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['panDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
                                             onFileChange={(f) => { setFile('panDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -400,7 +399,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     <Controller name="udyogDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="Udyog Document" 
-                                            file={pendingFiles['udyogDoc'] && !Array.isArray(pendingFiles['udyogDoc']) ? { file: pendingFiles['udyogDoc'] as File, preview: '', name: 'New Udyog', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                            file={(pendingFiles['udyogDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                                             onFileChange={(f) => { setFile('udyogDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
@@ -425,7 +424,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                         <Controller name="complianceCodes.epfoDocUrl" control={control} render={({ field }) => (
                                             <UploadDocument 
                                                 label="EPFO Document" 
-                                                file={pendingFiles['epfoDoc'] && !Array.isArray(pendingFiles['epfoDoc']) ? { file: pendingFiles['epfoDoc'] as File, preview: '', name: 'EPFO', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                file={(pendingFiles['epfoDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                                                 onFileChange={(f) => { setFile('epfoDoc', f); if (!f) field.onChange(''); }}
                                             />
                                         )} />
@@ -435,7 +434,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                         <Controller name="complianceCodes.esicDocUrl" control={control} render={({ field }) => (
                                             <UploadDocument 
                                                 label="ESIC Document" 
-                                                file={pendingFiles['esicDoc'] && !Array.isArray(pendingFiles['esicDoc']) ? { file: pendingFiles['esicDoc'] as File, preview: '', name: 'ESIC', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                file={(pendingFiles['esicDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                                                 onFileChange={(f) => { setFile('esicDoc', f); if (!f) field.onChange(''); }}
                                             />
                                         )} />
@@ -445,7 +444,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                         <Controller name="complianceCodes.eShramDocUrl" control={control} render={({ field }) => (
                                             <UploadDocument 
                                                 label="E-Shram Document" 
-                                                file={pendingFiles['shramDoc'] && !Array.isArray(pendingFiles['shramDoc']) ? { file: pendingFiles['shramDoc'] as File, preview: '', name: 'Shram', type: 'application/pdf', size: 0 } : (field.value ? { preview: field.value, name: 'Current', type: 'application/pdf', size: 0 } as UploadedFile : null)}
+                                                file={(pendingFiles['shramDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                                                 onFileChange={(f) => { setFile('shramDoc', f); if (!f) field.onChange(''); }}
                                             />
                                         )} />
@@ -460,7 +459,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                            <UploadDocument 
                              label="Company Logo" 
                              variant="compact"
-                             file={pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) ? { file: pendingFiles['logo'] as File, preview: '', name: 'Logo', type: 'image/png', size: 0 } : (field.value ? { preview: field.value, name: 'Current Logo', type: 'image/png', size: 0 } as UploadedFile : null)}
+                             file={(pendingFiles['logo'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                              onFileChange={(f) => { setFile('logo', f); if (!f) field.onChange(''); }}
                              allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
                            />
@@ -605,7 +604,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                             const docVal = watch(`complianceDocuments.${index}`);
                                             const businessId = docVal?.id || field.id;
                                             const isExpanded = expandedItems[businessId];
-                                            const docCount = (docVal?.documentUrls?.length || 0) + ((pendingFiles[`doc_${businessId}`] as File[])?.length || 0);
+                                            const docCount = (docVal?.documentUrls?.length || 0) + ((pendingFiles[`doc_${businessId}`] as UploadedFile[])?.length || 0);
                                             return (
                                                 <React.Fragment key={field.id}>
                                                     <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
@@ -664,12 +663,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
 
                                                                        <div className="md:col-span-2 mt-2">
                                                                         <Controller name={`complianceDocuments.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                                                               const pendingList = pendingFiles[`doc_${businessId}`] as File[];
+                                                                               const pendingList = pendingFiles[`doc_${businessId}`] as UploadedFile[];
                                                                                const existingUrls = f.value || [];
                                                                                
                                                                                const displayFiles: UploadedFile[] = [
-                                                                                   ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Doc', type: 'application/pdf', size: 0, preview: url, url })),
-                                                                                   ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                                   ...existingUrls.map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                                                   ...(Array.isArray(pendingList) ? pendingList : [])
                                                                                ];
 
                                                                                return (
@@ -793,7 +792,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                             const insVal = watch(`insurances.${index}`);
                                             const businessId = insVal?.id || item.id;
                                             const isExpanded = expandedItems[`ins_${businessId}`];
-                                            const docCount = (insVal?.documentUrls?.length || 0) + ((pendingFiles[`ins_${businessId}`] as File[])?.length || 0);
+                                            const docCount = (insVal?.documentUrls?.length || 0) + ((pendingFiles[`ins_${businessId}`] as UploadedFile[])?.length || 0);
                                             return (
                                                 <React.Fragment key={item.id}>
                                                     <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
@@ -841,11 +840,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                                     </div>
                                                                     <div className="mt-4">
                                                                         <Controller name={`insurances.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                                                            const pendingList = pendingFiles[`ins_${businessId}`] as File[];
+                                                                            const pendingList = pendingFiles[`ins_${businessId}`] as UploadedFile[];
                                                                             const existingUrls = f.value || [];
                                                                             const displayFiles: UploadedFile[] = [
-                                                                                ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
-                                                                                ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                                ...existingUrls.map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                                                ...(Array.isArray(pendingList) ? pendingList : [])
                                                                             ];
                                                                             return (
                                                                                 <MultiUploadDocument label="Upload Policy Documents" files={displayFiles}
@@ -892,7 +891,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                             const polVal = watch(`policies.${index}`);
                                             const businessId = polVal?.id || item.id;
                                             const isExpanded = expandedItems[`pol_${businessId}`];
-                                            const docCount = (polVal?.documentUrls?.length || 0) + ((pendingFiles[`pol_${businessId}`] as File[])?.length || 0);
+                                            const docCount = (polVal?.documentUrls?.length || 0) + ((pendingFiles[`pol_${businessId}`] as UploadedFile[])?.length || 0);
                                             return (
                                                 <React.Fragment key={item.id}>
                                                     <tr className={`border-b border-border transition-colors hover:bg-page/30 ${isExpanded ? 'bg-accent/5' : ''}`}>
@@ -944,11 +943,11 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                                     </div>
                                                                     <div className="mt-4">
                                                                         <Controller name={`policies.${index}.documentUrls` as const} control={control} render={({ field: f }) => {
-                                                                            const pendingList = pendingFiles[`pol_${businessId}`] as File[];
+                                                                            const pendingList = pendingFiles[`pol_${businessId}`] as UploadedFile[];
                                                                             const existingUrls = f.value || [];
                                                                             const displayFiles: UploadedFile[] = [
-                                                                                ...existingUrls.map(url => ({ name: url.split('/').pop() || 'Existing Policy', type: 'application/pdf', size: 0, preview: url, url })),
-                                                                                ...(Array.isArray(pendingList) ? pendingList.map(pf => ({ name: pf.name, type: pf.type, size: pf.size, preview: pf.type.startsWith('image/') ? URL.createObjectURL(pf) : '', file: pf })) : [])
+                                                                                ...existingUrls.map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
+                                                                                ...(Array.isArray(pendingList) ? pendingList : [])
                                                                             ];
                                                                             return (
                                                                                 <MultiUploadDocument label="Upload Policy Documents" files={displayFiles}

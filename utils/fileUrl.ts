@@ -1,3 +1,5 @@
+import { UploadedFile } from '../types';
+
 /**
  * Utility functions for professional file URL handling.
  * Converts raw Supabase storage URLs to proxy URLs served through our own domain.
@@ -43,4 +45,48 @@ export function getCleanFilename(urlOrPath: string): string {
   } catch {
     return 'Document';
   }
+}
+
+/**
+ * Detect file type from name or URL.
+ */
+export function getFileType(urlOrPath: string): string {
+  if (!urlOrPath) return 'application/octet-stream';
+  const ext = urlOrPath.split('.').pop()?.toLowerCase();
+  
+  const mimeMap: Record<string, string> = {
+    'pdf': 'application/pdf',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'csv': 'text/csv',
+    'txt': 'text/plain'
+  };
+
+  return mimeMap[ext || ''] || 'application/octet-stream';
+}
+
+/**
+ * Construct an UploadedFile object from a storage URL.
+ */
+export function getUploadedFileFromUrl(url: string, defaultName: string = 'Document'): UploadedFile | null {
+  if (!url) return null;
+  
+  const proxyUrl = getProxyUrl(url);
+  const name = getCleanFilename(url) || defaultName;
+  const type = getFileType(url);
+  
+  return {
+    name,
+    type,
+    size: 0, // Size is unknown for URLs
+    preview: proxyUrl,
+    url: proxyUrl
+  } as UploadedFile;
 }

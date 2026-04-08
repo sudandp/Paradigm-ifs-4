@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2 } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive } from 'lucide-react';
 import { api } from '../services/api';
 import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -19,7 +19,6 @@ interface UploadDocumentProps {
   allowCapture?: boolean;
   costingItemName?: string;
   verificationStatus?: boolean | null;
-  // Fix: Add missing props for OCR and verification functionality
   onOcrComplete?: (data: any) => void;
   ocrSchema?: any;
   setToast?: (toast: { message: string; type: 'success' | 'error' } | null) => void;
@@ -86,7 +85,6 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         setUploadError('');
         setIsLoading(true);
 
-        // Use captured base64 if available, otherwise create object URL
         const preview = base64FromCapture ? `data:${selectedFile.type};base64,${base64FromCapture}` : URL.createObjectURL(selectedFile);
         
         const fileData: UploadedFile = {
@@ -100,7 +98,6 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         }
         
         try {
-            // If we already have the base64 from capture, use it directly
             const base64 = base64FromCapture || await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
@@ -152,7 +149,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     }, [handleFileSelect]);
 
     const handleRemove = () => {
-        if(file && !file.preview.startsWith('data:')) URL.revokeObjectURL(file.preview);
+        if(file && file.preview && !file.preview.startsWith('data:')) URL.revokeObjectURL(file.preview);
         onFileChange(null);
         setUploadError('');
     };
@@ -162,6 +159,10 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
     const getIconForLabel = (label: string): React.ElementType => {
         const lowerLabel = label.toLowerCase();
+        const type = file?.type || '';
+        if (type === 'application/pdf') return FileText;
+        if (type.includes('word') || type.includes('officedocument.word') || type.includes('msword')) return FileText;
+        if (type.includes('excel') || type.includes('officedocument.spreadsheet') || type === 'text/csv') return FileSpreadsheet;
         if (lowerLabel.includes('profile photo')) return UserIcon;
         if (lowerLabel.includes('id proof') || lowerLabel.includes('aadhaar') || lowerLabel.includes('pan') || lowerLabel.includes('voter')) return CreditCard;
         if (lowerLabel.includes('bank proof')) return IndianRupee;
@@ -214,7 +215,6 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                             </div>
                                         </label>
                                     )}
-                                    
                                     {isLoading && (
                                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 backdrop-blur-[1px]">
                                             <Loader2 className="h-8 w-8 animate-spin text-accent" />
@@ -225,23 +225,50 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             )}
                             
                             {!file.type.startsWith('image/') && (
-                                <div className="text-muted p-8 bg-black/5 rounded-xl flex flex-col items-center justify-center border border-border/20 w-full relative">
+                                <div className="text-muted bg-black/5 rounded-xl flex flex-col items-center justify-center border border-border/20 w-full relative overflow-hidden">
                                     {isLoading && (
                                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl">
                                             <Loader2 className="h-8 w-8 animate-spin text-accent" />
                                             <p className="text-[10px] font-bold text-accent mt-2">ANALYZING...</p>
                                         </div>
                                     )}
-                                    <div className="p-4 bg-accent/10 rounded-2xl mb-4">
-                                        <FileIcon className="h-10 w-10 text-accent" />
-                                    </div>
-                                    <span className="text-sm font-bold text-primary-text break-all max-w-[200px] text-center">{file.name}</span>
-                                    <p className="text-xs text-muted mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
-                                    {!isLoading && (
-                                        <label htmlFor={inputId} className="mt-4 text-xs font-bold bg-accent text-white px-5 py-2 rounded-full cursor-pointer hover:bg-accent-dark transition-all shadow-sm active:scale-95">
-                                            Change File
-                                        </label>
+                                    {file.type === 'application/pdf' && file.preview && (
+                                        <div className="w-full h-[180px] bg-white relative group/pdf">
+                                            <iframe 
+                                                src={`${file.preview}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                                className="w-full h-full border-none pointer-events-none"
+                                                title="PDF Preview"
+                                            />
+                                            <div className="absolute inset-0 bg-black/5 group-hover/pdf:bg-black/20 transition-colors pointer-events-none" />
+                                            {!isLoading && (
+                                                <label htmlFor={inputId} className="absolute inset-0 opacity-0 group-hover/pdf:opacity-100 transition-opacity flex items-center justify-center cursor-pointer bg-black/40">
+                                                    <div className="bg-white/20 backdrop-blur-md p-3 rounded-full transform scale-90 group-hover/pdf:scale-100 transition-transform">
+                                                        <RefreshCw className="h-6 w-6 text-white" />
+                                                    </div>
+                                                </label>
+                                            )}
+                                        </div>
                                     )}
+                                    {(file.type !== 'application/pdf' || !file.preview) && (
+                                        <div className="p-8 flex flex-col items-center justify-center">
+                                            <div className="p-4 bg-accent/10 rounded-2xl mb-4">
+                                                <Icon className="h-10 w-10 text-accent" />
+                                            </div>
+                                            <span className="text-sm font-bold text-primary-text break-all max-w-[200px] text-center">{file.name}</span>
+                                            <p className="text-xs text-muted mt-1 uppercase tracking-wider">
+                                                {file.type.split('/').pop()?.toUpperCase()} Document
+                                            </p>
+                                            {!isLoading && (
+                                                <label htmlFor={inputId} className="mt-4 text-xs font-bold bg-accent text-white px-5 py-2 rounded-full cursor-pointer hover:bg-accent-dark transition-all shadow-sm active:scale-95">
+                                                    Change File
+                                                </label>
+                                            )}
+                                        </div>
+                                    )}
+                                    <div className="w-full px-4 py-2 border-t border-border/10 bg-black/5 flex justify-between items-center">
+                                        <p className="text-[10px] font-bold text-muted truncate max-w-[150px] uppercase tracking-wider">{file.name}</p>
+                                        <p className="text-[10px] font-bold text-accent">{file.size > 0 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : 'SAVED'}</p>
+                                    </div>
                                 </div>
                             )}
                         </div>
