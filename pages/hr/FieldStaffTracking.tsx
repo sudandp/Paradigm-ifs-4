@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
 import type { AttendanceEvent, User, Location, RoutePoint } from '../../types';
-import { Loader2, MapPin, List, Map as MapIcon, Route as RouteIcon, Calendar, Users, ChevronRight, ExternalLink, Clock } from 'lucide-react';
+import { Loader2, MapPin, List, Map as MapIcon, Route as RouteIcon, Calendar, Users, ChevronRight, ExternalLink, Clock, Filter, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import DatePicker from '../../components/ui/DatePicker';
 import Select from '../../components/ui/Select';
@@ -41,6 +41,24 @@ const getEventColor = (type: string) => {
         case 'break-out': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
         default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
+};
+
+const TRACKING_ROLES = [
+    'field_staff', 
+    'field_officer', 
+    'technical_reliever', 
+    'operation_manager', 
+    'site_manager', 
+    'supervisor'
+];
+
+const ROLE_LABELS: Record<string, string> = {
+    'field_staff': 'Field Staff',
+    'field_officer': 'Field Officer',
+    'technical_reliever': 'Reliever',
+    'operation_manager': 'Operation Manager',
+    'site_manager': 'Site Manager',
+    'supervisor': 'Supervisor'
 };
 
 // --- Sub-components ---
@@ -419,12 +437,29 @@ const FieldStaffTracking: React.FC = () => {
     const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [selectedUser, setSelectedUser] = useState<string>('all');
+    const [selectedRole, setSelectedRole] = useState<string>('all');
+
+    // Temporary states for "Apply Filter" logic
+    const [tempUser, setTempUser] = useState<string>('all');
+    const [tempRole, setTempRole] = useState<string>('all');
     
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
     const isMobile = useMediaQuery('(max-width: 767px)');
-    const fieldStaff = useMemo(() => users.filter(u => u.role === 'field_staff'), [users]);
+    
+    // All users that are in the tracking roles, sorted A-Z
+    const trackingUsers = useMemo(() => {
+        return users
+            .filter(u => TRACKING_ROLES.includes(u.role))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [users]);
+
+    // Users available for selection based on the TEMPORARY role filter
+    const selectableUsers = useMemo(() => {
+        if (tempRole === 'all') return trackingUsers;
+        return trackingUsers.filter(u => u.role === tempRole);
+    }, [trackingUsers, tempRole]);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -453,7 +488,20 @@ const FieldStaffTracking: React.FC = () => {
 
     const filteredEvents = useMemo(() => {
         let results = events;
-        if (selectedUser !== 'all') results = results.filter(e => e.userId === selectedUser);
+        
+        // Filter by User
+        if (selectedUser !== 'all') {
+            results = results.filter(e => e.userId === selectedUser);
+        } else if (selectedRole !== 'all') {
+            // If no specific user but a role is selected, filter by all users in that role
+            const roleUserIds = new Set(trackingUsers.filter(u => u.role === selectedRole).map(u => u.id));
+            results = results.filter(e => roleUserIds.has(e.userId));
+        } else {
+            // Default: Filter by ALL tracking roles
+            const trackingUserIds = new Set(trackingUsers.map(u => u.id));
+            results = results.filter(e => trackingUserIds.has(e.userId));
+        }
+
         const userMap = new Map<string, User>(users.map(u => [u.id, u]));
         return results.map(e => {
             const user = userMap.get(e.userId);
@@ -464,14 +512,29 @@ const FieldStaffTracking: React.FC = () => {
             };
         })
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [events, users, selectedUser]);
+    }, [events, users, trackingUsers, selectedUser, selectedRole]);
 
     const paginatedEvents = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
         return filteredEvents.slice(start, start + pageSize);
     }, [filteredEvents, currentPage, pageSize]);
 
-    useEffect(() => { setCurrentPage(1); }, [selectedUser, startDate, endDate, pageSize]);
+    useEffect(() => { setCurrentPage(1); }, [selectedUser, selectedRole, startDate, endDate, pageSize]);
+
+    const handleApplyFilters = () => {
+        setSelectedUser(tempUser);
+        setSelectedRole(tempRole);
+        setCurrentPage(1);
+    };
+
+    const handleBackToAll = () => {
+        setSelectedUser('all');
+        setSelectedRole('all');
+        setTempUser('all');
+        setTempRole('all');
+        setViewMode('list');
+        setCurrentPage(1);
+    };
 
     return (
         <div className="space-y-8 p-4 md:p-0">
@@ -484,55 +547,31 @@ const FieldStaffTracking: React.FC = () => {
                 {/* Visual Accent */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-amber-500 to-indigo-500" />
                 
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8">
-                    <div className="space-y-1">
-                        <h2 className="text-2xl font-black text-primary-text tracking-tight flex items-center gap-3">
-                            FIELD OPS TRACKING
-                            <span className="px-2 py-0.5 rounded-sm bg-slate-100 text-[10px] font-bold text-slate-500 border border-slate-200 uppercase tracking-[0.2em] animate-pulse">
-                                Active Monitor
-                            </span>
-                        </h2>
-                        <p className="text-xs text-muted font-medium flex items-center gap-1.5 uppercase tracking-wide">
-                            <Clock className="h-3 w-3" />
-                            Real-time synchronization active • {filteredEvents.length} Signals Captured
-                        </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
-                        <div className="flex items-center gap-2 bg-page p-1 border border-border shadow-inner">
-                            <div className="flex items-center gap-1 px-2 border-r border-border text-muted">
-                                <Calendar className="h-3.5 w-3.5" />
-                            </div>
-                            <input 
-                                type="date" 
-                                value={startDate} 
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
-                            />
-                            <span className="text-muted text-[10px]">TO</span>
-                            <input 
-                                type="date" 
-                                value={endDate} 
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
-                            />
+                <div className="flex flex-col gap-6">
+                    {/* Tier 1: Header Info & View Switcher */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-2xl font-black text-primary-text tracking-tight flex items-center gap-3">
+                                {(selectedUser !== 'all' || selectedRole !== 'all') && (
+                                    <button 
+                                        onClick={handleBackToAll}
+                                        className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-900 transition-all active:scale-90"
+                                        title="Back to Overall View"
+                                    >
+                                        <ArrowLeft className="h-6 w-6" />
+                                    </button>
+                                )}
+                                FIELD OPS TRACKING
+                                <span className="px-2 py-0.5 rounded-sm bg-slate-100 text-[10px] font-bold text-slate-500 border border-slate-200 uppercase tracking-[0.2em] animate-pulse">
+                                    Active Monitor
+                                </span>
+                            </h2>
+                            <p className="text-xs text-muted font-medium flex items-center gap-1.5 uppercase tracking-wide">
+                                <Clock className="h-3 w-3" />
+                                Real-time synchronization active • {filteredEvents.length} Signals Captured
+                            </p>
                         </div>
 
-                        <div className="flex items-center gap-2 bg-page p-1 border border-border shadow-inner min-w-[200px]">
-                            <div className="flex items-center gap-1 px-2 border-r border-border text-muted">
-                                <Users className="h-3.5 w-3.5" />
-                            </div>
-                            <select 
-                                value={selectedUser} 
-                                onChange={(e) => setSelectedUser(e.target.value)}
-                                className="flex-1 bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
-                            >
-                                <option value="all">ALL FIELD AGENTS</option>
-                                {fieldStaff.map(u => <option key={u.id} value={u.id}>{u.name.toUpperCase()}</option>)}
-                            </select>
-                        </div>
-
-                        {/* Animated Mode Switcher */}
                         <div className="bg-slate-100 p-1 rounded-sm flex items-center gap-1">
                             <button 
                                 onClick={() => setViewMode('list')}
@@ -553,6 +592,74 @@ const FieldStaffTracking: React.FC = () => {
                                 Route View
                             </button>
                         </div>
+                    </div>
+
+                    {/* Tier 2: Filter Controls */}
+                    <div className="flex flex-wrap items-center gap-4 pt-4 border-t border-border/50">
+                        <div className="flex items-center gap-2 bg-page p-1 border border-border shadow-inner">
+                            <div className="flex items-center gap-1 px-2 border-r border-border text-muted">
+                                <Calendar className="h-3.5 w-3.5" />
+                                <span className="text-[9px] font-bold uppercase hidden lg:inline">Range</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <input 
+                                    type="date" 
+                                    value={startDate} 
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="bg-transparent border-none text-[11px] font-bold text-primary-text focus:ring-0 p-1"
+                                />
+                                <span className="text-muted text-[10px] px-1">—</span>
+                                <input 
+                                    type="date" 
+                                    value={endDate} 
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="bg-transparent border-none text-[11px] font-bold text-primary-text focus:ring-0 p-1"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-page p-1 border border-border shadow-inner min-w-[200px] flex-1 md:flex-initial">
+                            <div className="flex items-center gap-1 px-2 border-r border-border text-muted">
+                                <Users className="h-3.5 w-3.5" />
+                                <span className="text-[9px] font-bold uppercase hidden lg:inline">Role</span>
+                            </div>
+                            <select 
+                                value={tempRole} 
+                                onChange={(e) => {
+                                    setTempRole(e.target.value);
+                                    setTempUser('all');
+                                }}
+                                className="flex-1 bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
+                            >
+                                <option value="all">ALL FIELD ROLES</option>
+                                {TRACKING_ROLES.map(role => (
+                                    <option key={role} value={role}>{ROLE_LABELS[role] || role.toUpperCase()}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-page p-1 border border-border shadow-inner min-w-[250px] flex-1 md:flex-initial">
+                            <div className="flex items-center gap-1 px-2 border-r border-border text-muted">
+                                <List className="h-3.5 w-3.5" />
+                                <span className="text-[9px] font-bold uppercase hidden lg:inline">Name</span>
+                            </div>
+                            <select 
+                                value={tempUser} 
+                                onChange={(e) => setTempUser(e.target.value)}
+                                className="flex-1 bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
+                            >
+                                <option value="all">ALL AGENTS (A-Z)</option>
+                                {selectableUsers.map(u => <option key={u.id} value={u.id}>{u.name.toUpperCase()}</option>)}
+                            </select>
+                        </div>
+
+                        <button
+                            onClick={handleApplyFilters}
+                            className="h-9 px-6 ml-auto bg-slate-900 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-2 rounded-sm"
+                        >
+                            <Filter className="h-3 w-3" />
+                            Apply Filter
+                        </button>
                     </div>
                 </div>
             </motion.div>
@@ -589,7 +696,8 @@ const FieldStaffTracking: React.FC = () => {
                                                 knownLocations={knownLocations}
                                                 onSelect={(userId) => {
                                                     setSelectedUser(userId);
-                                                    setViewMode('route');
+                                                    setTempUser(userId);
+                                                    setViewMode('list');
                                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                                 }}
                                             />
