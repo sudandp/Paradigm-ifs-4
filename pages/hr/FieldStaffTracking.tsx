@@ -315,7 +315,13 @@ const RouteView: React.FC<{ events: (AttendanceEvent & { userName: string })[], 
     );
 };
 
-const ActivityItem: React.FC<{ event: (AttendanceEvent & { userName: string }), isFirst: boolean, isLast: boolean, knownLocations: Location[] }> = ({ event, isFirst, isLast, knownLocations }) => {
+const ActivityItem: React.FC<{ 
+    event: (AttendanceEvent & { userName: string, userPhoto?: string | null }), 
+    isFirst: boolean, 
+    isLast: boolean, 
+    knownLocations: Location[],
+    onSelect: (userId: string) => void 
+}> = ({ event, isFirst, isLast, knownLocations, onSelect }) => {
     const badgeStyles = getEventColor(event.type);
     
     return (
@@ -342,9 +348,9 @@ const ActivityItem: React.FC<{ event: (AttendanceEvent & { userName: string }), 
             <div className="relative z-10 pt-1">
                 <div className="h-[48px] w-[48px] rounded-full border-2 border-page bg-card shadow-lg p-0.5 transition-transform group-hover:scale-110">
                     <img 
-                        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(event.userName)}&background=random&color=fff`} 
+                        src={event.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(event.userName)}&background=random&color=fff`} 
                         alt={event.userName}
-                        className="h-full w-full rounded-full object-cover"
+                        className="h-full w-full rounded-full object-cover shadow-inner"
                     />
                 </div>
                 {isFirst && <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-emerald-500 border-2 border-page" title="Current Session" />}
@@ -388,7 +394,10 @@ const ActivityItem: React.FC<{ event: (AttendanceEvent & { userName: string }), 
                                 Inspect Position
                             </a>
                         )}
-                        <button className="h-8 w-8 rounded-sm border border-border flex items-center justify-center text-muted hover:text-primary-text hover:bg-page transition-colors">
+                        <button 
+                            onClick={() => onSelect(event.userId)}
+                            className="h-8 w-8 rounded-sm border border-border flex items-center justify-center text-muted hover:text-primary-text hover:bg-page transition-colors"
+                        >
                             <ChevronRight className="h-4 w-4" />
                         </button>
                     </div>
@@ -446,7 +455,14 @@ const FieldStaffTracking: React.FC = () => {
         let results = events;
         if (selectedUser !== 'all') results = results.filter(e => e.userId === selectedUser);
         const userMap = new Map<string, User>(users.map(u => [u.id, u]));
-        return results.map(e => ({ ...e, userName: userMap.get(e.userId)?.name || 'System Operator' }))
+        return results.map(e => {
+            const user = userMap.get(e.userId);
+            return { 
+                ...e, 
+                userName: user?.name || 'System Operator',
+                userPhoto: user?.photoUrl
+            };
+        })
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [events, users, selectedUser]);
 
@@ -571,6 +587,11 @@ const FieldStaffTracking: React.FC = () => {
                                                 isFirst={currentPage === 1 && idx === 0}
                                                 isLast={idx === paginatedEvents.length - 1}
                                                 knownLocations={knownLocations}
+                                                onSelect={(userId) => {
+                                                    setSelectedUser(userId);
+                                                    setViewMode('route');
+                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                }}
                                             />
                                         ))}
                                     </div>

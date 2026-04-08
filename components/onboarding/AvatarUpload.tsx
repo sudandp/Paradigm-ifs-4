@@ -17,6 +17,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   // For the preview modal after native camera capture
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Check if we're in the custom Android WebView wrapper
@@ -26,6 +27,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
   const handleFileSelect = useCallback(async (selectedFile: File, base64FromCapture?: string) => {
     if (selectedFile && selectedFile.type.startsWith('image/')) {
       setError('');
+      setHasError(false);
       const preview = base64FromCapture ? `data:${selectedFile.type};base64,${base64FromCapture}` : URL.createObjectURL(selectedFile);
       const fileData: UploadedFile = {
         name: selectedFile.name,
@@ -105,6 +107,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
     }
     onFileChange(null);
     setError('');
+    setHasError(false);
   };
 
   const inputId = 'avatar-upload';
@@ -141,8 +144,13 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
               <Loader2 className="h-10 w-10 animate-spin text-accent" />
               <span className="text-xs mt-2 font-medium">Processing...</span>
             </div>
-          ) : file?.preview ? (
-            <img src={file.preview} alt="Profile preview" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+          ) : (file?.preview && !hasError) ? (
+            <img 
+              src={file.preview} 
+              alt="Profile preview" 
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+              onError={() => setHasError(true)}
+            />
           ) : (
             <ProfilePlaceholder />
           )}

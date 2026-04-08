@@ -13,8 +13,33 @@ import { sendEmailLogic } from '../api/send-email.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 
+import fetch from 'node-fetch';
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+// Mapping of bucket names to their Supabase project URL prefix
+const SUPABASE_STORAGE_BASE = 'https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public';
+
+// MIME type lookup by extension
+const MIME_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+function getMimeType(filename: string): string {
+  const ext = '.' + filename.split('.').pop()?.toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,9 +51,45 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 
-// Placeholder for other routes (e.g., users, organizations)
-// app.use('/api/users', userRoutes);
-// app.use('/api/organizations', organizationRoutes);
+/**
+ * File Proxy Route - Ported from api/view-file.ts to local dev server
+ * Proxies requests for storage objects to Supabase, bypassing origin restriction issues
+ * and allowing local dev to display files.
+ */
+app.use('/api/view-file', async (req: Request, res: Response) => {
+    if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    try {
+        const filePath = req.path.replace(/^\//, '');
+        if (!filePath) {
+            return res.status(400).json({ error: 'No file path provided' });
+        }
+
+        const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${filePath}`;
+        console.log(`[Server] GET /api/view-file proxying to Supabase`);
+
+        const response = await fetch(supabaseUrl);
+
+        if (!response.ok) {
+            return res.status(response.status).json({ 
+                error: `File not found or inaccessible (${response.status})` 
+            });
+        }
+
+        const buffer = await response.arrayBuffer();
+        const filename = filePath.split('/').pop() || 'document';
+        const contentType = getMimeType(filename);
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        return res.send(Buffer.from(buffer));
+    } catch (error: any) {
+        console.error('[Server] view-file proxy error:', error);
+        return res.status(500).json({ error: 'Failed to fetch file' });
+    }
+});
 
 // Email API Route
 app.post('/api/send-email', async (req: Request, res: Response) => {
