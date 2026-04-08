@@ -125,8 +125,9 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
     }, [events]);
 
     const formatDuration = (minutes: number) => {
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
+        const roundedMins = Math.round(minutes);
+        const hours = Math.floor(roundedMins / 60);
+        const mins = roundedMins % 60;
         return `${hours}h ${mins}m`;
     };
 
@@ -249,19 +250,28 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                             className="bg-gradient-to-br from-white to-gray-50 rounded-xl border border-gray-200 overflow-hidden"
                         >
                             {/* Date Header */}
-                            <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-4 py-3 flex justify-between items-center">
-                                <div className="flex items-center gap-2 text-white">
-                                    <Calendar className="h-4 w-4" />
-                                    <span className="font-semibold">
-                                        {format(new Date(group.date), 'EEEE, dd MMMM yyyy')}
-                                    </span>
-                                </div>
-                                <div className="flex gap-3">
-                                    <div className="text-white text-xs font-medium bg-emerald-500/20 border border-emerald-400/30 px-2 py-1 rounded-md flex items-center gap-1">
-                                        <span className="opacity-75">Work:</span> {formatDuration(group.totalWorkMinutes)}
+                            <div className="bg-[#5a54f9] px-3 md:px-4 py-3 flex justify-between items-center">
+                                <div className="flex items-center gap-2.5 text-white">
+                                    <Calendar className="h-4 w-4 opacity-75" />
+                                    <div className="font-bold leading-[1.15] flex flex-col">
+                                        <span className="text-[13px]">{format(new Date(group.date), 'EEEE, d')}</span>
+                                        <span className="text-[13px]">{format(new Date(group.date), 'MMMM yyyy')}</span>
                                     </div>
-                                    <div className="text-white text-xs font-medium bg-amber-500/20 border border-amber-400/30 px-2 py-1 rounded-md flex items-center gap-1">
-                                        <span className="opacity-75">Break:</span> {formatDuration(group.totalBreakMinutes)}
+                                </div>
+                                <div className="flex gap-2">
+                                    <div className="text-white bg-white/10 px-2 py-1 rounded-lg flex items-center gap-1.5 justify-center shadow-sm">
+                                        <span className="opacity-90 text-[11px] font-medium tracking-wide">Work:</span> 
+                                        <div className="flex flex-col leading-[1.1] text-[11px] font-bold text-right">
+                                            <span>{Math.floor(Math.round(group.totalWorkMinutes) / 60)}h</span>
+                                            <span>{Math.round(group.totalWorkMinutes) % 60}m</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-white bg-black/10 px-2 py-1 rounded-lg flex items-center gap-1.5 justify-center shadow-sm">
+                                        <span className="opacity-80 text-[11px] font-medium tracking-wide">Break:</span> 
+                                        <div className="flex flex-col leading-[1.1] text-[11px] font-bold text-right">
+                                            <span>{Math.floor(Math.round(group.totalBreakMinutes) / 60)}h</span>
+                                            <span>{Math.round(group.totalBreakMinutes) % 60}m</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

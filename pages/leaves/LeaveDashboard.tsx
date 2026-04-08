@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -59,6 +59,8 @@ const LeaveStatusChip: React.FC<{ status: LeaveRequestStatus }> = ({ status }) =
     const statusClasses: Record<LeaveRequestStatus, string> = {
         pending_manager_approval: 'leave-status-chip--pending_manager_approval',
         pending_hr_confirmation: 'leave-status-chip--pending_hr_confirmation',
+        pending_admin_correction: 'leave-status-chip--pending_admin_correction',
+        correction_made: 'leave-status-chip--correction_made',
         approved: 'leave-status-chip--approved',
         rejected: 'leave-status-chip--rejected',
         cancelled: 'leave-status-chip--cancelled',
@@ -200,6 +202,7 @@ const LeaveDashboard: React.FC = () => {
 
     const [viewingDate, setViewingDate] = useState(new Date());
     const [threshold, setThreshold] = useState(8);
+    const [monthlyPaydays, setMonthlyPaydays] = useState<number | null>(null);
     const currentYear = viewingDate.getFullYear();
 
     const formatPreciseHours = (hours: number) => {
@@ -432,6 +435,13 @@ const LeaveDashboard: React.FC = () => {
             icon: CalendarClock,
             isExpired: balanceDataState.expiryStates?.compOff
         },
+        {
+            title: 'Monthly Pay Days',
+            value: monthlyPaydays !== null ? `${monthlyPaydays}` : '-',
+            description: `Total payable days tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
+            icon: Calculator,
+            isExpired: false
+        },
         ...(isShortfallEnabled ? [{
             title: 'Monthly Shortfall',
             value: formatPreciseHours(calculatedShortfallMins / 60),
@@ -445,6 +455,7 @@ const LeaveDashboard: React.FC = () => {
         { title: '3rd Saturday Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
         { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
+        { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
     ];
 
     // Maternity card (only for female users with non-zero balances)
@@ -585,6 +596,7 @@ const LeaveDashboard: React.FC = () => {
                     settings={attendanceSettings}
                     recurringHolidays={recurringHolidays}
                     isLoading={isLoading}
+                    onMonthPaydaysChange={setMonthlyPaydays}
                 />
                 <CompOffCalendar 
                     logs={compOffLogs} 

@@ -3,7 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMont
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours } from '../../utils/attendanceCalculations';
 import { api } from '../../services/api';
 import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, RecurringHolidayRule } from '../../types';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -20,6 +20,7 @@ interface AttendanceCalendarProps {
     settings: AttendanceSettings | null;
     recurringHolidays: RecurringHolidayRule[];
     isLoading?: boolean;
+    onMonthPaydaysChange?: (payDays: number) => void;
 }
 
 const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ 
@@ -30,7 +31,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     events,
     settings,
     recurringHolidays,
-    isLoading = false
+    isLoading = false,
+    onMonthPaydaysChange
 }) => {
     const { user } = useAuthStore();
 
@@ -207,6 +209,55 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const startDay = getDay(startOfMonth(currentDate)); // 0-6
 
+    // Calculate Payable days for the current month view
+    const monthlyPaydaysCount = useMemo(() => {
+        let count = 0;
+        const today = startOfDay(new Date());
+
+        daysInMonth.forEach(date => {
+            // Exclude future days from accrued real-time pay calculation
+            if (isAfter(startOfDay(date), today)) {
+                return;
+            }
+
+            const status = getDayStatus(date);
+            
+            if (['present', 'holiday-present'].includes(status)) {
+                // Determine if this was a half-day or full-day
+                const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                const { workingHours } = calculateWorkingHours(dayEvents);
+                const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
+                
+                if (workingHours >= shiftThreshold) {
+                    count += 1;
+                } else if (workingHours > 0) {
+                    count += 0.5;
+                }
+            } else if (['floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
+                count += 1;
+            } else if (status === 'leave') {
+                // Do not count Loss of Pay as a payable day
+                const leaveReq = leaveRequests?.find(req => {
+                    if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
+                    const start = startOfDay(new Date(req.startDate));
+                    const end = endOfDay(new Date(req.endDate));
+                    return date >= start && date <= end;
+                });
+                
+                if (!leaveReq || leaveReq.leaveType !== 'Loss of Pay') {
+                    count += 1;
+                }
+            }
+        });
+        return count;
+    }, [daysInMonth, getDayStatus, events, settings, user]);
+
+    useEffect(() => {
+        if (onMonthPaydaysChange) {
+            onMonthPaydaysChange(monthlyPaydaysCount);
+        }
+    }, [monthlyPaydaysCount, onMonthPaydaysChange]);
 
 
     return (
@@ -233,9 +284,63 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     {daysInMonth.map(date => {
                         const status = getDayStatus(date);
                         const colorClass = getStatusColor(status);
+                        
+                        let overlayText = null;
+                        let customStyle: React.CSSProperties = {};
+
+                        if (status === 'present' || status === 'holiday-present') {
+                            const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                            const { workingHours } = calculateWorkingHours(dayEvents);
+                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                            const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
+                            
+                            if (workingHours >= shiftThreshold) {
+                                overlayText = 'P';
+                            } else {
+                                overlayText = '0.5P';
+                                const baseColor = status === 'holiday-present' ? '#7c3aed' : '#10b981'; // violet-600 or emerald-500
+                                customStyle = {
+                                    background: `linear-gradient(135deg, ${baseColor} 50%, #ef4444 50%)`, // Split with red (#ef4444)
+                                    borderColor: 'transparent' // Hide the border so it doesn't wrap green around the red half
+                                };
+                            }
+                        } else if (status === 'company-holiday' || status === 'floating-holiday') {
+                            overlayText = 'H';
+                        } else if (status === 'leave') {
+                            const request = leaveRequests?.find(req => {
+                                if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
+                                const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
+                                const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
+                                return date >= start && date <= end;
+                            });
+                            if (request) {
+                                switch (request.leaveType) {
+                                    case 'Earned': overlayText = 'EL'; break;
+                                    case 'Sick': overlayText = 'SL'; break;
+                                    case 'Comp Off': overlayText = 'CO'; break;
+                                    case 'Floating': overlayText = 'FH'; break;
+                                    case 'Maternity': overlayText = 'ML'; break;
+                                    case 'Child Care': overlayText = 'CCL'; break;
+                                    case 'Loss of Pay': overlayText = 'LOP'; break;
+                                    default: overlayText = 'L'; break;
+                                }
+                            } else {
+                                overlayText = 'L';
+                            }
+                        } else if (status === 'absent') {
+                            overlayText = 'A';
+                        }
+
                         return (
-                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`}>
-                                <span className="text-xs font-bold">{format(date, 'd')}</span>
+                            <div key={date.toISOString()} style={customStyle} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`}>
+                                <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[2px]' : 'text-xs'}`}>
+                                    {format(date, 'd')}
+                                </span>
+                                {overlayText && (
+                                    <span className={`text-[9px] font-black leading-none text-white drop-shadow-md`}>
+                                        {overlayText}
+                                    </span>
+                                )}
                             </div>
                         );
                     })}
@@ -244,6 +349,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             
             <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Present</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #10b981 50%, #ef4444 50%)' }}></div> Half Day</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Absent</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-rose-300 rounded-full flex-shrink-0"></div> W.O</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-sky-400 rounded-full flex-shrink-0"></div> Holiday</div>

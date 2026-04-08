@@ -34,9 +34,10 @@ interface YearlyAttendanceChartProps {
         leaves: LeaveRequest[];
     } | null;
     isLoading?: boolean;
+    onTotalPaydaysChange?: (total: number, year: number) => void;
 }
 
-const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isLoading: isLoadingProp }) => {
+const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isLoading: isLoadingProp, onTotalPaydaysChange }) => {
     const { user } = useAuthStore();
     const { recurringHolidays, attendance, fieldHolidays, officeHolidays } = useSettingsStore();
     const [events, setEvents] = useState<AttendanceEvent[]>([]);
@@ -326,6 +327,12 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                        stats.monthlyLeaves.reduce((a, b) => a + b, 0) + 
                        stats.monthlyHolidays.reduce((a, b) => a + b, 0) + 
                        stats.monthlySundays.reduce((a, b) => a + b, 0);
+
+    useEffect(() => {
+        if (onTotalPaydaysChange && typeof totalPayable === 'number') {
+            onTotalPaydaysChange(totalPayable, currentYear);
+        }
+    }, [totalPayable, currentYear, onTotalPaydaysChange]);
 
 
 
