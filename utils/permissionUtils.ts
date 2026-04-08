@@ -218,8 +218,10 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         if (missing.includes('Location')) {
             if (onProgress) onProgress('Location', missing);
             await Geolocation.requestPermissions();
-            // Trigger a single-shot check to ensure state updates
-            await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 3000 }).catch(() => {});
+            
+            // Note: iOS 14+ hangs natively if we call getCurrentPosition immediately after requestPermissions
+            // We removed the 'single shot' trigger here to prevent freezing the native Capacitor bridge.
+            
             await reCheck('Location');
             await delay(reqDelay);
         }
@@ -328,10 +330,8 @@ export const requestLocationPermissions = async () => {
         const result = await Geolocation.requestPermissions();
         if (result.location !== 'granted' && result.coarseLocation !== 'granted') {
             console.warn('Location permissions not granted');
-        } else {
-            // Force a location check to trigger system dialog if pending/background
-            await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 3000 }).catch(() => {});
         }
+        // Removed the getCurrentPosition trigger here to prevent native thread deadlocks on iOS
     } catch (error) {
         console.error('Error requesting location permissions:', error);
     }
