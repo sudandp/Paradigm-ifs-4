@@ -329,7 +329,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 if (request.dayOption === 'half') {
                                     overlayText = '0.5P';
                                     customStyle = {
-                                        background: 'linear-gradient(135deg, #2563eb 50%, #ef4444 50%)', // Half Blue (#2563eb) / Half Red (#ef4444)
+                                        background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green (#10b981) / Half Blue (#2563eb)
                                         borderColor: 'transparent'
                                     };
                                 } else {
