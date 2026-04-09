@@ -648,19 +648,22 @@ const LeaveDashboard: React.FC = () => {
 
             <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full md:w-full">
                 <div className="mb-6">
-                    <div className="w-full sm:w-auto md:border-b border-border">
-                        <nav className="flex flex-col md:flex-row md:space-x-6 space-y-2 md:space-y-0" aria-label="Tabs">
+                    <div className="w-full sm:w-auto border-b border-border relative overflow-x-auto">
+                        <nav className="flex space-x-8 px-1" aria-label="Tabs">
                             {filterTabs.map(tab => (
                                 <button
                                     key={tab}
                                     onClick={() => setFilter(tab)}
-                                    className={`whitespace-nowrap font-medium text-base rounded-lg md:rounded-none w-full md:w-auto text-left px-4 py-2 md:px-1 md:py-3 md:bg-transparent md:border-b-2
+                                    className={`whitespace-nowrap font-semibold text-sm py-4 border-b-2 transition-all duration-200 relative
                                     ${filter === tab
-                                            ? 'bg-accent-light text-accent-dark md:border-accent'
-                                            : 'text-muted hover:bg-accent-light hover:text-accent-dark md:border-transparent md:hover:border-accent'
+                                            ? 'text-accent-dark border-accent'
+                                            : 'text-muted border-transparent hover:text-accent-dark hover:border-accent/30'
                                         }`}
                                 >
                                     {formatTabName(tab)}
+                                    {filter === tab && (
+                                        <div className="tab-active-indicator w-full" />
+                                    )}
                                 </button>
                             ))}
                         </nav>
@@ -670,12 +673,12 @@ const LeaveDashboard: React.FC = () => {
                 <div className="overflow-x-auto">
                     <table className="min-w-full responsive-table">
                         <thead>
-                            <tr>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted uppercase">Type</th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted uppercase">Dates</th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted uppercase">Reason</th>
-                                 <th className="px-4 py-3 text-left text-sm font-medium text-muted uppercase">Status</th>
-                                <th className="px-4 py-3 text-left text-sm font-medium text-muted uppercase">Actions</th>
+                            <tr className="border-b border-border/50">
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Type</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Dates</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Reason</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-4 text-right text-xs font-bold text-muted uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
@@ -684,36 +687,67 @@ const LeaveDashboard: React.FC = () => {
                             ) : requests.length === 0 ? (
                                 <tr><td colSpan={5} className="text-center py-10 text-muted text-lg">No requests found.</td></tr>
                             ) : (
-                                requests.map(req => (
-                                    <tr key={req.id}>
-                                        <td data-label="Type" className="px-4 py-3 font-medium text-base">
-                                            {req.leaveType === 'Floating' ? '3rd Saturday Leave' : req.leaveType} {req.dayOption && `(${req.dayOption})`}
-                                        </td>
-                                        <td data-label="Dates" className="px-4 py-3 text-muted text-base">{format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}</td>
-                                        <td data-label="Reason" className="px-4 py-3 text-muted max-w-xs truncate text-base">{req.reason}</td>
-                                         <td data-label="Status" className="px-4 py-3 text-base"><LeaveStatusChip status={req.status} /></td>
-                                        <td data-label="Actions" className="px-4 py-3">
-                                            {req.status === 'pending_manager_approval' ? (
-                                                <div className="flex md:justify-start justify-end gap-2">
-                                                    {actioningRequestId === req.id ? (
-                                                        <Loader2 className="h-5 w-5 animate-spin text-accent" />
-                                                    ) : (
-                                                        <>
-                                                            <Button size="sm" variant="icon" onClick={() => handleEditRequest(req.id)} title="Edit Request">
-                                                                <Edit className="h-4 w-4 text-emerald-600" />
-                                                            </Button>
-                                                            <Button size="sm" variant="icon" onClick={() => handleCancelRequest(req.id)} title="Cancel Request">
-                                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                                            </Button>
-                                                        </>
-                                                    )}
+                                requests.map(req => {
+                                    const LeaveIcon = req.leaveType === 'Sick' ? HeartPulse : 
+                                                     req.leaveType === 'Floating' ? Plane : 
+                                                     req.leaveType === 'Comp Off' ? CalendarClock : Briefcase;
+                                    
+                                    return (
+                                        <tr key={req.id} className="leave-row-card group border-b border-border/40 last:border-0">
+                                            <td data-label="Type" className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-accent-light rounded-lg text-accent-dark group-hover:bg-white transition-colors">
+                                                        <LeaveIcon className="h-4 w-4" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-primary-text text-sm">
+                                                            {req.leaveType === 'Floating' ? '3rd Saturday Leave' : req.leaveType}
+                                                        </p>
+                                                        {req.dayOption === 'half' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Half Day</span>}
+                                                    </div>
                                                 </div>
-                                            ) : (
-                                                <span className="text-[10px] text-muted italic">No actions available</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
+                                            </td>
+                                            <td data-label="Dates" className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-semibold text-primary-text">
+                                                        {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">
+                                                        {differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1} Days
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td data-label="Reason" className="px-6 py-4">
+                                                <p className="text-sm text-muted-foreground max-w-[200px] truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all duration-300" title={req.reason}>
+                                                    {req.reason}
+                                                </p>
+                                            </td>
+                                            <td data-label="Status" className="px-6 py-4">
+                                                <LeaveStatusChip status={req.status} />
+                                            </td>
+                                            <td data-label="Actions" className="px-6 py-4 text-right">
+                                                {req.status === 'pending_manager_approval' ? (
+                                                    <div className="flex justify-end gap-1">
+                                                        {actioningRequestId === req.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                                                        ) : (
+                                                            <>
+                                                                <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
+                                                                    <Edit className="h-4 w-4" />
+                                                                </button>
+                                                                <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Cancel Request">
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[10px] text-muted italic font-medium">Finalized</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

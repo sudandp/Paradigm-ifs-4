@@ -457,21 +457,69 @@ body {
     background-color: #fee2e2;
     color: #991b1b;
 }
+/* Premium Leave Status Chips with high contrast and refined colors */
+.leave-status-chip {
+    padding: 0.35rem 1rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 700;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
 .leave-status-chip--pending_manager_approval {
     background-color: #fef3c7;
     color: #92400e;
+    border-color: #fde68a;
 }
 .leave-status-chip--pending_hr_confirmation {
     background-color: #dbeafe;
     color: #1e40af;
+    border-color: #bfdbfe;
 }
 .leave-status-chip--approved {
-    background-color: #d1fae5;
+    background-color: #ecfdf5;
     color: #065f46;
+    border-color: #a7f3d0;
 }
 .leave-status-chip--rejected {
-    background-color: #fee2e2;
+    background-color: #fef2f2;
     color: #991b1b;
+    border-color: #fecaca;
+}
+.leave-status-chip--withdrawn {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    border-color: #e5e7eb;
+}
+
+/* Row-Card Layout Utilities */
+.leave-row-card {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.leave-row-card:hover {
+    transform: translateX(4px);
+    background-color: var(--color-accent-light) !important;
+    box-shadow: 0 4px 12px rgba(0, 107, 63, 0.08);
+}
+
+/* Modern Tab Animation Helper */
+.tab-active-indicator {
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    height: 2px;
+    background-color: var(--color-accent);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .btn {
     display: inline-flex;
