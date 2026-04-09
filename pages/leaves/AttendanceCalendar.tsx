@@ -237,7 +237,6 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (['floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 count += 1;
             } else if (status === 'leave') {
-                // Do not count Loss of Pay as a payable day
                 const leaveReq = leaveRequests?.find(req => {
                     if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
                     const start = startOfDay(new Date(req.startDate));
@@ -245,7 +244,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     return date >= start && date <= end;
                 });
                 
-                if (!leaveReq || leaveReq.leaveType !== 'Loss of Pay') {
+                const isHalfDay = leaveReq?.dayOption === 'half';
+                
+                if (isHalfDay) {
+                    // 0.5 for the leave part (if not LOP)
+                    if (leaveReq.leaveType !== 'Loss of Pay') {
+                        count += 0.5;
+                    }
+                    // 0.5 for the worked part (if they checked in)
+                    const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                    if (dayEvents.length > 0) {
+                        count += 0.5;
+                    }
+                } else if (!leaveReq || leaveReq.leaveType !== 'Loss of Pay') {
                     count += 1;
                 }
             }
@@ -314,15 +325,24 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 return date >= start && date <= end;
                             });
                             if (request) {
-                                switch (request.leaveType) {
-                                    case 'Earned': overlayText = 'EL'; break;
-                                    case 'Sick': overlayText = 'SL'; break;
-                                    case 'Comp Off': overlayText = 'CO'; break;
-                                    case 'Floating': overlayText = 'FH'; break;
-                                    case 'Maternity': overlayText = 'ML'; break;
-                                    case 'Child Care': overlayText = 'CCL'; break;
-                                    case 'Loss of Pay': overlayText = 'LOP'; break;
-                                    default: overlayText = 'L'; break;
+                                // If it's a half-day leave, show as 0.5P with the half-day gradient
+                                if (request.dayOption === 'half') {
+                                    overlayText = '0.5P';
+                                    customStyle = {
+                                        background: 'linear-gradient(135deg, #10b981 50%, #ef4444 50%)', // matches existing half-day style
+                                        borderColor: 'transparent'
+                                    };
+                                } else {
+                                    switch (request.leaveType) {
+                                        case 'Earned': overlayText = 'EL'; break;
+                                        case 'Sick': overlayText = 'SL'; break;
+                                        case 'Comp Off': overlayText = 'CO'; break;
+                                        case 'Floating': overlayText = 'FH'; break;
+                                        case 'Maternity': overlayText = 'ML'; break;
+                                        case 'Child Care': overlayText = 'CCL'; break;
+                                        case 'Loss of Pay': overlayText = 'LOP'; break;
+                                        default: overlayText = 'L'; break;
+                                    }
                                 }
                             } else {
                                 overlayText = 'L';
