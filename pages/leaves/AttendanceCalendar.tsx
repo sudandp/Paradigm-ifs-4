@@ -222,17 +222,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             const status = getDayStatus(date);
             
-            if (['present', 'holiday-present'].includes(status)) {
-                // Determine if this was a half-day or full-day
+            if (status === 'holiday-present') {
+                count += 1;
+            } else if (status === 'present') {
                 const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
                 const { workingHours } = calculateWorkingHours(dayEvents);
-                const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-                const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
-                
-                if (workingHours >= shiftThreshold) {
+                if (workingHours > 0) {
                     count += 1;
-                } else if (workingHours > 0) {
-                    count += 0.5;
                 }
             } else if (['floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 count += 1;
