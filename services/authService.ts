@@ -8,6 +8,8 @@ import { GOOGLE_CONFIG } from '../config/authConfig';
 import type { User as AppUser } from "../types";
 import type { Session, User as SupabaseUser, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
+import { api } from './api';
+
 export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<AppUser | null> => {
     try {
         let { data, error } = await supabase
@@ -61,7 +63,7 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
         // Normalize to lowercase for consistent role checks throughout the app
         const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
 
-        return {
+        return api.processUrlsForDisplay({
             id: data.id,
             name: data.name,
             email: supabaseUser.email || '',
@@ -80,7 +82,7 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             salaryHoldReason: data.salary_hold_reason,
             salaryHoldDate: data.salary_hold_date,
             passcode: data.passcode,
-        };
+        });
     } catch (e) {
         console.error("Exception fetching profile:", e);
         return null;

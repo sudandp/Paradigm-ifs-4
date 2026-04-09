@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
-import type { AttendanceEvent, User, Location, RoutePoint } from '../../types';
+import type { AttendanceEvent, User, Location, RoutePoint, Role } from '../../types';
 import { Loader2, MapPin, List, Map as MapIcon, Route as RouteIcon, Calendar, Users, ChevronRight, ExternalLink, Clock, Filter, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import DatePicker from '../../components/ui/DatePicker';
@@ -11,6 +11,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { reverseGeocode } from '../../utils/locationUtils';
 import Pagination from '../../components/ui/Pagination';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 
 // --- Constants & Helpers ---
 
@@ -41,24 +42,6 @@ const getEventColor = (type: string) => {
         case 'break-out': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
         default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
-};
-
-const TRACKING_ROLES = [
-    'field_staff', 
-    'field_officer', 
-    'technical_reliever', 
-    'operation_manager', 
-    'site_manager', 
-    'supervisor'
-];
-
-const ROLE_LABELS: Record<string, string> = {
-    'field_staff': 'Field Staff',
-    'field_officer': 'Field Officer',
-    'technical_reliever': 'Reliever',
-    'operation_manager': 'Operation Manager',
-    'site_manager': 'Site Manager',
-    'supervisor': 'Supervisor'
 };
 
 // --- Sub-components ---
@@ -334,7 +317,7 @@ const RouteView: React.FC<{ events: (AttendanceEvent & { userName: string })[], 
 };
 
 const ActivityItem: React.FC<{ 
-    event: (AttendanceEvent & { userName: string, userPhoto?: string | null }), 
+    event: (AttendanceEvent & { userName: string, userPhoto?: string | null, userRole?: string }), 
     isFirst: boolean, 
     isLast: boolean, 
     knownLocations: Location[],
@@ -365,9 +348,9 @@ const ActivityItem: React.FC<{
             {/* Avatar Junction */}
             <div className="relative z-10 pt-1">
                 <div className="h-[48px] w-[48px] rounded-full border-2 border-page bg-card shadow-lg p-0.5 transition-transform group-hover:scale-110">
-                    <img 
-                        src={event.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(event.userName)}&background=random&color=fff`} 
-                        alt={event.userName}
+                    <ProfilePlaceholder 
+                        photoUrl={event.userPhoto || undefined} 
+                        seed={event.userName}
                         className="h-full w-full rounded-full object-cover shadow-inner"
                     />
                 </div>
@@ -381,11 +364,18 @@ const ActivityItem: React.FC<{
                 
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                            <h4 className="text-sm font-black text-primary-text uppercase tracking-tight">{event.userName}</h4>
-                            <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-widest border ${badgeStyles}`}>
-                                {getEventLabel(event.type, event.workType)}
-                            </span>
+                        <div className="flex flex-col">
+                            <div className="flex items-center gap-3">
+                                <h4 className="text-sm font-black text-primary-text uppercase tracking-tight">{event.userName}</h4>
+                                <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-widest border ${badgeStyles}`}>
+                                    {getEventLabel(event.type, event.workType)}
+                                </span>
+                            </div>
+                            {event.userRole && (
+                                <span className="text-[10px] font-bold text-muted uppercase tracking-wider mt-0.5">
+                                    {event.userRole}
+                                </span>
+                            )}
                         </div>
                         <div className="flex items-start gap-1.5">
                             <MapPin className="h-3.5 w-3.5 text-muted mt-0.5" />
@@ -431,6 +421,7 @@ const FieldStaffTracking: React.FC = () => {
     const [viewMode, setViewMode] = useState<'list' | 'map' | 'route'>('list');
     const [events, setEvents] = useState<AttendanceEvent[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
     const [knownLocations, setKnownLocations] = useState<Location[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -448,12 +439,26 @@ const FieldStaffTracking: React.FC = () => {
 
     const isMobile = useMediaQuery('(max-width: 767px)');
     
-    // All users that are in the tracking roles, sorted A-Z
+    // Map of role IDs (snake_case from API) to Display Names
+    const roleLabelsMap = useMemo(() => {
+        const labels: Record<string, string> = {};
+        availableRoles.forEach(r => {
+            const slug = r.id.toLowerCase().replace(/\s+/g, '_');
+            labels[slug] = r.displayName;
+        });
+        return labels;
+    }, [availableRoles]);
+
+    const trackingRoleSlugs = useMemo(() => {
+        return availableRoles.map(r => r.id.toLowerCase().replace(/\s+/g, '_'));
+    }, [availableRoles]);
+
+    // All users that are in any project role, sorted A-Z
     const trackingUsers = useMemo(() => {
         return users
-            .filter(u => TRACKING_ROLES.includes(u.role))
+            .filter(u => trackingRoleSlugs.includes(u.role))
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [users]);
+    }, [users, trackingRoleSlugs]);
 
     // Users available for selection based on the TEMPORARY role filter
     const selectableUsers = useMemo(() => {
@@ -469,14 +474,16 @@ const FieldStaffTracking: React.FC = () => {
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
 
-            const [eventsData, usersData, locationsData] = await Promise.all([
+            const [eventsData, usersData, locationsData, rolesData] = await Promise.all([
                 api.getAllAttendanceEvents(start.toISOString(), end.toISOString()),
                 api.getUsers(),
-                api.getLocations()
+                api.getLocations(),
+                api.getRoles()
             ]);
             setEvents(eventsData);
             setUsers(usersData);
             setKnownLocations(locationsData);
+            setAvailableRoles(rolesData);
         } catch (error) {
             console.error("Tracking Data Fetch Error", error);
         } finally {
@@ -508,7 +515,8 @@ const FieldStaffTracking: React.FC = () => {
             return { 
                 ...e, 
                 userName: user?.name || 'System Operator',
-                userPhoto: user?.photoUrl
+                userPhoto: user?.photoUrl,
+                userRole: user ? roleLabelsMap[user.role] : 'System Operator'
             };
         })
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -631,10 +639,13 @@ const FieldStaffTracking: React.FC = () => {
                                 }}
                                 className="flex-1 bg-transparent border-none text-xs font-bold text-primary-text focus:ring-0 p-1"
                             >
-                                <option value="all">ALL FIELD ROLES</option>
-                                {TRACKING_ROLES.map(role => (
-                                    <option key={role} value={role}>{ROLE_LABELS[role] || role.toUpperCase()}</option>
-                                ))}
+                                <option value="all">ALL PROJECT ROLES</option>
+                                {availableRoles.map(role => {
+                                    const slug = role.id.toLowerCase().replace(/\s+/g, '_');
+                                    return (
+                                        <option key={role.id} value={slug}>{role.displayName}</option>
+                                    );
+                                })}
                             </select>
                         </div>
 

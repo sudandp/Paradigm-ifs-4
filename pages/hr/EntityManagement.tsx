@@ -295,7 +295,7 @@ const EntityManagement: React.FC = () => {
                                 p.id === id ? { ...p, documentUrls: [...(p.documentUrls || []), ...newUrls] } : p
                             );
                         }
-                    } else if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
+                    } else if (['cinDoc', 'dinDoc', 'tanDoc', 'udyogDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
                         // Single file registration/statutory docs
                         const f = (Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles) as UploadedFile;
                         const file = f?.file;
@@ -305,7 +305,7 @@ const EntityManagement: React.FC = () => {
                         const mapping: Record<string, string> = {
                             cinDoc: 'cinDocUrl',
                             dinDoc: 'dinDocUrl',
-                            tinDoc: 'tinDocUrl',
+                            tanDoc: 'tanDocUrl',
                             udyogDoc: 'udyogDocUrl',
                             epfoDoc: 'epfoDocUrl',
                             esicDoc: 'esicDocUrl',
@@ -441,7 +441,7 @@ const EntityManagement: React.FC = () => {
             // 1b. Registration & Statutory Documents
             const fileEntries = Object.entries(pendingFiles);
             for (const [path, fileOrFiles] of fileEntries) {
-                if (['cinDoc', 'dinDoc', 'tinDoc', 'udyogDoc', 'gstDoc', 'panDoc', 'epfoDoc', 'esicDoc', 'shramDoc', 'logo'].includes(path)) {
+                if (['cinDoc', 'dinDoc', 'tanDoc', 'udyogDoc', 'gstDoc', 'panDoc', 'epfoDoc', 'esicDoc', 'shramDoc'].includes(path)) {
                     const fileObj = (Array.isArray(fileOrFiles) ? fileOrFiles[0] : fileOrFiles) as UploadedFile;
                     const file = fileObj?.file;
                     if (!file) continue;
@@ -451,7 +451,7 @@ const EntityManagement: React.FC = () => {
                     const mapping: Record<string, { field: string; nested?: string }> = {
                         cinDoc: { field: 'cinDocUrl' },
                         dinDoc: { field: 'dinDocUrl' },
-                        tinDoc: { field: 'tinDocUrl' },
+                        tanDoc: { field: 'tanDocUrl' },
                         udyogDoc: { field: 'udyogDocUrl' },
                         gstDoc: { field: 'gstDocUrl' },
                         panDoc: { field: 'panDocUrl' },

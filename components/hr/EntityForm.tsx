@@ -39,8 +39,8 @@ const entitySchema = yup.object({
   cinDocUrl: yup.string().optional(),
   dinNumber: yup.string().optional(),
   dinDocUrl: yup.string().optional(),
-  tinNumber: yup.string().optional(),
-  tinDocUrl: yup.string().optional(),
+  tanNumber: yup.string().optional(),
+  tanDocUrl: yup.string().optional(),
   udyogNumber: yup.string().optional(),
   udyogDocUrl: yup.string().optional(),
   gstNumber: yup.string().optional().nullable().matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, { message: 'Invalid GST Number format', excludeEmptyString: true }),
@@ -736,12 +736,12 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="TIN Number" id="tinNumber" registration={register('tinNumber')} error={errors.tinNumber?.message} />
-                                    <Controller name="tinDocUrl" control={control} render={({ field }) => (
+                                    <Input label="TAN Number" id="tanNumber" registration={register('tanNumber')} error={errors.tanNumber?.message} />
+                                    <Controller name="tanDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
-                                            label="TIN Document" 
-                                            file={(pendingFiles['tinDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
-                                            onFileChange={(f) => { handleFileUpload('tinDoc', f); if (!f) field.onChange(''); }}
+                                            label="TAN Document" 
+                                            file={(pendingFiles['tanDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { handleFileUpload('tanDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>

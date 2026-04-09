@@ -257,7 +257,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                 className={`group flex items-center justify-center w-full px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out mb-2 ${
                                     isCategoryActive
                                         ? mode === 'light'
-                                            ? 'bg-gray-100 text-gray-900 font-semibold'
+                                            ? 'bg-[#006b3f] text-white font-semibold shadow-sm'
                                             : 'bg-white/10 text-white font-semibold'
                                         : mode === 'light'
                                             ? 'text-gray-500 hover:bg-gray-100/60 hover:text-gray-900'
@@ -268,7 +268,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                 <Icon
                                     className={`h-5 w-5 flex-shrink-0 transition-all duration-200 ${
                                         isCategoryActive
-                                            ? mode === 'light' ? 'text-gray-900' : 'text-white'
+                                            ? mode === 'light' ? 'text-white' : 'text-white'
                                             : mode === 'light'
                                                 ? 'text-gray-400/80 group-hover:text-gray-500'
                                                 : 'text-white/60 group-hover:text-white/90'
@@ -283,20 +283,38 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         const isExpanded = expandedCategories[category] ?? false;
                         const CategoryIcon = CATEGORY_ICONS[category] || Grid3X3;
 
+                        const isCategoryActive = links.some(link => location.pathname === link.to);
+
                         return (
                             <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
                                 <button 
                                     onClick={() => toggleCategory(category)}
-                                    className="w-full text-left px-3 py-1 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none"
+                                    className={`w-full text-left px-3 py-2 mb-1 flex items-center justify-between group cursor-pointer focus:outline-none rounded-lg transition-all duration-200 ${
+                                        isExpanded || isCategoryActive
+                                            ? 'bg-[#006b3f] text-white shadow-md'
+                                            : 'hover:bg-gray-50 text-gray-500'
+                                    }`}
                                 >
                                     <div className="flex items-center gap-2">
-                                        <CategoryIcon className={`h-4 w-4 transition-colors ${isExpanded ? 'text-gray-600' : 'text-gray-400 group-hover:text-gray-500'}`} />
-                                        <span className={`text-sm font-semibold capitalize tracking-tight transition-colors ${isExpanded ? 'text-gray-700' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                        <CategoryIcon className={`h-4 w-4 transition-colors ${
+                                            isExpanded || isCategoryActive 
+                                                ? 'text-white' 
+                                                : 'text-gray-400 group-hover:text-gray-500'
+                                        }`} />
+                                        <span className={`text-sm font-semibold capitalize tracking-tight transition-colors ${
+                                            isExpanded || isCategoryActive 
+                                                ? 'text-white' 
+                                                : 'text-gray-400 group-hover:text-gray-600'
+                                        }`}>
                                             {category}
                                         </span>
                                     </div>
                                     <ChevronRight 
-                                        className={`h-3 w-3 transition-transform duration-200 ${isExpanded ? 'rotate-90 text-gray-400' : 'text-gray-300 group-hover:text-gray-400'}`} 
+                                        className={`h-3 w-3 transition-transform duration-200 ${
+                                            isExpanded 
+                                                ? 'rotate-90 text-white' 
+                                                : 'text-gray-300 group-hover:text-gray-400'
+                                        }`} 
                                     />
                                 </button>
                                 
@@ -307,7 +325,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                             animate={{ height: "auto", opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
                                             transition={{ duration: 0.2, ease: "easeInOut" }}
-                                            className="overflow-hidden space-y-0.5"
+                                            className="overflow-hidden space-y-0.5 bg-[#006b3f]/5 rounded-b-lg -mt-1 pt-2 pb-1"
                                         >
                                             {links.map((link, idx) => (
                                                 <NavLink
@@ -317,10 +335,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                     onClick={handleLinkClick}
                                                     style={{ paddingLeft: `${2.75 + (idx * 0.5)}rem` }}
                                                     className={({ isActive }) =>
-                                                        `group flex items-center pr-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
+                                                        `group flex items-center pr-3 py-1.5 mx-1 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
                                                             ? isActive
-                                                                ? 'bg-gray-100 text-gray-900 font-semibold'
-                                                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                                                ? 'bg-[#006b3f] text-white font-semibold shadow-sm'
+                                                                : 'text-gray-600 hover:bg-[#006b3f]/10 hover:text-[#006b3f]'
                                                             : isActive
                                                                 ? 'bg-white/10 text-white font-semibold'
                                                                 : 'text-white/70 hover:bg-white/5 hover:text-white'
@@ -332,7 +350,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                         <>
                                                             <link.icon
                                                                 className={`h-4 w-4 flex-shrink-0 transition-all duration-150 mr-2.5 ${mode === 'light'
-                                                                    ? isActive ? 'text-gray-900' : 'text-gray-400/80 group-hover:text-gray-600'
+                                                                    ? isActive ? 'text-white' : 'text-gray-400/80 group-hover:text-gray-600'
                                                                     : isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'
                                                                 }`}
                                                             />

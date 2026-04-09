@@ -51,6 +51,9 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 
+// Initialize Supabase client for proxy use (Service Role bypasses RLS)
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
 /**
  * File Proxy Route - Ported from api/view-file.ts to local dev server
  * Proxies requests for storage objects to Supabase, bypassing origin restriction issues
@@ -58,34 +61,66 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
  */
 app.use('/api/view-file', async (req: Request, res: Response) => {
     if (req.method !== 'GET') return res.status(405).send('Method Not Allowed');
+    
     try {
-        const filePath = req.path.replace(/^\//, '');
-        if (!filePath) {
+        // Extract bucket and path from URL
+        // Format: /api/view-file/bucket-name/path/to/file.ext
+        const fullPath = req.path.replace(/^\//, '');
+        if (!fullPath) {
+            console.warn('[Server] view-file: No file path provided');
             return res.status(400).json({ error: 'No file path provided' });
         }
 
-        const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${filePath}`;
-        console.log(`[Server] GET /api/view-file proxying to Supabase`);
+        const parts = fullPath.split('/');
+        const bucket = parts[0];
+        const storagePath = parts.slice(1).join('/');
 
-        const response = await fetch(supabaseUrl);
-
-        if (!response.ok) {
-            return res.status(response.status).json({ 
-                error: `File not found or inaccessible (${response.status})` 
-            });
+        if (!bucket || !storagePath) {
+            console.warn(`[Server] view-file: Invalid path format: ${fullPath}`);
+            return res.status(400).json({ error: 'Invalid file path format' });
         }
 
-        const buffer = await response.arrayBuffer();
-        const filename = filePath.split('/').pop() || 'document';
-        const contentType = getMimeType(filename);
+        console.log(`[Server] Proxying storage request: ${bucket}/${storagePath}`);
+
+        // Set a timeout for the download
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+        // Ensure path segments are properly encoded to safely handle spaces and special chars
+        const encodedPath = storagePath.split('/').map(encodeURIComponent).join('/');
+
+        const { data, error } = await supabase.storage
+            .from(bucket)
+            .download(encodedPath);
+
+        clearTimeout(timeoutId);
+
+        if (error) {
+            console.error(`[Server] Supabase proxy failed: ${error.message} for ${bucket}/${storagePath}`);
+            return res.status(400).json({ error: error.message });
+        }
+
+        if (!data) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        const buffer = await data.arrayBuffer();
+        const filename = storagePath.split('/').pop() || 'file';
+        const contentType = data.type || getMimeType(filename);
+
+        console.log(`[Server] Proxy success: ${bucket}/${storagePath} (${buffer.byteLength} bytes, ${contentType})`);
 
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-        res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
         res.setHeader('Access-Control-Allow-Origin', '*');
 
         return res.send(Buffer.from(buffer));
     } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.error('[Server] view-file proxy timeout');
+            return res.status(504).json({ error: 'Request to storage timed out' });
+        }
         console.error('[Server] view-file proxy error:', error);
         return res.status(500).json({ error: 'Failed to fetch file' });
     }

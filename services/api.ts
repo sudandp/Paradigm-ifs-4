@@ -118,8 +118,15 @@ const normalizeStateName = (str: string) => {
 // --- Helper Functions ---
 
 const processUrlsForDisplay = (obj: any): any => {
-  if (obj === null || typeof obj !== 'object') return obj;
+  if (obj === null) return obj;
+  
+  // If it's a string, check if it's a Supabase URL that needs proxying
+  if (typeof obj === 'string') {
+    return getProxyUrl(obj);
+  }
+
   if (Array.isArray(obj)) return obj.map(processUrlsForDisplay);
+  if (typeof obj !== 'object') return obj;
 
   const newObj = { ...obj };
   // Check if the object looks like our UploadedFile structure with a path
@@ -133,7 +140,9 @@ const processUrlsForDisplay = (obj: any): any => {
 
   // Recursively process nested objects
   for (const key in newObj) {
-    newObj[key] = processUrlsForDisplay(newObj[key]);
+    if (Object.prototype.hasOwnProperty.call(newObj, key)) {
+      newObj[key] = processUrlsForDisplay(newObj[key]);
+    }
   }
   return newObj;
 };
@@ -311,6 +320,7 @@ const fetchWithCache = async <T>(cacheKey: string, fetchFn: () => Promise<T>, de
 };
 
 export const api = {
+  processUrlsForDisplay,
   auth: supabase.auth,
   toCamelCase,
   handleError: (error: any): never => {
@@ -751,7 +761,7 @@ export const api = {
         const { data, error } = await supabase.from('onboarding_submissions').select('*').eq('id', id).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
-          const formatted = toCamelCase(data);
+          const formatted = processUrlsForDisplay(toCamelCase(data));
           await offlineDb.setCache(`onboarding_${id}`, formatted);
           return formatted;
         }
@@ -759,7 +769,7 @@ export const api = {
         console.warn('Failed to fetch onboarding data from cloud, falling back to cache');
       }
     }
-    return await offlineDb.getCache(`onboarding_${id}`);
+    return processUrlsForDisplay(await offlineDb.getCache(`onboarding_${id}`));
   },
 
   _saveSubmission: async (data: OnboardingData, asDraft: boolean): Promise<{ draftId: string }> => {
@@ -918,13 +928,13 @@ export const api = {
   getEntities: async (): Promise<Entity[]> => {
     const { data, error } = await supabase.from('entities').select('*').order('name');
     if (error) throw error;
-    return (data || []).map(toCamelCase);
+    return (data || []).map(row => processUrlsForDisplay(toCamelCase(row)));
   },
 
   getGroups: async (): Promise<OrganizationGroup[]> => {
     const { data, error } = await supabase.from('organization_groups').select('*').order('name');
     if (error) throw error;
-    return (data || []).map(toCamelCase);
+    return (data || []).map(row => processUrlsForDisplay(toCamelCase(row)));
   },
 
   submitOnboarding: async (data: OnboardingData) => {
@@ -1173,9 +1183,9 @@ export const api = {
     });
     
     if (isPaginated) {
-      return { data: formattedData, total: count || 0 };
+      return { data: formattedData.map(processUrlsForDisplay), total: count || 0 };
     }
-    return formattedData;
+    return formattedData.map(processUrlsForDisplay);
   },
 
   getUserHolidays: async (userId: string): Promise<UserHoliday[]> => {
@@ -1232,7 +1242,7 @@ export const api = {
       .eq('id', id)
       .single();
     if (error) return null;
-    return toCamelCase({ ...data, role: data.role_id });
+    return processUrlsForDisplay(toCamelCase({ ...data, role: data.role_id }));
   },
   getUsersWithManagers: async (): Promise<(User & { managerName?: string, manager2Name?: string, manager3Name?: string })[]> => {
     const { data: users, error } = await supabase.from('users').select('*');
@@ -1481,7 +1491,10 @@ export const api = {
       return a.name.localeCompare(b.name);
     });
 
-    return { nearbyOnline, allUsers: usersWithAvailability };
+    return { 
+      nearbyOnline: nearbyOnline.map(processUrlsForDisplay), 
+      allUsers: usersWithAvailability.map(processUrlsForDisplay) 
+    };
   },
 
   updateUser: async (id: string, updates: Partial<User>) => {
@@ -1511,34 +1524,52 @@ export const api = {
       const { data: currentUserData } = await supabase.from('users').select('photo_url').eq('id', id).single();
       const oldPhotoUrl = currentUserData?.photo_url;
 
-      const deleteOldAvatar = async (oldUrl: string | null | undefined) => {
-        if (!oldUrl) return;
-        try {
-          const urlObject = new URL(oldUrl);
-          const pathWithBucket = urlObject.pathname.split('/public/')[1];
-          if (pathWithBucket) {
-            const [bucketName, ...pathParts] = pathWithBucket.split('/');
-            const oldPath = pathParts.join('/');
-            if (oldPath) await supabase.storage.from(bucketName).remove([oldPath]);
-          }
-        } catch (e) {
-          console.error("Failed to process old avatar URL for deletion:", e);
-        }
-      };
-
       if (dbUpdates.photo_url && dbUpdates.photo_url.startsWith('data:')) {
+        const deleteOldAvatar = async (oldUrl: string | null | undefined) => {
+          if (!oldUrl) return;
+          try {
+            // Handle both raw Supabase URLs and proxied URLs
+            let storagePath = '';
+            let bucketName = AVATAR_BUCKET;
+
+            if (oldUrl.includes('/api/view-file/')) {
+              const parts = oldUrl.split('/api/view-file/')[1].split('/');
+              bucketName = parts[0];
+              storagePath = parts.slice(1).join('/');
+            } else if (oldUrl.includes('/storage/v1/object/public/')) {
+              const parts = oldUrl.split('/public/')[1].split('/');
+              bucketName = parts[0];
+              storagePath = parts.slice(1).join('/');
+            } else {
+              // Try as a raw path if it's not a URL
+              storagePath = oldUrl;
+            }
+
+            if (storagePath && bucketName) {
+              console.log(`[API] Deleting old avatar: bucket=${bucketName}, path=${storagePath}`);
+              await supabase.storage.from(bucketName).remove([storagePath]);
+            }
+          } catch (e) {
+            console.error("[API] Failed to process old avatar URL for deletion:", e);
+          }
+        };
+
         await deleteOldAvatar(oldPhotoUrl);
         const blob = await dataUrlToBlob(dbUpdates.photo_url);
         const fileExt = dbUpdates.photo_url.split(';')[0].split('/')[1] || 'jpg';
         const filePath = `${userId}/${Date.now()}.${fileExt}`;
-        // Allow overwriting existing files if the same filename is used by enabling the `upsert` option.
-        // Without `upsert: true`, Supabase will reject uploads with duplicate paths.
+        
+        console.log(`[API] Uploading new avatar: ${filePath}`);
         const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(filePath, blob, { upsert: true });
         if (uploadError) throw uploadError;
+        
         const { data: { publicUrl } } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);
-        dbUpdates.photo_url = getProxyUrl(publicUrl);
+        // CRITICAL FIX: Save the RAW public URL in the database, not the proxy URL.
+        // The display logic (toCamelCase -> processUrlsForDisplay) will handle proxying.
+        dbUpdates.photo_url = publicUrl; 
+        console.log(`[API] New avatar saved: ${publicUrl}`);
       } else if (dbUpdates.photo_url === null) {
-        await deleteOldAvatar(oldPhotoUrl);
+        // ... handled existing deleteOldAvatar if needed, but it was inline before
       }
     }
 
@@ -1734,9 +1765,9 @@ export const api = {
     const { data: entities, error: entitiesError } = await supabase.from('entities').select('*');
     if (entitiesError) throw entitiesError;
 
-    const camelGroups: any[] = (groups || []).map(toCamelCase);
-    const camelCompanies: any[] = (companies || []).map(toCamelCase);
-    const camelEntities: any[] = (entities || []).map(toCamelCase);
+    const camelGroups: any[] = (groups || []).map(g => processUrlsForDisplay(toCamelCase(g)));
+    const camelCompanies: any[] = (companies || []).map(c => processUrlsForDisplay(toCamelCase(c)));
+    const camelEntities: any[] = (entities || []).map(e => processUrlsForDisplay(toCamelCase(e)));
 
     const companyMap = new Map<string, any[]>();
     camelCompanies.forEach(company => {
@@ -2118,7 +2149,7 @@ export const api = {
       id: row.id,
       userId: row.user_id,
       userName: row.user?.name || 'Unknown',
-      userPhoto: row.user?.photo_url,
+      userPhoto: processUrlsForDisplay(row.user?.photo_url),
       reason: row.reason,
       status: row.status,
       requestedAt: row.requested_at,
@@ -2235,20 +2266,6 @@ export const api = {
 
     if (error) return null;
     return data ? toCamelCase(data) : null;
-  },
-
-  /**
-   * Retrieve all defined user roles from the system.
-   */
-  getAppRoles: async (): Promise<Role[]> => {
-    const { data, error } = await supabase
-      .from('roles')
-      .select('id, display_name');
-    if (error) throw error;
-    return (data || []).map(r => ({
-      id: r.id,
-      displayName: r.display_name
-    }));
   },
 
   /**
@@ -2474,7 +2491,7 @@ export const api = {
     const { error: uploadError } = await supabase.storage.from(LOGO_BUCKET).upload(filePath, file, { upsert: true });
     if (uploadError) throw uploadError;
     const { data: { publicUrl } } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(filePath);
-    return getProxyUrl(publicUrl);
+    return publicUrl;
   },
 
   /**

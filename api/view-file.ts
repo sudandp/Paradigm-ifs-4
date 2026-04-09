@@ -41,7 +41,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        var filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     }
 
-    const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${filePath}`;
+    // Ensure the filepath is correctly URL encoded to handle spaces and special characters
+    const encodedFilePath = filePath.split('/').map(encodeURIComponent).join('/');
+    const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${encodedFilePath}`;
 
     // Fetch the file from Supabase
     const response = await fetch(supabaseUrl);

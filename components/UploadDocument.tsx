@@ -188,9 +188,9 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             <div className="w-full text-center transition-all duration-300">
                 {file ? (
                      <div className={`
-                        w-full flex flex-col p-4 border-2 border-dashed rounded-lg bg-page/50 relative overflow-hidden
+                        w-full flex flex-col border-2 border-dashed rounded-lg bg-page/50 relative overflow-hidden
                         border-accent/30 pro-dark-theme:bg-accent/5 pro-dark-theme:border-accent/40
-                        ${variant === 'compact' ? 'min-h-[100px]' : 'min-h-[160px]'} justify-center
+                        ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
                         <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none">
                             <Icon className="h-32 w-32" />
@@ -202,8 +202,13 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     <img 
                                         src={file.preview} 
                                         alt="preview" 
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = 'https://placehold.co/400x200?text=Logo+Not+Found';
+                                            target.className = target.className + ' opacity-50 grayscale';
+                                        }}
                                         className={`
-                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : variant === 'compact' ? 'max-w-full max-h-[80px] object-contain' : 'max-w-full max-h-[180px] object-contain'}
+                                            ${label.toLowerCase().includes('photo') ? 'w-full h-full object-cover' : variant === 'compact' ? 'max-w-full max-h-[100px] object-contain' : 'max-w-full max-h-[180px] object-contain'}
                                             rounded transition-transform duration-500 group-hover:scale-105 shadow-sm
                                             ${isLoading ? 'opacity-40 blur-[2px]' : 'opacity-100'}
                                         `} 

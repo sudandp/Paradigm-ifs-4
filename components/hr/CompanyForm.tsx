@@ -50,8 +50,8 @@ const companySchema = yup.object({
   cinDocUrl: yup.string().optional().nullable(),
   dinNumber: yup.string().optional(),
   dinDocUrl: yup.string().optional().nullable(),
-  tinNumber: yup.string().optional(),
-  tinDocUrl: yup.string().optional().nullable(),
+  tanNumber: yup.string().optional(),
+  tanDocUrl: yup.string().optional().nullable(),
   udyogNumber: yup.string().optional(),
   udyogDocUrl: yup.string().optional().nullable(),
   
@@ -195,7 +195,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
   
   const logoPreview = pendingFiles['logo'] && !Array.isArray(pendingFiles['logo']) 
     ? (pendingFiles['logo'] as UploadedFile).preview
-    : formData.logoUrl;
+    : getProxyUrl(formData.logoUrl || '');
 
   const onSubmit: SubmitHandler<Partial<Company>> = (data) => {
     onSave({ ...data, status: 'completed' }, pendingFiles);
@@ -365,12 +365,12 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="TIN Number" id="tinNumber" registration={register('tinNumber')} error={errors.tinNumber?.message} />
-                                    <Controller name="tinDocUrl" control={control} render={({ field }) => (
+                                    <Input label="TAN Number" id="tanNumber" registration={register('tanNumber')} error={errors.tanNumber?.message} />
+                                    <Controller name="tanDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
-                                            label="TIN Document" 
-                                            file={(pendingFiles['tinDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
-                                            onFileChange={(f) => { setFile('tinDoc', f); if (!f) field.onChange(''); }}
+                                            label="TAN Document" 
+                                            file={(pendingFiles['tanDoc'] as UploadedFile) || getUploadedFileFromUrl(field.value)}
+                                            onFileChange={(f) => { setFile('tanDoc', f); if (!f) field.onChange(''); }}
                                         />
                                     )} />
                                 </div>
@@ -454,7 +454,7 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                         </div>
                     </div>
 
-                        <div className="md:col-span-1 mt-4 p-4 border border-border/50 rounded-2xl bg-page/40 shadow-sm max-w-sm">
+                        <div className="md:col-span-1 mt-4 max-w-sm">
                            <Controller name="logoUrl" control={control} render={({ field }) => (
                            <UploadDocument 
                              label="Company Logo" 

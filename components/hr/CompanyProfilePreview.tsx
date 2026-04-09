@@ -48,7 +48,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
           </div>
           <div className="w-32 h-32 flex items-center justify-center border border-border rounded-lg bg-page overflow-hidden">
             {logoUrl ? (
-              <img src={logoUrl} alt="Company Logo" className="max-w-full max-h-full object-contain" />
+              <img src={getProxyUrl(logoUrl)} alt="Company Logo" className="max-w-full max-h-full object-contain" />
             ) : (
               <div className="text-muted text-xs text-center font-medium px-2">No Logo<br/>Provided</div>
             )}
@@ -67,7 +67,7 @@ const CompanyProfilePreview: React.FC<CompanyProfilePreviewProps> = ({ data, log
                 <p><span className="font-semibold text-muted">Registration Number:</span> {data.registrationNumber || 'N/A'}</p>
                 {data.cinNumber && <p><span className="font-semibold text-muted">CIN Number:</span> {data.cinNumber}</p>}
                 {data.dinNumber && <p><span className="font-semibold text-muted">DIN Number:</span> {data.dinNumber}</p>}
-                {data.tinNumber && <p><span className="font-semibold text-muted">TIN Number:</span> {data.tinNumber}</p>}
+                {data.tanNumber && <p><span className="font-semibold text-muted">TAN Number:</span> {data.tanNumber}</p>}
               </div>
               <div className="space-y-2">
                 <p><span className="font-semibold text-muted">PAN Number:</span> {data.panNumber || 'N/A'}</p>

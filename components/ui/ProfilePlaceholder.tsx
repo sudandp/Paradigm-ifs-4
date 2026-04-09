@@ -16,8 +16,14 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
     const resolvedPhotoUrl = useMemo(() => {
         if (!photoUrl) return null;
         
-        // If it's already a full URL, return it
-        if (photoUrl.startsWith('http') || photoUrl.startsWith('https') || photoUrl.startsWith('data:')) {
+        // If it's already a full URL or a relative proxy URL, return it
+        if (
+            photoUrl.startsWith('http') || 
+            photoUrl.startsWith('https') || 
+            photoUrl.startsWith('data:') ||
+            photoUrl.startsWith('/api/') ||
+            photoUrl.startsWith('./')
+        ) {
             return photoUrl;
         }
 

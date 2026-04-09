@@ -583,8 +583,8 @@ export interface Entity {
   cinDocUrl?: string;
   dinNumber?: string;
   dinDocUrl?: string;
-  tinNumber?: string;
-  tinDocUrl?: string;
+  tanNumber?: string;
+  tanDocUrl?: string;
   udyogNumber?: string;
   udyogDocUrl?: string;
 
@@ -767,8 +767,8 @@ export interface Company {
   cinDocUrl?: string;
   dinNumber?: string;
   dinDocUrl?: string;
-  tinNumber?: string;
-  tinDocUrl?: string;
+  tanNumber?: string;
+  tanDocUrl?: string;
   udyogNumber?: string;
   udyogDocUrl?: string;
   
