@@ -228,7 +228,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
                 const { workingHours } = calculateWorkingHours(dayEvents);
                 if (workingHours > 0) {
-                    count += 1;
+                    const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                    const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
+                    count += (workingHours >= shiftThreshold) ? 1 : 0.5;
                 }
             } else if (['floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 count += 1;
