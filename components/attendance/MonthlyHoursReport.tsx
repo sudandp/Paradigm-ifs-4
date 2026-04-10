@@ -412,7 +412,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             currentDayOT = ot > 0 ? formatTime(ot) : '-';
           }
       } else if (hasActivity) {
-        const { 
+        let { 
           checkIn, checkOut, firstBreakIn, lastBreakIn, workingHours: netHours, breakHours, totalHours: grossHours 
         } = processDailyEvents(dayEvents);
 
@@ -425,10 +425,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           const maxDailyHours = rules.dailyWorkingHours?.max || 9;
           dailyOt = Math.max(0, netHours - maxDailyHours);
           
-          totalNetWorkDuration += duration;
-          totalGrossWorkDuration += grossHours;
-          totalBreakDuration += breakHours;
-          totalOT += dailyOt;
+          // Only accumulate here if not a site-tracked category
+          // Site-tracked staff will accumulate in their specific block below
+          if (category !== 'field' && category !== 'site') {
+            totalNetWorkDuration += duration;
+            totalGrossWorkDuration += grossHours;
+            totalBreakDuration += breakHours;
+          }
         }
 
         const isDetailedPresent = (checkIn && checkOut) || isToday;
@@ -463,12 +466,22 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             const fieldViolation = fieldViolations.find(v => format(new Date(v.date), 'yyyy-MM-dd') === dateStr);
             const fieldResult = getFieldStaffStatus(dayEvents, rules, fieldViolation || undefined, user.role);
             
+            // Synchronize durations with field tracking findings
+            netHours = fieldResult.breakdown.totalActiveMinutes / 60;
+            grossHours = fieldResult.breakdown.totalHours;
+            breakHours = (fieldResult.breakdown.totalHours * 60 - fieldResult.breakdown.totalActiveMinutes) / 60;
+            
             // For site tracking, we still ensure they worked at least the half day minimum
             if (isDetailedPresent) {
                status = fieldResult.status;
             } else {
                status = 'A';
             }
+            
+            // Update accumulators with corrected site hours
+            totalNetWorkDuration += netHours;
+            totalGrossWorkDuration += grossHours;
+            totalBreakDuration += breakHours;
         } else {
             if (isDetailedPresent) {
                 if (isFullDay) {

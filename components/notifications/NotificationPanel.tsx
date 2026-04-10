@@ -41,6 +41,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         greeting: Sun,
         approval_request: ClipboardCheck,
         emergency_broadcast: AlertTriangle,
+        emergency: AlertTriangle,
         direct_ping: MessageSquare,
     };
 
@@ -54,6 +55,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
         greeting: 'bg-emerald-50 text-emerald-600 border-emerald-100',
         approval_request: 'bg-orange-50 text-orange-600 border-orange-100 shadow-[0_0_10px_rgba(249,115,22,0.1)]',
         emergency_broadcast: 'bg-red-50 text-red-600 border-red-100 shadow-[0_0_10px_rgba(239,68,68,0.2)]',
+        emergency: 'bg-red-50 text-red-600 border-red-100 shadow-[0_0_10px_rgba(239,68,68,0.2)]',
         direct_ping: 'bg-blue-50 text-blue-600 border-blue-100',
     };
 
@@ -98,6 +100,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         if (!user) return false;
         const role = (user.role || '').toLowerCase();
         return ['admin', 'super_admin', 'developer', 'management', 'hr', 'hr_ops', 'finance_manager'].includes(role) || role.includes('manager');
+    }, [user]);
+
+    const isHRRole = useMemo(() => {
+        if (!user) return false;
+        const role = (user.role || '').toLowerCase();
+        return ['hr', 'hr_ops'].includes(role);
     }, [user]);
 
     const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team') => {
@@ -390,8 +398,9 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     }, [notifications, currentPage, pageSize]);
 
     const securityViolations = useMemo(() => {
+        if (isHRRole) return [];
         return notifications.filter(n => (!n.isRead) && (n.type === 'security' || n.message.includes('Field attendance violation')));
-    }, [notifications]);
+    }, [notifications, isHRRole]);
 
     const teamActivityNotifications = useMemo(() => {
         return notifications.filter(n => {
