@@ -27,8 +27,9 @@ export interface DailyData {
 export interface EmployeeMonthlyData {
   employeeId: string;
   employeeName: string;
-  userName?: string; // For MonthlyReportRow compatibility
-  statuses: string[]; // For MonthlyReportRow compatibility
+  userName?: string;
+  role?: string;
+  statuses: string[];
   totalGrossWorkDuration: number;
   totalNetWorkDuration: number;
   totalBreakDuration: number;
@@ -40,6 +41,8 @@ export interface EmployeeMonthlyData {
   holidayPresents: number;
   weekendPresents: number;
   halfDays: number;
+  threeQuarterDays: number;
+  quarterDays: number;
   sickLeaves: number;
   earnedLeaves: number;
   floatingHolidays: number;
@@ -51,11 +54,11 @@ export interface EmployeeMonthlyData {
   totalDurationPlusOT: number;
   shiftCounts: { [key: string]: number };
   dailyData: DailyData[];
-  present: number; // legacy if needed
-  absent: number; // legacy if needed
-  weeklyOff: number; // legacy if needed
-  leaves: number; // legacy if needed
-  lossOfPay: number; // legacy if needed
+  present: number;
+  absent: number;
+  weeklyOff: number;
+  leaves: number;
+  lossOfPay: number;
 }
 
 interface MonthlyHoursReportProps {
@@ -75,8 +78,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
 
   const getStaffCategory = (role: string): 'office' | 'field' | 'site' => {
     const r = role.toLowerCase();
-    if (['admin', 'developer', 'hr', 'operations_manager', 'back_office', 'receptionist', 'site_ops', 'finance'].includes(r)) return 'office';
-    if (['field_staff', 'site_manager'].includes(r)) return 'field';
+    const OFFICE_ROLES = ['admin', 'developer', 'hr', 'hr_ops', 'operations_manager', 'back_office', 'receptionist', 'finance', 'accounts', 'accountant', 'manager', 'management'];
+    if (OFFICE_ROLES.includes(r)) return 'office';
+    
+    // Categorize as field if role contains key field terms (Field Officer, Supervisor, etc.)
+    if (r.includes('field') || r.includes('officer') || r.includes('supervisor') || r.includes('site_manager') || r.includes('technical')) {
+        return 'field';
+    }
+    
     return 'site';
   };
 
@@ -155,6 +164,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
     let presentDays = 0;
     let absentDays = 0;
     let halfDays = 0;
+    let threeQuarterDays = 0;
+    let quarterDays = 0;
     let holidaysCount = 0;
     const leavesCount = 0;
     let floatingHolidays = 0;
@@ -409,23 +420,23 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         const duration = netHours;
         currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
         currentDayBreakOut = lastBreakOut ? format(new Date(lastBreakOut), 'HH:mm') : '-';
-        let ot = 0;
-
+        let dailyOt = 0;
         if (checkIn && checkOut) {
           const maxDailyHours = rules.dailyWorkingHours?.max || 9;
-          ot = Math.max(0, netHours - maxDailyHours);
+          dailyOt = Math.max(0, netHours - maxDailyHours);
           
           totalNetWorkDuration += duration;
           totalGrossWorkDuration += grossHours;
           totalBreakDuration += breakHours;
-          totalOT += ot;
+          totalOT += dailyOt;
         }
 
         const isDetailedPresent = (checkIn && checkOut) || isToday;
         const shiftThreshold = rules.dailyWorkingHours?.max || 8;
 
         // Determine if it's a full day or half day for counting
-        const isFullDay = netHours >= shiftThreshold;
+        // Buffer: 15-minute grace window for full day (7h 45m+ counts as full day)
+        const isFullDay = netHours >= (shiftThreshold - 0.25);
 
         // Determine shift type
         let shift = '-';
@@ -448,44 +459,58 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         if (isSunday) {
             status = 'WOP';
             if (!isFuture) weekendPresents++;
-        } else if (category === 'field' && rules.enableSiteTimeTracking) {
-            const dayViolation = fieldViolations.find(v => v.date === dateStr);
-            const fieldResult = getFieldStaffStatus(dayEvents, rules, dayViolation);
-            // Apply strict validation to field staff status for past days
-            status = isDetailedPresent ? fieldResult.status : 'A';
-            if (!isFuture) {
-                if (status === 'P') presentDays++;
-                else if (status === '1/2P') halfDays++;
-                else if (status === 'A') absentDays++;
-                if (status !== 'A') daysPresentInWeek++;
+        } else if ((category === 'field' || category === 'site') && rules.enableSiteTimeTracking) {
+            const fieldViolation = fieldViolations.find(v => format(new Date(v.date), 'yyyy-MM-dd') === dateStr);
+            const fieldResult = getFieldStaffStatus(dayEvents, rules, fieldViolation || undefined, user.role);
+            
+            // For site tracking, we still ensure they worked at least the half day minimum
+            if (isDetailedPresent) {
+               status = fieldResult.status;
+            } else {
+               status = 'A';
             }
         } else {
             if (isDetailedPresent) {
                 if (isFullDay) {
                     status = 'P';
-                    presentDays++;
-                } else {
+                } else if (netHours >= (rules.minimumHoursHalfDay || 4)) {
                     status = '1/2P';
-                    halfDays++;
+                } else {
+                   status = 'A';
                 }
-                daysPresentInWeek++;
             } else {
                 status = 'A';
-                if (!isFuture) absentDays++;
             }
         }
+
+        if (status === 'P') presentDays++;
+        else if (status === '3/4P') threeQuarterDays++;
+        else if (status === '1/2P') halfDays++;
+        else if (status === '1/4P') quarterDays++;
+        else if (status === 'A') absentDays++;
 
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
         currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
         currentDayGrossDuration = grossHours > 0 ? formatTime(grossHours) : '-';
         currentDayBreakDuration = breakHours > 0 ? formatTime(breakHours) : '-';
         currentDayNetWorkedHours = netHours > 0 ? formatTime(netHours) : '-';
-        currentDayOT = ot > 0 ? formatTime(ot) : '-';
+        
+        const currentOt = Math.max(0, netHours - (rules.dailyWorkingHours?.max || 9));
+        totalOT += currentOt;
+        currentDayOT = currentOt > 0 ? formatTime(currentOt) : '-';
         
         const targetNetHours = 8;
-        const shortfall = Math.max(0, targetNetHours - netHours);
+        const targetShortfallHours = shiftThreshold * 0.75;
+        const shortfall = Math.max(0, targetShortfallHours - netHours);
         currentDayShortfall = (shortfall > 0 && netHours > 0 && !isSunday && !isHoliday && !isRecurringHoliday) ? formatTime(shortfall) : '-';
-        currentDayShift = shift || '-';
+        
+        if (checkIn) {
+          const checkInDate = new Date(checkIn);
+          const hour = checkInDate.getHours();
+          const timeVal = hour + checkInDate.getMinutes() / 60;
+          currentDayShift = timeVal >= 5 && timeVal < 8.5 ? 'Shift A' : timeVal >= 8.5 && timeVal < 11.5 ? 'GS' : timeVal >= 11.5 && timeVal < 20 ? 'Shift B' : 'Shift C';
+          shiftCounts[currentDayShift] = (shiftCounts[currentDayShift] || 0) + 1;
+        }
 
       } else if (isSunday) {
           if (!isFuture) {
@@ -521,44 +546,43 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
       });
     }
 
-    const averageWorkingHrs = presentDays > 0 ? totalNetWorkDuration / presentDays : 0;
-
-    const totalPayableDays = presentDays + weekOffs + holidaysCount + weekendPresents + holidayPresents + (halfDays * 0.5) 
-                             + sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays;
-
-    return {
-      employeeId: user.id,
-      employeeName: user.name,
-      userName: user.name,
-      statuses: dailyData.map(d => d.status),
-      totalGrossWorkDuration,
-      totalNetWorkDuration,
-      totalBreakDuration,
-      totalOT,
-      presentDays,
-      halfDays,
-      absentDays,
-      weekOffs,
-      holidays: holidaysCount,
-      holidayPresents,
-      weekendPresents,
-      sickLeaves,
-      earnedLeaves,
-      floatingHolidays,
-      compOffs,
-      lossOfPays: lossOfPay,
-      workFromHomeDays,
-      totalPayableDays,
-      averageWorkingHrs: Math.round(averageWorkingHrs * 100) / 100,
-      totalDurationPlusOT: totalNetWorkDuration,
-      shiftCounts,
-      dailyData,
-      present: presentDays,
-      absent: absentDays,
-      weeklyOff: weekOffs, // legacy support
-      leaves: leavesCount,
-      lossOfPay
-    };
+    const totalPayableDays = presentDays + (halfDays * 0.5) + (quarterDays * 0.25) + (threeQuarterDays * 0.75) + holidaysCount + weekOffs + leavesCount;
+      
+      return {
+        employeeId: user.id,
+        employeeName: user.name,
+        role: user.role,
+        totalGrossWorkDuration,
+        totalNetWorkDuration,
+        totalBreakDuration,
+        totalOT,
+        presentDays,
+        absentDays,
+        halfDays,
+        threeQuarterDays,
+        quarterDays,
+        weekOffs,
+        holidays: holidaysCount,
+        holidayPresents,
+        weekendPresents,
+        sickLeaves,
+        earnedLeaves,
+        floatingHolidays,
+        compOffs,
+        lossOfPays: lossOfPay,
+        workFromHomeDays,
+        totalPayableDays,
+        averageWorkingHrs: presentDays + halfDays + threeQuarterDays + quarterDays > 0 ? totalNetWorkDuration / (presentDays + halfDays + threeQuarterDays + quarterDays) : 0,
+        totalDurationPlusOT: totalNetWorkDuration + totalOT,
+        shiftCounts,
+        dailyData,
+        present: presentDays + (halfDays * 0.5) + (quarterDays * 0.25) + (threeQuarterDays * 0.75),
+        absent: absentDays,
+        weeklyOff: weekOffs,
+        leaves: leavesCount,
+        lossOfPay: lossOfPay,
+        statuses: dailyData.map(d => d.status)
+      };
   };
 
   const exportToExcel = () => {
@@ -586,7 +610,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
       {reportData.map((employee) => (
         <div key={employee.employeeId} className="mb-12 border border-gray-300 rounded-lg p-6 bg-white">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Employee: {employee.employeeId} - {employee.employeeName}</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Employee: {employee.employeeId} - {employee.employeeName} 
+              <span className="ml-4 text-gray-600 font-normal">Role: {employee.role}</span>
+            </h3>
             <div className="text-sm text-gray-700 mt-2">
               <p>
                 Total Gross Work Duration: {employee.totalGrossWorkDuration.toFixed(2)} Hrs, 
@@ -625,17 +652,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
                   <td className="p-2 font-semibold bg-gray-200 text-gray-900 border-r border-gray-300">Status</td>
                   {employee.dailyData.map((day) => (
                     <td key={day.date} className="p-1 text-center border-l border-gray-300 font-bold text-gray-900">
-                      <span className={
-                        day.status === 'P' || day.status.includes('P ') ? 'text-green-600' : 
-                        (day.status === '1/2P' || day.status.includes('1/2P ') || day.status.includes('C/O')) ? 'text-blue-600' : 
-                        day.status === 'W/O' ? 'text-gray-500' : 
-                        (day.status === 'H' || day.status.includes('H')) ? 'text-orange-600' :
-                        day.status.includes('F/H') ? 'text-yellow-600' :
-                        (day.status.includes('LOP') || day.status.includes('1/2A') || day.status === 'A') ? 'text-red-500' :
-                        'text-red-600'
-                      }>
-                        {day.status}
-                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                day.status === 'P' ? 'bg-green-100 text-green-700' :
+                                                day.status === '3/4P' ? 'bg-emerald-100 text-emerald-700' :
+                                                day.status === '1/2P' ? 'bg-yellow-100 text-yellow-700' :
+                                                day.status === '1/4P' ? 'bg-orange-100 text-orange-700' :
+                                                day.status === 'A' ? 'bg-red-100 text-red-700' :
+                                                'bg-gray-100 text-gray-700'
+                                            }`}>
+                                                {day.status}
+                                            </span>
                     </td>
                   ))}
                 </tr>
@@ -688,7 +714,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
                   ))}
                 </tr>
                 <tr className="border-b border-gray-300">
-                  <td className="p-2 font-semibold bg-gray-200 text-gray-900 border-r border-gray-300 whitespace-nowrap">Shortfall (8h)</td>
+                  <td className="p-2 font-semibold bg-gray-200 text-gray-900 border-r border-gray-300 whitespace-nowrap">Shortfall (75%)</td>
                   {employee.dailyData.map((day) => (
                     <td key={day.date} className={`p-1 text-center border-l border-gray-300 ${day.shortfall !== '-' ? 'text-red-500 font-medium' : 'text-gray-900'}`}>{day.shortfall}</td>
                   ))}

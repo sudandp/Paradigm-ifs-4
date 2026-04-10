@@ -7,6 +7,8 @@ export interface MonthlyReportRow {
     statuses: string[];
     presentDays: number;
     halfDays: number;
+    threeQuarterDays?: number;
+    quarterDays?: number;
     absentDays: number;
     weekOffs: number;
     holidays: number;
@@ -249,7 +251,7 @@ export const exportAttendanceToExcel = async (
     const mainHeaders = [
         'Employee Name',
         ...dayInterval.map(date => format(date, 'EEE')),
-        'P', '1/2P', 'OT (P)', 'C/O', 'E/L', 'S/L', 'A', 'WO', 'H', 'WOP', 'HP', 'F/H', 'W/H', 'Total'
+        'P', '3/4P', '1/2P', '1/4P', 'OT (P)', 'C/O', 'E/L', 'S/L', 'A', 'WO', 'H', 'WOP', 'HP', 'F/H', 'W/H', 'Total'
     ];
     headerRow2.values = mainHeaders;
     headerRow2.height = 25;
@@ -267,7 +269,7 @@ export const exportAttendanceToExcel = async (
         worksheet.getColumn(i).width = 5;
     }
     // Summary columns widths
-    const lastColIndex = dayInterval.length + 16; // Summary columns count: 14 + Employee col
+    const lastColIndex = dayInterval.length + 18; // Summary columns count: 16 + Employee col + 1
     for (let i = dayInterval.length + 2; i <= lastColIndex; i++) {
         worksheet.getColumn(i).width = 7;
     }
@@ -285,7 +287,9 @@ export const exportAttendanceToExcel = async (
             row.userName,
             ...row.statuses,
             row.presentDays,
+            row.threeQuarterDays || 0,
             row.halfDays,
+            row.quarterDays || 0,
             row.overtimeDays || 0,
             row.compOffs,
             row.earnedLeaves,
@@ -303,12 +307,12 @@ export const exportAttendanceToExcel = async (
         excelRow.values = rowData;
         excelRow.height = 22;
 
-        // Apply background colors to special columns
-        const col_OT = dayInterval.length + 4;
-        const col_CO = dayInterval.length + 5;
-        const col_EL = dayInterval.length + 6;
-        const col_SL = dayInterval.length + 7;
-        const col_Total = dayInterval.length + 16;
+        // Apply background colors to special columns (Indices shifted by 2 due to new columns)
+        const col_OT = dayInterval.length + 6;
+        const col_CO = dayInterval.length + 7;
+        const col_EL = dayInterval.length + 8;
+        const col_SL = dayInterval.length + 9;
+        const col_Total = dayInterval.length + 18;
 
         excelRow.getCell(col_OT).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2F1' } }; // Light Teal
         excelRow.getCell(col_CO).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E5F5' } }; // Light Purple
@@ -338,7 +342,9 @@ export const exportAttendanceToExcel = async (
         'Total',
         ...new Array(dayInterval.length).fill(''),
         data.reduce((acc, row) => acc + row.presentDays, 0),
+        data.reduce((acc, row) => acc + (row.threeQuarterDays || 0), 0),
         data.reduce((acc, row) => acc + row.halfDays, 0),
+        data.reduce((acc, row) => acc + (row.quarterDays || 0), 0),
         data.reduce((acc, row) => acc + (row.overtimeDays || 0), 0),
         data.reduce((acc, row) => acc + row.compOffs, 0),
         data.reduce((acc, row) => acc + row.earnedLeaves, 0),

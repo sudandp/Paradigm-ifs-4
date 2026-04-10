@@ -1100,6 +1100,7 @@ export interface StaffAttendanceRules {
     amountEarned: number; // e.g., 0.5
   };
   enableSickLeaveAccrual?: boolean;
+  fieldStaffGraceMinutes?: number;
   holidayPool?: { name: string; date: string }[];
   // Device limits configuration
   deviceLimits?: {

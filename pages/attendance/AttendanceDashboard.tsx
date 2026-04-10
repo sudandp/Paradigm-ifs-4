@@ -350,17 +350,25 @@ const AttendanceDashboard: React.FC = () => {
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
     const { permissions } = usePermissionsStore();
-    const OFFICE_ROLES = ['admin', 'super_admin', 'hr', 'hr_ops', 'finance', 'accountant', 'accounts', 'manager'];
-    const isOfficeUser = (role?: string) => {
-        if (!role) return true;
+    const getStaffCategory = (role?: string): 'office' | 'field' | 'site' => {
+        if (!role) return 'office';
         const r = role.toLowerCase();
-        if (OFFICE_ROLES.includes(r)) return true;
-        // If role contains field/site/project/engineer, it's definitely a field user
-        if (r.includes('field') || r.includes('site') || r.includes('project') || r.includes('engineer') || r.includes('supervisor')) return false;
-        // Default to office if not explicitly a field role and not in office list? 
-        // Actually, better to keep it consistent with MonthlyHoursReport.tsx
-        return true; 
+        const OFFICE_ROLES = ['admin', 'developer', 'hr', 'hr_ops', 'operations_manager', 'back_office', 'receptionist', 'finance', 'accounts', 'accountant', 'manager', 'management', 'super_admin'];
+        if (OFFICE_ROLES.includes(r)) return 'office';
+        
+        // Field roles include field, officer, supervisor, site_manager, technical, project, engineer
+        if (r.includes('field') || r.includes('officer') || r.includes('supervisor') || r.includes('site_manager') || r.includes('technical')) {
+            return 'field';
+        }
+        
+        if (r.includes('site') || r.includes('project') || r.includes('engineer')) {
+            return 'site';
+        }
+
+        return 'site'; 
     };
+
+    const isOfficeUser = (role?: string) => getStaffCategory(role) === 'office';
 
     const { attendance, recurringHolidays, officeHolidays, fieldHolidays } = useSettingsStore();
 
@@ -1103,7 +1111,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Check for holidays/weekends first
                 const dayName = format(day, 'EEEE');
-                const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
+                const userCategory = getStaffCategory(user.role);
 
                 // RESOLVE RULES FOR THIS USER
                 const userRules = resolveUserRules(user.id, userCategory);
@@ -1351,7 +1359,7 @@ const AttendanceDashboard: React.FC = () => {
         }
 
         const rows = filteredUsers.map(user => {
-            const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
+            const userCategory = getStaffCategory(user.role);
             const userRules = resolveUserRules(user.id, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
 
@@ -1359,6 +1367,8 @@ const AttendanceDashboard: React.FC = () => {
             let presentDays = 0;
             let absentDays = 0;
             let halfDays = 0;
+            let threeQuarterDays = 0;
+            let quarterDays = 0;
             let weekOffs = 0;
             let holidays = 0;
             let weekendPresents = 0;
@@ -1380,7 +1390,7 @@ const AttendanceDashboard: React.FC = () => {
                     while (isAfter(dateRange.startDate, checkDate) && !isSameDay(dateRange.startDate, checkDate)) {
                         const dateStr = format(checkDate, 'yyyy-MM-dd');
                         const checkDayName = format(checkDate, 'EEEE');
-                        const checkUserCategory = isOfficeUser(user.role) ? 'office' : 'field';
+                        const checkUserCategory = getStaffCategory(user.role);
                         const checkUserRules = resolveUserRules(user.id, checkUserCategory);
                         const checkWeeklyOffDays = checkUserRules.weeklyOffDays || [0];
                         const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
@@ -1524,15 +1534,20 @@ const AttendanceDashboard: React.FC = () => {
                     
                     if (isWeekend) { status = 'WOP'; weekendPresents++; overtimeDays++; }
                     else if (dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'))) { status = 'W/H'; workFromHomeDays++; }
-                    else if (userCategory === 'field' && attendance.field?.enableSiteTimeTracking) {
+                    else if ((userCategory === 'field' || userCategory === 'site') && attendance.field?.enableSiteTimeTracking) {
                         const userIdKey = String(user.id).toLowerCase();
                         const dayViolation = (fieldViolationsMap[userIdKey] || []).find(v => v.date === dateStr);
-                        const fieldResult = getFieldStaffStatus(dayEvents, attendance?.field, dayViolation);
+                        // Passing resolved userRules to ensure user-specific targets (like shifts) are respected
+                        const fieldResult = getFieldStaffStatus(dayEvents, userRules as any, dayViolation, user.role);
                         status = fieldResult.status;
+                        
                         if (status === 'P') { presentDays++; if (workingHours > 14) overtimeDays++; }
-                        else if (status.includes('1/2P')) halfDays++;
+                        else if (status === '3/4P') threeQuarterDays++;
+                        else if (status === '1/2P') halfDays++;
+                        else if (status === '1/4P') quarterDays++;
                     } else {
-                        if (workingHours >= minHoursFullDay) { status = 'P'; presentDays++; if (workingHours > 14) overtimeDays++; }
+                        // Apply 15-minute buffer to full day check for standard staff
+                        if (workingHours >= (minHoursFullDay - 0.25)) { status = 'P'; presentDays++; if (workingHours > 14) overtimeDays++; }
                         else if (workingHours >= minHoursHalfDay) { status = '0.5P'; halfDays++; }
                         else { status = 'P'; presentDays++; } 
                     }
@@ -1551,15 +1566,19 @@ const AttendanceDashboard: React.FC = () => {
                 statuses.push(status);
             });
 
-            const totalPayableDays = presentDays + weekOffs + holidays + weekendPresents + holidayPresents + (halfDays * 0.5) 
-                                     + sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays + overtimeDays;
+            const totalPayableDays = presentDays + (threeQuarterDays * 0.75) + (halfDays * 0.5) + (quarterDays * 0.25) + 
+                                     weekOffs + holidays + weekendPresents + holidayPresents + 
+                                     sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays + overtimeDays;
 
             return {
                 userName: user.name,
+                userId: user.id,
                 statuses,
-                presentDays,
+                presentDays: presentDays + (threeQuarterDays * 0.75) + (halfDays * 0.5) + (quarterDays * 0.25),
                 absentDays,
                 halfDays,
+                threeQuarterDays,
+                quarterDays,
                 weekOffs,
                 holidays,
                 weekendPresents,
@@ -1631,7 +1650,7 @@ const AttendanceDashboard: React.FC = () => {
                     else if (workingHours > 0) presentDays += 0.5;
 
                     // OT calculation
-                    const userCategory = isOfficeUser(user.role) ? 'office' : 'field';
+                    const userCategory = getStaffCategory(user.role);
                     const userRules = resolveUserRules(user.id, userCategory);
                     const threshold = userRules.minimumHoursFullDay || 8;
                     if (workingHours > threshold) {

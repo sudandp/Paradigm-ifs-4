@@ -101,7 +101,7 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection'>('pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections'>('pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [correctionRequestId, setCorrectionRequestId] = useState<string | null>(null);
@@ -124,6 +124,8 @@ const LeaveManagement: React.FC = () => {
     const [requestToEdit, setRequestToEdit] = useState<LeaveRequest | null>(null);
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [correctionView, setCorrectionView] = useState<'requests' | 'logs'>('requests');
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -205,20 +207,43 @@ const LeaveManagement: React.FC = () => {
                 pageSize: pageSize
             };
 
-            const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes] = await Promise.all([
-                api.getLeaveRequests(leaveFilter),
+            const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes] = await Promise.all([
+                filter === 'corrections' 
+                    ? api.getLeaveRequests({ startDate, endDate, page: currentPage, pageSize: pageSize }) // We'll filter statuses in component for simplicity or use a custom query
+                    : api.getLeaveRequests(leaveFilter),
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
-                filter === 'holiday_selection' ? api.getInitialAppData() : Promise.resolve(null)
+                filter === 'holiday_selection' ? api.getInitialAppData() : Promise.resolve(null),
+                filter === 'corrections' ? api.getAttendanceAuditLogs(startDate || startOfMonth(new Date()).toISOString(), endDate || endOfMonth(new Date()).toISOString()) : Promise.resolve([])
             ]);
 
-            setRequests(leaveRes.data);
+            let finalRequests = leaveRes.data;
+            if (filter === 'corrections') {
+                // Filter for correction-related statuses if we didn't do it in the API
+                finalRequests = leaveRes.data.filter(r => ['pending_admin_correction', 'correction_made'].includes(r.status));
+            }
+
+            // Map names for audit logs
+            const userMap = new Map((allUsers.length > 0 ? allUsers : []).map(u => [u.id, u.name]));
+            const mappedAuditLogs = auditLogsRes.map((log: any) => ({
+                ...log,
+                performerName: userMap.get(log.performedBy) || 'Unknown',
+                targetName: userMap.get(log.targetUserId) || 'Unknown'
+            }));
+
+            setRequests(finalRequests);
             setClaims(claimsRes.data);
             setUserHolidays(allUserHolidaysRes);
+            setAuditLogs(mappedAuditLogs);
             if (settingsRes) {
                 setPoolHolidays(settingsRes.holidays.filter(h => h.isPoolHoliday));
             }
-            setTotalItems(filter === 'claims' ? claimsRes.total : (filter === 'holiday_selection' ? allUserHolidaysRes.length : leaveRes.total));
+            setTotalItems(
+                filter === 'claims' ? claimsRes.total : 
+                filter === 'holiday_selection' ? allUserHolidaysRes.length : 
+                filter === 'corrections' ? (finalRequests.length) : // Simplified for now
+                leaveRes.total
+            );
         } catch (error) {
             setToast({ message: 'Failed to load approval data.', type: 'error' });
         } finally {
@@ -540,10 +565,11 @@ const LeaveManagement: React.FC = () => {
         { label: 'Approved Leaves', value: 'approved', color: '#16a34a', icon: '✓' },
         { label: 'Rejected Leaves', value: 'rejected', color: '#dc2626', icon: '✗' },
         { label: 'Pending Leaves', value: 'pending_manager_approval', color: '#d97706', icon: '⏳' },
+        { label: 'Corrections Applied', value: 'correction_made', color: '#10b981', icon: '🛠️' },
         { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
     ];
 
-    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection'> = ['pending_manager_approval', 'claims', 'pending_hr_confirmation', 'holiday_selection', 'approved', 'rejected', 'all']
+    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections'> = ['pending_manager_approval', 'claims', 'pending_hr_confirmation', 'holiday_selection', 'corrections', 'approved', 'rejected', 'all']
         .filter(tab => {
             // Hide 'pending_hr_confirmation' tab if finalConfirmationRole is 'reporting_manager'
             if (tab === 'pending_hr_confirmation' && finalConfirmationRole === 'reporting_manager') {
@@ -894,7 +920,144 @@ const LeaveManagement: React.FC = () => {
                 </div>
             </div>
 
-            {filter === 'claims' ? (
+            {filter === 'corrections' ? (
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                        <div className="flex p-1 bg-page border border-border rounded-xl w-fit">
+                            <button
+                                onClick={() => setCorrectionView('requests')}
+                                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'requests' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
+                            >
+                                Pending Requests
+                            </button>
+                            <button
+                                onClick={() => setCorrectionView('logs')}
+                                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'logs' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
+                            >
+                                Applied Logs
+                            </button>
+                        </div>
+                        <div className="text-xs text-muted font-medium bg-page px-3 py-1.5 rounded-lg border border-border">
+                            {correctionView === 'requests' ? `${requests.length} pending correction requests` : `${auditLogs.length} historical logs`}
+                        </div>
+                    </div>
+
+                    {correctionView === 'requests' ? (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full responsive-table">
+                                <thead>
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Employee</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Type</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Dates</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Reason</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Status</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border md:bg-card md:divide-y-0">
+                                    {requests.length === 0 ? (
+                                        <tr><td colSpan={6} className="text-center py-10 text-muted">No pending correction requests found.</td></tr>
+                                    ) : (
+                                        requests.map(req => (
+                                            <tr key={req.id}>
+                                                <td data-label="Employee" className="px-4 py-3 font-medium">
+                                                    <div className="flex items-center gap-3">
+                                                        {req.userPhotoUrl ? (
+                                                            <img src={req.userPhotoUrl} alt={req.userName} className="h-8 w-8 rounded-full object-cover" />
+                                                        ) : (
+                                                            <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0">
+                                                                {req.userName.charAt(0).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                        <span className="truncate max-w-[120px]" title={req.userName}>{req.userName}</span>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Type" className="px-4 py-3 text-muted">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</td>
+                                                <td data-label="Dates" className="px-4 py-3 text-muted">{format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}</td>
+                                                <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
+                                                <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
+                                                <td data-label="Actions" className="px-4 py-3">
+                                                    <div className="flex md:justify-start justify-end gap-2">
+                                                        {actioningId === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ActionButtons request={req} />}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full responsive-table">
+                                <thead>
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Date & Time</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Performed By</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Target Employee</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-muted uppercase">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border md:bg-card md:divide-y-0 text-sm">
+                                    {auditLogs.length === 0 ? (
+                                        <tr><td colSpan={4} className="text-center py-10 text-muted">No correction logs found for this period.</td></tr>
+                                    ) : (
+                                        auditLogs.map((log) => (
+                                            <tr key={log.id}>
+                                                <td data-label="Date & Time" className="px-4 py-3 text-muted whitespace-nowrap">
+                                                    {format(new Date(log.createdAt), 'dd MMM yyyy, HH:mm')}
+                                                </td>
+                                                <td data-label="Performed By" className="px-4 py-3 font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-[10px] shrink-0 font-bold uppercase">
+                                                            {log.performerName?.charAt(0) || 'A'}
+                                                        </div>
+                                                        <span className="truncate max-w-[120px]">{log.performerName || 'Admin'}</span>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Target Employee" className="px-4 py-3 font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-[10px] shrink-0 font-bold uppercase">
+                                                            {log.targetName?.charAt(0) || 'U'}
+                                                        </div>
+                                                        <span className="truncate max-w-[120px]">{log.targetName || 'User'}</span>
+                                                    </div>
+                                                </td>
+                                                <td data-label="Details" className="px-4 py-3">
+                                                    <div className="flex flex-col gap-1 text-[11px]">
+                                                        {log.details?.date && (
+                                                            <span className="font-semibold text-primary-text flex items-center gap-1">
+                                                                <Calendar className="h-3 w-3 text-emerald-600" /> {log.details.date}
+                                                            </span>
+                                                        )}
+                                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                                            {log.details?.status && (
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[9px] font-bold border border-gray-200 uppercase">
+                                                                    {log.details.status}
+                                                                </span>
+                                                            )}
+                                                            <div className="text-muted leading-tight">
+                                                                {log.details?.checkIn && log.details?.checkIn !== 'N/A' && `In: ${log.details.checkIn} `}
+                                                                {log.details?.checkOut && log.details?.checkOut !== 'N/A' && `Out: ${log.details.checkOut}`}
+                                                            </div>
+                                                        </div>
+                                                        {log.details?.reason && (
+                                                            <span className="italic text-muted line-clamp-1" title={log.details.reason}>
+                                                                "{log.details.reason}"
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            ) : filter === 'claims' ? (
                 <div className="overflow-x-auto">
                     <table className="min-w-full responsive-table">
                         <thead>
