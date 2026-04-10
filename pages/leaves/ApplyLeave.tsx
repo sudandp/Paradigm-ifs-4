@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import type { LeaveType, UploadedFile, LeaveBalance } from '../../types';
+import type { LeaveType, UploadedFile, LeaveBalance, UserChild } from '../../types';
 import { ArrowLeft } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -61,6 +61,14 @@ const ApplyLeave: React.FC = () => {
     const isEditMode = !!editId;
     const isFemale = user?.gender?.toLowerCase() === 'female';
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
+    const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
+
+    React.useEffect(() => {
+        if (!user || user.gender !== 'Female') return;
+        api.getUserChildren(user.id)
+            .then(data => setUserChildren(data))
+            .catch(err => console.error('Failed to load children:', err));
+    }, [user?.id, user?.gender]);
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
@@ -226,7 +234,7 @@ const ApplyLeave: React.FC = () => {
                                     <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
                                     <option value="Comp Off">Comp Off</option>
                                     <option value="Loss of Pay">Loss of Pay</option>
-                                    {isFemale && <option value="Child Care">Child Care</option>}
+                                    {isFemale && userChildren.length > 0 && <option value="Child Care">Child Care</option>}
                                     <option value="WFH">Work From Home (WFH)</option>
                                     <option value="Correction">Request for Correction</option>
                                 </Select>

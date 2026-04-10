@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
-import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule } from '../../types';
+import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild } from '../../types';
 import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
@@ -126,6 +126,7 @@ const LeaveDashboard: React.FC = () => {
     const navigate = useNavigate();
     const [calculatedOTHours, setCalculatedOTHours] = useState<number>(0);
     const [calculatedShortfallMins, setCalculatedShortfallMins] = useState<number>(0);
+    const [userChildren, setUserChildren] = useState<UserChild[]>([]);
 
     // Holiday Selection State
     const [userHolidays, setUserHolidays] = useState<UserHoliday[]>([]);
@@ -235,7 +236,7 @@ const LeaveDashboard: React.FC = () => {
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
             // Fetch base data points
-            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests] = await Promise.all([
+            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData] = await Promise.all([
                 api.getLeaveBalancesForUser(user.id, dateStr),
                 api.getLeaveRequests({
                     userId: user.id,
@@ -252,7 +253,8 @@ const LeaveDashboard: React.FC = () => {
                     status: 'approved',
                     startDate: startOfYearStr,
                     endDate: endOfYearStr
-                }).then(res => res.data)
+                }).then(res => res.data),
+                api.getUserChildren(user.id).catch(() => [])
             ]);
 
             setBalance(balanceData);
@@ -262,6 +264,7 @@ const LeaveDashboard: React.FC = () => {
             setAttendanceSettings(settings);
             setRecurringHolidays(recurringData);
             setUserHolidays(selections);
+            setUserChildren(userChildrenData as UserChild[]);
             setYearlyData({
                 events: yearlyEvents,
                 userHolidays: selections,
@@ -413,12 +416,12 @@ const LeaveDashboard: React.FC = () => {
                 icon: Heart,
                 isExpired: false
             },
-            {
+            ...(userChildren.length > 0 ? [{
                 title: 'Child Care Leave',
                 value: `${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(0))} / ${parseFloat(balanceDataState.childCareTotal.toFixed(0))}`,
                 description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(0))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
                 icon: Baby, 
-            }
+            }] : [])
         ] : [
             { 
                 title: '3rd Saturday Leave', 
