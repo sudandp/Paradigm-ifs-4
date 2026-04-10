@@ -98,7 +98,7 @@ const MapView: React.FC<{ events: (AttendanceEvent & { userName: string })[], us
 
     useEffect(() => {
         if (mapContainerRef.current && !mapRef.current) {
-            mapRef.current = L.map(mapContainerRef.current, { zoomControl: false }).setView([12.9716, 77.5946], 12);
+            mapRef.current = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false }).setView([12.9716, 77.5946], 12);
             markersRef.current.addTo(mapRef.current);
             L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
         }
@@ -213,7 +213,7 @@ const RouteView: React.FC<{ events: (AttendanceEvent & { userName: string })[], 
 
     useEffect(() => {
         if (mapContainerRef.current && !mapRef.current) {
-            mapRef.current = L.map(mapContainerRef.current, { zoomControl: false }).setView([12.9716, 77.5946], 12);
+            mapRef.current = L.map(mapContainerRef.current, { zoomControl: false, attributionControl: false }).setView([12.9716, 77.5946], 12);
             markersRef.current.addTo(mapRef.current);
             L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
         }

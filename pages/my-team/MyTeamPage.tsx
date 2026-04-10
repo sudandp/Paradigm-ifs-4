@@ -271,10 +271,9 @@ const MyTeamPage: React.FC = () => {
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
       const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
       const map = L.map(mapContainerRef.current, {
         zoomControl: false,
+        attributionControl: false,
         fadeAnimation: false // Disable to see if it helps with gray screen
       }).setView([12.9716, 77.5946], 12); // Bangalore
       
@@ -282,7 +281,6 @@ const MyTeamPage: React.FC = () => {
       
       // Add Tile Layer
       tileLayerRef.current = L.tileLayer(tileUrl, { 
-        attribution,
         maxZoom: 19,
         zIndex: 1
       }).addTo(map);
