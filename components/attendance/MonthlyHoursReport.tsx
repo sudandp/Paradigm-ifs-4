@@ -422,13 +422,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         }
 
         const isDetailedPresent = (checkIn && checkOut) || isToday;
+        const shiftThreshold = rules.dailyWorkingHours?.max || 8;
 
-        if (isDetailedPresent) {
-            presentDays++;
-            daysPresentInWeek++;
-        } else if (!isFuture) {
-            absentDays++;
-        }
+        // Determine if it's a full day or half day for counting
+        const isFullDay = netHours >= shiftThreshold;
 
         // Determine shift type
         let shift = '-';
@@ -456,10 +453,26 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
             const fieldResult = getFieldStaffStatus(dayEvents, rules, dayViolation);
             // Apply strict validation to field staff status for past days
             status = isDetailedPresent ? fieldResult.status : 'A';
-            if (status === '1/2P') halfDays++;
+            if (!isFuture) {
+                if (status === 'P') presentDays++;
+                else if (status === '1/2P') halfDays++;
+                else if (status === 'A') absentDays++;
+                if (status !== 'A') daysPresentInWeek++;
+            }
         } else {
-            // Mark as 'P' only if both check-in/out exist or it's today
-            status = isDetailedPresent ? 'P' : 'A';
+            if (isDetailedPresent) {
+                if (isFullDay) {
+                    status = 'P';
+                    presentDays++;
+                } else {
+                    status = '1/2P';
+                    halfDays++;
+                }
+                daysPresentInWeek++;
+            } else {
+                status = 'A';
+                if (!isFuture) absentDays++;
+            }
         }
 
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
