@@ -49,10 +49,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         return recurringHolidays.filter(rule => (rule.type || 'office') === roleType);
     }, [user, recurringHolidays, settings]);
 
-    // Debug logs
-    useEffect(() => {
-        console.log('Active Recurring Rules:', recurringRules);
-    }, [recurringRules]);
+
 
     const recurringHolidayDates = useMemo(() => {
         const dates: Date[] = [];
@@ -88,9 +85,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         return dates;
     }, [currentDate, recurringRules, settings, user]);
 
-    useEffect(() => {
-        console.log("Calculated Recurring Holiday Dates:", recurringHolidayDates);
-    }, [recurringHolidayDates]);
+
 
     // No internal fetching needed as data is passed via props
 

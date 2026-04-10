@@ -563,7 +563,6 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
 
   const exportToExcel = () => {
     // TODO: Implement Excel export using your existing excelExport utility
-    console.log('Export to Excel', reportData);
   };
 
   if (loading) {
