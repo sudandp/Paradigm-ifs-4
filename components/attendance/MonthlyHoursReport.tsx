@@ -421,9 +421,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           totalOT += ot;
         }
 
-        // Presence counts for ANY activity
-        presentDays++;
-        daysPresentInWeek++;
+        const isDetailedPresent = (checkIn && checkOut) || isToday;
+
+        if (isDetailedPresent) {
+            presentDays++;
+            daysPresentInWeek++;
+        } else if (!isFuture) {
+            absentDays++;
+        }
 
         // Determine shift type
         let shift = '-';
@@ -449,11 +454,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         } else if (category === 'field' && rules.enableSiteTimeTracking) {
             const dayViolation = fieldViolations.find(v => v.date === dateStr);
             const fieldResult = getFieldStaffStatus(dayEvents, rules, dayViolation);
-            status = fieldResult.status;
+            // Apply strict validation to field staff status for past days
+            status = isDetailedPresent ? fieldResult.status : 'A';
             if (status === '1/2P') halfDays++;
         } else {
-            // Mark as 'P' for any activity
-            status = 'P';
+            // Mark as 'P' only if both check-in/out exist or it's today
+            status = isDetailedPresent ? 'P' : 'A';
         }
 
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';

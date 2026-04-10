@@ -108,6 +108,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         
         // Check for attendance (present)
         const hasCheckIn = events.some(e => isSameDay(new Date(e.timestamp), date) && (e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in')));
+        const hasCheckOut = events.some(e => isSameDay(new Date(e.timestamp), date) && (e.type.toLowerCase().includes('out')));
+        const isToday = isSameDay(date, startOfDay(new Date()));
+        const isPast = isAfter(startOfDay(new Date()), startOfDay(date));
+        const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
 
         // Check for configured recurring holiday (Floating Holiday)
         const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, date));
@@ -175,8 +179,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         // 2. Approved Leave
         if (isApprovedLeave) return 'leave';
 
-        // 3. If it's not a holiday but has check-in -> Present
-        if (hasCheckIn) return 'present';
+        // 3. If it's not a holiday but has full check-in/out or is current day check-in -> Present
+        if (isDetailedPresent) return 'present';
 
         // 4. If allocation is expired, everything else is neutral
         if (isAllocationExpired) return 'neutral';
@@ -186,8 +190,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         if (isConfiguredHoliday || isFixedHoliday || isPoolHoliday) return 'company-holiday'; // Blue
         if (isSunday) return 'sunday'; // Sunday as weekly off
 
-        // 6. Check for absent (past date, no check-in, not holiday)
-        const isPast = isAfter(startOfDay(new Date()), startOfDay(date)); // date < today
+        // 6. Check for absent (past date, no check-in, not holiday, OR missing punch)
         if (isPast) return 'absent';
 
         return 'neutral';
