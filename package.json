@@ -6,7 +6,7 @@
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
     "server": "node --loader ts-node/esm src/server.ts",
-    "dev": "vite",
+    "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node dist/server.js",
@@ -95,6 +95,7 @@
     "@typescript-eslint/parser": "^7.7.0",
     "@vercel/node": "^4.0.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
