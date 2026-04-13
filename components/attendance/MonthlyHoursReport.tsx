@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek } from 'date-fns';
 import { Download } from 'lucide-react';
 import { api } from '../../services/api';
-import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut } from '../../utils/attendanceCalculations';
+import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, FieldAttendanceViolation } from '../../types';
 import Button from '../ui/Button';
@@ -67,9 +67,10 @@ interface MonthlyHoursReportProps {
   userId?: string; // If provided, show single employee; otherwise show all
   data?: EmployeeMonthlyData[]; // If provided, use this data directly
   hideHeader?: boolean;
+  scopedSettings?: any[];
 }
 
-const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, userId, data: externalData, hideHeader }) => {
+const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, userId, data: externalData, hideHeader, scopedSettings = [] }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
   const [users, setUsers] = useState<User[]>([]);
@@ -77,17 +78,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
   const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
   const { attendance, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays } = useSettingsStore();
 
-  const getStaffCategory = (role: string): 'office' | 'field' | 'site' => {
-    const r = role.toLowerCase();
-    const OFFICE_ROLES = ['admin', 'developer', 'hr', 'hr_ops', 'operations_manager', 'back_office', 'receptionist', 'finance', 'accounts', 'accountant', 'manager', 'management'];
-    if (OFFICE_ROLES.includes(r)) return 'office';
+  const resolveUserRules = (user: User) => {
+    const userCategory = getStaffCategory(user.role, user.organizationId, { 
+      attendance, 
+      missedCheckoutConfig: (attendance as any).missedCheckoutConfig 
+    });
     
-    // Categorize as field if role contains key field terms (Field Officer, Supervisor, etc.)
-    if (r.includes('field') || r.includes('officer') || r.includes('supervisor') || r.includes('site_manager') || r.includes('technical')) {
-        return 'field';
-    }
-    
-    return 'site';
+    // Check if there are scoped settings for this entity or company
+    const entitySetting = scopedSettings.find(s => s.scope_type === 'entity' && s.scope_id === user.organizationId);
+    if (entitySetting) return entitySetting.settings[userCategory] || attendance[userCategory];
+
+    const companySetting = scopedSettings.find(s => s.scope_type === 'company' && s.scope_id === user.societyId);
+    if (companySetting) return companySetting.settings[userCategory] || attendance[userCategory];
+
+    return attendance[userCategory];
   };
 
   useEffect(() => {
@@ -296,7 +300,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
 
       const isConfiguredHoliday = categoryHolidays.some(h => matchesDate(h.date, currentDate));
 
-      const isRecurringHoliday = (user.gender?.toLowerCase() !== 'female') && recurringHolidays.some(rule => {
+      const isRecurringHoliday = recurringHolidays.some(rule => {
           if (rule.day.toLowerCase() !== format(currentDate, 'EEEE').toLowerCase()) return false;
           if (rules.floatingLeavesExpiryDate) {
               const expiryDate = startOfDay(new Date(rules.floatingLeavesExpiryDate));
@@ -307,9 +311,29 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           return rule.n === occurrence && ruleType === (category === 'site' ? 'office' : category); 
       });
 
+      // Centralized Status Logic
+      let status = evaluateAttendanceStatus({
+        day: currentDate,
+        userId: user.id,
+        userCategory: category,
+        userRules: rules,
+        dayEvents,
+        officeHolidays,
+        fieldHolidays,
+        siteHolidays,
+        recurringHolidays,
+        userHolidaysPool,
+        leaves,
+        daysPresentInWeek
+      });
+
+      if (status.includes('P') || status === 'Present' || status === 'Half Day') {
+        const increment = status.includes('1/2') ? 0.5 : 1;
+        daysPresentInWeek += increment;
+      }
+
       const isHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
       const hasActivity = dayEvents.length > 0;
-      let status = '-';
       const today = startOfDay(new Date());
       const isFuture = isAfter(currentDate, today);
       const isToday = isSameDay(currentDate, today);
@@ -336,48 +360,32 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
       };
 
       if (isHoliday) {
-          if (hasActivity) {
-              status = 'HP';
-              if (!isFuture) holidayPresents++;
-          } else {
-              status = 'H';
-              if (!isFuture) holidaysCount++;
+          if (!isFuture) {
+              if (hasActivity) holidayPresents++;
+              else holidaysCount++;
           }
-          daysPresentInWeek++; 
       } else if (isRecurringHoliday) {
-          if (hasActivity) {
-              status = 'HP';
-              if (!isFuture) holidayPresents++;
-          } else {
-              status = 'F/H';
-              if (!isFuture) floatingHolidays++;
+          if (!isFuture) {
+              if (hasActivity) holidayPresents++;
+              else floatingHolidays++;
           }
-          daysPresentInWeek++;
       } else if (approvedLeave) {
           const isHalfDayLeave = approvedLeave.dayOption === 'half';
           const increment = isHalfDayLeave ? 0.5 : 1;
-          const prefix = isHalfDayLeave ? '1/2' : '';
           const leaveType = (approvedLeave.leaveType || (approvedLeave as any).leave_type || '').toLowerCase();
           const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(leaveType);
           
           if (leaveType === 'sick' || leaveType === 'sick leave') {
-              status = prefix + 'S/L';
               sickLeaves += increment;
           } else if (leaveType === 'comp off' || leaveType === 'comp-off' || leaveType === 'compoff' || leaveType === 'c/o') {
-              status = prefix + 'C/O';
               compOffs++; 
           } else if (leaveType === 'floating' || leaveType === 'floating holiday') {
-              status = prefix + 'F/H';
               floatingHolidays += increment;
           } else if (isLOP) {
-              status = isHalfDayLeave ? '1/2A' : 'A';
               lossOfPay += increment; 
           } else {
-              status = prefix + 'E/L';
               earnedLeaves += increment;
           }
-
-          if (!isLOP) daysPresentInWeek += increment;
 
           if (isHalfDayLeave && hasActivity) {
             const { 
@@ -486,14 +494,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
         } else {
             if (isDetailedPresent) {
                 if (isFullDay) {
-                    status = 'P';
+                    // status already set
                 } else if (netHours >= (rules.minimumHoursHalfDay || 4)) {
-                    status = '1/2P';
-                } else {
-                   status = 'A';
+                    // status already set
                 }
-            } else {
-                status = 'A';
             }
         }
 
@@ -526,22 +530,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
           shiftCounts[currentDayShift] = (shiftCounts[currentDayShift] || 0) + 1;
         }
 
-      } else if (isSunday) {
+      } else if (status === 'W/O' || status === 'W/P') {
           if (!isFuture) {
-              if (daysPresentInWeek >= 3) {
-                  status = 'W/O';
-                  weekOffs++;
-              } else {
-                  status = 'A';
-                  absentDays++;
-              }
+              weekOffs++;
           }
           daysPresentInWeek = 0; // Reset
       } else {
-          if (!isFuture && !isToday) {
-            status = 'A';
-            absentDays++;
-          }
+          // status already set by evaluateAttendanceStatus
       }
 
       dailyData.push({

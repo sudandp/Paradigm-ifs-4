@@ -78,9 +78,10 @@ import {
     GenericReportColumn,
     LeaveBalanceRow
 } from '../../utils/excelExport';
-import { calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
+import { exportToCsv } from '../../utils/fastExport';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import {
     Chart,
@@ -338,12 +339,98 @@ interface DashboardData {
 
 
 
-// --- Report Modal Component ---
 
+// --- Sub-components ---
 
+interface MailReportModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onSend: (payload: ReportEmailPayload) => void;
+    isSending: boolean;
+    reportType: AttendanceReportType;
+    currentUserEmail: string;
+}
 
-// Extend AttendanceEvent with a locationName field for human readable addresses
+const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSend, isSending, reportType, currentUserEmail }) => {
+    const [email, setEmail] = useState(currentUserEmail);
+    const [subject, setSubject] = useState(`${reportType.replace(/_/g, ' ').toUpperCase()} Attendance Report`);
+    const [message, setMessage] = useState(`Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`);
 
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white dark:bg-[#0b291a] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#1a3d2c] overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="p-6 border-b border-gray-100 dark:border-[#1a3d2c]">
+                    <div className="flex items-center gap-3 text-primary-text mb-1">
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
+                            <Mail className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-xl font-bold">Mail Report</h3>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">The current report will be generated and sent as a PDF attachment.</p>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Recipient's Email</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="Enter email address"
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Subject</label>
+                        <input
+                            type="text"
+                            value={subject}
+                            onChange={(e) => setSubject(e.target.value)}
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Additional Message (Optional)</label>
+                        <textarea
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            rows={3}
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
+                        />
+                    </div>
+                </div>
+
+                <div className="p-6 bg-gray-50 dark:bg-[#041b0f]/50 flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        disabled={isSending || !email}
+                        onClick={() => onSend({ to: [email], subject, body: message, triggerType: 'manual' })}
+                        className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                        {isSending ? (
+                            <>
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                <span>Sending...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Send className="w-5 h-5" />
+                                <span>Send Report</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
@@ -370,7 +457,7 @@ const AttendanceDashboard: React.FC = () => {
 
     const isOfficeUser = (role?: string) => getStaffCategory(role) === 'office';
 
-    const { attendance, recurringHolidays, officeHolidays, fieldHolidays } = useSettingsStore();
+    const { attendance, recurringHolidays, officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
 
     const [users, setUsers] = useState<User[]>([]);
     const usersRef = useRef<User[]>([]);
@@ -398,16 +485,17 @@ const AttendanceDashboard: React.FC = () => {
     const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     const datePickerRef = useRef<HTMLDivElement>(null);
 
-    // Fetch logo on mount
+    const currentLogo = useLogoStore(state => state.currentLogo);
+
+    // Fetch logo on mount or when currentLogo changes
     useEffect(() => {
         const fetchLogo = async () => {
-            const logo = useLogoStore.getState().currentLogo;
             let logoBase64 = '';
 
-            if (logo && logo.startsWith('data:image')) {
-                logoBase64 = logo;
+            if (currentLogo && currentLogo.startsWith('data:image')) {
+                logoBase64 = currentLogo;
             } else {
-                 const logoUrl = (logo && (logo.startsWith('http') || logo.startsWith('/'))) ? logo : pdfLogoLocalPath;
+                 const logoUrl = (currentLogo && (currentLogo.startsWith('http') || currentLogo.startsWith('/'))) ? currentLogo : pdfLogoLocalPath;
                  if (logoUrl) {
                     try {
                         const response = await fetch(logoUrl);
@@ -427,7 +515,7 @@ const AttendanceDashboard: React.FC = () => {
             setLogoForPdf(logoBase64);
         };
         fetchLogo();
-    }, []);
+    }, [currentLogo]);
 
     const [selectedUser, setSelectedUser] = useState<string>('all');
     const [selectedRole, setSelectedRole] = useState<string>('all');
@@ -483,11 +571,19 @@ const AttendanceDashboard: React.FC = () => {
     // --- Fetch Audit Logs ---
     const fetchAuditLogs = useCallback(async () => {
         try {
-            const { data: logsData, error: logsError } = await supabase
+            let query = supabase
                 .from('attendance_audit_logs')
                 .select('*')
-                .order('created_at', { ascending: false })
-                .limit(reportPageSize);
+                .order('created_at', { ascending: false });
+
+            if (dateRange.startDate) {
+                query = query.gte('created_at', format(startOfDay(dateRange.startDate), 'yyyy-MM-dd HH:mm:ss'));
+            }
+            if (dateRange.endDate) {
+                query = query.lte('created_at', format(endOfDay(dateRange.endDate), 'yyyy-MM-dd HH:mm:ss'));
+            }
+
+            const { data: logsData, error: logsError } = await query.limit(reportPageSize);
 
             if (logsError) throw logsError;
 
@@ -527,7 +623,7 @@ const AttendanceDashboard: React.FC = () => {
         if (reportType === 'audit') {
             fetchAuditLogs();
         }
-    }, [reportType, reportPageSize, fetchAuditLogs]);
+    }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
     const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report'));
     const canViewAllAttendance = user && (isAdmin(user.role) || permissions[user.role]?.includes('view_all_attendance'));
@@ -812,8 +908,6 @@ const AttendanceDashboard: React.FC = () => {
             } catch (error) {
                 console.error("Failed to fetch employee attendance", error);
             } finally {
-                // Minimum 10 second loading time
-                await new Promise(resolve => setTimeout(resolve, 10000));
                 setIsLoading(false);
             }
         };
@@ -821,170 +915,140 @@ const AttendanceDashboard: React.FC = () => {
         fetchEmployeeData();
     }, [isEmployeeView, user, dateRange, recurringHolidays]);
 
-    const fetchDashboardData = useCallback(async (startDate: Date, endDate: Date) => {
-        if (isEmployeeView) return;
-        setIsLoading(true);
-        try {
-            // Ensure we have users data
-            let currentUsers = usersRef.current;
-            if (currentUsers.length === 0) {
-                currentUsers = await api.getUsers();
-                setUsers(currentUsers);
-                // Update ref immediately for this execution context
-                usersRef.current = currentUsers;
-            }
-
-            // Filter out management users from attendance tracking and reports
-            let activeStaff = currentUsers.filter(u => u.role !== 'management');
-            
-            if (selectedSite !== 'all') {
-                activeStaff = activeStaff.filter(u => u.organizationId === selectedSite);
-            }
-            if (selectedSociety !== 'all') {
-                activeStaff = activeStaff.filter(u => u.societyId === selectedSociety);
-            }
-            if (selectedRole !== 'all') {
-                activeStaff = activeStaff.filter(u => u.role === selectedRole);
-            }
-            
-            const activeStaffIds = new Set(activeStaff.map(u => u.id));
-
-            // Determine query range
-            const today = new Date();
-            // Look back 7 days from the requested start date to calculate W/O thresholds correctly for the first week
-            const lookBackStart = subDays(startDate, 7);
-            const queryStart = lookBackStart < today ? lookBackStart : startOfToday();
-            const queryEnd = endDate > today ? endDate : endOfToday();
-
-            const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
-                api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
-                api.getAllAttendanceEvents(subDays(new Date(), 9).toISOString(), endOfDay(new Date()).toISOString()),
-                api.getLeaveRequests({ startDate: queryStart.toISOString(), endDate: queryEnd.toISOString(), status: 'approved' }),
-                api.getAllUserHolidays()
-            ]);
-
-            setAttendanceEvents(events);
-            // Extract the data array from the paginated response and filter out any null/undefined entries
-            const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
-            setLeaves(leavesData);
-            setUserHolidaysPool(holidaysResponse || []);
-
-            // Fetch field violations for all non-office staff (for site-time-percentage status)
-            const fieldUsers = currentUsers.filter(u => !isOfficeUser(u.role));
-            
-            const violationsMap: Record<string, FieldAttendanceViolation[]> = {};
-            if (fieldUsers.length > 0) {
-                await Promise.all(fieldUsers.map(async (fu) => {
-                    try {
-                        const violations = await api.getFieldViolations(fu.id);
-                        // Robust ID matching: Use string version of ID for map keys
-                        violationsMap[String(fu.id).toLowerCase()] = violations;
-                    } catch (error) {
-                        console.error(`Error fetching violations for ${fu.name}:`, error);
-                        violationsMap[String(fu.id).toLowerCase()] = [];
-                    }
-                }));
-            }
-            setFieldViolationsMap(violationsMap);
-
-            // --- Calculate "Today" Stats ---
-            const todayStr = format(today, 'yyyy-MM-dd');
-            const todayEvents = events.filter(e => 
-                format(new Date(e.timestamp), 'yyyy-MM-dd') === todayStr && 
-                activeStaffIds.has(e.userId)
-            );
-            const todayLeaves = leavesData.filter(l => l && l.startDate && l.endDate).filter(l => {
-                const start = new Date(l.startDate);
-                const end = new Date(l.endDate);
-                return today >= start && today <= end && activeStaffIds.has(l.userId);
-            });
-            const todayWFHUserIds = new Set(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
-            const presentToday = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayWFHUserIds)]).size;
-
-            const onLeaveToday = new Set(todayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
-
-            // Use activeStaff count (excluding management) for totalEmployees
-            const totalEmployees = activeStaff.length;
-
-            // --- Calculate Inactive Status (No activity in last 10 days) ---
-            const recentlyActiveIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
-            setRecentlyActiveUserIds(recentlyActiveIds);
-            const inactiveCount = Math.max(0, totalEmployees - recentlyActiveIds.size);
-
-            const absentToday = Math.max(0, totalEmployees - presentToday - onLeaveToday - inactiveCount);
-
-
-            // --- Calculate Trends (for the selected dateRange only) ---
-            const days = eachDayOfInterval({ start: startDate, end: endDate });
-            const labels = days.map(d => format(d, 'dd MMM'));
-            const presentTrend: number[] = [];
-            const absentTrend: number[] = [];
-            const productivityData: number[] = [];
-
-            days.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-
-                // Present
-                const dayEvents = events.filter(e => 
-                    format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr &&
-                    activeStaffIds.has(e.userId)
-                );
-                
-                // On Leave
-                const activeLeaves = leavesData.filter(l => {
-                    const start = new Date(l.startDate);
-                    const end = new Date(l.endDate);
-                    return day >= start && day <= end && activeStaffIds.has(l.userId);
-                });
-                const dayWFHUserIds = new Set(activeLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
-                const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
-                const usersOnLeave = new Set(activeLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
-
-                // Absent
-                const absent = Math.max(0, totalEmployees - uniqueUsersPresent - usersOnLeave);
-
-                presentTrend.push(uniqueUsersPresent);
-                absentTrend.push(absent);
-
-                // Productivity (Avg Hours)
-                let totalHours = 0;
-                const userEvents: Record<string, AttendanceEvent[]> = {};
-                dayEvents.forEach(e => {
-                    if (!userEvents[e.userId]) userEvents[e.userId] = [];
-                    userEvents[e.userId].push(e);
-                });
-
-                Object.values(userEvents).forEach(ue => {
-                    const { workingHours } = calculateWorkingHours(ue);
-                    totalHours += workingHours;
-                });
-
-                productivityData.push(uniqueUsersPresent > 0 ? parseFloat((totalHours / uniqueUsersPresent).toFixed(1)) : 0);
-            });
-
-            setDashboardData({
-                totalEmployees,
-                presentToday,
-                absentToday,
-                onLeaveToday,
-                inactiveCount,
-                attendanceTrend: {
-                    labels,
-                    present: presentTrend,
-                    absent: absentTrend
-                },
-                productivityTrend: {
-                    labels,
-                    hours: productivityData
+    const fetchDashboardData = useCallback((startDate: Date, endDate: Date) => {
+        const loadData = async () => {
+            if (isEmployeeView) return;
+            setIsLoading(true);
+            try {
+                // Ensure we have users data
+                let currentUsers = usersRef.current;
+                if (currentUsers.length === 0) {
+                    currentUsers = await api.getUsers();
+                    setUsers(currentUsers);
+                    usersRef.current = currentUsers;
                 }
-            });
 
-        } catch (error) {
-            console.error("Failed to load dashboard data", error);
-        } finally {
-            // No intentional delay needed in production
-            setIsLoading(false);
-        }
+                let activeStaff = currentUsers.filter(u => u.role !== 'management');
+                if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId === selectedSite);
+                if (selectedSociety !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedSociety);
+                if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
+                
+                const activeStaffIds = new Set(activeStaff.map(u => u.id));
+                const today = new Date();
+                const queryStart = subDays(startDate, 7);
+                const queryEnd = endOfDay(endDate);
+
+                const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
+                    api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
+                    api.getAllAttendanceEvents(subDays(new Date(), 30).toISOString(), endOfDay(new Date()).toISOString()),
+                    api.getLeaveRequests({ startDate: queryStart.toISOString(), endDate: queryEnd.toISOString(), status: 'approved' }),
+                    api.getAllUserHolidays()
+                ]);
+
+                setAttendanceEvents(events);
+                const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
+                setLeaves(leavesData);
+                setUserHolidaysPool(holidaysResponse || []);
+
+                const fieldUsers = activeStaff.filter(u => !isOfficeUser(u.role));
+                const violationsMap: Record<string, FieldAttendanceViolation[]> = {};
+                if (fieldUsers.length > 0) {
+                    try {
+                        const allViolations = await api.getBatchFieldViolations(fieldUsers.map(u => u.id));
+                        allViolations.forEach(v => {
+                            const userIdKey = String(v.userId).toLowerCase();
+                            if (!violationsMap[userIdKey]) violationsMap[userIdKey] = [];
+                            violationsMap[userIdKey].push(v);
+                        });
+                    } catch (error) {
+                        console.error('Error fetching batch violations:', error);
+                    }
+                    fieldUsers.forEach(fu => {
+                        const idKey = String(fu.id).toLowerCase();
+                        if (!violationsMap[idKey]) violationsMap[idKey] = [];
+                    });
+                }
+                setFieldViolationsMap(violationsMap);
+
+                const days = eachDayOfInterval({ start: startDate, end: endDate });
+                const isRangeLong = days.length > 1;
+                
+                let totalPresentForRange = 0;
+                let totalOnLeaveForRange = 0;
+                let totalAbsentForRange = 0;
+
+                const labels = days.map(d => format(d, 'dd MMM'));
+                const presentTrend: number[] = [];
+                const absentTrend: number[] = [];
+                const productivityTrend: number[] = [];
+
+                days.forEach(day => {
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr && activeStaffIds.has(e.userId));
+                    const dayLeaves = leavesData.filter(l => {
+                        const start = new Date(l.startDate);
+                        const end = new Date(l.endDate);
+                        return day >= start && day <= end && activeStaffIds.has(l.userId);
+                    });
+
+                    const dayWFHUserIds = new Set(dayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
+                    const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
+                    const usersOnLeave = new Set(dayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
+                    const absent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave);
+
+                    totalPresentForRange += uniqueUsersPresent;
+                    totalOnLeaveForRange += usersOnLeave;
+                    totalAbsentForRange += absent;
+                    presentTrend.push(uniqueUsersPresent);
+                    absentTrend.push(absent);
+
+                    let totalHours = 0;
+                    const userEvents: Record<string, AttendanceEvent[]> = {};
+                    dayEvents.forEach(e => {
+                        if (!userEvents[e.userId]) userEvents[e.userId] = [];
+                        userEvents[e.userId].push(e);
+                    });
+                    Object.values(userEvents).forEach(ue => {
+                        const { workingHours } = calculateWorkingHours(ue);
+                        totalHours += workingHours;
+                    });
+                    productivityTrend.push(uniqueUsersPresent > 0 ? parseFloat((totalHours / uniqueUsersPresent).toFixed(1)) : 0);
+                });
+
+                const avgPresent = Math.round(totalPresentForRange / days.length);
+                const avgOnLeave = Math.round(totalOnLeaveForRange / days.length);
+                const avgAbsent = Math.round(totalAbsentForRange / days.length);
+
+                const todayStr = format(today, 'yyyy-MM-dd');
+                const todayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === todayStr && activeStaffIds.has(e.userId));
+                const todayLeaves = leavesData.filter(l => {
+                    const dStart = new Date(l.startDate);
+                    const dEnd = new Date(l.endDate);
+                    return today >= dStart && today <= dEnd && activeStaffIds.has(l.userId);
+                });
+                const presentToday = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId))]).size;
+                const onLeaveToday = new Set(todayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
+
+                const recentlyActiveIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+                setRecentlyActiveUserIds(recentlyActiveIds);
+                const inactiveCount = Math.max(0, activeStaff.length - recentlyActiveIds.size);
+
+                setDashboardData({
+                    totalEmployees: activeStaff.length,
+                    presentToday: isRangeLong ? avgPresent : presentToday,
+                    absentToday: isRangeLong ? avgAbsent : Math.max(0, activeStaff.length - presentToday - onLeaveToday - inactiveCount),
+                    onLeaveToday: isRangeLong ? avgOnLeave : onLeaveToday,
+                    inactiveCount,
+                    attendanceTrend: { labels, present: presentTrend, absent: absentTrend },
+                    productivityTrend: { labels, hours: productivityTrend }
+                });
+            } catch (error) {
+                console.error("Failed to load dashboard data", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadData();
     }, [isEmployeeView, selectedSite, selectedSociety, selectedRole, users]);
 
     const reportTypeId = useId();
@@ -1074,204 +1138,181 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
         }
 
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
-                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                activeInPeriodIds.has(String(u.id).toLowerCase())
             );
         }
 
         const targetUsers = filteredUsers;
 
+        // PRE-INDEX: Group events by userId and date for O(1) lookup
+        const eventsByUserAndDate = new Map<string, Map<string, AttendanceEvent[]>>();
+        attendanceEvents.forEach(e => {
+            const userId = String(e.userId);
+            const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
+            if (!eventsByUserAndDate.has(userId)) {
+                eventsByUserAndDate.set(userId, new Map());
+            }
+            const userMap = eventsByUserAndDate.get(userId)!;
+            if (!userMap.has(dateStr)) {
+                userMap.set(dateStr, []);
+            }
+            userMap.get(dateStr)!.push(e);
+        });
+
+        // PRE-INDEX: Group approved leaves by userId
+        const approvedLeavesByUser = new Map<string, LeaveRequest[]>();
+        leaves.forEach(l => {
+            if (l && l.status === 'approved' && l.userId) {
+                const userId = String(l.userId);
+                if (!approvedLeavesByUser.has(userId)) {
+                    approvedLeavesByUser.set(userId, []);
+                }
+                approvedLeavesByUser.get(userId)!.push(l);
+            }
+        });
+
+        const dayInfos = days.map(day => ({
+            day,
+            dateStr: format(day, 'yyyy-MM-dd'),
+            displayDate: format(day, 'dd MMM yyyy'),
+            dayName: format(day, 'EEEE'),
+            dayOfMonth: day.getDate(),
+            dayOfWeek: day.getDay()
+        }));
+
+        const rulesCache = new Map<string, StaffAttendanceRules>();
+        const getRules = (userId: string, category: string) => {
+            if (!rulesCache.has(userId)) {
+                rulesCache.set(userId, resolveUserRules(userId, category as any));
+            }
+            return rulesCache.get(userId)!;
+        };
+
         targetUsers.forEach(user => {
-            days.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd');
+            const userId = String(user.id);
+            const userEventsMap = eventsByUserAndDate.get(userId);
+            const userLeaves = approvedLeavesByUser.get(userId) || [];
+            const userCategory = getStaffCategory(user.role);
+            const userRules = getRules(userId, userCategory);
+            const weeklyOffDays = userRules.weeklyOffDays || [0];
 
-                // Find events for this user and day
-                const dayEvents = attendanceEvents.filter(e =>
-                    e.userId === user.id && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
-                );
+            // Track days present in rolling week for W/O threshold.
+            let daysPresentInWeek = 0;
+            if (dateRange.startDate) {
+                const weekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
+                if (isAfter(dateRange.startDate, weekStart)) {
+                    let checkDate = weekStart;
+                    while (isAfter(dateRange.startDate, checkDate) && !isSameDay(dateRange.startDate, checkDate)) {
+                        const dateStrStr = format(checkDate, 'yyyy-MM-dd');
+                        const checkDayName = format(checkDate, 'EEEE');
+                        const checkWeeklyOffDays = weeklyOffDays;
+                        const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
+                        
+                        if (!checkIsWeekend) {
+                            const prevDayEvents = userEventsMap?.get(dateStrStr) || [];
+                            const hasActivityCheck = prevDayEvents.length > 0;
+                            const isRecurringHolidayCheck = recurringHolidays.some(rule => {
+                                if (rule.day.toLowerCase() !== checkDayName.toLowerCase()) return false;
+                                const occurrence = Math.ceil(checkDate.getDate() / 7);
+                                return rule.n === occurrence && (rule.type || 'office') === userCategory;
+                            });
+                            const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
+                                const [m, d] = fh.date.split('-').map(Number);
+                                return checkDate.getMonth() === (m - 1) && checkDate.getDate() === d;
+                            });
+                            const isConfiguredHolidayCheck = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
+                                const hVal = String(h.date).split(' ')[0].split('T')[0];
+                                return hVal === dateStrStr;
+                            });
+                            const hasApprovedLeaveCheck = userLeaves.some(l => 
+                                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                                !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
+                            );
 
-                // Check for approved leaves
-                const hasApprovedLeave = leaves.filter(l => l && l.startDate && l.endDate).some(l => 
-                    l.userId === user.id && 
-                    l.status === 'approved' &&
+                            if (hasActivityCheck || isRecurringHolidayCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || hasApprovedLeaveCheck) {
+                                daysPresentInWeek++;
+                            }
+                        }
+                        checkDate = addDays(checkDate, 1);
+                    }
+                }
+            }
+
+            dayInfos.forEach(({ day, dateStr, displayDate, dayName, dayOfMonth, dayOfWeek }) => {
+                if (dayOfWeek === 1) daysPresentInWeek = 0;
+
+                // O(1) Lookup instead of O(L) filter
+                const dayEvents = userEventsMap?.get(dateStr) || [];
+
+                // Faster lookup for leaves
+                const approvedLeave = userLeaves.find(l => 
                     isWithinInterval(day, { 
                         start: startOfDay(new Date(l.startDate)), 
                         end: endOfDay(new Date(l.endDate)) 
                     })
                 );
+                const hasApprovedLeave = !!approvedLeave;
 
-                // Determine Status (Simplified logic for Basic Report)
-                let status = 'A';
-                let checkIn = '';
-                let checkOut = '';
-                let duration = '';
+                let checkIn = '-';
+                let checkOut = '-';
+                let duration = '-';
 
-                // Check for holidays/weekends first
-                const dayName = format(day, 'EEEE');
-                const userCategory = getStaffCategory(user.role);
-
-                // RESOLVE RULES FOR THIS USER
-                const userRules = resolveUserRules(user.id, userCategory);
-                const weeklyOffDays = userRules.weeklyOffDays || [0];
-                const isWeekend = weeklyOffDays.includes(day.getDay());
-
-                // Check for recurring holidays
-                const isRecurringHoliday = recurringHolidays.some(rule => {
-                    if (rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
-                    const dayDate = day.getDate();
-                    const occurrence = Math.ceil(dayDate / 7);
-                    const ruleType = rule.type || 'office';
-                    if (rule.n === occurrence && ruleType === userCategory) {
-                        if (userRules && userRules.floatingLeavesExpiryDate) {
-                            const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
-                            if (startOfDay(day) > expiryDate) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    }
-                    return false;
+                // Use centralized logic for status determination
+                const status = evaluateAttendanceStatus({
+                    day,
+                    userId,
+                    userCategory: userCategory as any,
+                    userRules,
+                    dayEvents,
+                    officeHolidays,
+                    fieldHolidays,
+                    siteHolidays,
+                    recurringHolidays,
+                    userHolidaysPool,
+                    leaves,
+                    daysPresentInWeek
                 });
 
-                // Check for fixed holidays
-                const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
-                    const [m, d] = fh.date.split('-').map(Number);
-                    return day.getMonth() === (m - 1) && day.getDate() === d;
-                });
-
-                // Check for pool holidays (selected by user)
-                const isPoolHoliday = userHolidaysPool.some(uh => {
-                    const uhUserId = uh.userId || (uh as any).user_id;
-                    const hDate = uh.holidayDate || (uh as any).holiday_date;
-                    if (!uhUserId || !hDate) return false;
-                    
-                    // ROBUST ID MATCHING: Handle any casing or whitespace
-                    const matchId1 = String(uhUserId).trim().toLowerCase();
-                    const matchId2 = String(user.id).trim().toLowerCase();
-                    
-                    if (matchId1 !== matchId2) return false;
-
-                    // ROBUST DATE MATCHING
-                    const compareStr = format(day, 'yyyy-MM-dd');
-                    const compareMMDD = format(day, '-MM-dd');
-                    
-                    const hDateStr = String(hDate);
-                    return hDateStr.includes(compareStr) || 
-                           hDateStr.endsWith(compareMMDD) || 
-                           (hDateStr.startsWith('-') && compareStr.endsWith(hDateStr));
-                });
-
-                // Check for configured holidays (group based)
-                const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
-                    const hDateStr = String(h.date);
-                    const compareStr = format(day, 'yyyy-MM-dd');
-                    const compareMMDD = format(day, '-MM-dd');
-                    return hDateStr.includes(compareStr) || 
-                           hDateStr.endsWith(compareMMDD) || 
-                           (hDateStr.startsWith('-') && compareStr.endsWith(hDateStr));
-                });
-
-                const isHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
-
-                if (isHoliday) {
-                    status = 'H';
-                } else if (isRecurringHoliday) {
-                    status = 'F/H';
-                } else if (isWeekend) {
-                    status = 'W/O';
+                if (status.includes('P') || status === 'Present' || status === 'Half Day') {
+                    daysPresentInWeek += (status.includes('1/2') ? 0.5 : 1);
                 }
 
                 if (dayEvents.length > 0) {
-                    // Sort events by time
                     const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
                     const checkInEvent = sortedEvents.find(e => e.type === 'punch-in');
-                    // Use the last check-out of the day
                     const checkOutEvent = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
-
-                    if (isRecurringHoliday) {
-                        status = 'H/P';
-                    } else if (isWeekend) {
-                        status = 'W/P';
-                    } else {
-                        status = 'P';
-                    }
-                    
-                    if (checkInEvent) {
-                        checkIn = format(new Date(checkInEvent.timestamp), 'HH:mm');
-                    }
-
-                    if (checkOutEvent) {
-                        checkOut = format(new Date(checkOutEvent.timestamp), 'HH:mm');
-                    }
-
+                    if (checkInEvent) checkIn = format(new Date(checkInEvent.timestamp), 'HH:mm');
+                    if (checkOutEvent) checkOut = format(new Date(checkOutEvent.timestamp), 'HH:mm');
                     const { workingHours } = calculateWorkingHours(dayEvents);
                     const hours = Math.floor(workingHours);
                     const minutes = Math.round((workingHours - hours) * 60);
                     duration = `${hours}h ${minutes}m`;
-                } else if (hasApprovedLeave) {
-                    const approvedLeave = leaves.find(l => 
-                        l.userId === user.id && 
-                        l.status === 'approved' &&
-                        isWithinInterval(day, { 
-                            start: startOfDay(new Date(l.startDate)), 
-                            end: endOfDay(new Date(l.endDate)) 
-                        })
-                    );
-                    const isHalfDay = approvedLeave?.dayOption === 'half' || (approvedLeave as any)?.day_option === 'half';
-                    const prefix = isHalfDay ? '1/2' : '';
-                    const leaveType = approvedLeave?.leaveType?.toLowerCase();
-                    
-                    if (leaveType === 'sick') status = prefix + 'S/L';
-                    else if (leaveType === 'comp off' || leaveType === 'compoff' || leaveType === 'c/o') status = prefix + 'C/O';
-                    else if (leaveType === 'loss of pay' || leaveType === 'lop') status = isHalfDay ? '1/2A' : 'A';
-                    else status = prefix + 'E/L';
                 }
 
-                const checkInEvent = dayEvents.find(e => e.type === 'punch-in');
-                data.push({
-                    userName: user.name,
-                    date: dateStr,
-                    status,
-                    checkIn,
-                    checkOut,
-                    duration,
-                    locationName: (checkInEvent?.locationName || 'Office')
-                });
+                data.push({ userName: user.name, date: displayDate, status, checkIn, checkOut, duration, locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office') });
             });
         });
 
-        // Apply status filter
-        let filteredData = (selectedStatus === 'all' || selectedStatus === 'ACTIVE_USERS')
-            ? data
-            : data.filter(row => row.status === selectedStatus);
-
-        // Apply record type filter
+        let filteredData = (selectedStatus === 'all' || selectedStatus === 'ACTIVE_USERS') ? data : data.filter(row => row.status === selectedStatus);
         if (selectedRecordType !== 'all') {
             filteredData = filteredData.filter(row => {
                 const hasCheckIn = row.checkIn && row.checkIn !== '-' && row.checkIn !== '';
                 const hasCheckOut = row.checkOut && row.checkOut !== '-' && row.checkOut !== '';
-
                 switch (selectedRecordType) {
-                    case 'complete':
-                        return hasCheckIn && hasCheckOut;
-                    case 'missing_checkout':
-                        return hasCheckIn && !hasCheckOut;
-                    case 'missing_checkin':
-                        return !hasCheckIn && hasCheckOut;
-                    case 'incomplete':
-                        return !hasCheckIn || !hasCheckOut;
-                    default:
-                        return true;
+                    case 'complete': return hasCheckIn && hasCheckOut;
+                    case 'missing_checkout': return hasCheckIn && !hasCheckOut;
+                    case 'missing_checkin': return !hasCheckIn && hasCheckOut;
+                    case 'incomplete': return !hasCheckIn || !hasCheckOut;
+                    default: return true;
                 }
             });
         }
-
         return filteredData;
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays]);
 
     // 2. Attendance Log Data (Raw Events)
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
@@ -1293,21 +1334,24 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
         }
 
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
-                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                activeInPeriodIds.has(String(u.id).toLowerCase())
             );
         }
 
         const targetUsers = filteredUsers;
         const targetUserIds = new Set(targetUsers.map(u => u.id));
 
+        // PRE-INDEX: Users Map for O(1) lookup
+        const usersMap = new Map(users.map(u => [u.id, u]));
+
         return attendanceEvents
             .filter(e => targetUserIds.has(e.userId))
             .map(e => {
-                const user = users.find(u => u.id === e.userId);
+                const user = usersMap.get(e.userId) as any;
                 // Priority: 1) event.locationName (stored in DB), 2) fallback to lat/lon if present
                 const location = e.locationName || 
                                 (e.latitude && e.longitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : 'N/A');
@@ -1320,13 +1364,14 @@ const AttendanceDashboard: React.FC = () => {
 
                 return {
                     userName: user?.name || 'Unknown',
-                    date: format(new Date(e.timestamp), 'yyyy-MM-dd'),
+                    date: format(new Date(e.timestamp), 'dd MMM yyyy'),
                     time: format(new Date(e.timestamp), 'HH:mm:ss'),
                     type: displayType,
                     locationName: location,
                     latitude: e.latitude,
                     longitude: e.longitude,
-                    workType: e.workType
+                    workType: e.workType,
+                    device: (e as any).device || '-'
                 };
             })
             .sort((a, b) => {
@@ -1335,7 +1380,7 @@ const AttendanceDashboard: React.FC = () => {
                 return b.time.localeCompare(a.time);
             });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, leaves, recurringHolidays, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus]);
 
     // 3. Monthly Report Data (Aggregated)
     const monthlyReportData: MonthlyReportRow[] = useMemo(() => {
@@ -1350,17 +1395,56 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
 
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
-                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                activeInPeriodIds.has(String(u.id).toLowerCase())
             );
         }
 
+        // PRE-INDEX: Group events by userId and date
+        const eventsByUserAndDate = new Map<string, Map<string, AttendanceEvent[]>>();
+        attendanceEvents.forEach(e => {
+            const userId = String(e.userId);
+            const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
+            if (!eventsByUserAndDate.has(userId)) {
+                eventsByUserAndDate.set(userId, new Map());
+            }
+            const userMap = eventsByUserAndDate.get(userId)!;
+            if (!userMap.has(dateStr)) {
+                userMap.set(dateStr, []);
+            }
+            userMap.get(dateStr)!.push(e);
+        });
+
+        // PRE-INDEX: Group approved leaves by userId
+        const approvedLeavesByUser = new Map<string, LeaveRequest[]>();
+        leaves.forEach(l => {
+            if (l && l.status === 'approved' && l.userId) {
+                const userId = String(l.userId);
+                if (!approvedLeavesByUser.has(userId)) {
+                    approvedLeavesByUser.set(userId, []);
+                }
+                approvedLeavesByUser.get(userId)!.push(l);
+            }
+        });
+
+        const rulesCache = new Map<string, StaffAttendanceRules>();
+        const getRules = (userId: string, category: string) => {
+            if (!rulesCache.has(userId)) {
+                rulesCache.set(userId, resolveUserRules(userId, category as any));
+            }
+            return rulesCache.get(userId)!;
+        };
+
         const rows = filteredUsers.map(user => {
+            const userId = String(user.id);
+            const userEventsMap = eventsByUserAndDate.get(userId);
+            const userApprovedLeaves = approvedLeavesByUser.get(userId) || [];
+
             const userCategory = getStaffCategory(user.role);
-            const userRules = resolveUserRules(user.id, userCategory);
+            const userRules = getRules(userId, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
 
             const statuses: string[] = [];
@@ -1391,16 +1475,14 @@ const AttendanceDashboard: React.FC = () => {
                         const dateStr = format(checkDate, 'yyyy-MM-dd');
                         const checkDayName = format(checkDate, 'EEEE');
                         const checkUserCategory = getStaffCategory(user.role);
-                        const checkUserRules = resolveUserRules(user.id, checkUserCategory);
+                        const checkUserRules = getRules(user.id, checkUserCategory);
                         const checkWeeklyOffDays = checkUserRules.weeklyOffDays || [0];
                         const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
                         
                         if (checkIsWeekend) {
                             // No longer resetting here to ensure cumulative work days are preserved for weekend checks
                         } else {
-                            const prevDayEvents = attendanceEvents.filter(e =>
-                                String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
-                            );
+                            const prevDayEvents = userEventsMap?.get(dateStr) || [];
                             
                             // 1. Activity check - any punch event counts as presence
                             const hasActivityCheck = prevDayEvents.length > 0;
@@ -1421,8 +1503,7 @@ const AttendanceDashboard: React.FC = () => {
                             });
 
                             // 3. Leave check
-                            const hasApprovedLeaveCheck = leaves.some(l => 
-                                String(l.userId) === String(user.id) && l.status === 'approved' &&
+                            const hasApprovedLeaveCheck = userApprovedLeaves.some(l => 
                                 isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
                                 !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
                             );
@@ -1458,9 +1539,7 @@ const AttendanceDashboard: React.FC = () => {
                     } catch (e) { return false; }
                 };
 
-                const dayEvents = attendanceEvents.filter(e =>
-                    String(e.userId) === String(user.id) && format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr
-                );
+                const dayEvents = userEventsMap?.get(dateStr) || [];
                 const hasActivity = dayEvents.length > 0;
 
                 const isRecurringHoliday = recurringHolidays.some(rule => {
@@ -1491,8 +1570,7 @@ const AttendanceDashboard: React.FC = () => {
                 const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => matchesDate(h.date, day));
                 const isCompanyHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
 
-                const approvedLeave = leaves.find(l => 
-                    String(l.userId) === String(user.id) && l.status === 'approved' &&
+                const approvedLeave = userApprovedLeaves.find(l => 
                     isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) })
                 );
 
@@ -1553,7 +1631,7 @@ const AttendanceDashboard: React.FC = () => {
                     }
                     daysPresentInWeek++; // Any activity counts toward W/O threshold
                 } else if (isWeekend) {
-                    if (daysPresentInWeek >= (userRules.weekendPresentThreshold ?? 3)) {
+                    if (daysPresentInWeek >= ((userRules as any).weekendPresentThreshold ?? 3)) {
                         status = 'W/O'; weekOffs++;
                     } else {
                         status = 'A'; absentDays++;
@@ -1605,7 +1683,7 @@ const AttendanceDashboard: React.FC = () => {
             if (selectedStatus === 'all') return true;
             return row.statuses.includes(selectedStatus);
         });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, recentlyActiveUserIds, fieldViolationsMap, attendance]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, fieldViolationsMap, attendance]);
 
     // 4. Work Hours Report Data (Aggregated)
     const work_hoursReportData: WorkHoursReportDataRow[] = useMemo(() => {
@@ -1617,26 +1695,56 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
 
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
-                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                activeInPeriodIds.has(String(u.id).toLowerCase())
             );
         }
 
-        const totalDays = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate }).length;
+        const days = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate });
+        const totalDaysCount = days.length;
+
+        // PRE-INDEX: Group events by userId
+        const eventsByUser = new Map<string, AttendanceEvent[]>();
+        attendanceEvents.forEach(e => {
+            const id = String(e.userId);
+            if (!eventsByUser.has(id)) eventsByUser.set(id, []);
+            eventsByUser.get(id)!.push(e);
+        });
+
+        // PRE-INDEX: Group leaves by userId
+        const leavesByUser = new Map<string, LeaveRequest[]>();
+        leaves.forEach(l => {
+            if (l.userId && l.status === 'approved') {
+                const id = String(l.userId);
+                if (!leavesByUser.has(id)) leavesByUser.set(id, []);
+                leavesByUser.get(id)!.push(l);
+            }
+        });
+
+        const rulesCache = new Map<string, StaffAttendanceRules>();
+        const getRules = (userId: string, category: string) => {
+            if (!rulesCache.has(userId)) {
+                rulesCache.set(userId, resolveUserRules(userId, category as any));
+            }
+            return rulesCache.get(userId)!;
+        };
 
         return filteredUsers.map(user => {
-            const userEvents = attendanceEvents.filter(e => e.userId === user.id);
-            const userLeaves = leaves.filter(l => l.userId === user.id && l.status === 'approved');
+            const userId = String(user.id);
+            const userEvents = eventsByUser.get(userId) || [];
+            const userLeaves = leavesByUser.get(userId) || [];
 
             let totalWorkingHours = 0;
             let presentDays = 0;
             let otHours = 0;
 
-            const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
-            
+            const userCategory = getStaffCategory(user.role);
+            const userRules = getRules(userId, userCategory);
+            const threshold = userRules.minimumHoursFullDay || 8;
+
             days.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const dayEvents = userEvents.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
@@ -1645,41 +1753,35 @@ const AttendanceDashboard: React.FC = () => {
                     const { workingHours } = calculateWorkingHours(dayEvents);
                     totalWorkingHours += workingHours;
                     
-                    // Simple logic for present days count in summary
-                    if (workingHours >= 4) presentDays += 1;
-                    else if (workingHours > 0) presentDays += 0.5;
+                    if (workingHours >= (userRules.minimumHoursFullDay || 8)) presentDays += 1;
+                    else if (workingHours >= (userRules.minimumHoursHalfDay || 4)) presentDays += 0.5;
 
-                    // OT calculation
-                    const userCategory = getStaffCategory(user.role);
-                    const userRules = resolveUserRules(user.id, userCategory);
-                    const threshold = userRules.minimumHoursFullDay || 8;
                     if (workingHours > threshold) {
                         otHours += (workingHours - threshold);
                     }
                 }
                 
-                // Add WFH as present
                 const isWFH = userLeaves.some(l => 
                     l.leaveType === 'WFH' && 
                     isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) })
                 );
                 if (isWFH && dayEvents.length === 0) {
                     presentDays += 1;
-                    totalWorkingHours += 8; // Assumed standard if no activity logged
+                    totalWorkingHours += 8;
                 }
             });
 
             return {
                 userName: user.name,
                 department: user.role || 'General',
-                totalDays,
+                totalDays: totalDaysCount,
                 presentDays,
                 totalWorkingHours,
                 avgWorkingHours: presentDays > 0 ? totalWorkingHours / presentDays : 0,
                 otHours
             };
         });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, leaves, recentlyActiveUserIds, attendance]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, leaves, attendance]);
 
     // 5. Site OT Report Data
     const site_otReportData: SiteOtDataRow[] = useMemo(() => {
@@ -1691,11 +1793,11 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
 
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => e.userId));
+        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
             filteredUsers = filteredUsers.filter(u => 
                 (u as any).isActive !== false && 
-                (recentlyActiveUserIds.has(u.id) || activeInPeriodIds.has(u.id))
+                activeInPeriodIds.has(String(u.id).toLowerCase())
             );
         }
 
@@ -1738,7 +1840,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         return data.sort((a, b) => b.date.localeCompare(a.date));
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, recentlyActiveUserIds]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus]);
 
 
     // Determine which PDF component to render
@@ -1779,29 +1881,7 @@ const AttendanceDashboard: React.FC = () => {
     const handleDownloadPdf = async () => {
         setIsDownloading(true);
         try {
-            const logo = useLogoStore.getState().currentLogo;
-            let logoBase64 = '';
-
-            if (logo && logo.startsWith('data:image')) {
-                logoBase64 = logo;
-            } else {
-                 const logoUrl = (logo && (logo.startsWith('http') || logo.startsWith('/'))) ? logo : pdfLogoLocalPath;
-                 if (logoUrl) {
-                    try {
-                        const response = await fetch(logoUrl);
-                        if (response.ok) {
-                            const blob = await response.blob();
-                            logoBase64 = await new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve(reader.result as string);
-                                reader.readAsDataURL(blob);
-                            });
-                        }
-                    } catch (e) {
-                        console.error('Logo fetch failed', e);
-                    }
-                 }
-            }
+            const logoBase64 = logoForPdf;
 
             const generatedBy = user?.name || 'Unknown User';
             const fileName = `Attendance_Report_${reportType}_${format(new Date(), 'yyyyMMdd')}.pdf`;
@@ -1851,20 +1931,22 @@ const AttendanceDashboard: React.FC = () => {
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
-                case 'audit':
+                case 'audit': {
+                    const auditLogData = auditLogs.map(log => ({
+                        dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
+                        action: log.action,
+                        performer_name: log.performer_name,
+                        target_name: log.target_name,
+                        detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
+                    }));
                     blob = await pdf(<AuditLogDocument 
-                        data={auditLogs.map(log => ({
-                            dateTime: format(new Date(log.created_at), 'yyyy-MM-dd HH:mm'),
-                            action: log.action,
-                            performer_name: log.performer_name,
-                            target_name: log.target_name,
-                            detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
-                        }))} 
+                        data={auditLogData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
+                }
                 default:
                     setToast({ message: 'This report type is not yet supported in PDF format.', type: 'error' });
                     setIsDownloading(false);
@@ -1892,29 +1974,7 @@ const AttendanceDashboard: React.FC = () => {
     const handleDownloadExcel = async () => {
         setIsDownloading(true);
         try {
-            const logo = useLogoStore.getState().currentLogo;
-            let logoBase64 = '';
-
-            if (logo && logo.startsWith('data:image')) {
-                logoBase64 = logo;
-            } else {
-                 const logoUrl = (logo && (logo.startsWith('http') || logo.startsWith('/'))) ? logo : pdfLogoLocalPath;
-                 if (logoUrl) {
-                    try {
-                        const response = await fetch(logoUrl);
-                        if (response.ok) {
-                            const blob = await response.blob();
-                            logoBase64 = await new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve(reader.result as string);
-                                reader.readAsDataURL(blob);
-                            });
-                        }
-                    } catch (e) {
-                         console.error("Logo fetch failed", e);
-                    }
-                 }
-            }
+            const logoBase64 = logoForPdf;
 
             if (reportType === 'monthly') {
                 await exportAttendanceToExcel(
@@ -1955,14 +2015,7 @@ const AttendanceDashboard: React.FC = () => {
                             { header: 'Location', key: 'locationName', width: 30 },
                             { header: 'Device', key: 'device', width: 15 }
                         ];
-                        dataToExport = attendanceLogData.map(row => ({
-                            'Employee Name': row.userName,
-                            'Date': row.date,
-                            'Time': row.time,
-                            'Event Type': row.type,
-                            'Location': row.locationName,
-                            'Device': row.device || '-'
-                        }));
+                        dataToExport = attendanceLogData;
                         break;
                     case 'audit':
                         reportTitle = 'Audit Log Report';
@@ -1975,7 +2028,7 @@ const AttendanceDashboard: React.FC = () => {
                             { header: 'Details', key: 'detailsStr', width: 50 },
                         ];
                         dataToExport = auditLogs.map(log => ({
-                            dateTime: format(new Date(log.created_at), 'yyyy-MM-dd HH:mm'),
+                            dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
                             action: log.action,
                             performer_name: log.performer_name,
                             target_name: log.target_name,
@@ -1988,8 +2041,8 @@ const AttendanceDashboard: React.FC = () => {
                         columns = [
                             { header: 'Employee Name', key: 'userName', width: 25 },
                             { header: 'Date', key: 'date', width: 15 },
-                            { header: 'Site OT In', key: 'site_otIn', width: 15 },
-                            { header: 'Site OT Out', key: 'site_otOut', width: 15 },
+                            { header: 'Site OT In', key: 'siteOtIn', width: 15 },
+                            { header: 'Site OT Out', key: 'siteOtOut', width: 15 },
                             { header: 'Duration', key: 'duration', width: 15 },
                             { header: 'Location', key: 'locationName', width: 30 }
                         ];
@@ -2033,6 +2086,51 @@ const AttendanceDashboard: React.FC = () => {
         } catch (error) {
             console.error("Excel Download failed:", error);
             setToast({ message: 'Failed to generate Excel report.', type: 'error' });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const handleDownloadCsv = async () => {
+        setIsDownloading(true);
+        try {
+            let dataToExport: any[] = [];
+            let headers: { [key: string]: string } = {};
+            let fileName = `Attendance_Report_${reportType}_${format(new Date(), 'yyyyMMdd')}.csv`;
+
+            switch (reportType) {
+                case 'basic':
+                    headers = { userName: 'Employee Name', date: 'Date', status: 'Status', checkIn: 'Punch In', checkOut: 'Punch Out', locationName: 'Location', duration: 'Hours' };
+                    dataToExport = basicReportData;
+                    break;
+                case 'monthly':
+                    // Monthly report is complex for CSV, use basic list
+                    headers = { userName: 'Employee Name', presentDays: 'Present', absentDays: 'Absent', weekOffs: 'W/O', totalPayableDays: 'Payable' };
+                    dataToExport = monthlyReportData;
+                    break;
+                case 'log':
+                    headers = { userName: 'User', date: 'Date', time: 'Time', type: 'Event', locationName: 'Location', device: 'Device' };
+                    dataToExport = attendanceLogData;
+                    break;
+                case 'audit':
+                    headers = { created_at: 'Date', action: 'Action', performer_name: 'By', target_name: 'Target' };
+                    dataToExport = auditLogs;
+                    break;
+                case 'site_ot':
+                    headers = { userName: 'Employee', date: 'Date', siteOtIn: 'In', siteOtOut: 'Out', duration: 'Duration' };
+                    dataToExport = site_otReportData;
+                    break;
+            }
+
+            if (dataToExport.length > 0) {
+                exportToCsv(fileName, dataToExport, headers);
+                setToast({ message: 'CSV report downloaded successfully.', type: 'success' });
+            } else {
+                setToast({ message: 'No data to export.', type: 'error' });
+            }
+        } catch (error) {
+            console.error("CSV Download failed:", error);
+            setToast({ message: 'Failed to generate CSV report.', type: 'error' });
         } finally {
             setIsDownloading(false);
         }
@@ -2751,7 +2849,7 @@ const AttendanceDashboard: React.FC = () => {
                     { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
                     { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
                     { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" },
-                    { title: "Inactive (10+ Days)", value: dashboardData?.inactiveCount || 0, icon: UserMinus, color: "bg-amber-500" }
+                    { title: "Inactive (30 Days)", value: dashboardData?.inactiveCount || 0, icon: UserMinus, color: "bg-amber-500" }
                 ].map((stat, i) => (
                     <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
                         <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
@@ -2837,6 +2935,15 @@ const AttendanceDashboard: React.FC = () => {
                                 {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                                 {isSendingEmail ? 'Sending...' : 'Mail Report'}
                             </Button>
+                            <Button
+                                type="button"
+                                onClick={handleDownloadCsv}
+                                disabled={isDownloading}
+                                className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download CSV'}
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -2856,16 +2963,21 @@ const AttendanceDashboard: React.FC = () => {
                     )}
                     <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
                         <div className="w-full">
-                            {reportType === 'work_hours' ? (
-                                <MonthlyHoursReport 
-                                    month={(dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1}
-                                    year={dateRange.startDate?.getFullYear() || new Date().getFullYear()}
-                                    userId={selectedUser === 'all' ? undefined : selectedUser}
-                                    hideHeader
-                                />
-                            ) : (
-                                previewContent
-                            )}
+                            {(() => {
+                                const reportMonthValue = (dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1;
+                                const reportYearValue = dateRange.startDate?.getFullYear() || new Date().getFullYear();
+                                return reportType === 'work_hours' ? (
+                                    <MonthlyHoursReport 
+                                        month={reportMonthValue} 
+                                        year={reportYearValue} 
+                                        userId={selectedUser === 'all' ? undefined : selectedUser} 
+                                        scopedSettings={scopedSettings}
+                                        hideHeader
+                                    />
+                                ) : (
+                                    previewContent
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -2895,94 +3007,3 @@ const AttendanceDashboard: React.FC = () => {
 
 export default AttendanceDashboard;
 
-// --- Sub-components ---
-
-interface MailReportModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onSend: (payload: ReportEmailPayload) => void;
-    isSending: boolean;
-    reportType: AttendanceReportType;
-    currentUserEmail: string;
-}
-
-const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSend, isSending, reportType, currentUserEmail }) => {
-    const [email, setEmail] = useState(currentUserEmail);
-    const [subject, setSubject] = useState(`${reportType.replace(/_/g, ' ').toUpperCase()} Attendance Report`);
-    const [message, setMessage] = useState(`Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-[#0b291a] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-[#1a3d2c] overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="p-6 border-b border-gray-100 dark:border-[#1a3d2c]">
-                    <div className="flex items-center gap-3 text-primary-text mb-1">
-                        <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
-                            <Mail className="w-5 h-5" />
-                        </div>
-                        <h3 className="text-xl font-bold">Mail Report</h3>
-                    </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">The current report will be generated and sent as a PDF attachment.</p>
-                </div>
-
-                <div className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Recipient's Email</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Enter email address"
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Subject</label>
-                        <input
-                            type="text"
-                            value={subject}
-                            onChange={(e) => setSubject(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Additional Message (Optional)</label>
-                        <textarea
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            rows={3}
-                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-[#1a3d2c] bg-gray-50 dark:bg-[#041b0f] text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
-                        />
-                    </div>
-                </div>
-
-                <div className="p-6 bg-gray-50 dark:bg-[#041b0f]/50 flex gap-3">
-                    <button
-                        onClick={onClose}
-                        className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        disabled={isSending || !email}
-                        onClick={() => onSend({ to: [email], subject, body: message, triggerType: 'manual' })}
-                        className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                    >
-                        {isSending ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>Sending...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Send className="w-5 h-5" />
-                                <span>Send Report</span>
-                            </>
-                        )}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};

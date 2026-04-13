@@ -745,7 +745,7 @@ export const BasicReportDocument: React.FC<{
     <Document>
       {pages.map((pageData, pageIndex) => (
         <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header}>
+          <View style={styles.header} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             </View>
@@ -775,7 +775,7 @@ export const BasicReportDocument: React.FC<{
             {pageData.map((row, idx) => (
               <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
                 <View style={[styles.tableCol, { width: '25%' }]}><Text style={styles.tableCell}>{row.userName}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{format(new Date(row.date.replace(/-/g, '/')), 'dd MMM yyyy')}</Text></View>
+                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.date}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.status}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.checkIn || '-'}</Text></View>
                 <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.checkOut || '-'}</Text></View>
@@ -823,7 +823,7 @@ export const MonthlyReportDocument: React.FC<{
   return (
     <Document>
       <Page size="A3" orientation="landscape" style={styles.page}>
-        <View style={styles.header}>
+        <View style={styles.header} fixed>
           <View style={styles.headerLeft}>
             {logoUrl && <Image src={logoUrl} style={styles.logo} />}
           </View>
@@ -1125,7 +1125,7 @@ export const SiteOtReportDocument: React.FC<{
       {pages.map((pageData, pageIndex) => (
         <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
           {/* Header */}
-          <View style={styles.header}>
+          <View style={styles.header} fixed>
             <View style={styles.headerLeft}>
               {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
             </View>
@@ -1201,7 +1201,7 @@ export const AttendanceLogDocument: React.FC<{
     <Document>
       {pages.map((pageData, pageIndex) => (
         <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header}>
+          <View style={styles.header} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             </View>
@@ -1271,7 +1271,7 @@ export const WorkHoursReportDocument: React.FC<{
     <Document>
       {pages.map((pageData, pageIndex) => (
         <Page key={pageIndex} size="A4" style={styles.page}>
-          <View style={styles.header}>
+          <View style={styles.header} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             </View>
@@ -1338,7 +1338,7 @@ export const AuditLogDocument: React.FC<{
     <Document>
       {pages.map((pageData, pageIndex) => (
         <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
-          <View style={styles.header}>
+          <View style={styles.header} fixed>
             <View style={styles.headerLeft}>
               {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             </View>

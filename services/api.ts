@@ -6023,6 +6023,48 @@ export const api = {
     }));
   },
 
+  async getBatchFieldViolations(userIds: string[]): Promise<FieldAttendanceViolation[]> {
+    if (!userIds.length) return [];
+    
+    // Split userIds into chunks to avoid potential URL length limits in some environments (though Supabase/PostgREST usually handle this)
+    const { data, error } = await supabase
+      .from('field_attendance_violations')
+      .select('*')
+      .in('user_id', userIds)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching batch field violations:', error);
+      throw error;
+    }
+
+    return (data || []).map(v => ({
+      id: v.id,
+      userId: v.user_id,
+      date: v.date,
+      totalHours: parseFloat(v.total_hours || '0'),
+      siteHours: parseFloat(v.site_hours || '0'),
+      travelHours: parseFloat(v.travel_hours || '0'),
+      sitePercentage: parseFloat(v.site_percentage || '0'),
+      travelPercentage: parseFloat(v.travel_percentage || '0'),
+      violationType: v.violation_type,
+      requiredSitePercentage: parseFloat(v.required_site_percentage || '0'),
+      status: v.status,
+      acknowledgedBy: v.acknowledged_by,
+      acknowledgedAt: v.acknowledged_at,
+      managerNotes: v.manager_notes,
+      escalatedTo: v.escalated_to,
+      escalatedAt: v.escalated_at,
+      escalationLevel: v.escalation_level,
+      affectsSalary: v.affects_salary,
+      affectsPerformance: v.affects_performance,
+      attendanceGranted: v.attendance_granted,
+      createdAt: v.created_at,
+      updatedAt: v.updated_at,
+    }));
+  },
+
+
   async createFieldViolation(violationData: Partial<FieldAttendanceViolation & { siteVisits?: number }>): Promise<FieldAttendanceViolation> {
     // Filter out siteVisits if present in the breakdown, as it's not a column in the table
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
