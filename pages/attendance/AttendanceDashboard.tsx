@@ -6,7 +6,7 @@ import { isAdmin } from '../../utils/auth';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { pdf } from '@react-pdf/renderer';
-import { BasicReportDocument, MonthlyReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
+import { BasicReportDocument, MonthlyReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import type {
@@ -1851,6 +1851,20 @@ const AttendanceDashboard: React.FC = () => {
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
+                case 'audit':
+                    blob = await pdf(<AuditLogDocument 
+                        data={auditLogs.map(log => ({
+                            dateTime: format(new Date(log.created_at), 'yyyy-MM-dd HH:mm'),
+                            action: log.action,
+                            performer_name: log.performer_name,
+                            target_name: log.target_name,
+                            detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
+                        }))} 
+                        dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                        generatedBy={generatedBy}
+                        logoUrl={logoBase64}
+                    />).toBlob();
+                    break;
                 default:
                     setToast({ message: 'This report type is not yet supported in PDF format.', type: 'error' });
                     setIsDownloading(false);
@@ -2323,6 +2337,7 @@ const AttendanceDashboard: React.FC = () => {
         else if (reportType === 'monthly') rows = monthlyReportData || [];
         else if (reportType === 'audit') rows = auditLogs || [];
         else if (reportType === 'site_ot') rows = site_otReportData || [];
+        else if (reportType === 'work_hours') rows = work_hoursReportData || [];
 
         if (!rows || rows.length === 0) return <div className="text-center py-10 text-gray-400">No report data available</div>;
 
@@ -2379,6 +2394,25 @@ const AttendanceDashboard: React.FC = () => {
                                      <div className="col-span-2">
                                          <span className="text-gray-500 block mb-0.5">Location:</span>
                                          <div className="text-gray-300 font-medium truncate">{row.locationName}</div>
+                                     </div>
+                                 </>
+                             ) : reportType === 'work_hours' ? (
+                                 <>
+                                     <div>
+                                         <span className="text-gray-500 block mb-0.5">Total Days:</span>
+                                         <div className="text-gray-300 font-medium">{row.totalDays || 0}d</div>
+                                     </div>
+                                     <div>
+                                         <span className="text-gray-500 block mb-0.5">Present:</span>
+                                         <div className="text-gray-300 font-medium">{row.presentDays || 0}d</div>
+                                     </div>
+                                     <div>
+                                         <span className="text-gray-500 block mb-0.5">Working Hrs:</span>
+                                         <div className="text-gray-300 font-medium">{Number(row.totalWorkingHours || 0).toFixed(2)}h</div>
+                                     </div>
+                                     <div>
+                                         <span className="text-gray-500 block mb-0.5">OT Hrs:</span>
+                                         <div className="text-gray-300 font-medium">{Number(row.otHours || 0).toFixed(2)}h</div>
                                      </div>
                                  </>
                              ) : (
@@ -2754,92 +2788,88 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
 
-            {/* Work Hours Report */}
-            {reportType === 'work_hours' && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                    <MonthlyHoursReport 
-                        month={(dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1}
-                        year={dateRange.startDate?.getFullYear() || new Date().getFullYear()}
-                        userId={selectedUser === 'all' ? undefined : selectedUser}
-                    />
-                </div>
-            )}
-
-            {/* Report Preview */}
-            {reportType !== 'work_hours' && (
-                <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                        <div className="flex flex-col gap-1">
-                            <h2 className="text-lg font-bold text-white md:text-gray-900">Report Preview</h2>
-                            <div className="md:hidden flex bg-[#041b0f] p-1 rounded-lg border border-[#1a3d2c]">
-                                <button 
-                                    onClick={() => setPreviewMode('summary')}
-                                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${previewMode === 'summary' ? 'bg-[#22c55e] text-white' : 'text-gray-400'}`}
-                                >
-                                    Summary
-                                </button>
-                                <button 
-                                    onClick={() => setPreviewMode('full')}
-                                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${previewMode === 'full' ? 'bg-[#22c55e] text-white' : 'text-gray-400'}`}
-                                >
-                                    Full Layout
-                                </button>
-                            </div>
+            {/* Report Preview Section */}
+            <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-lg font-bold text-white md:text-gray-900">Report Preview</h2>
+                        <div className="md:hidden flex bg-[#041b0f] p-1 rounded-lg border border-[#1a3d2c]">
+                            <button 
+                                onClick={() => setPreviewMode('summary')}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${previewMode === 'summary' ? 'bg-[#22c55e] text-white' : 'text-gray-400'}`}
+                            >
+                                Summary
+                            </button>
+                            <button 
+                                onClick={() => setPreviewMode('full')}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${previewMode === 'full' ? 'bg-[#22c55e] text-white' : 'text-gray-400'}`}
+                            >
+                                Full Layout
+                            </button>
                         </div>
-                        {canDownloadReport && (
-                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                                <Button
-                                    type="button"
-                                    onClick={handleDownloadPdf}
-                                    disabled={isDownloading}
-                                    className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                    {isDownloading ? 'Generating...' : 'Download PDF'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={handleDownloadExcel}
-                                    disabled={isDownloading}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                    {isDownloading ? 'Generating...' : 'Download Excel'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={() => setIsMailModalOpen(true)}
-                                    disabled={isDownloading || isSendingEmail}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                                    {isSendingEmail ? 'Sending...' : 'Mail Report'}
-                                </Button>
-                            </div>
-                        )}
                     </div>
-
-                    {previewMode === 'summary' ? (
-                        <div className="md:hidden">
-                            <ReportSummaryView />
+                    {canDownloadReport && (
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            <Button
+                                type="button"
+                                onClick={handleDownloadPdf}
+                                disabled={isDownloading}
+                                className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download PDF'}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={handleDownloadExcel}
+                                disabled={isDownloading}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download Excel'}
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => setIsMailModalOpen(true)}
+                                disabled={isDownloading || isSendingEmail}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                                {isSendingEmail ? 'Sending...' : 'Mail Report'}
+                            </Button>
                         </div>
-                    ) : null}
+                    )}
+                </div>
 
-                    <div className={`border border-[#1a3d2c] md:border-gray-200 rounded-xl bg-[#041b0f] md:bg-gray-50 flex justify-center min-h-[300px] md:min-h-[400px] relative overflow-hidden ${previewMode === 'summary' ? 'hidden md:flex' : 'flex'}`}>
-                        {isLoading && (
-                            <div className="absolute inset-0 z-10 bg-[#041b0f]/50 md:bg-white/50 backdrop-blur-sm flex flex-col items-center justify-center">
-                                <Loader2 className="h-8 w-8 animate-spin text-[#22c55e] mb-2" />
-                                <p className="text-sm font-medium text-gray-300 md:text-gray-600">Updating report data...</p>
-                            </div>
-                        )}
-                        <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
-                            <div className="w-full">
-                               {previewContent}
-                            </div>
+                {previewMode === 'summary' ? (
+                    <div className="md:hidden">
+                        <ReportSummaryView />
+                    </div>
+                ) : null}
+
+                <div className={`border border-[#1a3d2c] md:border-gray-200 rounded-xl bg-[#041b0f] md:bg-gray-50 flex justify-center min-h-[300px] md:min-h-[400px] relative overflow-hidden ${previewMode === 'summary' ? 'hidden md:flex' : 'flex'}`}>
+                    {isLoading && (
+                        <div className="absolute inset-0 z-10 bg-[#041b0f]/50 md:bg-white/50 backdrop-blur-sm flex flex-col items-center justify-center">
+                            <Loader2 className="h-8 w-8 animate-spin text-[#22c55e] mb-2" />
+                            <p className="text-sm font-medium text-gray-300 md:text-gray-600">Updating report data...</p>
+                        </div>
+                    )}
+                    <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
+                        <div className="w-full">
+                            {reportType === 'work_hours' ? (
+                                <MonthlyHoursReport 
+                                    month={(dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1}
+                                    year={dateRange.startDate?.getFullYear() || new Date().getFullYear()}
+                                    userId={selectedUser === 'all' ? undefined : selectedUser}
+                                    hideHeader
+                                />
+                            ) : (
+                                previewContent
+                            )}
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
 
             {isMailModalOpen && (
                 <MailReportModal

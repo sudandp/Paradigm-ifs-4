@@ -66,9 +66,10 @@ interface MonthlyHoursReportProps {
   year: number;
   userId?: string; // If provided, show single employee; otherwise show all
   data?: EmployeeMonthlyData[]; // If provided, use this data directly
+  hideHeader?: boolean;
 }
 
-const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, userId, data: externalData }) => {
+const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, userId, data: externalData, hideHeader }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
   const [users, setUsers] = useState<User[]>([]);
@@ -608,17 +609,19 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
 
   return (
     <div className="p-6 bg-white min-h-screen">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Monthly Status Report (Detailed Work Duration)</h2>
-          <p className="text-gray-600">
-            {format(new Date(year, month - 1, 1), 'MMM dd yyyy')} To {format(new Date(year, month - 1, getDaysInMonth(new Date(year, month - 1))), 'MMM dd yyyy')}
-          </p>
+      {!hideHeader && (
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Monthly Status Report (Detailed Work Duration)</h2>
+            <p className="text-gray-600">
+              {format(new Date(year, month - 1, 1), 'MMM dd yyyy')} To {format(new Date(year, month - 1, getDaysInMonth(new Date(year, month - 1))), 'MMM dd yyyy')}
+            </p>
+          </div>
+          <Button onClick={exportToExcel}>
+            <Download className="mr-2 h-4 w-4" /> Download CSV
+          </Button>
         </div>
-        <Button onClick={exportToExcel}>
-          <Download className="mr-2 h-4 w-4" /> Download CSV
-        </Button>
-      </div>
+      )}
 
       {reportData.map((employee) => (
         <div key={employee.employeeId} className="mb-12 border border-gray-300 rounded-lg p-6 bg-white">
