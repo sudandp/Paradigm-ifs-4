@@ -160,7 +160,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const userLeaves = leavesData.filter((l: any) => String(l.userId) === String(user.id) && (l.status === 'approved' || l.leaveStatus === 'approved'));
         
         // Process days locally (no more per-user API calls in the loop)
-        return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, []);
+        return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, [], leavesData);
       });
 
       // 6. FINAL ACTIVITY FILTER: "Active Users Only" must have at least one Present day if selected
@@ -180,7 +180,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     }
   };
 
-  const processEmployeeMonth = (user: User, events: AttendanceEvent[], userLeaves: any[], userHolidays: any[], year: number, month: number, fieldViolations: FieldAttendanceViolation[] = []): EmployeeMonthlyData => {
+  const processEmployeeMonth = (user: User, events: AttendanceEvent[], userLeaves: any[], userHolidays: any[], year: number, month: number, fieldViolations: FieldAttendanceViolation[] = [], allLeaves: any[] = []): EmployeeMonthlyData => {
     const daysInMonth = getDaysInMonth(new Date(year, month - 1));
     const dailyData: DailyData[] = [];
     
@@ -357,7 +357,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         siteHolidays,
         recurringHolidays,
         userHolidaysPool,
-        leaves,
+        leaves: allLeaves.length > 0 ? allLeaves : leaves, // Use passed pool or fallback to state
         daysPresentInWeek
       });
 
