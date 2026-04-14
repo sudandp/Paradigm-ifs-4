@@ -93,8 +93,8 @@ const UpdatePassword = () => {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-4" : "space-y-6"}>
-        <Input id="password-new" type="password" placeholder="New Password" registration={register('password')} error={errors.password?.message} className={`!pl-4 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
-        <Input id="confirm-password-new" type="password" placeholder="Confirm New Password" registration={register('confirmPassword')} error={errors.confirmPassword?.message} className={`!pl-4 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
+        <Input id="password-new" type="password" placeholder="New Password" registration={register('password')} error={errors.password?.message} className={`!pl-4 !pr-12 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
+        <Input id="confirm-password-new" type="password" placeholder="Confirm New Password" registration={register('confirmPassword')} error={errors.confirmPassword?.message} className={`!pl-4 !pr-12 transition-all ${isMobile ? '!rounded-xl !py-3.5 text-sm !bg-white/10 !text-white !border-white/20 focus:!border-emerald-500/50 focus:!ring-emerald-500/20 placeholder:text-white/50' : '!rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200'}`} />
 
         {error && (
             <div className={`flex items-center gap-2 p-3 rounded-xl border ${isMobile ? 'text-xs text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>

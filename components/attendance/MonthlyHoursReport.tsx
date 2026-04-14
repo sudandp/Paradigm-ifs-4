@@ -157,7 +157,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       // 5. Process data locally for each user using the bulk-fetched events
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
         const userEvents = allEvents.filter(e => String(e.userId) === String(user.id));
-        const userLeaves = leavesData.filter((l: any) => l.userId === user.id && l.status === 'approved');
+        const userLeaves = leavesData.filter((l: any) => String(l.userId) === String(user.id) && (l.status === 'approved' || l.leaveStatus === 'approved'));
         
         // Process days locally (no more per-user API calls in the loop)
         return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, []);
@@ -280,13 +280,22 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                 });
 
                 // 3. Leave check
-                const hasApprovedLeaveCheck = userLeaves.some((l: any) => 
-                    isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                const hasApprovedLeaveCheck = userLeaves.some((l: any) => {
+                    const startStr = l.startDate || l.date || l.leave_date;
+                    const endStr = l.endDate || l.date || l.leave_date;
+                    if (!startStr || !endStr) return false;
+                    return isWithinInterval(checkDate, { start: startOfDay(new Date(startStr)), end: endOfDay(new Date(endStr)) }) &&
                     l.status === 'approved' &&
-                    !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || l.leave_type || '').toLowerCase())
-                );
+                    !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || l.leave_type || '').toLowerCase());
+                });
 
-                if (hasActivityCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || isRecurringHolidayCheck || hasApprovedLeaveCheck) {
+                const isPoolHolidayCheck = userHolidays.some(uh => {
+                    const uhUserId = uh.userId || (uh as any).user_id;
+                    const holidayDate = uh.holidayDate || (uh as any).holiday_date;
+                    return String(uhUserId) === String(user.id) && matchesDate(holidayDate, checkDate);
+                });
+
+                if (hasActivityCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || isRecurringHolidayCheck || hasApprovedLeaveCheck || isPoolHolidayCheck) {
                     daysPresentInWeek++;
                 }
             }
@@ -301,12 +310,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
       
-      const approvedLeave = userLeaves.find((l: any) => 
-          isWithinInterval(currentDate, {
-              start: startOfDay(new Date(l.startDate)),
-              end: endOfDay(new Date(l.endDate))
-          })
-      );
+      const approvedLeave = userLeaves.find((l: any) => {
+          const startStr = l.startDate || l.date || l.leave_date;
+          const endStr = l.endDate || l.date || l.leave_date;
+          if (!startStr || !endStr) return false;
+          return isWithinInterval(currentDate, {
+              start: startOfDay(new Date(startStr)),
+              end: endOfDay(new Date(endStr))
+          });
+      });
 
       // 1. Check holidays
       const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
@@ -349,8 +361,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         daysPresentInWeek
       });
 
-      if (status.includes('P') || status === 'Present' || status === 'Half Day') {
-        const increment = status.includes('1/2') ? 0.5 : 1;
+      if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('1/2A') && status !== 'A')) {
+        const increment = (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
         daysPresentInWeek += increment;
       }
 
@@ -381,17 +393,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         return `${h}:${String(m).padStart(2, '0')}`;
       };
 
-      if (isHoliday) {
-          if (!isFuture) {
-              if (hasActivity) holidayPresents++;
-              else holidaysCount++;
-          }
-      } else if (isRecurringHoliday) {
-          if (!isFuture) {
-              if (hasActivity) holidayPresents++;
-              else floatingHolidays++;
-          }
-      } else if (approvedLeave) {
+      if (approvedLeave) {
           const isHalfDayLeave = approvedLeave.dayOption === 'half';
           const increment = isHalfDayLeave ? 0.5 : 1;
           const leaveType = (approvedLeave.leaveType || (approvedLeave as any).leave_type || '').toLowerCase();
@@ -441,6 +443,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             const ot = Math.max(0, netHours - (maxDailyHours / 2));
             totalOT += ot;
             currentDayOT = ot > 0 ? formatTime(ot) : '-';
+          }
+      } else if (isHoliday) {
+          if (!isFuture) {
+              if (hasActivity) holidayPresents++;
+              else holidaysCount++;
+          }
+      } else if (isRecurringHoliday) {
+          if (!isFuture) {
+              if (hasActivity) holidayPresents++;
+              else floatingHolidays++;
           }
       } else if (hasActivity) {
         let { 

@@ -367,12 +367,18 @@ export function evaluateAttendanceStatus(params: {
 
   // 3. Resolve Leaves
   const approvedLeave = leaves?.find(l => {
-      const lDate = l.date || l.leave_date || l.startDate;
-      if (!lDate) return false;
+      const lStartDate = l.startDate || l.date || l.leave_date;
+      const lEndDate = l.endDate || l.date || l.leave_date;
+      if (!lStartDate || !lEndDate) return false;
       const lUserId = l.userId || l.user_id;
-      return String(lUserId) === String(userId) && 
-             format(new Date(lDate), 'yyyy-MM-dd') === dateStr && 
-             (l.status === 'approved' || l.leaveStatus === 'approved');
+      
+      if (String(lUserId) !== String(userId)) return false;
+      if (l.status !== 'approved' && l.leaveStatus !== 'approved') return false;
+      
+      const startDateStr = format(new Date(lStartDate), 'yyyy-MM-dd');
+      const endDateStr = format(new Date(lEndDate), 'yyyy-MM-dd');
+      
+      return dateStr >= startDateStr && dateStr <= endDateStr;
   });
 
   // 4. Status Determination logic
@@ -384,7 +390,8 @@ export function evaluateAttendanceStatus(params: {
   const hasValidPresence = (hasPunchIn && hasPunchOut) || (hasPunchIn && isToday);
 
   if (hasValidPresence) {
-      if (isRecurringHoliday) status = 'H/P';
+      if (isHoliday) status = 'H/P';
+      else if (isRecurringHoliday) status = 'H/P';
       else if (isWeekend) status = 'W/P';
       else status = 'P';
   } else if (approvedLeave) {
@@ -398,9 +405,12 @@ export function evaluateAttendanceStatus(params: {
       else status = prefix + 'E/L';
   } else {
       // Threshold check for automated statuses
+      const threshold = (userRules as any)?.weekendPresentThreshold ?? 3;
       const isActive = daysPresentInWeek >= threshold;
       
-      if (isHoliday) status = isActive ? 'H' : 'A';
+      // Pool holidays (declared by user) are exempt from threshold
+      if (isPoolHoliday) status = 'H';
+      else if (isHoliday) status = isActive ? 'H' : 'A';
       else if (isRecurringHoliday) status = isActive ? 'F/H' : 'A';
       else if (isWeekend) status = isActive ? 'W/O' : 'A';
       else status = 'A';

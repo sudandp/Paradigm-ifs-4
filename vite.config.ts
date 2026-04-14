@@ -80,15 +80,26 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom', '@react-pdf/renderer'],
-          'supabase': ['@supabase/supabase-js'],
-          'ui-vendor': ['lucide-react', 'chart.js', 'react-date-range', 'lucide-react'],
-          'utils-vendor': ['date-fns', 'file-saver', 'zustand'],
-          'capacitor-vendor': ['@capacitor/core', '@capacitor/preferences', '@capacitor/geolocation', '@capacitor/camera', '@capacitor/filesystem']
+          'react-core': ['react', 'react-dom', 'react-router-dom'],
+          'pdf-vendor': ['@react-pdf/renderer', 'jspdf', 'jspdf-autotable'],
+          'excel-vendor': ['exceljs', 'jszip'],
+          'charts-vendor': ['chart.js'],
+          'supabase-vendor': ['@supabase/supabase-js'],
+          'ui-shared': ['lucide-react', 'react-date-range', 'framer-motion'],
+          'utils-shared': ['date-fns', 'file-saver', 'zustand', 'pako'],
+          'capacitor-vendor': [
+            '@capacitor/core', 
+            '@capacitor/preferences', 
+            '@capacitor/geolocation', 
+            '@capacitor/camera', 
+            '@capacitor/filesystem',
+            '@capacitor/app',
+            '@capacitor/browser'
+          ]
         }
       }
     }

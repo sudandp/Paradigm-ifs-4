@@ -19,7 +19,7 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen font-sans flex items-center justify-center py-6 px-2 relative overflow-auto bg-page">
+            <div className="min-h-screen min-h-[100dvh] font-sans flex items-center justify-center py-8 px-4 relative overflow-auto bg-page">
                 {/* Background for Mobile */}
                 <div className="fixed inset-0 w-full h-full">
                     <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -27,14 +27,14 @@ const AuthLayout: React.FC = () => {
                 </div>
 
                 {/* Mobile Dark Glassmorphic Card (Shrunk Mode) — Centered Logo + Left Header */}
-                <div className="relative z-10 w-full max-w-[310px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-5 pt-5 pb-4 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container text-left">
-                    <div className="flex justify-center mb-3">
-                        <Logo className="h-[33px] opacity-100" />
+                <div className="relative z-10 w-[92%] max-w-[360px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-6 pt-6 pb-5 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container text-left">
+                    <div className="flex justify-center mb-4">
+                        <Logo className="h-[36px] opacity-100" />
                     </div>
                     
-                    <div className="text-left mb-3.5">
-                        <h2 className="text-xl font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
-                        <p className="text-white/70 text-[11px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
+                    <div className="text-left mb-4">
+                        <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
+                        <p className="text-white/70 text-[13px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
                     </div>
 
                     <div className="auth-form-outlet leading-normal">

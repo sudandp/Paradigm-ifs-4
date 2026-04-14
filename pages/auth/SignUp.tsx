@@ -58,7 +58,7 @@ const SignUp: React.FC = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-3" : "space-y-4"}>
+        <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-4" : "space-y-4"}>
             <div className="relative group">
                 <UserIcon className={`absolute left-3 top-1/2 -translate-y-1/2 ${isMobile ? 'h-4 w-4 text-white/50' : 'h-5 w-5 text-gray-400'} transition-colors pointer-events-none group-focus-within:text-emerald-400`} />
                 <Input 
@@ -67,7 +67,7 @@ const SignUp: React.FC = () => {
                     error={errors.name?.message} 
                     placeholder="Full Name" 
                     className={isMobile 
-                        ? "!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                        ? "!pl-10 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                         : "!bg-white !text-gray-900 !border-gray-200 !rounded-2xl !py-5"
                     } 
                 />
@@ -80,7 +80,7 @@ const SignUp: React.FC = () => {
                     error={errors.email?.message} 
                     placeholder="Email Address" 
                     className={isMobile 
-                        ? "!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                        ? "!pl-10 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                         : "!bg-white !text-gray-900 !border-gray-200 !rounded-2xl !py-5"
                     } 
                 />
@@ -94,7 +94,7 @@ const SignUp: React.FC = () => {
                     error={errors.password?.message} 
                     placeholder="Create Password" 
                     className={isMobile 
-                        ? "!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                        ? "!pl-10 !pr-12 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                         : "!bg-white !text-gray-900 !border-gray-200 !rounded-2xl !py-5"
                     } 
                 />
@@ -108,15 +108,15 @@ const SignUp: React.FC = () => {
                     error={errors.confirmPassword?.message} 
                     placeholder="Confirm Password" 
                     className={isMobile 
-                        ? "!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                        ? "!pl-10 !pr-12 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                         : "!bg-white !text-gray-900 !border-gray-200 !rounded-2xl !py-5"
                     } 
                 />
             </div>
             
             {error && (
-                <div className={`flex items-center gap-2 p-2.5 rounded-lg border ${isMobile ? 'text-[11px] text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>
-                    <AlertTriangle className={isMobile ? "h-3.5 w-3.5 flex-shrink-0" : "h-4 w-4 flex-shrink-0"} />
+                <div className={`flex items-center gap-2 p-3 rounded-xl border ${isMobile ? 'text-[13px] text-red-400 bg-red-400/10 border-red-400/20' : 'text-sm text-red-600 bg-red-50 border-red-100'}`}>
+                    <AlertTriangle className={isMobile ? "h-4 w-4 flex-shrink-0" : "h-4 w-4 flex-shrink-0"} />
                     <span className="leading-tight font-semibold">{error}</span>
                 </div>
             )}
@@ -124,7 +124,7 @@ const SignUp: React.FC = () => {
             <Button 
                 type="submit" 
                 className={isMobile 
-                    ? "w-full !font-bold !h-10 !rounded-lg !text-sm transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
+                    ? "w-full !font-bold !h-12 !rounded-xl !text-[15px] transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
                     : "w-full !font-black !h-14 !rounded-2xl !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200 shadow-2xl transition-all"
                 } 
                 isLoading={isSubmitting} 
@@ -134,7 +134,7 @@ const SignUp: React.FC = () => {
             </Button>
 
             <div className="text-center mt-3">
-                <p className={isMobile ? "text-[11px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-4"}>
+                <p className={isMobile ? "text-[13px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-4"}>
                     Already have an account?{' '}
                     <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'} ml-0.5`}>Sign In</Link>
                 </p>

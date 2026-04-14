@@ -111,8 +111,8 @@ const Login: React.FC = () => {
     if (isMobile) {
         return (
             <>
-                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-3">
-                    <fieldset disabled={isFormDisabled} className="space-y-3">
+                <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-4">
+                    <fieldset disabled={isFormDisabled} className="space-y-4">
                         <div className="relative group">
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50 group-focus-within:text-emerald-400 transition-colors pointer-events-none" />
                             <Input
@@ -121,7 +121,7 @@ const Login: React.FC = () => {
                                 placeholder="Email address"
                                 registration={registerEmail('email')}
                                 error={emailErrors.email?.message}
-                                 className="!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                                 className="!pl-10 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                             />
                         </div>
                         <div className="relative group">
@@ -132,32 +132,32 @@ const Login: React.FC = () => {
                                 placeholder="Password"
                                 registration={registerEmail('password')}
                                 error={emailErrors.password?.message}
-                                className="!pl-10 !text-[9px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-lg !py-2.5 transition-all placeholder:!text-white/35"
+                                className="!pl-10 !pr-12 !text-[14px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-xl !py-3 transition-all placeholder:!text-white/35"
                             />
                         </div>
                         <div className="flex items-center justify-between px-0.5">
                             <Checkbox
                                 id="rememberMe-mob"
                                 label="Remember me"
-                                labelClassName="text-white/70 text-[11px] font-medium cursor-pointer"
+                                labelClassName="text-white/70 text-[13px] font-medium cursor-pointer"
                                 {...registerEmail('rememberMe')}
                             />
-                            <Link to="/auth/forgot-password" title="Forgot password?" className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">
+                            <Link to="/auth/forgot-password" title="Forgot password?" className="text-[13px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">
                                 Forgot password?
                             </Link>
                         </div>
                     </fieldset>
 
                     {error && (
-                        <div className="flex items-center gap-2 text-[11px] text-red-400 p-2.5 bg-red-400/10 rounded-lg border border-red-400/20">
-                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                        <div className="flex items-center gap-2 text-[13px] text-red-400 p-3 bg-red-400/10 rounded-xl border border-red-400/20">
+                            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                             <span className="leading-tight font-semibold">{error}</span>
                         </div>
                     )}
 
                     <Button
                         type="submit"
-                        className="w-full !font-bold !h-10 !rounded-lg !text-sm transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
+                        className="w-full !font-bold !h-12 !rounded-xl !text-[15px] transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
                         isLoading={loading && !isSuccess}
                         disabled={isFormDisabled && !isSuccess}
                     >
@@ -165,25 +165,25 @@ const Login: React.FC = () => {
                     </Button>
                 </form>
 
-                <div className="mt-3">
-                    <div className="flex items-center gap-3 my-3">
+                <div className="mt-4">
+                    <div className="flex items-center gap-3 my-4">
                         <div className="flex-1 h-px bg-white/15"></div>
-                        <span className="text-[9px] text-white/40 font-bold uppercase tracking-[0.2em]">OR</span>
+                        <span className="text-[11px] text-white/40 font-bold uppercase tracking-[0.2em]">OR</span>
                         <div className="flex-1 h-px bg-white/15"></div>
                     </div>
 
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
-                        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-white/15 text-white/90 font-semibold h-10 rounded-lg hover:bg-white/[0.04] transition-all text-[13px]"
+                        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-white/15 text-white/90 font-semibold h-12 rounded-xl hover:bg-white/[0.04] transition-all text-[14px]"
                         disabled={isFormDisabled}
                     >
                         {commonGoogleIcon}
                         Sign in with Google
                     </button>
 
-                    <div className="text-center mt-3">
-                        <p className="text-[11px] text-white/60 font-medium">
+                    <div className="text-center mt-4">
+                        <p className="text-[13px] text-white/60 font-medium">
                             Don't have an account? <Link to="/auth/signup" className="text-emerald-400 font-bold hover:text-emerald-300 ml-0.5 transition-colors">Sign Up</Link>
                         </p>
                     </div>

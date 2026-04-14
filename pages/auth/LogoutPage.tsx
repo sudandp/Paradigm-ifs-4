@@ -20,21 +20,21 @@ const LogoutPage: React.FC = () => {
     };
 
     return (
-        <div className="w-full flex flex-col items-center py-4">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${isMobile ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50 border border-red-100'}`}>
-                <LogOut className={`h-8 w-8 ${isMobile ? 'text-red-500' : 'text-red-600'}`} />
+        <div className="w-full flex flex-col items-center py-2">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${isMobile ? 'bg-red-500/10 border border-red-500/20' : 'bg-red-50 border border-red-100'}`}>
+                <LogOut className={`h-6 w-6 ${isMobile ? 'text-red-500' : 'text-red-600'}`} />
             </div>
 
-            <div className={`flex flex-col w-full ${isMobile ? 'gap-4' : 'gap-6'}`}>
+            <div className={`flex flex-col w-full ${isMobile ? 'gap-3' : 'gap-5'}`}>
                 <Button
                     onClick={handleConfirmLogout}
-                    className={`w-full transition-all ${isMobile ? '!font-bold !h-12 !rounded-xl !bg-red-500 hover:!bg-red-600 !text-white active:scale-[0.98]' : '!font-black !h-14 !rounded-2xl !bg-red-600 !text-white hover:!bg-red-700 shadow-red-200 shadow-2xl'}`}
+                    className={`w-full transition-all ${isMobile ? '!font-bold !h-10 !rounded-lg !bg-red-500 hover:!bg-red-600 !text-white active:scale-[0.98] !text-xs' : '!font-black !h-14 !rounded-2xl !bg-red-600 !text-white hover:!bg-red-700 shadow-red-200 shadow-2xl'}`}
                 >
                     Yes, Sign Out
                 </Button>
                 <button
                     onClick={handleCancel}
-                    className={`w-full transition-colors tracking-wide ${isMobile ? 'h-12 text-xs font-bold text-white/70 hover:text-white' : 'h-14 text-sm font-black text-gray-500 hover:text-gray-700'}`}
+                    className={`w-full transition-colors tracking-wide ${isMobile ? 'h-10 text-[11px] font-bold text-white/70 hover:text-white !rounded-lg' : 'h-14 text-sm font-black text-gray-500 hover:text-gray-700'}`}
                 >
                     Stay Logged In
                 </button>
