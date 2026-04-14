@@ -209,7 +209,7 @@ const LeaveManagement: React.FC = () => {
 
             const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes] = await Promise.all([
                 filter === 'corrections' 
-                    ? api.getLeaveRequests({ status: ['pending_admin_correction', 'correction_made'], startDate, endDate, page: currentPage, pageSize: pageSize })
+                    ? api.getLeaveRequests({ ...leaveFilter, status: ['pending_admin_correction', 'correction_made'] })
                     : api.getLeaveRequests(leaveFilter),
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
@@ -241,7 +241,6 @@ const LeaveManagement: React.FC = () => {
             setTotalItems(
                 filter === 'claims' ? claimsRes.total : 
                 filter === 'holiday_selection' ? allUserHolidaysRes.length : 
-                filter === 'corrections' ? (finalRequests.length) : // Simplified for now
                 leaveRes.total
             );
         } catch (error) {
