@@ -376,7 +376,14 @@ export function evaluateAttendanceStatus(params: {
   });
 
   // 4. Status Determination logic
-  if (dayEvents.length > 0) {
+  const isToday = isSameDay(day, new Date());
+  const hasPunchIn = dayEvents.some(e => e.type === 'punch-in');
+  const hasPunchOut = dayEvents.some(e => e.type === 'punch-out');
+
+  // Strict rule: Present status REQUIRES both In and Out, except for Today
+  const hasValidPresence = (hasPunchIn && hasPunchOut) || (hasPunchIn && isToday);
+
+  if (hasValidPresence) {
       if (isRecurringHoliday) status = 'H/P';
       else if (isWeekend) status = 'W/P';
       else status = 'P';

@@ -42,7 +42,7 @@ const BottomNav: React.FC = () => {
         },
         {
             to: '/tasks',
-            label: 'Modules',
+            label: 'Tasks',
             icon: LayoutGrid,
             show: userPermissions.includes('view_mobile_nav_tasks' as any)
         },
@@ -59,7 +59,7 @@ const BottomNav: React.FC = () => {
             className="fixed bottom-0 left-0 right-0 bg-[#041b0f] border-t border-[#1f3d2b] z-40"
             style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-            <div className="flex justify-around items-center h-16">
+            <div className="flex justify-around items-center h-14">
                 {navItems.filter(item => item.show).map((item) => (
                     <NavLink
                         key={item.to}
@@ -69,8 +69,8 @@ const BottomNav: React.FC = () => {
                             }`
                         }
                     >
-                        <item.icon className="w-6 h-6" />
-                        <span className="text-xs mt-1">{item.label}</span>
+                        <item.icon className="w-5 h-5" />
+                        <span className="text-[10px] mt-0.5">{item.label}</span>
                     </NavLink>
                 ))}
             </div>

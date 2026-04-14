@@ -49,7 +49,7 @@ export type Permission =
   | 'view_finance_reports'
   | 'view_attendance_tracker';
 
-export interface AppModule {
+export interface TaskGroup {
   id: string;
   name: string;
   description: string;

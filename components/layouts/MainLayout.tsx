@@ -81,7 +81,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // Security & Roles
     { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions', category: 'Security & Roles' },
     { to: '/admin/users', label: 'User Management', icon: Users, permission: 'manage_users', category: 'Security & Roles' },
-    { to: '/admin/modules', label: 'Module Management', icon: PackagePlus, permission: 'manage_modules', category: 'Security & Roles' },
+    { to: '/admin/modules', label: 'Access Tasks', icon: PackagePlus, permission: 'manage_modules', category: 'Security & Roles' },
 
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },

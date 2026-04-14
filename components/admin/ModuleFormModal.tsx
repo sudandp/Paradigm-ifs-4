@@ -4,30 +4,30 @@ import * as yup from 'yup';
 // Fix: Import StringSchema type from yup
 import type { StringSchema } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
-import type { AppModule, Permission } from '../../types';
+import type { TaskGroup, Permission } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Checkbox from '../ui/Checkbox';
 import { allPermissions } from '../../pages/admin/RoleManagement';
 
-interface ModuleFormModalProps {
+interface TaskGroupFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (module: AppModule) => void;
-  initialData: AppModule | null;
+  onSave: (group: TaskGroup) => void;
+  initialData: TaskGroup | null;
 }
 
 const validationSchema = yup.object({
   id: yup.string().required(),
-  name: yup.string().required('Module name is required'),
+  name: yup.string().required('Task group name is required'),
   description: yup.string().required('Description is required'),
   // Fix: Cast using imported StringSchema type
   permissions: yup.array().of(yup.string().required() as StringSchema<Permission>).min(1, 'At least one permission must be selected'),
 }).defined();
 
-const ModuleFormModal: React.FC<ModuleFormModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<AppModule>({
-    resolver: yupResolver(validationSchema) as Resolver<AppModule>
+const TaskGroupFormModal: React.FC<TaskGroupFormModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TaskGroup>({
+    resolver: yupResolver(validationSchema) as Resolver<TaskGroup>
   });
 
   useEffect(() => {
@@ -47,10 +47,10 @@ const ModuleFormModal: React.FC<ModuleFormModalProps> = ({ isOpen, onClose, onSa
       <div className="bg-card rounded-xl shadow-card w-full max-w-2xl my-8 animate-fade-in-scale flex flex-col" onClick={e => e.stopPropagation()}>
         <form onSubmit={handleSubmit(onSave)}>
           <div className="p-4 border-b">
-            <h3 className="text-xl font-bold">{initialData ? 'Edit' : 'Add'} Module</h3>
+            <h3 className="text-xl font-bold">{initialData ? 'Edit' : 'Add'} Access Task</h3>
           </div>
           <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
-            <Input label="Module Name" {...register('name')} error={errors.name?.message} />
+            <Input label="Group Name" {...register('name')} error={errors.name?.message} />
             <Input label="Description" {...register('description')} error={errors.description?.message} />
             
             <div>
@@ -84,7 +84,7 @@ const ModuleFormModal: React.FC<ModuleFormModalProps> = ({ isOpen, onClose, onSa
           </div>
           <div className="p-4 border-t flex justify-end gap-3">
             <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button type="submit">Save Module</Button>
+            <Button type="submit">Save Access Task</Button>
           </div>
         </form>
       </div>
@@ -92,4 +92,4 @@ const ModuleFormModal: React.FC<ModuleFormModalProps> = ({ isOpen, onClose, onSa
   );
 };
 
-export default ModuleFormModal;
+export default TaskGroupFormModal;

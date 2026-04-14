@@ -218,7 +218,7 @@ const TaskManagement: React.FC = () => {
 
 
     return (
-        <div className={`min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-4 pb-24' : `p-4 ${isDark ? 'bg-[#041b0f] border border-white/10' : 'md:bg-card'} md:p-6 md:rounded-xl md:shadow-card`}`}>
+        <div className={`min-h-screen ${isMobile ? 'bg-[#041b0f] text-white p-3 pb-20' : `p-4 ${isDark ? 'bg-[#041b0f] border border-white/10' : 'md:bg-card'} md:p-6 md:rounded-xl md:shadow-card`}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {isCompleteFormOpen && currentTask && (
@@ -239,18 +239,18 @@ const TaskManagement: React.FC = () => {
                 Are you sure you want to delete the task "{currentTask?.name}"?
             </Modal>
 
-            <div className="mb-6">
-                <h1 className={`text-2xl font-bold ${isMobile || isDark ? 'text-white' : 'text-gray-900'}`}>Task Management</h1>
+            <div className="mb-4">
+                <h1 className={`text-xl font-bold ${isMobile || isDark ? 'text-white' : 'text-gray-900'}`}>Task Management</h1>
             </div>
 
             <div className="flex flex-col md:flex-row gap-4 mb-6 md:items-end justify-between">
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-1">
-                        <label htmlFor={statusFilterId} className={`text-sm font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Status</label>
+                        <label htmlFor={statusFilterId} className={`text-xs font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Status</label>
                         <select
                             id={statusFilterId}
                             name="statusFilter"
-                            className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                             value={statusFilter}
                             onChange={e => setStatusFilter(e.target.value as any)}
                         >
@@ -261,11 +261,11 @@ const TaskManagement: React.FC = () => {
                         </select>
                     </div>
                     <div className="space-y-1">
-                        <label htmlFor={priorityFilterId} className={`text-sm font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Priority</label>
+                        <label htmlFor={priorityFilterId} className={`text-xs font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Priority</label>
                         <select
                             id={priorityFilterId}
                             name="priorityFilter"
-                            className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                             value={priorityFilter}
                             onChange={e => setPriorityFilter(e.target.value as any)}
                         >
@@ -276,11 +276,11 @@ const TaskManagement: React.FC = () => {
                         </select>
                     </div>
                     <div className="space-y-1">
-                        <label htmlFor={assignedToFilterId} className={`text-sm font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Assignee</label>
+                        <label htmlFor={assignedToFilterId} className={`text-xs font-medium ${isMobile || isDark ? 'text-gray-300' : 'text-gray-700'}`}>Filter by Assignee</label>
                         <select
                             id={assignedToFilterId}
                             name="assignedToFilter"
-                            className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500 ${isMobile || isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                             value={assignedToFilter}
                             onChange={e => setAssignedToFilter(e.target.value)}
                         >
@@ -298,9 +298,9 @@ const TaskManagement: React.FC = () => {
                     )}
                     <button
                         onClick={handleAdd}
-                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#32CD32] hover:bg-[#28a428] text-[#0D1A0D] font-bold border-none shadow-none text-sm py-3 px-6 rounded-xl' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
+                        className={`flex items-center justify-center transition-colors ${isMobile ? 'bg-[#32CD32] hover:bg-[#28a428] text-[#0D1A0D] font-bold border-none shadow-none text-[13px] py-2 px-5 rounded-lg' : 'bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-6 py-2.5 font-medium'}`}
                     >
-                        <Plus className="mr-2 h-5 w-5" /> Add Task
+                        <Plus className="mr-2 h-4 w-4" /> Add Task
                     </button>
                 </div>
             </div>
@@ -342,30 +342,30 @@ const TaskManagement: React.FC = () => {
 
                             if (isMobile) {
                                 return (
-                                    <div key={task.id} className="bg-[#152b1b] p-4 rounded-xl border border-white/5 mb-4">
-                                        <div className="flex justify-between items-start mb-3">
+                                    <div key={task.id} className="bg-[#152b1b] p-3 rounded-xl border border-white/5 mb-3">
+                                        <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <h3 className="font-semibold text-white text-lg">{task.name}</h3>
-                                                <p className="text-sm text-gray-400 mt-1">Due: <span className={isOverdue ? 'text-red-400 font-bold' : ''}>{nextDueDate || '-'}</span></p>
+                                                <h3 className="font-semibold text-white text-base">{task.name}</h3>
+                                                <p className="text-[12px] text-gray-400 mt-0.5">Due: <span className={isOverdue ? 'text-red-400 font-bold' : ''}>{nextDueDate || '-'}</span></p>
                                             </div>
                                             {getPriorityChip(task.priority)}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+                                        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                                             <div>
-                                                <span className="text-gray-500 block text-xs">Assigned To</span>
+                                                <span className="text-gray-500 block text-[10px]">Assigned To</span>
                                                 <span className="text-gray-300">{task.assignedToName || '-'}</span>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500 block text-xs">Status</span>
+                                                <span className="text-gray-500 block text-[10px]">Status</span>
                                                 <span className="text-gray-300">{task.status}</span>
                                             </div>
                                         </div>
-                                        <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
-                                            <button onClick={() => handleEdit(task)} className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-lg"><Edit className="h-4 w-4" /></button>
-                                            <button onClick={() => handleDelete(task)} className="p-2 text-red-400 hover:text-red-300 bg-red-500/10 rounded-lg"><Trash2 className="h-4 w-4" /></button>
+                                        <div className="flex justify-end gap-2 border-t border-white/10 pt-2.5">
+                                            <button onClick={() => handleEdit(task)} className="p-1.5 text-gray-400 hover:text-white bg-white/5 rounded-lg"><Edit className="h-3.5 w-3.5" /></button>
+                                            <button onClick={() => handleDelete(task)} className="p-1.5 text-red-400 hover:text-red-300 bg-red-500/10 rounded-lg"><Trash2 className="h-3.5 w-3.5" /></button>
                                             {task.assignedToId === user?.id && task.status !== 'Done' && (
-                                                <button onClick={() => handleComplete(task)} className="flex items-center px-3 py-2 bg-emerald-500/10 text-emerald-400 rounded-lg text-sm font-medium">
-                                                    <CheckCircle className="h-4 w-4 mr-1.5" /> Complete
+                                                <button onClick={() => handleComplete(task)} className="flex items-center px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs font-medium">
+                                                    <CheckCircle className="h-3.5 w-3.5 mr-1" /> Complete
                                                 </button>
                                             )}
                                         </div>

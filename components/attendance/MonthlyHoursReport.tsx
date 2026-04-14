@@ -60,17 +60,23 @@ export interface EmployeeMonthlyData {
   leaves: number;
   lossOfPay: number;
 }
-
 interface MonthlyHoursReportProps {
-  month: number; // 1-12
+  month: number;
   year: number;
-  userId?: string; // If provided, show single employee; otherwise show all
-  data?: EmployeeMonthlyData[]; // If provided, use this data directly
+  userId?: string;
+  data?: EmployeeMonthlyData[];
   hideHeader?: boolean;
   scopedSettings?: any[];
+  selectedStatus?: string;
+  selectedSite?: string;
+  selectedSociety?: string;
+  selectedRole?: string;
 }
 
-const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, userId, data: externalData, hideHeader, scopedSettings = [] }) => {
+const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
+  month, year, userId, data: externalData, hideHeader, scopedSettings = [],
+  selectedStatus = 'all', selectedSite = 'all', selectedSociety = 'all', selectedRole = 'all'
+}) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
   const [users, setUsers] = useState<User[]>([]);
@@ -101,53 +107,69 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ month, year, us
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData]);
+  }, [month, year, userId, externalData, selectedStatus, selectedSite, selectedSociety, selectedRole]);
 
   const loadReportData = async () => {
     setLoading(true);
     try {
-      // Fetch users
-      const usersData = await api.getUsers();
+      // 1. Fetch auxiliary data in parallel
+      const [usersData, leavesDataResponse, userHolidaysData] = await Promise.all([
+        api.getUsers(),
+        api.getLeaveRequests(),
+        api.getAllUserHolidays()
+      ]);
+
+      const leavesData = leavesDataResponse?.data || [];
       setUsers(usersData);
-
-      // Filter users if userId is provided
-      const targetUsers = userId ? usersData.filter(u => u.id === userId) : usersData;
-
-      // Fetch attendance events for the month
-      const startDate = startOfMonth(new Date(year, month - 1));
-      const endDate = endOfMonth(new Date(year, month - 1));
-      
-      const employeeReports: EmployeeMonthlyData[] = [];
-
-      // Fetch leaves for the month
-      const { data: leavesData } = await api.getLeaveRequests();
-      setLeaves(leavesData || []);
-
-      // Fetch user holidays pool
-      const userHolidaysData = await api.getAllUserHolidays();
+      setLeaves(leavesData);
       setUserHolidaysPool(userHolidaysData || []);
 
-      for (const user of targetUsers) {
-        // Fetch events from the start of the week containing the month's first day
-        // to correctly calculate W/O for early Sundays.
-        const fetchStartDate = startOfWeek(startDate, { weekStartsOn: 1 }); // Monday
-        const events = await api.getAttendanceEvents(user.id, format(fetchStartDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd HH:mm:ss'));
-        const userLeaves = (leavesData || []).filter((l: any) => l.userId === user.id && l.status === 'approved');
-
-        // Fetch field violations for field staff to check manager acknowledgments
-        let fieldViolations: FieldAttendanceViolation[] = [];
-        const userCategory = getStaffCategory(user.role);
-        if (userCategory === 'field') {
-          try {
-            fieldViolations = await api.getFieldViolations(user.id);
-          } catch (err) {
-            console.warn('Could not fetch field violations for', user.id, err);
-          }
+      // 2. Filter target users based on props
+      let targetUsers = usersData;
+      if (userId && userId !== 'all') {
+        targetUsers = usersData.filter(u => u.id === userId);
+      } else {
+        if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
+        if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId === selectedSite);
+        if (selectedSociety !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedSociety);
+        
+        // Use global isActive flag for Active Users Only filter initial filter
+        if (selectedStatus === 'ACTIVE_USERS') {
+          targetUsers = targetUsers.filter(u => (u as any).isActive !== false);
         }
+      }
 
-        // Pass userHolidaysData directly to avoid stale state issues
-        const monthlyData = processEmployeeMonth(user, events, userLeaves, userHolidaysData || [], year, month, fieldViolations);
-        employeeReports.push(monthlyData);
+      // 3. Fetch ALL attendance events for the site/duration in ONE call (Performance Optimization)
+      const startDate = startOfMonth(new Date(year, month - 1));
+      const endDate = endOfMonth(new Date(year, month - 1));
+      const fetchStartDate = startOfWeek(startDate, { weekStartsOn: 1 }); // Monday buffer
+      
+      const allEvents = await api.getAllAttendanceEvents(
+        format(fetchStartDate, 'yyyy-MM-dd'), 
+        format(endDate, 'yyyy-MM-dd HH:mm:ss')
+      );
+
+      // 4. Pre-filter exclusions for Management (consistent with dashboard)
+      if (userId === undefined || userId === 'all') {
+        targetUsers = targetUsers.filter(u => u.role !== 'management');
+      }
+
+      // 5. Process data locally for each user using the bulk-fetched events
+      let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
+        const userEvents = allEvents.filter(e => String(e.userId) === String(user.id));
+        const userLeaves = leavesData.filter((l: any) => l.userId === user.id && l.status === 'approved');
+        
+        // Process days locally (no more per-user API calls in the loop)
+        return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, []);
+      });
+
+      // 6. FINAL ACTIVITY FILTER: "Active Users Only" must have at least one Present day if selected
+      if (selectedStatus === 'ACTIVE_USERS') {
+          employeeReports = employeeReports.filter(report => {
+              // Defined as having at least one day of tracked attendance (Present, Half Day, etc.)
+              // The user said: "if user p for 1 or more they will be active"
+              return report.presentDays > 0 || report.halfDays > 0 || report.threeQuarterDays > 0 || report.quarterDays > 0;
+          });
       }
 
       setReportData(employeeReports);

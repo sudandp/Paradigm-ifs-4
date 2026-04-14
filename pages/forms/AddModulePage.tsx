@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { AppModule, Permission } from '../../types';
+import type { TaskGroup, Permission } from '../../types';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Input from '../../components/ui/Input';
@@ -25,25 +25,25 @@ const AddModulePage: React.FC = () => {
 
         setIsSubmitting(true);
         try {
-            const newModule: AppModule = {
+            const newTaskGroup: TaskGroup = {
                 id: name.toLowerCase().replace(/\s+/g, '_'),
                 name: name.trim(),
                 description: description.trim(),
                 permissions: permissions.split(',').map(p => p.trim()).filter(Boolean) as Permission[]
             };
 
-            // Fetch existing modules to append
-            const existingModules = await api.getModules();
-            if (existingModules.some(m => m.id === newModule.id)) {
-                setToast({ message: 'Module with this ID already exists.', type: 'error' });
+            // Fetch existing task groups to append
+            const existingTaskGroups = await api.getTaskGroups();
+            if (existingTaskGroups.some(m => m.id === newTaskGroup.id)) {
+                setToast({ message: 'Access task with this ID already exists.', type: 'error' });
                 setIsSubmitting(false);
                 return;
             }
 
-            const updatedModules = [...existingModules, newModule];
-            await api.saveModules(updatedModules);
+            const updatedTaskGroups = [...existingTaskGroups, newTaskGroup];
+            await api.saveTaskGroups(updatedTaskGroups);
 
-            setToast({ message: 'Module created successfully!', type: 'success' });
+            setToast({ message: 'Access task created successfully!', type: 'success' });
             setTimeout(() => navigate('/admin/modules'), 1500);
         } catch (error) {
             setToast({ message: 'Failed to create module. Please try again.', type: 'error' });
@@ -56,7 +56,7 @@ const AddModulePage: React.FC = () => {
         return (
             <div className="h-full flex flex-col">
                 <header className="p-4 flex-shrink-0 fo-mobile-header">
-                    <h1>Add Module</h1>
+                    <h1>Add Access Task</h1>
                 </header>
                 <main className="flex-1 overflow-y-auto p-4">
                     <div className="bg-card rounded-2xl p-6 space-y-6">
@@ -64,12 +64,12 @@ const AddModulePage: React.FC = () => {
                             <div className="inline-block bg-accent-light p-3 rounded-full mb-2">
                                 <Package className="h-8 w-8 text-accent-dark" />
                             </div>
-                            <h2 className="text-xl font-bold text-primary-text">Add New Module</h2>
-                            <p className="text-sm text-gray-400">Create a new system module.</p>
+                            <h2 className="text-xl font-bold text-primary-text">Add New Access Task</h2>
+                            <p className="text-sm text-gray-400">Create a new system access task group.</p>
                         </div>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <Input
-                                label="Module Name"
+                                label="Task Group Name"
                                 id="name"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
@@ -142,14 +142,14 @@ const AddModulePage: React.FC = () => {
                         <Package className="h-8 w-8 text-accent-dark" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-bold text-primary-text">Add New Module</h2>
-                        <p className="text-muted">Create a new system module.</p>
+                        <h2 className="text-2xl font-bold text-primary-text">Add New Access Task</h2>
+                        <p className="text-muted">Create a new system access task group.</p>
                     </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <Input
-                        label="Module Name"
+                        label="Task Group Name"
                         id="name"
                         value={name}
                         onChange={e => setName(e.target.value)}
@@ -198,7 +198,7 @@ const AddModulePage: React.FC = () => {
                             Cancel
                         </Button>
                         <Button type="submit" isLoading={isSubmitting} disabled={!name.trim() || !description.trim()}>
-                            Create Module
+                            Create Access Task
                         </Button>
                     </div>
                 </form>

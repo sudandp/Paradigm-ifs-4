@@ -7,7 +7,7 @@ import type {
   ManpowerDetail, BackOfficeIdSeries, SiteStaffDesignation, Asset, MasterTool, MasterToolsList,
   SiteGentsUniformConfig, MasterGentsUniforms, SiteLadiesUniformConfig, MasterLadiesUniforms, UniformRequest,
   SiteUniformDetailsConfig, EnrollmentRules, InvoiceData, UserRole, UploadedFile, SalaryChangeRequest, SiteStaff,
-  SubmissionCostBreakdown, AppModule, Role, SupportTicket, TicketPost, TicketComment, VerificationResult, CompOffLog,
+  SubmissionCostBreakdown, TaskGroup, Role, SupportTicket, TicketPost, TicketComment, VerificationResult, CompOffLog,
   ExtraWorkLog, PerfiosVerificationData, HolidayListItem, UniformRequestItem, IssuedTool, RecurringHolidayRule,
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
   NotificationRule, AutomatedNotificationRule, ScheduledNotification, NotificationType, Company, GmcPolicySettings, StaffAttendanceRules,
@@ -1929,7 +1929,7 @@ export const api = {
     if (error) throw error;
     return { count: count || 0 };
   },
-  getModules: async (): Promise<AppModule[]> => {
+  getTaskGroups: async (): Promise<TaskGroup[]> => {
     const status = await Network.getStatus();
     if (status.connected) {
       try {
@@ -1937,16 +1937,16 @@ export const api = {
         if (error) throw error;
         const formatted = (data || []).map(toCamelCase);
         await offlineDb.setCache('app_modules', formatted);
-        return formatted;
+        return formatted as TaskGroup[];
       } catch (err) {
-        console.warn('Failed to fetch modules from cloud, falling back to cache');
+        console.warn('Failed to fetch access tasks from cloud, falling back to cache');
       }
     }
-    return await offlineDb.getCache('app_modules') || [];
+    return (await offlineDb.getCache('app_modules') || []) as TaskGroup[];
   },
-  saveModules: async (modules: AppModule[]): Promise<void> => {
+  saveTaskGroups: async (taskGroups: TaskGroup[]): Promise<void> => {
     // A full replacement is complex, upsert is simplest for now.
-    const { error } = await supabase.from('app_modules').upsert(toSnakeCase(modules));
+    const { error } = await supabase.from('app_modules').upsert(toSnakeCase(taskGroups));
     if (error) throw error;
   },
   getRoles: async (): Promise<Role[]> => {

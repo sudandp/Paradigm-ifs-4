@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
-import type { UserRole, Permission, AppModule, Role } from '../../types';
+import type { UserRole, Permission, TaskGroup, Role } from '../../types';
 import { ShieldCheck, Check, X, Loader2, Plus, MoreVertical, Edit, Trash2, Search, Copy, ChevronDown, ChevronRight } from 'lucide-react';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
@@ -73,7 +73,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Security & Roles
     { key: 'manage_users', name: 'Manage Users', description: 'Create, edit, and delete user accounts.', category: 'Security & Roles' },
     { key: 'manage_roles_and_permissions', name: 'Manage Roles & Permissions', description: 'Access this page to edit role permissions.', category: 'Security & Roles' },
-    { key: 'manage_modules', name: 'Manage Modules', description: 'Create, edit, and group permissions into modules.', category: 'Security & Roles' },
+    { key: 'manage_modules', name: 'Manage Access Tasks', description: 'Create, edit, and group permissions into access task groups.', category: 'Security & Roles' },
 
     // System Config
     { key: 'view_developer_settings', name: 'Developer Settings', description: 'Access API settings and other developer tools.', category: 'System Config' },
@@ -92,7 +92,7 @@ const RoleManagement: React.FC = () => {
     const navigate = useNavigate();
     const { permissions, setRolePermissions, addRolePermissionEntry, removeRolePermissionEntry, renameRolePermissionEntry } = usePermissionsStore();
     const [roles, setRoles] = useState<Role[]>([]);
-    const [modules, setModules] = useState<AppModule[]>([]);
+    const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -109,7 +109,7 @@ const RoleManagement: React.FC = () => {
     const [roleSearchQuery, setRoleSearchQuery] = useState('');
     const [permissionSearchQuery, setPermissionSearchQuery] = useState('');
     
-    const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
+    const [expandedTaskGroups, setExpandedTaskGroups] = useState<Record<string, boolean>>({});
     
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -119,7 +119,7 @@ const RoleManagement: React.FC = () => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [fetchedRoles, fetchedModules] = await Promise.all([api.getRoles(), api.getModules()]);
+                const [fetchedRoles, fetchedTaskGroups] = await Promise.all([api.getRoles(), api.getTaskGroups()]);
                 
                 const roleOrder = [
                     'bd', 'management', 'admin', 'developer', 'hr', 'operation_manager', 
@@ -138,12 +138,12 @@ const RoleManagement: React.FC = () => {
                 setRoles(sortedRoles);
                 if (sortedRoles.length > 0) setSelectedRoleId(sortedRoles[0].id);
 
-                const sortedModules = fetchedModules.sort((a, b) => a.name.localeCompare(b.name));
-                setModules(sortedModules);
+                const sortedTaskGroups = fetchedTaskGroups.sort((a, b) => a.name.localeCompare(b.name));
+                setTaskGroups(sortedTaskGroups);
                 
-                // Open first module by default
-                if (sortedModules.length > 0) {
-                    setExpandedModules({ [sortedModules[0].id]: true });
+                // Open first task group by default
+                if (sortedTaskGroups.length > 0) {
+                    setExpandedTaskGroups({ [sortedTaskGroups[0].id]: true });
                 }
             } catch (error) {
                 console.error("Failed to load data", error);
@@ -287,15 +287,15 @@ const RoleManagement: React.FC = () => {
         setIsDeleteModalOpen(false);
     };
 
-    const toggleModule = (moduleId: string) => {
-        setExpandedModules(prev => ({ ...prev, [moduleId]: !prev[moduleId] }));
+    const toggleTaskGroup = (moduleId: string) => {
+        setExpandedTaskGroups(prev => ({ ...prev, [moduleId]: !prev[moduleId] }));
     };
 
     const allPermissionDetailsMap = useMemo(() => new Map(allPermissions.map(p => [p.key, p])), []);
     const unassignedPermissions = useMemo(() => {
-        const assigned = new Set(modules.flatMap(m => m.permissions));
+        const assigned = new Set(taskGroups.flatMap(m => m.permissions));
         return allPermissions.filter(p => !assigned.has(p.key));
-    }, [modules]);
+    }, [taskGroups]);
     
     const filteredRoles = useMemo(() => {
         if (!roleSearchQuery) return roles;
@@ -493,7 +493,7 @@ const RoleManagement: React.FC = () => {
 
                             <div className="p-4 md:p-6 space-y-4 bg-page flex-1 overflow-y-auto">
                                 {Object.entries(groupedPermissions).map(([category, perms]) => {
-                                    const isExpanded = expandedModules[category] || permissionSearchQuery.length > 0;
+                                    const isExpanded = expandedTaskGroups[category] || permissionSearchQuery.length > 0;
                                     const rolePerms = permissions[selectedRole.id] || [];
                                     const checkedCount = perms.filter(p => {
                                         const isRoleAdmin = isAdmin(selectedRole.id) && selectedRole.id.toLowerCase() !== 'developer';
@@ -509,7 +509,7 @@ const RoleManagement: React.FC = () => {
                                         <div key={category} className="bg-card rounded-xl border border-border shadow-sm overflow-hidden transform transition-all hover:border-border/80">
                                             <div 
                                                 className="px-5 py-4 flex items-center justify-between cursor-pointer hover:bg-page transition-colors select-none"
-                                                onClick={() => toggleModule(category)}
+                                                onClick={() => toggleTaskGroup(category)}
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <div className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'bg-accent/10 text-accent' : 'bg-page text-muted'}`}>

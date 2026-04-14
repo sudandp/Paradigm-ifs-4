@@ -551,6 +551,34 @@ const AttendanceDashboard: React.FC = () => {
     const [pendingSelectedStatus, setPendingSelectedStatus] = useState(selectedStatus);
     const [pendingSelectedRecordType, setPendingSelectedRecordType] = useState(selectedRecordType);
     const [pendingReportPageSize, setPendingReportPageSize] = useState(reportPageSize);
+    const [isFiltersDirty, setIsFiltersDirty] = useState(false);
+
+    // Watch for changes in pending filters vs applied filters
+    useEffect(() => {
+        const isDirty = 
+            pendingSelectedSite !== selectedSite ||
+            pendingSelectedSociety !== selectedSociety ||
+            pendingSelectedRole !== selectedRole ||
+            pendingSelectedUser !== selectedUser ||
+            pendingSelectedStatus !== selectedStatus ||
+            pendingSelectedRecordType !== selectedRecordType ||
+            pendingReportType !== reportType ||
+            pendingReportPageSize !== reportPageSize ||
+            pendingDateRange.startDate?.getTime() !== dateRange.startDate?.getTime() ||
+            pendingDateRange.endDate?.getTime() !== dateRange.endDate?.getTime();
+            
+        setIsFiltersDirty(isDirty);
+    }, [
+        pendingSelectedSite, selectedSite,
+        pendingSelectedSociety, selectedSociety,
+        pendingSelectedRole, selectedRole,
+        pendingSelectedUser, selectedUser,
+        pendingSelectedStatus, selectedStatus,
+        pendingSelectedRecordType, selectedRecordType,
+        pendingReportType, reportType,
+        pendingReportPageSize, reportPageSize,
+        pendingDateRange, dateRange
+    ]);
 
     const handleApplyFilters = () => {
         setDateRange(pendingDateRange);
@@ -564,6 +592,7 @@ const AttendanceDashboard: React.FC = () => {
         setSelectedRecordType(pendingSelectedRecordType);
         setReportPageSize(pendingReportPageSize);
         
+        setIsFiltersDirty(false);
         setToast({ message: 'Filters applied successfully', type: 'success' });
     };
 
@@ -1525,120 +1554,52 @@ const AttendanceDashboard: React.FC = () => {
                 const dateStr = format(day, 'yyyy-MM-dd');
                 const dayName = format(day, 'EEEE');
                 const isWeekend = weeklyOffDays.includes(day.getDay());
-
-                const matchesDate = (targetDate: any, compareDay: Date) => {
-                    if (!targetDate) return false;
-                    try {
-                        const compareStr = format(compareDay, 'yyyy-MM-dd');
-                        const dateVal = String(targetDate).split(' ')[0].split('T')[0];
-                        if (dateVal === compareStr) return true;
-                        const compareMMDD = format(compareDay, '-MM-dd');
-                        if (dateVal.includes(compareMMDD) || dateVal.endsWith(compareMMDD)) return true;
-                        if (dateVal.startsWith('-') && compareStr.endsWith(dateVal)) return true;
-                        return false;
-                    } catch (e) { return false; }
-                };
-
                 const dayEvents = userEventsMap?.get(dateStr) || [];
-                const hasActivity = dayEvents.length > 0;
 
-                const isRecurringHoliday = recurringHolidays.some(rule => {
-                    if (rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
-                    const occurrence = Math.ceil(day.getDate() / 7);
-                    const ruleType = rule.type || 'office';
-                    if (rule.n === occurrence && ruleType === userCategory) {
-                        if (userRules?.floatingLeavesExpiryDate) {
-                            const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
-                            if (startOfDay(day) > expiryDate) return false;
-                        }
-                        return true;
-                    }
-                    return false;
+                const status = evaluateAttendanceStatus({
+                    day,
+                    userId: user.id,
+                    userCategory: userCategory as any,
+                    userRules,
+                    dayEvents,
+                    officeHolidays,
+                    fieldHolidays,
+                    siteHolidays,
+                    recurringHolidays,
+                    userHolidaysPool,
+                    leaves,
+                    daysPresentInWeek
                 });
 
-                const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
-                    const [m, d] = fh.date.split('-').map(Number);
-                    return day.getMonth() === (m - 1) && day.getDate() === d;
-                });
+                // Update daysPresentInWeek for W/O threshold
+                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'W/H') {
+                    const increment = status.includes('1/2') ? 0.5 : 1;
+                    daysPresentInWeek += increment;
+                }
 
-                const isPoolHoliday = userHolidaysPool.some(uh => {
-                    const uhUserId = uh.userId || (uh as any).user_id;
-                    const holidayDate = uh.holidayDate || (uh as any).holiday_date;
-                    return uhUserId && String(uhUserId).toLowerCase() === String(user.id).toLowerCase() && matchesDate(holidayDate, day);
-                });
+                // Map status to counters
+                const increment = status.startsWith('1/2') ? 0.5 : 1;
+                
+                if (status === 'P') presentDays++;
+                else if (status === '3/4P') threeQuarterDays++;
+                else if (status === '1/2P') halfDays++;
+                else if (status === '1/4P') quarterDays++;
+                else if (status === 'A') absentDays++;
+                else if (status === 'W/O') weekOffs++;
+                else if (status === 'W/P' || status === 'WOP') { weekOffs++; weekendPresents++; }
+                else if (status === 'H') holidays++;
+                else if (status === 'H/P' || status === 'HP') { holidays++; holidayPresents++; }
+                else if (status.includes('S/L')) sickLeaves += increment;
+                else if (status.includes('E/L')) earnedLeaves += increment;
+                else if (status.includes('F/H')) floatingHolidays += increment;
+                else if (status.includes('C/O')) compOffs += increment;
+                else if (status.includes('LOP')) { lossOfPays += increment; absentDays += increment; }
+                else if (status === 'W/H') workFromHomeDays++;
 
-                const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => matchesDate(h.date, day));
-                const isCompanyHoliday = isFixedHoliday || isPoolHoliday || isConfiguredHoliday;
-
-                const approvedLeave = userApprovedLeaves.find(l => 
-                    isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) })
-                );
-
-                let status = '';
-
-                if (isCompanyHoliday) {
-                    if (hasActivity) { status = 'HP'; holidayPresents++; }
-                    else { status = 'H'; holidays++; }
-                    daysPresentInWeek++; // Holidays count for W/O threshold
-                } else if (isRecurringHoliday) {
-                    if (hasActivity) { status = 'HP'; holidayPresents++; }
-                    else { status = 'F/H'; floatingHolidays++; }
-                    daysPresentInWeek++; // Floating Holidays count for W/O threshold
-                } else if (approvedLeave) {
-                    const isHalfDay = approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half';
-                    const increment = isHalfDay ? 0.5 : 1;
-                    const prefix = isHalfDay ? '1/2' : '';
-                    const leaveType = approvedLeave.leaveType?.toLowerCase();
-                    const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(leaveType || '');
-                    
-                    if (leaveType === 'sick') { status = prefix + 'S/L'; sickLeaves += increment; }
-                    else if (leaveType?.includes('comp')) { status = prefix + 'C/O'; compOffs += increment; }
-                    else if (leaveType?.includes('float')) { status = prefix + 'F/H'; floatingHolidays += increment; }
-                    else if (isLOP) { 
-                        status = isHalfDay ? '1/2A' : 'A'; absentDays += increment; lossOfPays += increment; 
-                    } else { status = prefix + 'E/L'; earnedLeaves += increment; }
-
-                    if (!isLOP) daysPresentInWeek += increment; // Paid leaves count for W/O threshold
-
-                    if (isHalfDay && hasActivity) {
-                         const { workingHours } = calculateWorkingHours(dayEvents);
-                         if (workingHours >= 4) { status = 'P ' + status; presentDays += 0.5; }
-                         else if (workingHours > 0) { status = '1/2P ' + status; }
-                    }
-                } else if (hasActivity) {
+                // Optional: track overtime days (if > 14 hours)
+                if (status.includes('P') && dayEvents.length > 0) {
                     const { workingHours } = calculateWorkingHours(dayEvents);
-                    const minHoursFullDay = userRules.minimumHoursFullDay || 6;
-                    const minHoursHalfDay = userRules.minimumHoursHalfDay || 3;
-                    
-                    if (isWeekend) { status = 'WOP'; weekendPresents++; overtimeDays++; }
-                    else if (dayEvents.some(e => e.locationName?.toLowerCase().includes('work from home'))) { status = 'W/H'; workFromHomeDays++; }
-                    else if ((userCategory === 'field' || userCategory === 'site') && attendance.field?.enableSiteTimeTracking) {
-                        const userIdKey = String(user.id).toLowerCase();
-                        const dayViolation = (fieldViolationsMap[userIdKey] || []).find(v => v.date === dateStr);
-                        // Passing resolved userRules to ensure user-specific targets (like shifts) are respected
-                        const fieldResult = getFieldStaffStatus(dayEvents, userRules as any, dayViolation, user.role);
-                        status = fieldResult.status;
-                        
-                        if (status === 'P') { presentDays++; if (workingHours > 14) overtimeDays++; }
-                        else if (status === '3/4P') threeQuarterDays++;
-                        else if (status === '1/2P') halfDays++;
-                        else if (status === '1/4P') quarterDays++;
-                    } else {
-                        // Apply 15-minute buffer to full day check for standard staff
-                        if (workingHours >= (minHoursFullDay - 0.25)) { status = 'P'; presentDays++; if (workingHours > 14) overtimeDays++; }
-                        else if (workingHours >= minHoursHalfDay) { status = '0.5P'; halfDays++; }
-                        else { status = 'P'; presentDays++; } 
-                    }
-                    daysPresentInWeek++; // Any activity counts toward W/O threshold
-                } else if (isWeekend) {
-                    if (daysPresentInWeek >= ((userRules as any).weekendPresentThreshold ?? 3)) {
-                        status = 'W/O'; weekOffs++;
-                    } else {
-                        status = 'A'; absentDays++;
-                    }
-                    // Removed immediate reset here to allow multi-day weekends (Sat/Sun) to both be W/O if threshold met Mon-Fri
-                } else {
-                    status = 'A'; absentDays++;
+                    if (workingHours > 14) overtimeDays++;
                 }
                 
                 statuses.push(status);
@@ -2833,7 +2794,11 @@ const AttendanceDashboard: React.FC = () => {
                     <div className="col-span-2 md:col-span-1 xl:ml-auto">
                         <Button
                             onClick={handleApplyFilters}
-                            className="w-full bg-[#22c55e] hover:bg-[#16a34a] text-white shadow-lg flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold"
+                            className={`w-full text-white shadow-lg flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-300 ${
+                                isFiltersDirty 
+                                    ? "bg-rose-600 hover:bg-rose-700 animate-pulse" 
+                                    : "bg-emerald-600 hover:bg-emerald-700"
+                            }`}
                         >
                             <Filter className="w-4 h-4" />
                             Apply Filters
@@ -2973,6 +2938,10 @@ const AttendanceDashboard: React.FC = () => {
                                         userId={selectedUser === 'all' ? undefined : selectedUser} 
                                         scopedSettings={scopedSettings}
                                         hideHeader
+                                        selectedStatus={selectedStatus}
+                                        selectedSite={selectedSite}
+                                        selectedSociety={selectedSociety}
+                                        selectedRole={selectedRole}
                                     />
                                 ) : (
                                     previewContent
