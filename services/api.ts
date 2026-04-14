@@ -3027,13 +3027,12 @@ export const api = {
       // Office Roles
       if ([
         'hr', 'admin', 'finance', 'developer', 'management', 'office_staff', 
-        'back_office_staff', 'bd', 'operation_manager',
-        'finance_manager', 'hr_ops', 'business developer', 'unverified',
-        'operation manager', 'finance manager', 'hr ops'
+        'back_office_staff', 'bd', 'finance_manager', 'hr_ops', 'business developer', 'unverified',
+        'finance manager', 'hr ops'
       ].includes(r)) return 'office';
       
       // Site Roles
-      if (['site_manager', 'site_supervisor', 'site manager', 'site supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter'].includes(r)) return 'site';
+      if (['site_manager', 'site manager', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'security_guard'].includes(r)) return 'site';
       
       // Default to field (includes 'field_staff', 'field staff', etc.)
       return 'field';

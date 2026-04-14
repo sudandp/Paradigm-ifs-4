@@ -436,26 +436,7 @@ const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
-    const { permissions } = usePermissionsStore();
-    const getStaffCategory = (role?: string): 'office' | 'field' | 'site' => {
-        if (!role) return 'office';
-        const r = role.toLowerCase();
-        const OFFICE_ROLES = ['admin', 'developer', 'hr', 'hr_ops', 'operations_manager', 'back_office', 'receptionist', 'finance', 'accounts', 'accountant', 'manager', 'management', 'super_admin'];
-        if (OFFICE_ROLES.includes(r)) return 'office';
-        
-        // Field roles include field, officer, supervisor, site_manager, technical, project, engineer
-        if (r.includes('field') || r.includes('officer') || r.includes('supervisor') || r.includes('site_manager') || r.includes('technical')) {
-            return 'field';
-        }
-        
-        if (r.includes('site') || r.includes('project') || r.includes('engineer')) {
-            return 'site';
-        }
-
-        return 'site'; 
-    };
-
-    const isOfficeUser = (role?: string) => getStaffCategory(role) === 'office';
+    const { permissions } = usePermissionsStore();    const isOfficeUser = (role?: string) => getStaffCategory(role) === 'office';
 
     const { attendance, recurringHolidays, officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
 
@@ -1596,8 +1577,8 @@ const AttendanceDashboard: React.FC = () => {
                 else if (status.includes('LOP')) { lossOfPays += increment; absentDays += increment; }
                 else if (status === 'W/H') workFromHomeDays++;
 
-                // Optional: track overtime days (if > 14 hours)
-                if (status.includes('P') && dayEvents.length > 0) {
+                // Optional: track overtime days (if > 14 hours) - Only for SITE staff
+                if (userCategory === 'site' && status.includes('P') && dayEvents.length > 0) {
                     const { workingHours } = calculateWorkingHours(dayEvents);
                     if (workingHours > 14) overtimeDays++;
                 }
@@ -1816,7 +1797,19 @@ const AttendanceDashboard: React.FC = () => {
         if (isPreview) {
             if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'monthly') return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'monthly') {
+                if (selectedUser !== 'all') {
+                    return (
+                        <MonthlyHoursReport 
+                            month={dateRange.startDate!.getMonth() + 1} 
+                            year={dateRange.startDate!.getFullYear()} 
+                            userId={selectedUser}
+                            hideHeader={true}
+                        />
+                    );
+                }
+                return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            }
             if (reportType === 'work_hours') return <WorkHoursReportView data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;

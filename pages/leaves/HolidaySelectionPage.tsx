@@ -6,7 +6,7 @@ import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useDevice } from '../../hooks/useDevice';
 import Button from '../../components/ui/Button';
-import { Calendar as CalendarIcon, Check, ChevronLeft, Info, Loader2, Save } from 'lucide-react';
+import { Calendar as CalendarIcon, Check, ChevronLeft, Info, Loader2, Lock, Save } from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import HolidayCalendar from './HolidayCalendar';
 import type { UserHoliday, Holiday, StaffAttendanceRules } from '../../types';
@@ -56,6 +56,22 @@ const HolidaySelectionPage: React.FC = () => {
 
     const toggleHoliday = (name: string, date: string) => {
         const isSelected = selectedHolidays.some(h => h.name === name);
+        
+        // Prevent changes to past or current day holidays
+        const dateStr = date.startsWith('-') ? `${currentYear}${date}` : date;
+        const holidayDate = new Date(dateStr.replace(/-/g, '/'));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (holidayDate <= today) {
+            if (isSelected) {
+                setToast({ message: "You cannot deselect a holiday that has already passed or is today.", type: 'error' });
+            } else {
+                setToast({ message: "You cannot select a holiday that has already passed.", type: 'error' });
+            }
+            return;
+        }
+
         if (isSelected) {
             setSelectedHolidays(selectedHolidays.filter(h => h.name !== name));
         } else {
@@ -248,37 +264,58 @@ const HolidaySelectionPage: React.FC = () => {
                         <div className="grid grid-cols-1 gap-3">
                             {[...holidayPool].sort((a, b) => a.date.localeCompare(b.date)).map((holiday, index) => {
                                 const isSelected = selectedHolidays.some(h => h.name === holiday.name);
-                                const dateObj = new Date(`${currentYear}${holiday.date}`);
+                                const dateObj = new Date(`${currentYear}${holiday.date}`.replace(/-/g, '/'));
                                 const formattedDate = dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' });
+                                
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const isPastOrToday = dateObj <= today;
 
                                 return (
                                     <button
                                         key={index}
                                         onClick={() => toggleHoliday(holiday.name, holiday.date)}
-                                        className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-200 text-left hover:scale-[1.01] active:scale-[0.99] ${
+                                        disabled={isPastOrToday}
+                                        className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-200 text-left ${
+                                            !isPastOrToday ? 'hover:scale-[1.01] active:scale-[0.99]' : 'cursor-not-allowed'
+                                        } ${
                                             isSelected 
                                             ? 'bg-accent/10 border-accent shadow-sm ring-1 ring-accent/20' 
-                                            : 'bg-transparent border-border hover:border-accent/30 hover:bg-accent/5'
+                                            : isPastOrToday 
+                                                ? 'bg-gray-100 border-gray-200 opacity-60' 
+                                                : 'bg-transparent border-border hover:border-accent/30 hover:bg-accent/5'
                                         }`}
                                     >
                                         <div className="flex items-center gap-4">
                                             <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center transition-colors ${
-                                                isSelected ? 'bg-accent text-white' : 'bg-muted/10 text-muted'
+                                                isSelected 
+                                                    ? (isPastOrToday ? 'bg-gray-400 text-white' : 'bg-accent text-white') 
+                                                    : 'bg-muted/10 text-muted'
                                             }`}>
                                                 <span className="text-[10px] font-bold uppercase leading-none">{dateObj.toLocaleDateString('en-IN', { month: 'short' })}</span>
                                                 <span className="text-lg font-bold leading-none mt-0.5">{dateObj.getDate()}</span>
                                             </div>
                                             <div>
-                                                <p className={`text-lg font-semibold ${isSelected ? 'text-accent' : 'text-primary-text'}`}>{holiday.name}</p>
-                                                <p className="text-sm text-muted">{formattedDate}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className={`text-lg font-semibold ${isSelected ? 'text-accent' : 'text-primary-text'} ${isPastOrToday && !isSelected ? 'text-muted' : ''}`}>{holiday.name}</p>
+                                                    {isPastOrToday && isSelected && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                </div>
+                                                <p className="text-sm text-muted">
+                                                    {formattedDate} 
+                                                    {isPastOrToday && (
+                                                        <span className="ml-2 text-[10px] items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase font-bold">
+                                                            {dateObj < today ? 'Passed' : 'Today'}
+                                                        </span>
+                                                    )}
+                                                </p>
                                             </div>
                                         </div>
                                         <div className={`h-6 w-6 rounded-full flex items-center justify-center border transition-all duration-300 ${
                                             isSelected 
-                                            ? 'bg-accent border-accent text-white rotate-0 scale-100' 
+                                            ? (isPastOrToday ? 'bg-gray-300 border-gray-300 text-white' : 'bg-accent border-accent text-white rotate-0 scale-100')
                                             : 'border-border bg-card rotate-90 scale-75 opacity-50'
                                         }`}>
-                                            {isSelected && <Check className="h-4 w-4" />}
+                                            {isSelected && (isPastOrToday ? <Lock className="h-3 w-3" /> : <Check className="h-4 w-4" />)}
                                         </div>
                                     </button>
                                 );

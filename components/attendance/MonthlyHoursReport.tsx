@@ -59,7 +59,9 @@ export interface EmployeeMonthlyData {
   weeklyOff: number;
   leaves: number;
   lossOfPay: number;
+  overtimeDays: number;
 }
+
 
 interface MonthlyHoursReportProps {
   month: number;
@@ -173,7 +175,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0;
     let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
     let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
-    let sickLeaves = 0, earnedLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0;
+    let sickLeaves = 0, earnedLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
     let daysPresentInWeek = 0;
 
     const category = getStaffCategory(user.role);
@@ -221,16 +223,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         daysPresentInWeek += (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
       }
 
-      let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
+      let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
       let netHours = 0, grossHours = 0, breakHours = 0;
 
       if (hasActivity) {
-        const { checkIn, checkOut, firstBreakIn, lastBreakIn, workingHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents);
+        const { checkIn, checkOut, firstBreakIn, breakOut, workingHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents);
         netHours = workingHours; grossHours = totalHours; breakHours = bHrs;
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
         currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
         currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
-        currentDayBreakOut = lastBreakIn ? format(new Date(lastBreakIn), 'HH:mm') : '-';
+        currentDayBreakOut = breakOut ? format(new Date(breakOut), 'HH:mm') : '-';
         
         const firstPunchTime = new Date(dayEvents[0].timestamp);
         const timeVal = firstPunchTime.getHours() + firstPunchTime.getMinutes() / 60;
@@ -247,9 +249,25 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
         currentDayGrossDuration = formatTime(grossHours);
         currentDayNetWorkedHours = formatTime(netHours);
+        currentDayBreakDuration = formatTime(breakHours);
         const maxDailyHours = (rules as any).dailyWorkingHours?.max || 9;
         const ot = Math.max(0, netHours - maxDailyHours);
-        if (!isFuture) { totalNetWorkDuration += netHours; totalGrossWorkDuration += grossHours; totalOT += ot; currentDayOT = ot > 0 ? formatTime(ot) : '-'; }
+        
+        // Shortfall (75%) logic: if netHours < 75% of maxDailyHours
+        currentDayShortfall = netHours > 0 && netHours < (maxDailyHours * 0.75) ? 'YES' : '-';
+        currentDayOT = ot > 0 ? formatTime(ot) : '-';
+
+        if (!isFuture) { 
+            totalNetWorkDuration += netHours; 
+            totalGrossWorkDuration += grossHours; 
+            totalBreakDuration += breakHours;
+            totalOT += ot; 
+            
+            // OT Bonus Day - Only for SITE staff
+            if (category === 'site' && netHours > 14) {
+              overtimeDays++;
+            }
+        }
       }
 
       if (!isFuture) {
@@ -270,12 +288,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
           totalPayableDays += (status === 'P' || status === 'W/O' || status === 'WOP' || status === 'H' || status === 'H/P' || (status.includes('L') && !status.includes('LOP'))) ? 1 : 
                         (status === '1/2P' || status === 'Half Day') ? 0.5 : (status === '3/4P') ? 0.75 : (status === '1/4P') ? 0.25 : 0;
+          
+          if (day === daysInMonth) {
+              totalPayableDays += overtimeDays;
+          }
       }
 
       dailyData.push({
         date: day, status, inTime: currentDayInTime, outTime: currentDayOutTime, grossDuration: currentDayGrossDuration,
         breakIn: currentDayBreakIn, breakOut: currentDayBreakOut, breakDuration: currentDayBreakDuration,
-        netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: '-', shift: currentDayShift
+        netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift
       });
     }
 
@@ -288,7 +310,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       averageWorkingHrs: (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0,
       totalDurationPlusOT: totalNetWorkDuration + totalOT,
       shiftCounts, dailyData, present: presentDays + (halfDays * 0.5), absent: absentDays, weeklyOff: weekOffs,
-      leaves: leavesCount, lossOfPay
+      leaves: leavesCount, lossOfPay, overtimeDays
     };
   };
 
@@ -310,87 +332,113 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       {reportData.map((employee) => (
         <div key={employee.employeeId} className="mb-10 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm ring-1 ring-gray-900/5">
-          <div className="bg-gray-50/50 p-5 border-b border-gray-100">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                    <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-200">
-                        {employee.employeeId.slice(-2)}
-                    </div>
-                    <div>
-                        <h3 className="text-base font-bold text-gray-900">{employee.employeeName}</h3>
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">{employee.role} • ID: {employee.employeeId}</p>
-                    </div>
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
-                        <p className="text-[10px] text-gray-400 font-semibold mb-1 uppercase">Work Hours</p>
-                        <p className="text-xs font-bold text-gray-900">{employee.totalNetWorkDuration.toFixed(1)}h <span className="text-blue-500 font-medium">({employee.totalOT.toFixed(1)}h OT)</span></p>
-                    </div>
-                    <div className="bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
-                        <p className="text-[10px] text-gray-400 font-semibold mb-1 uppercase">Attendance</p>
-                        <p className="text-xs font-bold text-gray-900">P:{employee.presentDays} | A:{employee.absentDays} | W:{employee.weekOffs}</p>
-                    </div>
-                    <div className="bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
-                        <p className="text-[10px] text-gray-400 font-semibold mb-1 uppercase">Payable Days</p>
-                        <p className="text-xs font-bold text-green-600">{employee.totalPayableDays.toFixed(1)} Days</p>
-                    </div>
-                    <div className="bg-white border border-gray-100 p-2 rounded-lg shadow-sm">
-                        <p className="text-[10px] text-gray-400 font-semibold mb-1 uppercase">Leaves</p>
-                        <p className="text-xs font-bold text-orange-600">{employee.leaves} Applied</p>
-                    </div>
+          <div className="bg-white p-8">
+            {/* Header matching image exactly */}
+            <div className="mb-6">
+                <h3 className="text-[17px] font-normal text-gray-900 leading-tight">
+                    <span className="font-bold">Employee:</span> {employee.employeeId} - <span className="font-bold">{employee.employeeName}</span> 
+                    <span className="ml-4 font-normal text-gray-500">Role: <span className="font-medium text-gray-700">{employee.role?.replace(/_/g, '_')}</span></span>
+                </h3>
+                <div className="mt-3 text-[12px] text-gray-500 leading-relaxed font-light">
+                    <p>
+                        Total Gross Work Duration: <span className="text-gray-900">{employee.totalGrossWorkDuration.toFixed(2)} Hrs</span>, 
+                        Total Net Work Duration: <span className="text-gray-900">{employee.totalNetWorkDuration.toFixed(2)} Hrs</span>, 
+                        Total Break Time: <span className="text-gray-900">{employee.totalBreakDuration.toFixed(2)} Hrs</span>, 
+                        Total OT: <span className="text-gray-900">{employee.totalOT.toFixed(2)} Hrs</span>
+                    </p>
+                    <p>
+                        Present: {employee.presentDays}, Half Days: {employee.halfDays}, Absent: {employee.absentDays}, 
+                        WeeklyOff: {employee.weekOffs}, Holidays: {employee.holidays}, Leaves: {employee.leaves}, 
+                        F/H: {employee.floatingHolidays}, LOP: {employee.lossOfPays}, HP: {employee.holidayPresents}, 
+                        WOP: {employee.weekendPresents}, Total Payable Days: {employee.totalPayableDays}
+                    </p>
+                    <p>
+                        Average Working Hrs: <span className="text-gray-900">{employee.averageWorkingHrs.toFixed(2)} Hrs</span>
+                    </p>
+                    <p>
+                        Shift Count: {Object.entries(employee.shiftCounts).map(([s, c], i) => (
+                           <span key={s}>{i > 0 && ' '}{s} {c}</span>
+                        ))}
+                    </p>
                 </div>
             </div>
-          </div>
 
-          <div className="p-4 overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="py-2 pr-4 font-bold text-gray-400 uppercase tracking-tighter text-[9px] w-12 sticky left-0 bg-white">Day</th>
-                  {employee.dailyData.map(d => (
-                    <th key={d.date} className="px-1 py-2 text-center font-bold text-gray-900 min-w-[32px]">{String(d.date).padStart(2, '0')}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-gray-50 group hover:bg-gray-50/50 transition-colors">
-                  <td className="py-2 pr-4 font-bold text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/50">Status</td>
-                  {employee.dailyData.map(d => (
-                    <td key={d.date} className="px-0.5 py-2 text-center">
-                        <span className={`inline-flex items-center justify-center w-full min-h-[24px] rounded-md font-extrabold text-[10px] shadow-sm transform transition-transform hover:scale-110 cursor-default ${
-                            d.status === 'P' ? 'bg-green-600 text-white' :
-                            d.status === 'A' ? 'bg-red-500 text-white' :
-                            d.status === 'W/O' || d.status === 'WOP' ? 'bg-blue-500 text-white' :
-                            d.status === 'H' || d.status === 'H/P' ? 'bg-purple-600 text-white' :
-                            'bg-gray-200 text-gray-600'
-                        }`}>
-                            {d.status}
-                        </span>
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-gray-50 group hover:bg-gray-50/50 transition-colors">
-                  <td className="py-2 pr-4 font-bold text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/50">Shift In</td>
-                  {employee.dailyData.map(d => (
-                    <td key={d.date} className="px-0.5 py-2 text-center text-[9px] text-gray-400 font-medium">
-                        {d.inTime !== '-' ? (
-                            <span className="text-gray-900 font-bold">{d.inTime}</span>
-                        ) : '-'}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="group hover:bg-gray-50/50 transition-colors border-b border-gray-100">
-                  <td className="py-2 pr-4 font-bold text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/50">Net Hrs</td>
-                  {employee.dailyData.map(d => (
-                    <td key={d.date} className="px-0.5 py-2 text-center text-[9px] font-bold">
-                        <span className={d.netWorkedHours !== '-' && parseFloat(d.netWorkedHours) > 0 ? 'text-blue-600' : 'text-gray-300'}>
-                             {d.netWorkedHours}
-                        </span>
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
+            <div className="overflow-x-auto border border-slate-200 rounded-sm shadow-sm">
+                <table className="w-full text-left border-collapse min-w-max">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="py-2 px-3 font-semibold text-gray-700 text-[11px] w-28 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Status</th>
+                      {employee.dailyData.map(d => (
+                        <th key={d.date} className="px-1 py-1.5 text-center font-normal text-gray-500 text-[10px] min-w-[32px] border-r border-slate-200 last:border-r-0">{d.date}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="text-[10px] text-gray-700">
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-2 px-3 font-semibold text-gray-700 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Status</td>
+                      {employee.dailyData.map(d => (
+                        <td key={d.date} className="px-0.5 py-1 text-center border-r border-slate-100 last:border-r-0">
+                            <span className={`inline-flex items-center justify-center min-w-[28px] py-1 px-1 rounded-sm font-bold text-[10px] ${
+                                d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
+                                d.status === 'A' ? 'bg-rose-50 text-rose-600' :
+                                d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
+                                d.status === 'H' || d.status === 'H/P' ? 'bg-indigo-50 text-indigo-700' :
+                                'text-gray-500'
+                            }`}>
+                                {d.status}
+                            </span>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">InTime</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.inTime !== '-' ? d.inTime : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">OutTime</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.outTime !== '-' ? d.outTime : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Gross Dur</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.grossDuration !== '0:00' ? d.grossDuration : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Break In</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.breakIn !== '-' ? d.breakIn : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Break Out</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.breakOut !== '-' ? d.breakOut : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Break Dur</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.breakDuration !== '0:00' ? d.breakDuration : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-200 font-medium">
+                      <td className="py-1.5 px-3 font-semibold text-gray-800 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Net Worked Hrs</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.netWorkedHours !== '0:00' ? d.netWorkedHours : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">OT</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.ot}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Shortfall (75%)</td>
+                      {employee.dailyData.map(d => <td key={d.date} className="px-1 py-1 text-center text-[10px] border-r border-slate-100 last:border-r-0">{d.shortfall}</td>)}
+                    </tr>
+                    <tr className="bg-white">
+                      <td className="py-1.5 px-3 font-normal text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Shift</td>
+                      {employee.dailyData.map(d => (
+                         <td key={d.date} className="px-1 py-1 text-center text-[8px] leading-tight border-r border-slate-100 last:border-r-0 max-w-[40px] truncate">
+                            {d.shift !== '-' ? (
+                                d.shift.replace('Shift ', '')
+                            ) : '-'}
+                         </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+            </div>
           </div>
           
           <div className="bg-gray-50/50 px-5 py-2 border-t border-gray-100">

@@ -277,9 +277,9 @@ export function getStaffCategory(
   settings?: any
 ): 'office' | 'field' | 'site' {
   const mapping = settings?.missedCheckoutConfig?.roleMapping || {
-    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'operation_manager'],
-    field: ['field_staff', 'field_officer', 'technical_reliever'],
-    site: ['site_manager', 'security_guard', 'supervisor']
+    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
+    field: ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager'],
+    site: ['site_manager', 'security_guard']
   };
 
   if (mapping.field?.includes(roleId)) return 'field';
