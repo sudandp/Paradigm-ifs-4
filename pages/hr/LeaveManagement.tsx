@@ -209,7 +209,7 @@ const LeaveManagement: React.FC = () => {
 
             const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes] = await Promise.all([
                 filter === 'corrections' 
-                    ? api.getLeaveRequests({ startDate, endDate, page: currentPage, pageSize: pageSize }) // We'll filter statuses in component for simplicity or use a custom query
+                    ? api.getLeaveRequests({ status: ['pending_admin_correction', 'correction_made'], startDate, endDate, page: currentPage, pageSize: pageSize })
                     : api.getLeaveRequests(leaveFilter),
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
