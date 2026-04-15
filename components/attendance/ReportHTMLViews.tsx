@@ -5,16 +5,18 @@ import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyRe
 
 // --- SHARED ---
 const ReportHeader: React.FC<{ title: string; subtitle: string; logoUrl?: string; generatedBy?: string }> = ({ title, subtitle, logoUrl, generatedBy }) => (
-    <div className="flex justify-between items-center border-b-2 border-gray-900 pb-4 mb-6 print:mb-4">
-        <div className="flex-1">
-            {logoUrl && <img src={logoUrl} alt="Logo" className="h-10 w-auto mb-1" />}
-            <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Paradigm Services</p>
+    <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8">
+        <div className="flex flex-col">
+            {logoUrl && <img src={logoUrl} alt="Logo" className="h-14 w-auto mb-2 object-contain" />}
+            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em]">Paradigm Services</span>
         </div>
-        <div className="text-right flex-1">
-            <h1 className="text-xl font-bold uppercase tracking-tight text-gray-900">{title}</h1>
-            <p className="text-sm text-gray-600 font-medium">{subtitle}</p>
-            <p className="text-[10px] text-gray-400 mt-1">Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</p>
-            {generatedBy && <p className="text-[10px] text-gray-400">By: {generatedBy}</p>}
+        <div className="text-right">
+            <h1 className="text-[28px] font-black tracking-tight text-gray-900 mb-1 leading-none">{title}</h1>
+            <p className="text-[16px] text-gray-800 font-bold mb-2">{subtitle}</p>
+            <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
+                <p>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</p>
+                {generatedBy && <p>By: {generatedBy}</p>}
+            </div>
         </div>
     </div>
 );
@@ -154,80 +156,81 @@ export const MonthlyStatusView: React.FC<{
     if (!data.length) return <EmptyState message="No monthly status records found." />;
 
     const getStatusColor = (s: string) => {
-        if (s === 'P') return 'text-green-600';
-        if (s === 'A') return 'text-red-500';
-        if (s === 'W/O') return 'text-gray-400';
-        if (s === 'H' || s === 'HP') return 'text-orange-500';
-        if (s.includes('F/H')) return 'text-yellow-600';
-        if (s.includes('1/2')) return 'text-blue-500';
-        if (s.includes('WOP')) return 'text-teal-600';
-        if (s.includes('P')) return 'text-green-600';
-        if (s.includes('S/L')) return 'text-purple-600';
-        if (s.includes('E/L')) return 'text-indigo-600';
-        if (s.includes('C/O')) return 'text-cyan-600';
-        if (s === '-') return 'text-gray-300';
+        if (s === 'P') return 'text-[#059669]'; // Present Green
+        if (s === 'A') return 'text-[#DC2626]'; // Absent Red
+        if (s === 'W/O' || s === 'WOP') return 'text-[#6B7280]'; // WO Grey
+        if (s === 'H' || s === 'HP' || s === 'H/P') return 'text-[#EA580C]'; // Holiday Orange
+        if (s.includes('F/H')) return 'text-[#CA8A04]'; // Floating Gold
+        if (s.includes('1/2')) return 'text-[#2563EB]'; // Half Day Blue
+        if (s.includes('S/L')) return 'text-[#9333EA]'; // Sick Purple
+        if (s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Indigo
+        if (s.includes('C/O')) return 'text-[#0891B2]'; // Comp Cyan
+        if (s.includes('OT')) return 'text-[#0D9488]'; // OT Teal
         return 'text-gray-700';
     };
 
     return (
-        <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Monthly Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
-            <div className="overflow-x-auto">
-                <table className="w-full text-[9px] border-collapse border border-gray-300">
+        <div className="bg-white p-2 md:p-3 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden">
+            <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            
+            <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-[7.5px] border-collapse">
                     <thead>
-                        <tr className="bg-gray-100">
-                            <th className="px-2 py-1.5 border border-gray-300 font-bold sticky left-0 bg-gray-100 z-10 min-w-[100px] text-left">Employee</th>
+                        <tr className="bg-gray-50/50">
+                            <th className="px-1 py-1.5 font-bold text-gray-700 sticky left-0 bg-[#F9FAFB] z-10 min-w-[75px] text-left border-b border-gray-200">Employee</th>
                             {dayHeaders.map(d => (
-                                <th key={d} className="px-0.5 py-1.5 border border-gray-200 font-semibold text-center text-gray-400 min-w-[22px]">{d}</th>
+                                <th key={d} className="px-0 py-1.5 border-b border-gray-200 font-semibold text-center text-gray-400 min-w-[16px]">{d}</th>
                             ))}
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-green-50 text-green-800 min-w-[28px]">P</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-blue-50 text-blue-700 min-w-[28px]">1/2P</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-teal-50 text-teal-700 min-w-[28px]">OT (P)</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-cyan-50 text-cyan-700 min-w-[28px]">C/O</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-indigo-50 text-indigo-700 min-w-[28px]">E/L</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-purple-50 text-purple-700 min-w-[28px]">S/L</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-red-50 text-red-700 min-w-[28px]">A</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-gray-50 text-gray-600 min-w-[28px]">W/O</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-orange-50 text-orange-700 min-w-[28px]">H</th>
-                            <th className="px-1 py-1.5 border border-gray-300 font-bold text-center bg-emerald-50 text-emerald-700 min-w-[36px]">Pay</th>
+                            <th className="px-0.5 py-1.5 border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 min-w-[18px]">P</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 min-w-[20px]">1/2P</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 min-w-[22px]">OT</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 min-w-[20px]">C/O</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 min-w-[20px]">E/L</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 min-w-[20px]">S/L</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 min-w-[18px]">A</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 min-w-[20px]">W/O</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 min-w-[18px]">H</th>
+                            <th className="px-0.5 py-1.5 border-b border-gray-200 font-bold text-center text-[#059669] bg-emerald-50/50 min-w-[26px]">Pay</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.map((row, idx) => (
-                            <tr key={idx} className="border-b border-gray-100">
-                                <td className="px-2 py-1 border border-gray-200 font-medium sticky left-0 bg-white z-10 whitespace-nowrap">{row.userName}</td>
+                            <tr key={idx} className="group hover:bg-gray-50/30 transition-colors">
+                                <td className="px-1 py-1 font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100">{row.userName}</td>
                                 {row.statuses.map((status, sIdx) => (
-                                    <td key={sIdx} className="px-0 py-1 border border-gray-100 text-center font-bold leading-tight">
+                                    <td key={sIdx} className="px-0 py-1 border-b border-gray-50 text-center font-bold leading-tight">
                                         <span className={getStatusColor(status)}>{status}</span>
                                     </td>
                                 ))}
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-green-700 bg-green-50/30">{row.presentDays}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-blue-700 bg-blue-50/30">{row.halfDays}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-teal-700 bg-teal-50/30">{row.overtimeDays || 0}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-cyan-700 bg-cyan-50/30">{row.compOffs || 0}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-indigo-700 bg-indigo-50/30">{row.earnedLeaves || 0}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-purple-700 bg-purple-50/30">{row.sickLeaves || 0}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-red-500">{row.absentDays}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center text-gray-500">{row.weekOffs}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center text-orange-600">{row.holidays}</td>
-                                <td className="px-1 py-1 border border-gray-200 text-center font-bold text-emerald-700 bg-emerald-50/30">{row.totalPayableDays}</td>
+                                <td className="px-0.5 py-1 border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10">{row.presentDays}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10">{row.halfDays}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10">{row.overtimeDays || 0}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10">{row.compOffs || 0}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10">{row.earnedLeaves || 0}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10">{row.sickLeaves || 0}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10">{row.absentDays}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center text-[#6B7280] font-medium">{row.weekOffs}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center text-[#EA580C] font-medium">{row.holidays}</td>
+                                <td className="px-0.5 py-1 border-b border-gray-100 text-center font-bold text-[#059669] bg-emerald-50/20">{row.totalPayableDays}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3 text-[10px] font-bold uppercase">
-                <span className="flex items-center gap-1 text-green-600"><span className="w-2 h-2 rounded bg-green-600 inline-block" /> P: Present</span>
-                <span className="flex items-center gap-1 text-red-500"><span className="w-2 h-2 rounded bg-red-500 inline-block" /> A: Absent</span>
-                <span className="flex items-center gap-1 text-blue-500"><span className="w-2 h-2 rounded bg-blue-500 inline-block" /> 1/2P: Half Day</span>
-                <span className="flex items-center gap-1 text-gray-400"><span className="w-2 h-2 rounded bg-gray-400 inline-block" /> W/O: Weekly Off</span>
-                <span className="flex items-center gap-1 text-orange-500"><span className="w-2 h-2 rounded bg-orange-500 inline-block" /> H: Holiday</span>
-                <span className="flex items-center gap-1 text-teal-600"><span className="w-2 h-2 rounded bg-teal-600 inline-block" /> OT (P): OT / ExtraP</span>
-                <span className="flex items-center gap-1 text-purple-600"><span className="w-2 h-2 rounded bg-purple-600 inline-block" /> S/L: Sick Leave</span>
-                <span className="flex items-center gap-1 text-indigo-600"><span className="w-2 h-2 rounded bg-indigo-600 inline-block" /> E/L: Earned Leave</span>
-                <span className="flex items-center gap-1 text-cyan-600"><span className="w-2 h-2 rounded bg-cyan-600 inline-block" /> C/O: Comp Off</span>
+
+            <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5 text-[8px] font-bold">
+                <span className="flex items-center gap-1 text-[#059669]"><span className="w-1.5 h-1.5 rounded-full bg-[#059669]" /> P: PRESENT</span>
+                <span className="flex items-center gap-1 text-[#DC2626]"><span className="w-1.5 h-1.5 rounded-full bg-[#DC2626]" /> A: ABSENT</span>
+                <span className="flex items-center gap-1 text-[#2563EB]"><span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> 1/2P: HALF DAY</span>
+                <span className="flex items-center gap-1 text-[#6B7280]"><span className="w-1.5 h-1.5 rounded-full bg-[#6B7280]" /> W/O: WEEKLY OFF</span>
+                <span className="flex items-center gap-1 text-[#EA580C]"><span className="w-1.5 h-1.5 rounded-full bg-[#EA580C]" /> H: HOLIDAY</span>
+                <span className="flex items-center gap-1 text-[#0D9488]"><span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" /> OT (P): OT / EXTRAP</span>
+                <span className="flex items-center gap-1 text-[#9333EA]"><span className="w-1.5 h-1.5 rounded-full bg-[#9333EA]" /> S/L: SICK LEAVE</span>
+                <span className="flex items-center gap-1 text-[#4F46E5]"><span className="w-1.5 h-1.5 rounded-full bg-[#4F46E5]" /> E/L: EARNED LEAVE</span>
+                <span className="flex items-center gap-1 text-[#0891B2]"><span className="w-1.5 h-1.5 rounded-full bg-[#0891B2]" /> C/O: COMP OFF</span>
             </div>
-            <Footer label="Paradigm Services - Monthly Status Report" />
+
+            <Footer label="PARADIGM SERVICES - MONTHLY STATUS REPORT" />
         </div>
     );
 };

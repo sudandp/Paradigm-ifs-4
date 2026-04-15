@@ -43,6 +43,7 @@ import {
     subDays,
     startOfWeek,
     isAfter,
+    isBefore,
     eachDayOfInterval,
     differenceInHours,
     differenceInMinutes,
@@ -788,9 +789,13 @@ const AttendanceDashboard: React.FC = () => {
                         if (rule.n === occurrence && (rule.type || 'office') === userCategoryInner) {
                              if (userRules && userRules.floatingLeavesExpiryDate) {
                                 const expiryDate = startOfDay(new Date(userRules.floatingLeavesExpiryDate));
-                                if (startOfDay(day) > expiryDate) {
+                                if (startOfDay(day) >= expiryDate) {
                                     return false;
                                 }
+                            }
+                            // Recurring holidays in the past auto-expire
+                            if (startOfDay(day) < startOfDay(new Date())) {
+                                return false;
                             }
                             return true;
                         }
@@ -804,10 +809,14 @@ const AttendanceDashboard: React.FC = () => {
                     });
 
                     // 3. Pool (Selected)
-                    const isPoolHoliday = userHolidays.some(uh => {
-                        const hDate = uh.holidayDate || (uh as any).holiday_date;
-                        return matchesDate(hDate, day);
-                    });
+                     const isPoolHoliday = userHolidays.some(uh => {
+                         const hDateStrRaw = uh.holidayDate || (uh as any).holiday_date;
+                         if (!hDateStrRaw) return false;
+                         const hDateStr = String(hDateStrRaw).split('T')[0].split(' ')[0];
+                         const targetDateStr = format(day, 'yyyy-MM-dd');
+                         const compareMMDD = format(day, '-MM-dd');
+                         return hDateStr === targetDateStr || hDateStr.endsWith(compareMMDD) || (hDateStr.startsWith('-') && targetDateStr.endsWith(hDateStr));
+                     });
 
                     const isHoliday = isRecurringHoliday || isFixedHoliday || isPoolHoliday;
 
@@ -945,7 +954,7 @@ const AttendanceDashboard: React.FC = () => {
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
-                const queryStart = subDays(startDate, 7);
+                const queryStart = subDays(startDate, 15);
                 const queryEnd = endOfDay(endDate);
 
                 const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
@@ -1276,6 +1285,7 @@ const AttendanceDashboard: React.FC = () => {
                     day,
                     userId,
                     userCategory: userCategory as any,
+                    userRole: user.role,
                     userRules,
                     dayEvents,
                     officeHolidays,
@@ -1475,72 +1485,50 @@ const AttendanceDashboard: React.FC = () => {
             let workFromHomeDays = 0;
             let overtimeDays = 0;
 
-            // Track days present in rolling week for W/O threshold.
-            let daysPresentInWeek = 0; 
+            let daysPresentInPreviousWeek = 0;
+            let daysPresentInCurrentWeek = 0;
+            const threshold = (userRules as any).weekendPresentThreshold ?? 3;
+
+            // 1. Calculate historical activity to determine status for the FIRST week of the range
             if (dateRange.startDate) {
-                const weekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
-                if (isAfter(dateRange.startDate, weekStart)) {
-                    let checkDate = weekStart;
-                    while (isAfter(dateRange.startDate, checkDate) && !isSameDay(dateRange.startDate, checkDate)) {
-                        const dateStr = format(checkDate, 'yyyy-MM-dd');
-                        const checkDayName = format(checkDate, 'EEEE');
-                        const checkUserCategory = getStaffCategory(user.role);
-                        const checkUserRules = getRules(user.id, checkUserCategory);
-                        const checkWeeklyOffDays = checkUserRules.weeklyOffDays || [0];
-                        const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
-                        
-                        if (checkIsWeekend) {
-                            // No longer resetting here to ensure cumulative work days are preserved for weekend checks
-                        } else {
-                            const prevDayEvents = userEventsMap?.get(dateStr) || [];
-                            
-                            // 1. Activity check - any punch event counts as presence
-                            const hasActivityCheck = prevDayEvents.length > 0;
+                const firstWeekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
+                const historicalWeekStart = subDays(firstWeekStart, 7);
+                
+                // Count presence in the week BEFORE the first week of the range (the full previous week)
+                let checkDateHist = historicalWeekStart;
+                for (let i = 0; i < 7; i++) {
+                    const dateStrHist = format(checkDateHist, 'yyyy-MM-dd');
+                    const histEvents = userEventsMap?.get(dateStrHist) || [];
+                    if (histEvents.length > 0) daysPresentInPreviousWeek++;
+                    checkDateHist = addDays(checkDateHist, 1);
+                }
 
-                            // 2. Holiday check
-                            const isRecurringHolidayCheck = recurringHolidays.some(rule => {
-                                if (rule.day.toLowerCase() !== checkDayName.toLowerCase()) return false;
-                                const occurrence = Math.ceil(checkDate.getDate() / 7);
-                                return rule.n === occurrence && (rule.type || 'office') === checkUserCategory;
-                            });
-                            const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
-                                const [m, d] = fh.date.split('-').map(Number);
-                                return checkDate.getMonth() === (m - 1) && checkDate.getDate() === d;
-                            });
-                            const isConfiguredHolidayCheck = (checkUserCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
-                                const hVal = String(h.date).split(' ')[0].split('T')[0];
-                                return hVal === dateStr;
-                            });
-
-                            // 3. Leave check
-                            const hasApprovedLeaveCheck = userApprovedLeaves.some(l => 
-                                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                                !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
-                            );
-
-                            if (hasActivityCheck || isRecurringHolidayCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || hasApprovedLeaveCheck) {
-                                daysPresentInWeek++;
-                            }
-                        }
-                        checkDate = addDays(checkDate, 1);
-                    }
+                // Count presence in the current week UP TO the range start
+                let checkDateBuffer = firstWeekStart;
+                while (isBefore(checkDateBuffer, dateRange.startDate)) {
+                    const dateStrBuffer = format(checkDateBuffer, 'yyyy-MM-dd');
+                    const bufferEvents = userEventsMap?.get(dateStrBuffer) || [];
+                    if (bufferEvents.length > 0) daysPresentInCurrentWeek++;
+                    checkDateBuffer = addDays(checkDateBuffer, 1);
                 }
             }
 
             days.forEach(day => {
-                // Reset work days count at the start of each week (Monday)
+                // Every Monday, rotate the weekly activity counts
                 if (day.getDay() === 1) {
-                    daysPresentInWeek = 0;
+                    daysPresentInPreviousWeek = daysPresentInCurrentWeek;
+                    daysPresentInCurrentWeek = 0;
                 }
                 const dateStr = format(day, 'yyyy-MM-dd');
-                const dayName = format(day, 'EEEE');
-                const isWeekend = weeklyOffDays.includes(day.getDay());
                 const dayEvents = userEventsMap?.get(dateStr) || [];
+                
+                const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
 
                 const status = evaluateAttendanceStatus({
                     day,
                     userId: user.id,
                     userCategory: userCategory as any,
+                    userRole: user.role,
                     userRules,
                     dayEvents,
                     officeHolidays,
@@ -1549,13 +1537,14 @@ const AttendanceDashboard: React.FC = () => {
                     recurringHolidays,
                     userHolidaysPool,
                     leaves,
-                    daysPresentInWeek
+                    daysPresentInWeek: daysPresentInCurrentWeek,
+                    isActiveInPreviousWeek
                 });
 
-                // Update daysPresentInWeek for W/O threshold
-                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'W/H') {
-                    const increment = status.includes('1/2') ? 0.5 : 1;
-                    daysPresentInWeek += increment;
+                // Update daysPresentInCurrentWeek for next week's threshold
+                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
+                    const increment = (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
+                    daysPresentInCurrentWeek += increment;
                 }
 
                 // Map status to counters
@@ -1797,19 +1786,7 @@ const AttendanceDashboard: React.FC = () => {
         if (isPreview) {
             if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'monthly') {
-                if (selectedUser !== 'all') {
-                    return (
-                        <MonthlyHoursReport 
-                            month={dateRange.startDate!.getMonth() + 1} 
-                            year={dateRange.startDate!.getFullYear()} 
-                            userId={selectedUser}
-                            hideHeader={true}
-                        />
-                    );
-                }
-                return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            }
+            if (reportType === 'monthly') return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'work_hours') return <WorkHoursReportView data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
