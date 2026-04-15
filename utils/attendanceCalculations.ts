@@ -463,7 +463,9 @@ export function evaluateAttendanceStatus(params: {
           status = `${workStatus}+${getLeaveCode(approvedLeave)}`;
       } else {
           // Pure work status
-          if (isHoliday || isRecurringHoliday) status = 'H/P';
+          // Reservation: H/P only for explicit holidays (National/Manual). 
+          // Recurring holidays (like alternate Saturdays) just show 'P' if worked.
+          if (isHoliday) status = 'H/P';
           else if (isWeekend) status = 'W/P';
           else status = workStatus;
       }
