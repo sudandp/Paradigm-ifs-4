@@ -448,8 +448,25 @@ export function evaluateAttendanceStatus(params: {
           else if (hrs >= 2) workStatus = '1/4P';
           else workStatus = 'A';
       } else {
-          // Field/Site logic: use site trackng result (if provided)
-          workStatus = fieldStatus || (hasPunchIn && (hasPunchOut || isToday) ? 'P' : 'A');
+          // Field/Site logic: use site tracking result IF it's a real presence status.
+          // PERMANENT FIX: If fieldStatus is 'A' but employee has real working hours
+          // (e.g. Operation Managers who punch-in/out but don't use GPS site tracking),
+          // fall back to hours-based evaluation instead of blindly trusting the 'A'.
+          if (fieldStatus && fieldStatus !== 'A') {
+              workStatus = fieldStatus; // Trust real presence statuses (P, 3/4P, 1/2P, etc.)
+          } else if (workingHours !== undefined && workingHours > 0) {
+              // Hours-based fallback: employee has actual work time
+              const full = userRules?.dailyWorkingHours?.min || userRules?.minimumHoursFullDay || 8;
+              const threeQuarter = full * 0.75;
+              const half = userRules?.minimumHoursHalfDay || full * 0.5;
+              if (workingHours >= full) workStatus = 'P';
+              else if (workingHours >= threeQuarter) workStatus = '3/4P';
+              else if (workingHours >= half) workStatus = '1/2P';
+              else if (workingHours >= 2) workStatus = '1/4P';
+              else workStatus = 'A';
+          } else {
+              workStatus = hasPunchIn && (hasPunchOut || isToday) ? 'P' : 'A';
+          }
       }
   }
 
