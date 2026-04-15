@@ -155,7 +155,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
         const userEvents = allEvents.filter(e => String(e.userId) === String(user.id));
-        const userLeaves = (leavesData || []).filter((l: any) => String(l.userId) === String(user.id) && (l.status === 'approved' || l.leaveStatus === 'approved'));
+        const userLeaves = (leavesData || []).filter((l: any) => {
+            const lUserId = l.userId || l.user_id;
+            const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+            const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
+            return String(lUserId) === String(user.id) && isApproved;
+        });
         return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, [], leavesData || []);
       });
 
@@ -187,69 +192,65 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const rules = resolveUserRules(user);
     const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
     const shiftCounts: { [key: string]: number } = {};
-
     const formatTime = (hrs: number) => {
         const totalMinutes = Math.round(hrs * 60);
         const h = Math.floor(totalMinutes / 60), m = totalMinutes % 60;
         return `${h}:${String(m).padStart(2, '0')}`;
     };
 
-    // 1. Calculate historical activity to determine status for the FIRST week of the month
-    const monthStartDate = new Date(year, month - 1, 1);
-    const firstWeekStart = startOfWeek(monthStartDate, { weekStartsOn: 1 });
-    const historicalWeekStart = new Date(firstWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
-    // Count presence in the week BEFORE the first week of the month (the full previous week)
-    let checkDate = historicalWeekStart;
-    for (let i = 0; i < 7; i++) {
-        const dateStr = format(checkDate, 'yyyy-MM-dd');
-        const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
-        if (dayEvents.length > 0) daysPresentInPreviousWeek++;
-        checkDate = new Date(checkDate.getTime() + 24 * 60 * 60 * 1000);
-    }
+    const resolvePayableValue = (s: string): number => {
+      if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
+      if (['W/P', 'H/P'].includes(s)) return 1.5; // Double pay typically means +0.5 or +1. Adjusting to common rule.
+      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O'].includes(s)) return 1;
+      if (['1/2P', 'Half Day', '1/2S/L', '1/2E/L', '1/2C/L', '1/2C/O'].includes(s)) return 0.5;
+      if (s === '3/4P') return 0.75;
+      if (s === '1/4P') return 0.25;
+      return 0;
+    };
 
-    // Count presence in the current week UP TO the month start
-    checkDate = firstWeekStart;
-    while (isAfter(monthStartDate, checkDate) && !isSameDay(monthStartDate, checkDate)) {
-        const dateStr = format(checkDate, 'yyyy-MM-dd');
-        const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
-        if (dayEvents.length > 0) daysPresentInCurrentWeek++;
-        checkDate = new Date(checkDate.getTime() + 24 * 60 * 60 * 1000);
-    }
+    const updateCounters = (s: string) => {
+      if (s === 'P') presentDays++;
+      else if (s === 'W/P') { presentDays++; weekOffs++; weekendPresents++; }
+      else if (s === '3/4P') threeQuarterDays++;
+      else if (s === '1/2P' || s === 'Half Day') halfDays++;
+      else if (s === '1/4P') quarterDays++;
+      else if (s === 'A') absentDays++;
+      else if (s === 'W/O') weekOffs++;
+      else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
+      else if (s === 'H') holidaysCount++;
+      else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
+      else if (s.includes('S/L')) sickLeaves++;
+      else if (s.includes('E/L')) earnedLeaves++;
+      else if (s.includes('F/H')) floatingHolidays++;
+      else if (s.includes('C/O')) compOffs++;
+      else if (s.includes('LOP')) lossOfPay++;
+      else if (s.includes('WFH')) workFromHomeDays++;
+      
+      if (['S/L', '1/2S/L', 'E/L', '1/2E/L', 'C/L', '1/2C/L', 'C/O', '1/2C/O'].includes(s)) {
+          leavesCount++;
+      }
+    };
+
+    let statusToCounterActivity = false;
 
     for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(year, month - 1, day);
-      
-      // Every Monday, rotate the weekly activity counts
       if (currentDate.getDay() === 1) {
           daysPresentInPreviousWeek = daysPresentInCurrentWeek;
           daysPresentInCurrentWeek = 0;
       }
 
+      let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
+      let netHours = 0, grossHours = 0, breakHours = 0;
+      let fieldResultStatus = '';
       const dateStr = format(currentDate, 'yyyy-MM-dd');
       const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
       const hasActivity = dayEvents.length > 0;
       const isFuture = isAfter(currentDate, startOfDay(new Date()));
-      
-      const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
-
-      let status = evaluateAttendanceStatus({
-          day: currentDate, userId: user.id, userCategory: category, userRole: user.role, userRules: rules,
-          dayEvents, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays,
-          userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
-          isActiveInPreviousWeek
-      });
-
-      if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
-        daysPresentInCurrentWeek += (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
-      }
-
-      let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
-      let netHours = 0, grossHours = 0, breakHours = 0;
 
       if (hasActivity) {
-        const { checkIn, checkOut, firstBreakIn, breakOut, workingHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents);
-        netHours = workingHours; grossHours = totalHours; breakHours = bHrs;
+        const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents);
+        netHours = wHours; grossHours = totalHours; breakHours = bHrs;
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
         currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
         currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
@@ -260,7 +261,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         currentDayShift = timeVal >= 4 && timeVal < 11.5 ? 'Shift GS' : timeVal >= 11.5 && timeVal < 20 ? 'Shift B' : 'Shift C';
         shiftCounts[currentDayShift] = (shiftCounts[currentDayShift] || 0) + 1;
 
-        if (status === 'W/O') status = 'WOP';
+        const uCat = category as string;
+        if ((uCat === 'field' || uCat === 'site') && rules?.enableSiteTimeTracking) {
+            const fRes = getFieldStaffStatus(dayEvents, rules, undefined, user.role);
+            fieldResultStatus = fRes.status;
+        }
 
         currentDayGrossDuration = formatTime(grossHours);
         currentDayNetWorkedHours = formatTime(netHours);
@@ -268,7 +273,6 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const maxDailyHours = (rules as any).dailyWorkingHours?.max || 9;
         const ot = Math.max(0, netHours - maxDailyHours);
         
-        // Shortfall (75%) logic: if netHours < 75% of maxDailyHours
         currentDayShortfall = netHours > 0 && netHours < (maxDailyHours * 0.75) ? 'YES' : '-';
         currentDayOT = ot > 0 ? formatTime(ot) : '-';
 
@@ -277,44 +281,34 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             totalGrossWorkDuration += grossHours; 
             totalBreakDuration += breakHours;
             totalOT += ot; 
-            
-            // OT Bonus Day - Only for SITE staff
-            if (category === 'site' && netHours > 14) {
-              overtimeDays++;
-            }
+            if (category === 'site' && netHours > 14) overtimeDays++;
         }
       }
 
-      if (!isFuture) {
-          if (status === 'P') presentDays++;
-          else if (status === 'W/P') { presentDays++; weekOffs++; weekendPresents++; }
-          else if (status === '3/4P') threeQuarterDays++;
-          else if (status === '1/2P' || status === 'Half Day') halfDays++;
-          else if (status === '1/4P') quarterDays++;
-          else if (status === 'A') absentDays++;
-          else if (status === 'W/O') weekOffs++;
-          else if (status === 'WOP') { weekOffs++; if (hasActivity) weekendPresents++; }
-          else if (status === 'H') holidaysCount++;
-          else if (status === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
-          else if (status.includes('S/L')) sickLeaves++;
-          else if (status.includes('E/L')) earnedLeaves++;
-          else if (status.includes('F/H')) floatingHolidays++;
-          else if (status.includes('C/O')) compOffs++;
-          else if (status.includes('LOP')) lossOfPay++;
-          else if (status.includes('WFH')) workFromHomeDays++;
-          
-          if (['S/L', '1/2S/L', 'E/L', '1/2E/L', 'C/L', '1/2C/L', 'C/O', '1/2C/O'].includes(status)) {
-              leavesCount++;
-          }
+      const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
+      let status = evaluateAttendanceStatus({
+          day: currentDate, userId: user.id, userCategory: category, userRole: user.role, userRules: rules,
+          dayEvents, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays,
+          userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
+          isActiveInPreviousWeek,
+          workingHours: netHours,
+          fieldStatus: fieldResultStatus
+      });
 
-          totalPayableDays += (['W/P', 'H/P'].includes(status)) ? 2 :
-                        (status === 'P' || status === 'W/O' || status === 'WOP' || status === 'H' || ['S/L', 'E/L', 'C/L', 'C/O'].includes(status)) ? 1 : 
-                        (status === '1/2P' || status === 'Half Day' || ['1/2S/L', '1/2E/L', '1/2C/L', '1/2C/O'].includes(status)) ? 0.5 : 
-                        (status === '3/4P') ? 0.75 : (status === '1/4P') ? 0.25 : 0;
-          
-          if (day === daysInMonth) {
-              totalPayableDays += overtimeDays;
+      if (status === 'W/O' && hasActivity) status = 'WOP';
+
+      if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
+        daysPresentInCurrentWeek += (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
+      }
+
+      if (!isFuture) {
+          statusToCounterActivity = hasActivity;
+          if (status.includes('+')) {
+              status.split('+').forEach(p => updateCounters(p.trim()));
+          } else {
+              updateCounters(status);
           }
+          totalPayableDays += resolvePayableValue(status);
       }
 
       dailyData.push({
@@ -324,6 +318,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       });
     }
 
+    // Add extra bonus for overtime days if site category
+    totalPayableDays += overtimeDays;
+
     return {
       employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
       totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT,
@@ -332,8 +329,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays,
       averageWorkingHrs: (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0,
       totalDurationPlusOT: totalNetWorkDuration + totalOT,
-      shiftCounts, dailyData, present: presentDays + (halfDays * 0.5), absent: absentDays, weeklyOff: weekOffs,
-      leaves: leavesCount, lossOfPay, overtimeDays
+       shiftCounts, dailyData, 
+      present: totalPayableDays,
+      absent: absentDays, 
+      weeklyOff: weekOffs,
+      leaves: leavesCount, 
+      lossOfPay, 
+      overtimeDays
     };
   };
 
@@ -408,7 +410,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         
                         <div className="flex flex-wrap gap-2">
                             <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[11px] font-bold shadow-sm border border-emerald-200 flex items-center gap-1">
-                                Present <span className="bg-emerald-200 text-emerald-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.presentDays}</span>
+                                Present <span className="bg-emerald-200 text-emerald-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.present}</span>
                             </span>
                             {employee.halfDays > 0 && (
                                 <span className="px-2.5 py-1 bg-teal-100 text-teal-800 rounded-md text-[11px] font-bold shadow-sm border border-teal-200 flex items-center gap-1">

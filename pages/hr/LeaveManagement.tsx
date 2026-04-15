@@ -125,7 +125,7 @@ const LeaveManagement: React.FC = () => {
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
-    const [correctionView, setCorrectionView] = useState<'requests' | 'logs'>('requests');
+    const [correctionView, setCorrectionView] = useState<'pending' | 'corrected' | 'logs'>('pending');
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -209,7 +209,12 @@ const LeaveManagement: React.FC = () => {
 
             const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes] = await Promise.all([
                 filter === 'corrections' 
-                    ? api.getLeaveRequests({ ...leaveFilter, status: ['pending_admin_correction', 'correction_made'] })
+                    ? api.getLeaveRequests({ 
+                        ...leaveFilter, 
+                        status: correctionView === 'pending' ? 'pending_admin_correction' : 
+                                correctionView === 'corrected' ? 'correction_made' : 
+                                ['pending_admin_correction', 'correction_made']
+                      })
                     : api.getLeaveRequests(leaveFilter),
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
@@ -219,8 +224,8 @@ const LeaveManagement: React.FC = () => {
 
             let finalRequests = leaveRes.data;
             if (filter === 'corrections') {
-                // Filter for correction-related statuses if we didn't do it in the API
-                finalRequests = leaveRes.data.filter(r => ['pending_admin_correction', 'correction_made'].includes(r.status));
+                // For corrections, we use the API filtered status, so just ensure it's mapped correctly
+                finalRequests = leaveRes.data;
             }
 
             // Map names for audit logs
@@ -248,11 +253,11 @@ const LeaveManagement: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate]);
+    }, [user, filter, currentPage, pageSize, selectedUserId, startDate, endDate, correctionView]);
 
     useEffect(() => {
         setCurrentPage(1); // Reset to page 1 when filter changes
-    }, [filter, selectedUserId, startDate, endDate]);
+    }, [filter, selectedUserId, startDate, endDate, correctionView]);
 
     useEffect(() => {
         fetchData();
@@ -318,6 +323,12 @@ const LeaveManagement: React.FC = () => {
         setActioningId(requestToEdit.id);
         try {
             await api.updateLeaveType(requestToEdit.id, newType);
+            
+            // If it was a correction request, mark it as made so it moves out of pending
+            if (requestToEdit.status === 'pending_admin_correction') {
+                await api.markCorrectionAsMade(requestToEdit.id, user.id);
+            }
+
             setToast({ message: 'Leave type updated successfully.', type: 'success' });
             fetchData();
         } catch (error) {
@@ -924,24 +935,32 @@ const LeaveManagement: React.FC = () => {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                         <div className="flex p-1 bg-page border border-border rounded-xl w-fit">
                             <button
-                                onClick={() => setCorrectionView('requests')}
-                                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'requests' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
+                                onClick={() => setCorrectionView('pending')}
+                                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'pending' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
                             >
-                                Pending Requests
+                                Pending Corrections
+                            </button>
+                            <button
+                                onClick={() => setCorrectionView('corrected')}
+                                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'corrected' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
+                            >
+                                Corrected History
                             </button>
                             <button
                                 onClick={() => setCorrectionView('logs')}
                                 className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${correctionView === 'logs' ? 'bg-white text-emerald-700 shadow-sm' : 'text-muted hover:text-primary-text'}`}
                             >
-                                Applied Logs
+                                Audit Logs
                             </button>
                         </div>
                         <div className="text-xs text-muted font-medium bg-page px-3 py-1.5 rounded-lg border border-border">
-                            {correctionView === 'requests' ? `${requests.length} pending correction requests` : `${auditLogs.length} historical logs`}
+                            {correctionView === 'pending' ? `${requests.length} pending corrections` : 
+                             correctionView === 'corrected' ? `${requests.length} corrected requests` : 
+                             `${auditLogs.length} historical logs`}
                         </div>
                     </div>
 
-                    {correctionView === 'requests' ? (
+                    {correctionView !== 'logs' ? (
                         <div className="overflow-x-auto">
                             <table className="min-w-full responsive-table">
                                 <thead>

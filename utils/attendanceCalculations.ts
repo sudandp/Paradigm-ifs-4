@@ -1,6 +1,6 @@
 // Attendance calculation utilities for hours-based attendance tracking
 
-import { differenceInMinutes, parseISO, isSameDay, format, startOfDay } from 'date-fns';
+import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter } from 'date-fns';
 import type { AttendanceEvent, DailyAttendanceStatus } from '../types';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 
@@ -313,6 +313,8 @@ export function evaluateAttendanceStatus(params: {
   daysPresentInWeek: number;
   isActiveInPreviousWeek?: boolean;
   isActiveInCurrentWeek?: boolean;
+  workingHours?: number;
+  fieldStatus?: string;
 }) {
   const { 
     day, userId, userCategory, userRole, userRules, dayEvents, 
@@ -320,7 +322,9 @@ export function evaluateAttendanceStatus(params: {
     recurringHolidays, userHolidaysPool, leaves, 
     daysPresentInWeek,
     isActiveInPreviousWeek = true,
-    isActiveInCurrentWeek = true
+    isActiveInCurrentWeek = true,
+    workingHours,
+    fieldStatus
   } = params;
 
   const dateStr = format(day, 'yyyy-MM-dd');
@@ -340,74 +344,61 @@ export function evaluateAttendanceStatus(params: {
   isWeekend = weeklyOffDays.includes(dayOfWeek);
 
   // Floating/Recurring Holiday
-  isRecurringHoliday = recurringHolidays.some(rule => {
-      if (rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
+  isRecurringHoliday = (recurringHolidays || []).some(rule => {
+      if (!rule || rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
       const occurrence = Math.ceil(dayOfMonth / 7);
       const ruleType = rule.type || 'office';
+      
+      // Check for floating leave expiry if defined in rules
+      if (userRules?.floatingLeavesExpiryDate) {
+          try {
+              const expiryDate = new Date(userRules.floatingLeavesExpiryDate);
+              if (isAfter(day, expiryDate)) return false;
+          } catch (e) { /* ignore invalid dates */ }
+      }
+      
       return rule.n === occurrence && ruleType === userCategory;
   });
 
-  // Configured / Pool Holidays
+  // Configured Holidays (Manual additions)
   const categoryHolidays = userCategory === 'field' ? fieldHolidays : (userCategory === 'site' ? siteHolidays : officeHolidays);
-  let isConfiguredHoliday = categoryHolidays.some(h => {
+  let isConfiguredHoliday = (categoryHolidays || []).some(h => {
       const hDateStr = String(h.date);
-      const compareMMDD = format(day, '-MM-dd');
-      return hDateStr.includes(dateStr) || hDateStr.endsWith(compareMMDD) || (hDateStr.startsWith('-') && dateStr.endsWith(hDateStr));
+      // STRICT MATCH: Only allow annual recurrence if date starts with '-'
+      if (hDateStr.startsWith('-')) {
+          const compareMMDD = format(day, '-MM-dd');
+          return dateStr.endsWith(hDateStr) || hDateStr.endsWith(compareMMDD);
+      }
+      // Otherwise must match full YYYY-MM-DD
+      return hDateStr.includes(dateStr);
   });
 
-  // Robust holiday matching from the user-selected pool
+  // Pool Holidays
   let isPoolHoliday = userHolidaysPool.some(uh => {
       try {
-          // Normalize IDs
           const uhUserId = String(uh.userId || (uh as any).user_id || '').trim().toLowerCase();
           const targetUserId = String(userId).trim().toLowerCase();
           if (uhUserId !== targetUserId) return false;
-
-          // Normalize Dates
           const uhDateRaw = String(uh.holidayDate || (uh as any).holiday_date || '').trim();
           const targetDateRaw = String(dateStr).trim();
           if (!uhDateRaw || !targetDateRaw) return false;
+          
+          // STRICT MATCH for pool holidays - only match exact date
+          // unless it is specifically meant to be annual (starts with -)
+          if (uhDateRaw.startsWith('-')) {
+              const mmdd = format(day, '-MM-dd');
+              return uhDateRaw.endsWith(mmdd);
+          }
 
-          // Strategy 1: Simple includes
-          if (uhDateRaw.includes(targetDateRaw) || targetDateRaw.includes(uhDateRaw)) return true;
-
-          // Strategy 2: Numeric extraction match (YYYYMMDD)
+          // Exact year-month-day match
           const d1 = uhDateRaw.replace(/[^0-9]/g, '');
           const d2 = targetDateRaw.replace(/[^0-9]/g, '');
-          if (d1.length >= 8 && d2.length >= 8 && d1.substring(0, 8) === d2.substring(0, 8)) return true;
-
-          // Strategy 3: MMDD matching for recurring/partial strings
-          const mmdd = format(day, '-MM-dd');
-          if (uhDateRaw.endsWith(mmdd)) return true;
-
+          if (d1.substring(0, 8) === d2.substring(0, 8)) return true;
           return false;
-      } catch (e) {
-          return false;
-      }
+      } catch (e) { return false; }
   });
 
-  // Pool holidays (user-selected like Ugadi) and configured admin holidays are PERMANENT.
-  // They are NEVER expired by floatingLeavesExpiryDate.
-  // Only recurring (floating) holidays respect the expiry date.
   isHoliday = isConfiguredHoliday || isPoolHoliday;
-
-  // Expiry ONLY applies to recurring floating holidays, not to pool or configured holidays.
-  if (userRules?.floatingLeavesExpiryDate && isRecurringHoliday) {
-      const dayStr = format(day, 'yyyy-MM-dd');
-      const expiryStr = userRules.floatingLeavesExpiryDate.substring(0, 10);
-      if (dayStr >= expiryStr) {
-          isRecurringHoliday = false;
-      }
-  }
-
-  // Fallback: Recurring holidays that are in the PAST automatically expire
-  // (they are floating benefits, not permanent calendar holidays)
-  if (isRecurringHoliday) {
-      const today = startOfDay(new Date());
-      if (startOfDay(day) < today) {
-          isRecurringHoliday = false;
-      }
-  }
 
   // 3. Resolve Leaves
   const approvedLeave = leaves?.find(l => {
@@ -415,69 +406,72 @@ export function evaluateAttendanceStatus(params: {
       const lEndDate = l.endDate || l.date || l.leave_date;
       if (!lStartDate || !lEndDate) return false;
       const lUserId = l.userId || l.user_id;
-      
       if (String(lUserId) !== String(userId)) return false;
-      
-      // Support multiple variants of approved status
       const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
-      if (!['approved', 'approved_by_reporting', 'approved_by_admin'].includes(lStatus)) return false;
-      
+      if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
       const startDateStr = format(new Date(lStartDate), 'yyyy-MM-dd');
       const endDateStr = format(new Date(lEndDate), 'yyyy-MM-dd');
-      
       return dateStr >= startDateStr && dateStr <= endDateStr;
   });
+
+  // Helper to determine leave code (EL, SL, etc.)
+  const getLeaveCode = (l: any) => {
+      const isHalf = l.dayOption === 'half' || (l as any).day_option === 'half';
+      const prefix = isHalf ? '1/2' : '';
+      const lType = String(l.leaveType || l.type || '').toLowerCase();
+      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
+      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
+      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
+      if (lType.includes('loss') || lType.includes('lop')) return prefix + 'A';
+      return prefix + 'E/L';
+  };
 
   // 4. Status Determination logic
   const isToday = isSameDay(day, new Date());
   const hasPunchIn = dayEvents.some(e => e.type === 'punch-in');
   const hasPunchOut = dayEvents.some(e => e.type === 'punch-out');
-
-  // Strict rule: Present status REQUIRES both In and Out, except for Today
-  const hasValidPresence = (hasPunchIn && hasPunchOut) || (hasPunchIn && isToday);
+  const hasActivity = hasPunchIn || dayEvents.length > 0;
 
   const meetsThreshold = daysPresentInWeek >= threshold;
   const isEligible = isActiveInPreviousWeek || meetsThreshold;
 
-  if (hasValidPresence) {
-      if (isHoliday || isRecurringHoliday) status = 'H/P';
-      else if (isWeekend) status = 'W/P';
-      else status = 'P';
-
-      // --- NEW: Unified Site Tracking Integration ---
-      // If user is field/site and site tracking is enabled, check proximity rules
-      if ((userCategory === 'field' || userCategory === 'site') && userRules?.enableSiteTimeTracking) {
-          const fieldResult = getFieldStaffStatus(dayEvents, userRules, undefined, params.userRole || (userRules as any)?.role);
-          
-          // Special Rule: Operation Managers/Management roles are EXEMPT from strict site-percentage logic 
-          // even if categorized as 'field'. They just need valid punch hours.
-          const role = String(params.userRole || (userRules as any)?.role || '').toLowerCase();
-          const isManager = role.includes('manager') || role.includes('management') || role.includes('supervisor');
-          
-          if (fieldResult.status !== 'P' && !isManager) {
-              // Only downgrade 'P' or 'W/P' status based on site proximity
-              if (status === 'P' || status === 'W/P') {
-                  status = fieldResult.status;
-              }
-          }
+  // A. Determine Base Work Status based on Hours/Field Logic
+  let workStatus = '';
+  if (hasActivity || (workingHours !== undefined && workingHours > 0)) {
+      if (userCategory === 'office') {
+          // Office logic: based on working hours thresholds
+          const hrs = workingHours || 0;
+          const full = userRules?.dailyWorkingHours?.min || 8;
+          if (hrs >= full) workStatus = 'P';
+          else if (hrs >= 6) workStatus = '3/4P';
+          else if (hrs >= 4) workStatus = '1/2P';
+          else if (hrs >= 2) workStatus = '1/4P';
+          else workStatus = 'A';
+      } else {
+          // Field/Site logic: use site trackng result (if provided)
+          workStatus = fieldStatus || (hasPunchIn && (hasPunchOut || isToday) ? 'P' : 'A');
       }
-  } else if (approvedLeave && isEligible) {
-      // PERMANENT FIX: Leaves are allocated if user was active in the previous week OR meets current week threshold
-      const isHalfDay = approvedLeave?.dayOption === 'half' || (approvedLeave as any)?.day_option === 'half';
-      const prefix = isHalfDay ? '1/2' : '';
-      const leaveType = String(approvedLeave?.leaveType || approvedLeave?.type || '').toLowerCase();
+  }
+
+  // B. Handle Combinations or pure status
+  if (workStatus && workStatus !== 'A') {
+      // If work is partial and there's a 1/2 day leave, combine them
+      const isPartialWork = workStatus !== 'P';
+      const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
       
-      // Enhanced keyword matching for S/L, C/O, E/L
-      if (leaveType.includes('sick') || leaveType === 's/l' || leaveType === 'sl') status = prefix + 'S/L';
-      else if (leaveType.includes('comp') || leaveType.includes('c/o') || leaveType === 'co') status = prefix + 'C/O';
-      else if (leaveType.includes('loss') || leaveType.includes('lop')) status = isHalfDay ? '1/2A' : 'A';
-      else if (leaveType.includes('casual') || leaveType === 'cl') status = prefix + 'C/L';
-      else status = prefix + 'E/L';
+      if (isPartialWork && isHalfDayLeave) {
+          status = `${workStatus}+${getLeaveCode(approvedLeave)}`;
+      } else {
+          // Pure work status
+          if (isHoliday || isRecurringHoliday) status = 'H/P';
+          else if (isWeekend) status = 'W/P';
+          else status = workStatus;
+      }
+  } else if (approvedLeave) {
+      status = getLeaveCode(approvedLeave);
   } else {
-      // FIX: Holidays are ALWAYS granted if they are in the pool or configured, as per user request. 
-      // Only Weekly Offs (W/O) require the active presence threshold.
       if (isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
-          status = isRecurringHoliday ? 'F/H' : 'H';
+          status = 'H';
       } else if (isWeekend && isEligible) {
           status = 'W/O';
       } else {
