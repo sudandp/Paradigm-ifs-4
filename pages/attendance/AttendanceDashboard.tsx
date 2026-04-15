@@ -735,6 +735,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 1. Generate Logs using Unified Logic
                 let daysPresentInWeek = 0;
+                let lastActiveDate: Date = subDays(bufferStartDate, 1);
                 
                 // Track week presence for the buffer period as well
                 const logs = extendedDays.map(day => {
@@ -743,6 +744,8 @@ const AttendanceDashboard: React.FC = () => {
                     
                     // Reset weekly presence counter on Monday (1)
                     if (dayOfWeek === 1) daysPresentInWeek = 0;
+                    
+                    const isActiveInLookback = (day.getTime() - lastActiveDate.getTime()) / (1000 * 3600 * 24) <= 15;
 
                     const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
                     const { workingHours } = calculateWorkingHours(dayEvents);
@@ -768,13 +771,15 @@ const AttendanceDashboard: React.FC = () => {
                         userHolidaysPool: userHolidays || [],
                         leaves: leavesData,
                         daysPresentInWeek,
+                        isActiveInLookback,
                         workingHours,
                         fieldStatus: fStatus
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
-                    if (statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day') {
+                    if (statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H' || (statusRaw.includes('L') && !statusRaw.includes('LOP'))) {
                         daysPresentInWeek += (statusRaw.includes('1/2') ? 0.5 : 1);
+                        lastActiveDate = day;
                     }
 
                     // Map specific utility codes to dashboard display format (e.g., 'H/P' -> 'HP')
@@ -1131,6 +1136,7 @@ const AttendanceDashboard: React.FC = () => {
 
             // Track days present in rolling week for W/O threshold.
             let daysPresentInWeek = 0;
+            let lastActiveDate: Date = subDays(dateRange.startDate, 1);
             if (dateRange.startDate) {
                 const weekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
                 if (isAfter(dateRange.startDate, weekStart)) {
@@ -1199,6 +1205,7 @@ const AttendanceDashboard: React.FC = () => {
                 }
 
                 // Use centralized logic for status determination
+                const isActiveInLookback = (day.getTime() - lastActiveDate.getTime()) / (1000 * 3600 * 24) <= 15;
                 const status = evaluateAttendanceStatus({
                     day,
                     userId,
@@ -1213,12 +1220,14 @@ const AttendanceDashboard: React.FC = () => {
                     userHolidaysPool,
                     leaves,
                     daysPresentInWeek,
+                    isActiveInLookback,
                     workingHours,
                     fieldStatus: fStatus
                 });
 
-                if (status.includes('P') || status === 'Present' || status === 'Half Day') {
+                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
                     daysPresentInWeek += (status.includes('1/2') ? 0.5 : 1);
+                    lastActiveDate = day;
                 }
 
                 if (dayEvents.length > 0) {

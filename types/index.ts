@@ -1116,6 +1116,11 @@ export interface StaffAttendanceRules {
   childCareLeaveUnder5?: number; // default 6 days/year
   childCareLeave5to15?: number; // default 3 days/year
   enableMaternityChildCare?: boolean;
+  // --- Calculation Rules (configurable from Admin UI) ---
+  threeQuarterDayHours?: number;       // Hours threshold for 3/4P status (default: 75% of fullDay)
+  quarterDayHours?: number;            // Hours threshold for 1/4P status (default: 2)
+  weekendPresentThreshold?: number;    // Min days present in week to earn W/O (default: 3)
+  enableHoursBasedFallback?: boolean;  // For field/site: if site tracking returns A but hours exist, use hours (default: true)
 }
 
 export interface UserHoliday {

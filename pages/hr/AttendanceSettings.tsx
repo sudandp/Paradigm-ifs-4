@@ -49,7 +49,7 @@ const AttendanceSettings: React.FC = () => {
             setIsLoadingRoles(true);
             try {
                 const [roles, designations, structure] = await Promise.all([
-                    api.getAppRoles(),
+                    api.getRoles(),
                     api.getSiteStaffDesignations(),
                     api.getOrganizationStructure()
                 ]);
@@ -577,6 +577,109 @@ const AttendanceSettings: React.FC = () => {
                                 />
                             </div>
                         )}
+                    </div>
+                </section>
+
+                {/* Calculation Rules Section — previously hardcoded, now configurable */}
+                <section className="pt-6 border-t border-border">
+                    <h3 className="text-lg font-semibold text-primary-text mb-2 flex items-center">
+                        <Settings className="mr-2 h-5 w-5 text-muted" />Calculation Rules
+                    </h3>
+                    <p className="text-sm text-muted mb-4">
+                        Configure how attendance status (P, 3/4P, 1/2P, 1/4P, A) is determined. These rules control the engine that calculates every employee's daily status.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+                            <label className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Full Day (P)</label>
+                            <p className="text-xs text-muted mb-1">Uses "Min Hours for Full Day" above</p>
+                            <div className="text-lg font-black text-emerald-600">{currentRules.minimumHoursFullDay || 8}h+</div>
+                        </div>
+                        <Input
+                            label="3/4 Day Hours (3/4P)"
+                            id="threeQuarterDayHours"
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={currentRules.threeQuarterDayHours ?? Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}
+                            onChange={(e) => handleSettingChange('threeQuarterDayHours', parseFloat(e.target.value) || 0)}
+                            description={`Hours needed for 3/4 day status. Default: ${Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}h`}
+                        />
+                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+                            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Half Day (1/2P)</label>
+                            <p className="text-xs text-muted mb-1">Uses "Min Hours for Half Day" above</p>
+                            <div className="text-lg font-black text-blue-600">{currentRules.minimumHoursHalfDay || 4}h+</div>
+                        </div>
+                        <Input
+                            label="1/4 Day Hours (1/4P)"
+                            id="quarterDayHours"
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={currentRules.quarterDayHours ?? 2}
+                            onChange={(e) => handleSettingChange('quarterDayHours', parseFloat(e.target.value) || 0)}
+                            description="Hours needed for 1/4 day status. Default: 2h"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+                        <Input
+                            label="Weekend Eligibility Threshold"
+                            id="weekendPresentThreshold"
+                            type="number"
+                            min="0"
+                            max="7"
+                            value={currentRules.weekendPresentThreshold ?? 3}
+                            onChange={(e) => handleSettingChange('weekendPresentThreshold', parseInt(e.target.value) || 0)}
+                            description="Minimum days present in a week to earn W/O (Weekly Off). Default: 3 days"
+                        />
+                        <div>
+                            <label className="block text-sm font-medium text-primary-text mb-2">Weekly Off Days</label>
+                            <div className="flex flex-wrap gap-2">
+                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayLabel, dayIdx) => {
+                                    const offDays = currentRules.weeklyOffDays || [0];
+                                    const isActive = offDays.includes(dayIdx);
+                                    return (
+                                        <button
+                                            key={dayIdx}
+                                            type="button"
+                                            onClick={() => {
+                                                const updated = isActive
+                                                    ? offDays.filter((d: number) => d !== dayIdx)
+                                                    : [...offDays, dayIdx].sort();
+                                                handleSettingChange('weeklyOffDays', updated);
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                                isActive
+                                                    ? 'bg-accent/20 border-accent text-accent-dark shadow-sm'
+                                                    : 'bg-page border-border/50 text-muted hover:border-accent/50'
+                                            }`}
+                                        >
+                                            {dayLabel}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-xs text-muted mt-1.5">Select which days are treated as Weekly Offs.</p>
+                        </div>
+                    </div>
+
+                    {(activeTab === 'field' || activeTab === 'site') && (
+                        <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                            <Checkbox
+                                id="enableHoursBasedFallback"
+                                label="Enable Hours-Based Fallback"
+                                description="When site/GPS tracking returns 'Absent' but the employee has real working hours (e.g. Operation Managers), evaluate attendance based on worked hours instead. Recommended: ON."
+                                checked={currentRules.enableHoursBasedFallback !== false}
+                                onChange={(e) => handleSettingChange('enableHoursBasedFallback', e.target.checked)}
+                            />
+                        </div>
+                    )}
+
+                    <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/15 rounded-lg">
+                        <p className="text-xs text-amber-600 font-medium">
+                            <strong>How status is calculated:</strong> Employee worked hours are compared against these thresholds in order: Full Day → 3/4P → 1/2P → 1/4P → Absent. For field/site staff with GPS tracking, the site-time percentage is used first; if it returns Absent and fallback is ON, hours are used instead.
+                        </p>
                     </div>
                 </section>
 

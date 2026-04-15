@@ -277,17 +277,22 @@ export function getStaffCategory(
   societyId?: string | null,
   settings?: any
 ): 'office' | 'field' | 'site' {
-  const mapping = settings?.missedCheckoutConfig?.roleMapping || {
+  // PRIMARY: Use saved roleMapping from Admin UI → Attendance Rules → Staff Selections
+  // FALLBACK: Use hardcoded defaults only if settings haven't loaded yet
+  const mapping = settings?.missedCheckoutConfig?.roleMapping || settings?.roleMapping || {
     office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
     field: ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager'],
     site: ['site_manager', 'security_guard']
   };
 
+  // RULE: Explicit role mapping ALWAYS takes priority over society-based classification.
+  // This ensures Admin/HR/Management stay as office staff even if assigned to a society.
+  if (mapping.office?.includes(roleId)) return 'office';
   if (mapping.field?.includes(roleId)) return 'field';
+  if (mapping.site?.includes(roleId)) return 'site';
   
-  // If the user's role is specifically mapped to site, or they are assigned to a real physical society
-  // (ignoring 'null' and 'head_office' suffix which imply corporate mapping)
-  if (mapping.site?.includes(roleId) || (societyId && !societyId.endsWith('_head_office'))) return 'site';
+  // FALLBACK: If role not in any explicit mapping, use society-based classification
+  if (societyId && !societyId.endsWith('_head_office')) return 'site';
   
   return 'office';
 }
@@ -313,6 +318,7 @@ export function evaluateAttendanceStatus(params: {
   daysPresentInWeek: number;
   isActiveInPreviousWeek?: boolean;
   isActiveInCurrentWeek?: boolean;
+  isActiveInLookback?: boolean;
   workingHours?: number;
   fieldStatus?: string;
 }) {
@@ -323,6 +329,7 @@ export function evaluateAttendanceStatus(params: {
     daysPresentInWeek,
     isActiveInPreviousWeek = true,
     isActiveInCurrentWeek = true,
+    isActiveInLookback = true,
     workingHours,
     fieldStatus
   } = params;
@@ -433,37 +440,37 @@ export function evaluateAttendanceStatus(params: {
   const hasActivity = hasPunchIn || dayEvents.length > 0;
 
   const meetsThreshold = daysPresentInWeek >= threshold;
-  const isEligible = isActiveInPreviousWeek || meetsThreshold;
+  // W/O Eligibility: user gets W/O if active in lookback period (15 days) OR meets weekly threshold
+  const isEligible = isActiveInLookback || isActiveInPreviousWeek || meetsThreshold;
 
   // A. Determine Base Work Status based on Hours/Field Logic
+  // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules
+  const full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+  const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
+  const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
+  const quarterDayHrs = userRules?.quarterDayHours ?? 2;
+  const hoursBasedFallback = userRules?.enableHoursBasedFallback !== false; // default true
+
+  const resolveHoursStatus = (hrs: number): string => {
+      if (hrs >= full) return 'P';
+      if (hrs >= threeQuarterHrs) return '3/4P';
+      if (hrs >= halfDayHrs) return '1/2P';
+      if (hrs >= quarterDayHrs) return '1/4P';
+      return 'A';
+  };
+
   let workStatus = '';
   if (hasActivity || (workingHours !== undefined && workingHours > 0)) {
       if (userCategory === 'office') {
-          // Office logic: based on working hours thresholds
-          const hrs = workingHours || 0;
-          const full = userRules?.dailyWorkingHours?.min || 8;
-          if (hrs >= full) workStatus = 'P';
-          else if (hrs >= 6) workStatus = '3/4P';
-          else if (hrs >= 4) workStatus = '1/2P';
-          else if (hrs >= 2) workStatus = '1/4P';
-          else workStatus = 'A';
+          workStatus = resolveHoursStatus(workingHours || 0);
       } else {
-          // Field/Site logic: use site tracking result IF it's a real presence status.
-          // PERMANENT FIX: If fieldStatus is 'A' but employee has real working hours
-          // (e.g. Operation Managers who punch-in/out but don't use GPS site tracking),
-          // fall back to hours-based evaluation instead of blindly trusting the 'A'.
+          // Field/Site: trust real presence statuses from site tracking.
+          // If site tracking returns 'A' but employee has real hours AND
+          // hours-based fallback is enabled, evaluate on hours instead.
           if (fieldStatus && fieldStatus !== 'A') {
-              workStatus = fieldStatus; // Trust real presence statuses (P, 3/4P, 1/2P, etc.)
-          } else if (workingHours !== undefined && workingHours > 0) {
-              // Hours-based fallback: employee has actual work time
-              const full = userRules?.dailyWorkingHours?.min || userRules?.minimumHoursFullDay || 8;
-              const threeQuarter = full * 0.75;
-              const half = userRules?.minimumHoursHalfDay || full * 0.5;
-              if (workingHours >= full) workStatus = 'P';
-              else if (workingHours >= threeQuarter) workStatus = '3/4P';
-              else if (workingHours >= half) workStatus = '1/2P';
-              else if (workingHours >= 2) workStatus = '1/4P';
-              else workStatus = 'A';
+              workStatus = fieldStatus;
+          } else if (hoursBasedFallback && workingHours !== undefined && workingHours > 0) {
+              workStatus = resolveHoursStatus(workingHours);
           } else {
               workStatus = hasPunchIn && (hasPunchOut || isToday) ? 'P' : 'A';
           }
