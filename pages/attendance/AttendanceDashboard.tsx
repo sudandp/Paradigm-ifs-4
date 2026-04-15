@@ -708,7 +708,8 @@ const AttendanceDashboard: React.FC = () => {
             setIsLoading(true);
             try {
                 // Fetch extra days before start date to handle weekend logic correctly across months
-                const bufferStartDate = subDays(dateRange.startDate, 7);
+                // Start buffer at the Monday at least 15 days before to ensure two full blocks for calculation
+                const bufferStartDate = startOfWeek(subDays(dateRange.startDate, 15), { weekStartsOn: 1 });
                 const startStr = bufferStartDate.toISOString();
                 const endStr = dateRange.endDate.toISOString();
 
@@ -1141,7 +1142,7 @@ const AttendanceDashboard: React.FC = () => {
             let daysPresentInPreviousWeek = 0; 
 
             if (dateRange.startDate) {
-                const bufferStart = subDays(dateRange.startDate, 15);
+                const bufferStart = startOfWeek(subDays(dateRange.startDate, 15), { weekStartsOn: 1 });
                 let checkDate = bufferStart;
                 while (isBefore(checkDate, dateRange.startDate)) {
                     if (checkDate.getDay() === 1) {

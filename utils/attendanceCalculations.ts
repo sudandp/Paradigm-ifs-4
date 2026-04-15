@@ -436,8 +436,9 @@ export function evaluateAttendanceStatus(params: {
   const hasActivity = hasPunchIn || dayEvents.length > 0;
 
   const meetsThreshold = daysPresentInWeek >= threshold;
-  // W/O & Holiday Eligibility: Strictly determined by activity in the previous Monday-Sunday week.
-  const isEligible = isActiveInPreviousWeek;
+  // Weekend Off (Sunday) is earned by activity in the Mon-Sat period of the current week.
+  // Holidays and Leaves are earned by activity in the previous Monday-Sunday week.
+  const isEligible = isWeekend ? meetsThreshold : isActiveInPreviousWeek;
 
   // A. Determine Base Work Status based on Hours/Field Logic
   // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules

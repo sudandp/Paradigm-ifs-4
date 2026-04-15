@@ -142,7 +142,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       const startDate = startOfMonth(new Date(year, month - 1));
       const endDate = endOfMonth(new Date(year, month - 1));
-      const fetchStartDate = subDays(startOfWeek(startDate, { weekStartsOn: 1 }), 15);
+      // Start fetching from the Monday at least 15 days before the month start to ensure clean weekly blocks
+      const fetchStartDate = startOfWeek(subDays(startDate, 15), { weekStartsOn: 1 });
       
       const allEvents = await api.getAllAttendanceEvents(
         format(fetchStartDate, 'yyyy-MM-dd'), 
@@ -197,7 +198,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     let daysPresentInCurrentWeek = 0;
     let daysPresentInPreviousWeek = 0;
 
-    let checkDate = bufferStart;
+    let checkDate = startOfWeek(subDays(monthStart, 15), { weekStartsOn: 1 });
     while (isBefore(checkDate, monthStart)) {
         if (checkDate.getDay() === 1) {
             daysPresentInPreviousWeek = daysPresentInCurrentWeek;
