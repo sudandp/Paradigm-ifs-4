@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays } from 'date-fns';
+import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays } from 'date-fns';
 import { Download } from 'lucide-react';
 import { api } from '../../services/api';
 import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
@@ -185,13 +185,43 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
     let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
     let sickLeaves = 0, earnedLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
-    let daysPresentInPreviousWeek = 0;
-    let daysPresentInCurrentWeek = 0;
-    let lastActiveDate: Date = new Date(year, month - 1, 0); // Assume active on last day of previous month to not penalize early days
     
     const category = getStaffCategory(user.role);
     const rules = resolveUserRules(user);
     const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
+
+    // Organic initialization from buffer
+    const monthStart = new Date(year, month - 1, 1);
+    const bufferStart = subDays(monthStart, 15);
+    
+    let daysPresentInCurrentWeek = 0;
+    let daysPresentInPreviousWeek = 0;
+
+    let checkDate = bufferStart;
+    while (isBefore(checkDate, monthStart)) {
+        if (checkDate.getDay() === 1) {
+            daysPresentInPreviousWeek = daysPresentInCurrentWeek;
+            daysPresentInCurrentWeek = 0;
+        }
+
+        const dateStrStr = format(checkDate, 'yyyy-MM-dd');
+        const checkDayName = format(checkDate, 'EEEE');
+        const isConfiguredHolidayCheck = (category === 'field' ? (rules?.fieldHolidays || []) : (rules?.officeHolidays || [])).some((h: any) => {
+            const hVal = String(h.date).split(' ')[0].split('T')[0];
+            return hVal === dateStrStr;
+        });
+        const hasApprovedLeaveCheck = allLeaves.some(l => 
+            String(l.userId) === String(user.id) &&
+            isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+            !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
+        );
+        const hasActivityCheck = events.some(e => e.timestamp.startsWith(dateStrStr));
+
+        if (hasActivityCheck || hasApprovedLeaveCheck) {
+            daysPresentInCurrentWeek++;
+        }
+        checkDate = addDays(checkDate, 1);
+    }
     const shiftCounts: { [key: string]: number } = {};
     const formatTime = (hrs: number) => {
         const totalMinutes = Math.round(hrs * 60);
@@ -287,14 +317,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       }
 
       const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
-      const isActiveInLookback = (currentDate.getTime() - lastActiveDate.getTime()) / (1000 * 3600 * 24) <= 15;
 
       let status = evaluateAttendanceStatus({
           day: currentDate, userId: user.id, userCategory: category, userRole: user.role, userRules: rules,
           dayEvents, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays,
           userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
           isActiveInPreviousWeek,
-          isActiveInLookback,
           workingHours: netHours,
           fieldStatus: fieldResultStatus
       });
@@ -303,7 +331,6 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
         daysPresentInCurrentWeek += (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
-        lastActiveDate = currentDate; // Update last active date for the 15-day lookback rule
       }
 
       if (!isFuture) {

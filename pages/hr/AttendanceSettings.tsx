@@ -631,7 +631,7 @@ const AttendanceSettings: React.FC = () => {
                             max="7"
                             value={currentRules.weekendPresentThreshold ?? 3}
                             onChange={(e) => handleSettingChange('weekendPresentThreshold', parseInt(e.target.value) || 0)}
-                            description="Minimum days present in a week to earn W/O (Weekly Off). Default: 3 days"
+                            description="Minimum days present in a week to earn paid status for W/O (Weekly Off), Holidays, and Leaves in the following week. Default: 3 days"
                         />
                         <div>
                             <label className="block text-sm font-medium text-primary-text mb-2">Weekly Off Days</label>

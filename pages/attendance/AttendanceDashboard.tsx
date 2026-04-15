@@ -735,7 +735,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 1. Generate Logs using Unified Logic
                 let daysPresentInWeek = 0;
-                let lastActiveDate: Date = subDays(bufferStartDate, 1);
+                let daysPresentInPreviousWeek = 0; // True evaluation strictly from DB buffer events
                 
                 // Track week presence for the buffer period as well
                 const logs = extendedDays.map(day => {
@@ -743,9 +743,12 @@ const AttendanceDashboard: React.FC = () => {
                     const dayOfWeek = day.getDay();
                     
                     // Reset weekly presence counter on Monday (1)
-                    if (dayOfWeek === 1) daysPresentInWeek = 0;
+                    if (dayOfWeek === 1) {
+                        daysPresentInPreviousWeek = daysPresentInWeek;
+                        daysPresentInWeek = 0;
+                    }
                     
-                    const isActiveInLookback = (day.getTime() - lastActiveDate.getTime()) / (1000 * 3600 * 24) <= 15;
+                    const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
 
                     const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
                     const { workingHours } = calculateWorkingHours(dayEvents);
@@ -771,7 +774,7 @@ const AttendanceDashboard: React.FC = () => {
                         userHolidaysPool: userHolidays || [],
                         leaves: leavesData,
                         daysPresentInWeek,
-                        isActiveInLookback,
+                        isActiveInPreviousWeek,
                         workingHours,
                         fieldStatus: fStatus
                     });
@@ -779,7 +782,6 @@ const AttendanceDashboard: React.FC = () => {
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
                     if (statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H' || (statusRaw.includes('L') && !statusRaw.includes('LOP'))) {
                         daysPresentInWeek += (statusRaw.includes('1/2') ? 0.5 : 1);
-                        lastActiveDate = day;
                     }
 
                     // Map specific utility codes to dashboard display format (e.g., 'H/P' -> 'HP')
@@ -1136,49 +1138,42 @@ const AttendanceDashboard: React.FC = () => {
 
             // Track days present in rolling week for W/O threshold.
             let daysPresentInWeek = 0;
-            let lastActiveDate: Date = subDays(dateRange.startDate, 1);
-            if (dateRange.startDate) {
-                const weekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
-                if (isAfter(dateRange.startDate, weekStart)) {
-                    let checkDate = weekStart;
-                    while (isAfter(dateRange.startDate, checkDate) && !isSameDay(dateRange.startDate, checkDate)) {
-                        const dateStrStr = format(checkDate, 'yyyy-MM-dd');
-                        const checkDayName = format(checkDate, 'EEEE');
-                        const checkWeeklyOffDays = weeklyOffDays;
-                        const checkIsWeekend = checkWeeklyOffDays.includes(checkDate.getDay());
-                        
-                        if (!checkIsWeekend) {
-                            const prevDayEvents = userEventsMap?.get(dateStrStr) || [];
-                            const hasActivityCheck = prevDayEvents.length > 0;
-                            const isRecurringHolidayCheck = recurringHolidays.some(rule => {
-                                if (rule.day.toLowerCase() !== checkDayName.toLowerCase()) return false;
-                                const occurrence = Math.ceil(checkDate.getDate() / 7);
-                                return rule.n === occurrence && (rule.type || 'office') === userCategory;
-                            });
-                            const isFixedHolidayCheck = FIXED_HOLIDAYS.some(fh => {
-                                const [m, d] = fh.date.split('-').map(Number);
-                                return checkDate.getMonth() === (m - 1) && checkDate.getDate() === d;
-                            });
-                            const isConfiguredHolidayCheck = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
-                                const hVal = String(h.date).split(' ')[0].split('T')[0];
-                                return hVal === dateStrStr;
-                            });
-                            const hasApprovedLeaveCheck = userLeaves.some(l => 
-                                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                                !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
-                            );
+            let daysPresentInPreviousWeek = 0; 
 
-                            if (hasActivityCheck || isRecurringHolidayCheck || isFixedHolidayCheck || isConfiguredHolidayCheck || hasApprovedLeaveCheck) {
-                                daysPresentInWeek++;
-                            }
-                        }
-                        checkDate = addDays(checkDate, 1);
+            if (dateRange.startDate) {
+                const bufferStart = subDays(dateRange.startDate, 15);
+                let checkDate = bufferStart;
+                while (isBefore(checkDate, dateRange.startDate)) {
+                    if (checkDate.getDay() === 1) {
+                        daysPresentInPreviousWeek = daysPresentInWeek;
+                        daysPresentInWeek = 0;
                     }
+
+                    const dateStrStr = format(checkDate, 'yyyy-MM-dd');
+                    const checkDayName = format(checkDate, 'EEEE');
+                    const isConfiguredHolidayCheck = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
+                        const hVal = String(h.date).split(' ')[0].split('T')[0];
+                        return hVal === dateStrStr;
+                    });
+                    const hasApprovedLeaveCheck = userLeaves.some(l => 
+                        isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                        !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
+                    );
+                    const prevDayEvents = userEventsMap?.get(dateStrStr) || [];
+                    const hasActivityCheck = prevDayEvents.length > 0;
+
+                    if (hasActivityCheck || hasApprovedLeaveCheck) {
+                        daysPresentInWeek++;
+                    }
+                    checkDate = addDays(checkDate, 1);
                 }
             }
 
             dayInfos.forEach(({ day, dateStr, displayDate, dayName, dayOfMonth, dayOfWeek }) => {
-                if (dayOfWeek === 1) daysPresentInWeek = 0;
+                if (dayOfWeek === 1) {
+                    daysPresentInPreviousWeek = daysPresentInWeek;
+                    daysPresentInWeek = 0;
+                }
 
                 // O(1) Lookup instead of O(L) filter
                 const dayEvents = userEventsMap?.get(dateStr) || [];
@@ -1205,7 +1200,7 @@ const AttendanceDashboard: React.FC = () => {
                 }
 
                 // Use centralized logic for status determination
-                const isActiveInLookback = (day.getTime() - lastActiveDate.getTime()) / (1000 * 3600 * 24) <= 15;
+                const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
                 const status = evaluateAttendanceStatus({
                     day,
                     userId,
@@ -1220,14 +1215,13 @@ const AttendanceDashboard: React.FC = () => {
                     userHolidaysPool,
                     leaves,
                     daysPresentInWeek,
-                    isActiveInLookback,
+                    isActiveInPreviousWeek,
                     workingHours,
                     fieldStatus: fStatus
                 });
 
                 if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
                     daysPresentInWeek += (status.includes('1/2') ? 0.5 : 1);
-                    lastActiveDate = day;
                 }
 
                 if (dayEvents.length > 0) {

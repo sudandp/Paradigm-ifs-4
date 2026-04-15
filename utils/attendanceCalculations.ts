@@ -316,9 +316,7 @@ export function evaluateAttendanceStatus(params: {
   userHolidaysPool: any[];
   leaves: any[];
   daysPresentInWeek: number;
-  isActiveInPreviousWeek?: boolean;
-  isActiveInCurrentWeek?: boolean;
-  isActiveInLookback?: boolean;
+  isActiveInPreviousWeek: boolean;
   workingHours?: number;
   fieldStatus?: string;
 }) {
@@ -327,9 +325,7 @@ export function evaluateAttendanceStatus(params: {
     officeHolidays, fieldHolidays, siteHolidays, 
     recurringHolidays, userHolidaysPool, leaves, 
     daysPresentInWeek,
-    isActiveInPreviousWeek = true,
-    isActiveInCurrentWeek = true,
-    isActiveInLookback = true,
+    isActiveInPreviousWeek,
     workingHours,
     fieldStatus
   } = params;
@@ -440,8 +436,8 @@ export function evaluateAttendanceStatus(params: {
   const hasActivity = hasPunchIn || dayEvents.length > 0;
 
   const meetsThreshold = daysPresentInWeek >= threshold;
-  // W/O Eligibility: user gets W/O if active in lookback period (15 days) OR meets weekly threshold
-  const isEligible = isActiveInLookback || isActiveInPreviousWeek || meetsThreshold;
+  // W/O & Holiday Eligibility: Strictly determined by activity in the previous Monday-Sunday week.
+  const isEligible = isActiveInPreviousWeek;
 
   // A. Determine Base Work Status based on Hours/Field Logic
   // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules
@@ -494,10 +490,16 @@ export function evaluateAttendanceStatus(params: {
           else status = workStatus;
       }
   } else if (approvedLeave) {
-      status = getLeaveCode(approvedLeave);
+      if (isEligible) {
+          status = getLeaveCode(approvedLeave);
+      } else {
+          // If not eligible, even approved leaves become Absent/Loss of Pay
+          const lCode = getLeaveCode(approvedLeave);
+          status = lCode.includes('LOP') ? lCode : 'A';
+      }
   } else {
       if (isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
-          status = 'H';
+          status = isEligible ? 'H' : 'A';
       } else if (isWeekend && isEligible) {
           status = 'W/O';
       } else {
