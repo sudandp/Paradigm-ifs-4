@@ -255,7 +255,87 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 9,
     color: '#888',
-  }
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+    gap: 10,
+  },
+  metricCard: {
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    flexDirection: 'column',
+    gap: 2,
+    minWidth: 80,
+  },
+  metricLabel: {
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#64748B',
+    textTransform: 'uppercase',
+  },
+  metricValue: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+  payableDaysCard: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+    minWidth: 80,
+  },
+  payableDaysLabel: {
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#15803D',
+    textTransform: 'uppercase',
+  },
+  payableDaysValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#166534',
+  },
+  attendanceBadge: {
+    padding: '3 6',
+    borderRadius: 4,
+    fontSize: 7,
+    fontWeight: 'bold',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+  },
+  matrixRowLabel: {
+    width: 60,
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#475569',
+    padding: 3,
+    backgroundColor: '#F8FAFC',
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  matrixCell: {
+    flex: 1,
+    fontSize: 6.5,
+    textAlign: 'center',
+    padding: '3 0',
+    borderRightWidth: 1,
+    borderRightColor: '#F1F5F9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
 });
 
 export const GMCFormReceiptDocument: React.FC<{ data: any; logoUrl?: string }> = ({ data, logoUrl }) => {
@@ -817,100 +897,170 @@ export const MonthlyReportDocument: React.FC<{
   days: Date[];
 }> = ({ data, dateRange, generatedBy, logoUrl, days }) => {
   const getStatusColor = (s: string) => {
-    if (s === 'P') return '#059669';
-    if (s === 'A') return '#DC2626';
-    if (s === 'W/O' || s === 'WOP') return '#6B7280';
-    if (s === 'H' || s === 'HP' || s === 'H/P') return '#EA580C';
-    if (s.includes('1/2')) return '#2563EB';
-    if (s.includes('S/L')) return '#9333EA';
-    if (s.includes('E/L')) return '#4F46E5';
-    if (s.includes('C/O')) return '#0891B2';
-    if (s.includes('OT')) return '#0D9488';
-    return '#374151';
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#059669';
+    if (s === 'A' || s === 'Absent') return '#DC2626';
+    if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
+    if (s === 'H' || s === 'Holiday') return '#4F46E5';
+    if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
+    return '#475569';
+  };
+
+  const getStatusBg = (s: string) => {
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#ECFDF5';
+    if (s === 'A' || s === 'Absent') return '#FEF2F2';
+    if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
+    if (s === 'H' || s === 'Holiday') return '#EEF2FF';
+    return '#FFFFFF';
   };
 
   return (
     <Document>
-      <Page size="A3" orientation="landscape" style={[styles.page, { padding: '40 20' }]}>
-        <View style={[styles.header, { borderBottomWidth: 3, borderBottomColor: '#000', paddingBottom: 15, marginBottom: 25 }]}>
-          <View style={styles.headerLeft}>
-            {logoUrl && <Image src={logoUrl} style={{ height: 50, width: 'auto', marginBottom: 5 }} />}
-            <Text style={{ fontSize: 9, color: '#9CA3AF', fontWeight: 'bold' }}>PARADIGM SERVICES</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={{ fontSize: 24, fontWeight: 'black', marginBottom: 2 }}>MONTHLY ATTENDANCE REPORT</Text>
-            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1F2937', marginBottom: 8 }}>
-              {(dateRange?.startDate && dateRange?.endDate) ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Period Not Specified'}
-            </Text>
-            <View style={{ fontSize: 9, color: '#6B7280' }}>
-               <Text>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</Text>
-               {generatedBy && <Text>By: {generatedBy}</Text>}
+      {data.map((employee, empIdx) => (
+        <Page key={empIdx} size="A3" orientation="landscape" style={[styles.page, { padding: '30 20' }]}>
+          {/* Header */}
+          <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 10, marginBottom: 15 }]}>
+            <View style={styles.headerLeft}>
+              {logoUrl && <Image src={logoUrl} style={{ height: 40, width: 'auto', marginBottom: 4 }} />}
+              <Text style={{ fontSize: 8, color: '#94A3B8', fontWeight: 'bold' }}>PARADIGM OFFICE SERVICES</Text>
+            </View>
+            <View style={styles.headerRight}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>ATTENDANCE REPORT - {employee.userName || employee.employeeName}</Text>
+              <Text style={{ fontSize: 10, color: '#64748B' }}>
+                {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
+              </Text>
             </View>
           </View>
-        </View>
 
-        <View style={{ borderStyle: 'solid', borderWidth: 1, borderColor: '#ccc' }}>
-          <View style={[styles.tableRow, { backgroundColor: '#F9FAFB' }]}>
-            <View style={{ width: '120px', borderRightWidth: 1, borderRightColor: '#ccc', padding: 5 }}><Text style={[styles.tableCellHeader, { textAlign: 'left' }]}>Employee Name</Text></View>
-            {days.map((d, i) => (
-              <View key={i} style={{ flex: 1, borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCellHeader, { color: '#9CA3AF' }]}>{format(d, 'd')}</Text></View>
-            ))}
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#ECFDF5' }}><Text style={[styles.tableCellHeader, { color: '#059669' }]}>P</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#EFF6FF' }}><Text style={[styles.tableCellHeader, { color: '#2563EB' }]}>1/2P</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#F0FDFA' }}><Text style={[styles.tableCellHeader, { color: '#0D9488' }]}>OT</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#ECFEFF' }}><Text style={[styles.tableCellHeader, { color: '#0891B2' }]}>C/O</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#EEF2FF' }}><Text style={[styles.tableCellHeader, { color: '#4F46E5' }]}>E/L</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#FAF5FF' }}><Text style={[styles.tableCellHeader, { color: '#9333EA' }]}>S/L</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#FEF2F2' }}><Text style={[styles.tableCellHeader, { color: '#DC2626' }]}>A</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCellHeader, { color: '#6B7280' }]}>WO</Text></View>
-            <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#FFF7ED' }}><Text style={[styles.tableCellHeader, { color: '#EA580C' }]}>H</Text></View>
-            <View style={{ width: '25px', padding: '5 0', backgroundColor: '#ECFDF5' }}><Text style={[styles.tableCellHeader, { color: '#059669' }]}>Pay</Text></View>
+          {/* Employee Info & Metrics Row */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#0F172A' }}>{employee.userName || employee.employeeName}</Text>
+              <Text style={{ fontSize: 9, color: '#64748B' }}>Role: {employee.role?.replace(/_/g, ' ') || 'N/A'}</Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Net Work</Text>
+                <Text style={styles.metricValue}>{(employee.totalNetWorkDuration || 0).toFixed(2)} Hrs</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Total OT</Text>
+                <Text style={styles.metricValue}>{(employee.totalOT || 0).toFixed(2)} Hrs</Text>
+              </View>
+              <View style={styles.metricCard}>
+                <Text style={styles.metricLabel}>Avg Hrs/Day</Text>
+                <Text style={styles.metricValue}>{(employee.averageWorkingHrs || 0).toFixed(2)} Hrs</Text>
+              </View>
+              <View style={styles.payableDaysCard}>
+                <Text style={styles.payableDaysLabel}>Payable Days</Text>
+                <Text style={styles.payableDaysValue}>{employee.totalPayableDays}</Text>
+              </View>
+            </View>
           </View>
 
-          {data.map((row, idx) => (
-            <View key={idx} style={[styles.tableRow, { borderTopWidth: 1, borderTopColor: '#eee' }]}>
-              <View style={{ width: '120px', borderRightWidth: 1, borderRightColor: '#ccc', padding: 5 }}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
-              {row.statuses.map((st: string, i: number) => (
-                <View key={i} style={{ flex: 1, borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.statusCell, { color: getStatusColor(st), fontWeight: 'bold' }]}>{st}</Text></View>
+          {/* Attendance Distribution */}
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 15, flexWrap: 'wrap' }}>
+            <View style={[styles.attendanceBadge, { backgroundColor: '#ECFDF5', borderColor: '#10B981', color: '#065F46' }]}>
+              <Text>Present {employee.presentDays}</Text>
+            </View>
+            <View style={[styles.attendanceBadge, { backgroundColor: '#FEF2F2', borderColor: '#EF4444', color: '#991B1B' }]}>
+              <Text>Absent {employee.absentDays}</Text>
+            </View>
+            <View style={[styles.attendanceBadge, { backgroundColor: '#F8FAFC', borderColor: '#94A3B8', color: '#1E293B' }]}>
+              <Text>W/O {employee.weekOffs}</Text>
+            </View>
+            <View style={[styles.attendanceBadge, { backgroundColor: '#EEF2FF', borderColor: '#6366F1', color: '#3730A3' }]}>
+              <Text>Holiday {employee.holidays}</Text>
+            </View>
+            <View style={[styles.attendanceBadge, { backgroundColor: '#F5F3FF', borderColor: '#8B5CF6', color: '#4C1D95' }]}>
+              <Text>Leave {employee.leaves}</Text>
+            </View>
+            {employee.lossOfPays > 0 && (
+              <View style={[styles.attendanceBadge, { backgroundColor: '#FFF1F2', borderColor: '#F43F5E', color: '#881337' }]}>
+                <Text>LOP {employee.lossOfPays}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Detailed Matrix Table */}
+          <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
+            {/* Table Header - Day Numbers */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+              <View style={[styles.matrixRowLabel, { backgroundColor: '#F1F5F9' }]}><Text>Date</Text></View>
+              {days.map((d, i) => (
+                <View key={i} style={styles.matrixCell}><Text style={{ fontWeight: 'bold' }}>{format(d, 'd')}</Text></View>
               ))}
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0', backgroundColor: '#F9FAFB' }}><Text style={[styles.tableCell, { color: '#059669', fontWeight: 'bold' }]}>{row.presentDays}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#2563EB', fontWeight: 'bold' }]}>{row.halfDays}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#0D9488', fontWeight: 'bold' }]}>{row.overtimeDays || 0}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#0891B2', fontWeight: 'bold' }]}>{row.compOffs || 0}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#4F46E5', fontWeight: 'bold' }]}>{row.earnedLeaves || 0}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#9333EA', fontWeight: 'bold' }]}>{row.sickLeaves || 0}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#DC2626', fontWeight: 'bold' }]}>{row.absentDays}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#6B7280' }]}>{row.weekOffs}</Text></View>
-              <View style={{ width: '22px', borderRightWidth: 1, borderRightColor: '#ccc', padding: '5 0' }}><Text style={[styles.tableCell, { color: '#EA580C' }]}>{row.holidays}</Text></View>
-              <View style={{ width: '25px', padding: '5 0', backgroundColor: '#F0FDF4' }}><Text style={[styles.tableCell, { color: '#059669', fontWeight: 'bold' }]}>{row.totalPayableDays}</Text></View>
             </View>
-          ))}
-        </View>
 
-        <View style={{ marginTop: 20, flexDirection: 'row', gap: 15, flexWrap: 'wrap' }}>
-           {[
-             { label: 'P: PRESENT', color: '#059669' },
-             { label: 'A: ABSENT', color: '#DC2626' },
-             { label: '1/2P: HALF DAY', color: '#2563EB' },
-             { label: 'WO: WEEKLY OFF', color: '#6B7280' },
-             { label: 'H: HOLIDAY', color: '#EA580C' },
-             { label: 'OT: OVERTIME', color: '#0D9488' },
-             { label: 'S/L: SICK LEAVE', color: '#9333EA' },
-             { label: 'E/L: EARNED LEAVE', color: '#4F46E5' },
-             { label: 'C/O: COMP OFF', color: '#0891B2' },
-           ].map((l, i) => (
-             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: l.color }} />
-                <Text style={{ fontSize: 8, fontWeight: 'bold', color: l.color }}>{l.label}</Text>
-             </View>
-           ))}
-        </View>
+            {/* Row: Status */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>Status</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={[styles.matrixCell, { backgroundColor: getStatusBg(d.status) }]}>
+                  <Text style={{ color: getStatusColor(d.status), fontWeight: 'bold' }}>{d.status}</Text>
+                </View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
 
-        <View style={{ flex: 1 }} />
-        <Text style={styles.footer} render={({ pageNumber, totalPages }) => (
-          `PARADIGM SERVICES - MONTHLY STATUS REPORT - Page ${pageNumber} of ${totalPages}`
-        )} fixed />
-      </Page>
+            {/* Row: In Time */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>In Time</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text>{d.inTime || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
+            {/* Row: Out Time */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>Out Time</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text>{d.outTime || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
+            {/* Row: Gross Dur */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>Gross Dur</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text>{d.grossDuration || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
+            {/* Row: Net Worked */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>Net Worked</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text style={{ fontWeight: 'bold' }}>{d.netWorkedHours || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
+            {/* Row: OT */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>OT</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text style={{ color: d.ot && d.ot !== '-' ? '#2563EB' : '#64748B' }}>{d.ot || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
+            {/* Row: Shift */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={[styles.matrixRowLabel, { borderBottomWidth: 0 }]}><Text>Shift</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={[styles.matrixCell, { borderBottomWidth: 0 }]}><Text>{d.shift || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={[styles.matrixCell, { borderBottomWidth: 0 }]}><Text>-</Text></View>)}
+            </View>
+          </View>
+
+          {/* Footer Metadata */}
+          <View style={{ marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 15 }}>
+              <Text style={{ fontSize: 7, color: '#94A3B8' }}>AVG WORKING HOURS: {employee.averageWorkingHrs?.toFixed(1) || 0}H</Text>
+              <Text style={{ fontSize: 7, color: '#94A3B8' }}>GENERATED BY: {generatedBy?.toUpperCase() || 'SYSTEM'}</Text>
+            </View>
+            <Text style={{ fontSize: 7, color: '#94A3B8' }}>Page {empIdx + 1} of {data.length}</Text>
+          </View>
+        </Page>
+      ))}
     </Document>
   );
 };

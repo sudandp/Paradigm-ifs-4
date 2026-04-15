@@ -74,11 +74,13 @@ interface MonthlyHoursReportProps {
   selectedSite?: string;
   selectedSociety?: string;
   selectedRole?: string;
+  onDataLoaded?: (data: EmployeeMonthlyData[]) => void;
 }
 
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
-  selectedStatus = 'all', selectedSite = 'all', selectedSociety = 'all', selectedRole = 'all'
+  selectedStatus = 'all', selectedSite = 'all', selectedSociety = 'all', selectedRole = 'all',
+  onDataLoaded
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
@@ -106,6 +108,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     if (externalData) {
       setReportData(externalData);
       setLoading(false);
+      if (onDataLoaded) onDataLoaded(externalData);
     } else {
       loadReportData();
     }
@@ -161,6 +164,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       }
 
       setReportData(employeeReports);
+      if (onDataLoaded) onDataLoaded(employeeReports);
     } catch (error) {
       console.error('Error loading monthly report:', error);
     } finally {

@@ -28,7 +28,7 @@ import type {
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
-import MonthlyHoursReport from '../../components/attendance/MonthlyHoursReport';
+import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView } from '../../components/attendance/ReportHTMLViews';
 import {
     format,
@@ -454,6 +454,7 @@ const AttendanceDashboard: React.FC = () => {
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
+    const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
 
     const [dateRange, setDateRange] = useState<Range>({
         startDate: startOfToday(),
@@ -1403,316 +1404,10 @@ const AttendanceDashboard: React.FC = () => {
     }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus]);
 
     // 3. Monthly Report Data (Aggregated)
-    const monthlyReportData: MonthlyReportRow[] = useMemo(() => {
-        if (!dateRange.startDate || !dateRange.endDate) return [];
-
-        const days = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate });
-        
-        let filteredUsers = users.filter(u => u.role !== 'management');
-
-        if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
-        if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
-        if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
-        if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
-
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
-        if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => 
-                (u as any).isActive !== false && 
-                activeInPeriodIds.has(String(u.id).toLowerCase())
-            );
-        }
-
-        // PRE-INDEX: Group events by userId and date
-        const eventsByUserAndDate = new Map<string, Map<string, AttendanceEvent[]>>();
-        attendanceEvents.forEach(e => {
-            const userId = String(e.userId);
-            const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
-            if (!eventsByUserAndDate.has(userId)) {
-                eventsByUserAndDate.set(userId, new Map());
-            }
-            const userMap = eventsByUserAndDate.get(userId)!;
-            if (!userMap.has(dateStr)) {
-                userMap.set(dateStr, []);
-            }
-            userMap.get(dateStr)!.push(e);
-        });
-
-        // PRE-INDEX: Group approved leaves by userId
-        const approvedLeavesByUser = new Map<string, LeaveRequest[]>();
-        leaves.forEach(l => {
-            if (l && l.status === 'approved' && l.userId) {
-                const userId = String(l.userId);
-                if (!approvedLeavesByUser.has(userId)) {
-                    approvedLeavesByUser.set(userId, []);
-                }
-                approvedLeavesByUser.get(userId)!.push(l);
-            }
-        });
-
-        const rulesCache = new Map<string, StaffAttendanceRules>();
-        const getRules = (userId: string, category: string) => {
-            if (!rulesCache.has(userId)) {
-                rulesCache.set(userId, resolveUserRules(userId, category as any));
-            }
-            return rulesCache.get(userId)!;
-        };
-
-        const rows = filteredUsers.map(user => {
-            const userId = String(user.id);
-            const userEventsMap = eventsByUserAndDate.get(userId);
-            const userApprovedLeaves = approvedLeavesByUser.get(userId) || [];
-
-            const userCategory = getStaffCategory(user.role);
-            const userRules = getRules(userId, userCategory);
-            const weeklyOffDays = userRules.weeklyOffDays || [0];
-
-            const statuses: string[] = [];
-            let presentDays = 0;
-            let absentDays = 0;
-            let halfDays = 0;
-            let threeQuarterDays = 0;
-            let quarterDays = 0;
-            let weekOffs = 0;
-            let holidays = 0;
-            let weekendPresents = 0;
-            let holidayPresents = 0;
-            let sickLeaves = 0;
-            let earnedLeaves = 0;
-            let floatingHolidays = 0;
-            let compOffs = 0;
-            let lossOfPays = 0;
-            let workFromHomeDays = 0;
-            let overtimeDays = 0;
-
-            let daysPresentInPreviousWeek = 0;
-            let daysPresentInCurrentWeek = 0;
-            const threshold = (userRules as any).weekendPresentThreshold ?? 3;
-
-            // 1. Calculate historical activity to determine status for the FIRST week of the range
-            if (dateRange.startDate) {
-                const firstWeekStart = startOfWeek(dateRange.startDate, { weekStartsOn: 1 });
-                const historicalWeekStart = subDays(firstWeekStart, 7);
-                
-                // Count presence in the week BEFORE the first week of the range (the full previous week)
-                let checkDateHist = historicalWeekStart;
-                for (let i = 0; i < 7; i++) {
-                    const dateStrHist = format(checkDateHist, 'yyyy-MM-dd');
-                    const histEvents = userEventsMap?.get(dateStrHist) || [];
-                    if (histEvents.length > 0) daysPresentInPreviousWeek++;
-                    checkDateHist = addDays(checkDateHist, 1);
-                }
-
-                // Count presence in the current week UP TO the range start
-                let checkDateBuffer = firstWeekStart;
-                while (isBefore(checkDateBuffer, dateRange.startDate)) {
-                    const dateStrBuffer = format(checkDateBuffer, 'yyyy-MM-dd');
-                    const bufferEvents = userEventsMap?.get(dateStrBuffer) || [];
-                    if (bufferEvents.length > 0) daysPresentInCurrentWeek++;
-                    checkDateBuffer = addDays(checkDateBuffer, 1);
-                }
-            }
-
-            days.forEach(day => {
-                // Every Monday, rotate the weekly activity counts
-                if (day.getDay() === 1) {
-                    daysPresentInPreviousWeek = daysPresentInCurrentWeek;
-                    daysPresentInCurrentWeek = 0;
-                }
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const dayEvents = userEventsMap?.get(dateStr) || [];
-                
-                const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
-
-                const status = evaluateAttendanceStatus({
-                    day,
-                    userId: user.id,
-                    userCategory: userCategory as any,
-                    userRole: user.role,
-                    userRules,
-                    dayEvents,
-                    officeHolidays,
-                    fieldHolidays,
-                    siteHolidays,
-                    recurringHolidays,
-                    userHolidaysPool,
-                    leaves,
-                    daysPresentInWeek: daysPresentInCurrentWeek,
-                    isActiveInPreviousWeek
-                });
-
-                // Update daysPresentInCurrentWeek for next week's threshold
-                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
-                    const increment = (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
-                    daysPresentInCurrentWeek += increment;
-                }
-
-                // Map status to counters
-                const increment = status.startsWith('1/2') ? 0.5 : 1;
-                
-                if (status === 'P') presentDays++;
-                else if (status === '3/4P') threeQuarterDays++;
-                else if (status === '1/2P') halfDays++;
-                else if (status === '1/4P') quarterDays++;
-                else if (status === 'A') absentDays++;
-                else if (status === 'W/O') weekOffs++;
-                else if (status === 'W/P' || status === 'WOP') { weekOffs++; weekendPresents++; }
-                else if (status === 'H') holidays++;
-                else if (status === 'H/P' || status === 'HP') { holidays++; holidayPresents++; }
-                else if (status.includes('S/L')) sickLeaves += increment;
-                else if (status.includes('E/L')) earnedLeaves += increment;
-                else if (status.includes('F/H')) floatingHolidays += increment;
-                else if (status.includes('C/O')) compOffs += increment;
-                else if (status.includes('LOP')) { lossOfPays += increment; absentDays += increment; }
-                else if (status === 'W/H') workFromHomeDays++;
-
-                // Optional: track overtime days (if > 14 hours) - Only for SITE staff
-                if (userCategory === 'site' && status.includes('P') && dayEvents.length > 0) {
-                    const { workingHours } = calculateWorkingHours(dayEvents);
-                    if (workingHours > 14) overtimeDays++;
-                }
-                
-                statuses.push(status);
-            });
-
-            const totalPayableDays = presentDays + (threeQuarterDays * 0.75) + (halfDays * 0.5) + (quarterDays * 0.25) + 
-                                     weekOffs + holidays + weekendPresents + holidayPresents + 
-                                     sickLeaves + earnedLeaves + floatingHolidays + compOffs + workFromHomeDays + overtimeDays;
-
-            return {
-                userName: user.name,
-                userId: user.id,
-                statuses,
-                presentDays: presentDays + (threeQuarterDays * 0.75) + (halfDays * 0.5) + (quarterDays * 0.25),
-                absentDays,
-                halfDays,
-                threeQuarterDays,
-                quarterDays,
-                weekOffs,
-                holidays,
-                weekendPresents,
-                holidayPresents,
-                totalPayableDays,
-                sickLeaves,
-                earnedLeaves,
-                floatingHolidays,
-                compOffs,
-                lossOfPays,
-                workFromHomeDays,
-                overtimeDays
-            };
-        });
-
-        if (selectedStatus === 'ACTIVE_USERS') {
-            return rows.filter(row => {
-                const workedDays = row.presentDays + row.halfDays + row.workFromHomeDays + row.weekendPresents + row.holidayPresents;
-                return workedDays > 0;
-            });
-        }
-        
-        return rows.filter(row => {
-            if (selectedStatus === 'all') return true;
-            return row.statuses.includes(selectedStatus);
-        });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, fieldViolationsMap, attendance]);
+    // Legacy monthlyReportData removed - now handled by unified MonthlyHoursReport component
 
     // 4. Work Hours Report Data (Aggregated)
-    const work_hoursReportData: WorkHoursReportDataRow[] = useMemo(() => {
-        if (!dateRange.startDate || !dateRange.endDate) return [];
-
-        let filteredUsers = users.filter(u => u.role !== 'management');
-        if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
-        if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
-        if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
-        if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
-
-        const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
-        if (selectedStatus === 'ACTIVE_USERS') {
-            filteredUsers = filteredUsers.filter(u => 
-                (u as any).isActive !== false && 
-                activeInPeriodIds.has(String(u.id).toLowerCase())
-            );
-        }
-
-        const days = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate });
-        const totalDaysCount = days.length;
-
-        // PRE-INDEX: Group events by userId
-        const eventsByUser = new Map<string, AttendanceEvent[]>();
-        attendanceEvents.forEach(e => {
-            const id = String(e.userId);
-            if (!eventsByUser.has(id)) eventsByUser.set(id, []);
-            eventsByUser.get(id)!.push(e);
-        });
-
-        // PRE-INDEX: Group leaves by userId
-        const leavesByUser = new Map<string, LeaveRequest[]>();
-        leaves.forEach(l => {
-            if (l.userId && l.status === 'approved') {
-                const id = String(l.userId);
-                if (!leavesByUser.has(id)) leavesByUser.set(id, []);
-                leavesByUser.get(id)!.push(l);
-            }
-        });
-
-        const rulesCache = new Map<string, StaffAttendanceRules>();
-        const getRules = (userId: string, category: string) => {
-            if (!rulesCache.has(userId)) {
-                rulesCache.set(userId, resolveUserRules(userId, category as any));
-            }
-            return rulesCache.get(userId)!;
-        };
-
-        return filteredUsers.map(user => {
-            const userId = String(user.id);
-            const userEvents = eventsByUser.get(userId) || [];
-            const userLeaves = leavesByUser.get(userId) || [];
-
-            let totalWorkingHours = 0;
-            let presentDays = 0;
-            let otHours = 0;
-
-            const userCategory = getStaffCategory(user.role);
-            const userRules = getRules(userId, userCategory);
-            const threshold = userRules.minimumHoursFullDay || 8;
-
-            days.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd');
-                const dayEvents = userEvents.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
-                
-                if (dayEvents.length > 0) {
-                    const { workingHours } = calculateWorkingHours(dayEvents);
-                    totalWorkingHours += workingHours;
-                    
-                    if (workingHours >= (userRules.minimumHoursFullDay || 8)) presentDays += 1;
-                    else if (workingHours >= (userRules.minimumHoursHalfDay || 4)) presentDays += 0.5;
-
-                    if (workingHours > threshold) {
-                        otHours += (workingHours - threshold);
-                    }
-                }
-                
-                const isWFH = userLeaves.some(l => 
-                    l.leaveType === 'WFH' && 
-                    isWithinInterval(day, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) })
-                );
-                if (isWFH && dayEvents.length === 0) {
-                    presentDays += 1;
-                    totalWorkingHours += 8;
-                }
-            });
-
-            return {
-                userName: user.name,
-                department: user.role || 'General',
-                totalDays: totalDaysCount,
-                presentDays,
-                totalWorkingHours,
-                avgWorkingHours: presentDays > 0 ? totalWorkingHours / presentDays : 0,
-                otHours
-            };
-        });
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, leaves, attendance]);
+    // Legacy work_hoursReportData removed - now handled by unified MonthlyHoursReport component
 
     // 5. Site OT Report Data
     const site_otReportData: SiteOtDataRow[] = useMemo(() => {
@@ -1786,8 +1481,22 @@ const AttendanceDashboard: React.FC = () => {
         if (isPreview) {
             if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'monthly') return <MonthlyStatusView data={monthlyReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'work_hours') return <WorkHoursReportView data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'monthly' || reportType === 'work_hours') return (
+                <div className="w-full">
+                    <MonthlyHoursReport 
+                        month={(dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1} 
+                        year={dateRange.startDate?.getFullYear() || new Date().getFullYear()} 
+                        userId={selectedUser === 'all' ? undefined : selectedUser} 
+                        scopedSettings={scopedSettings}
+                        hideHeader
+                        selectedStatus={selectedStatus}
+                        selectedSite={selectedSite}
+                        selectedSociety={selectedSociety}
+                        selectedRole={selectedRole}
+                        onDataLoaded={setExportedMonthlyData}
+                    />
+                </div>
+            );
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
             if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
             return null;
@@ -1796,13 +1505,13 @@ const AttendanceDashboard: React.FC = () => {
         // For PDF generation: use react-pdf Document components (NOT safe for DOM rendering)
         if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'monthly') return <MonthlyReportDocument data={monthlyReportData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'work_hours') return <WorkHoursReportDocument data={work_hoursReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'monthly' || reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, monthlyReportData, work_hoursReportData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedSite, selectedSociety]);
+        return null;
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedSite, selectedSociety, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -1827,10 +1536,11 @@ const AttendanceDashboard: React.FC = () => {
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
-                case 'monthly': {
+                case 'monthly':
+                case 'work_hours': {
                     const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
                     blob = await pdf(<MonthlyReportDocument 
-                        data={monthlyReportData} 
+                        data={exportedMonthlyData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
                         logoUrl={logoBase64}
@@ -1841,14 +1551,6 @@ const AttendanceDashboard: React.FC = () => {
                 case 'log':
                     blob = await pdf(<AttendanceLogDocument 
                         data={attendanceLogData} 
-                        dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
-                        generatedBy={generatedBy}
-                        logoUrl={logoBase64}
-                    />).toBlob();
-                    break;
-                case 'work_hours':
-                    blob = await pdf(<WorkHoursReportDocument 
-                        data={work_hoursReportData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
                         logoUrl={logoBase64}
@@ -1907,9 +1609,9 @@ const AttendanceDashboard: React.FC = () => {
         try {
             const logoBase64 = logoForPdf;
 
-            if (reportType === 'monthly') {
+            if (reportType === 'monthly' || reportType === 'work_hours') {
                 await exportAttendanceToExcel(
-                    monthlyReportData,
+                    exportedMonthlyData,
                     { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
                     logoBase64,
                     user?.name || 'Unknown User'
@@ -1979,27 +1681,7 @@ const AttendanceDashboard: React.FC = () => {
                         ];
                         dataToExport = site_otReportData;
                         break;
-                    case 'work_hours':
-                        reportTitle = 'Monthly Work Hours Report';
-                        fileNamePrefix = 'Work_Hours_Report';
-                        columns = [
-                            { header: 'Employee Name', key: 'userName', width: 25 },
-                            { header: 'Department', key: 'department', width: 15 },
-                            { header: 'Total Days', key: 'totalDays', width: 12 },
-                            { header: 'Present Days', key: 'presentDays', width: 12 },
-                            { header: 'Total Working Hours', key: 'totalWorkingHours', width: 18 },
-                            { header: 'Avg Daily Hours', key: 'avgWorkingHours', width: 15 },
-                            { header: 'OT Hours', key: 'otHours', width: 12 }
-                        ];
-                        dataToExport = work_hoursReportData.map(row => ({
-                            ...row,
-                            totalWorkingHours: row.totalWorkingHours.toFixed(2),
-                            avgWorkingHours: row.avgWorkingHours.toFixed(2),
-                            otHours: row.otHours.toFixed(2)
-                        }));
-                        break;
                     default:
-                        // No specific export logic for work_hours in generic exporter yet
                         break;
                 }
 
@@ -2035,9 +1717,24 @@ const AttendanceDashboard: React.FC = () => {
                     dataToExport = basicReportData;
                     break;
                 case 'monthly':
-                    // Monthly report is complex for CSV, use basic list
-                    headers = { userName: 'Employee Name', presentDays: 'Present', absentDays: 'Absent', weekOffs: 'W/O', totalPayableDays: 'Payable' };
-                    dataToExport = monthlyReportData;
+                case 'work_hours':
+                    // Map complex monthly data to a flat CSV structure
+                    headers = { 
+                        userName: 'Employee Name', 
+                        role: 'Role',
+                        totalNetWorkDuration: 'Net Work (Hrs)', 
+                        totalOT: 'Total OT (Hrs)', 
+                        presentDays: 'Present', 
+                        absentDays: 'Absent', 
+                        weekOffs: 'Week Offs', 
+                        holidays: 'Holidays',
+                        totalPayableDays: 'Payable Days' 
+                    };
+                    dataToExport = exportedMonthlyData.map(d => ({
+                        ...d,
+                        totalNetWorkDuration: d.totalNetWorkDuration?.toFixed(2),
+                        totalOT: d.totalOT?.toFixed(2)
+                    }));
                     break;
                 case 'log':
                     headers = { userName: 'User', date: 'Date', time: 'Time', type: 'Event', locationName: 'Location', device: 'Device' };
@@ -2363,10 +2060,9 @@ const AttendanceDashboard: React.FC = () => {
         let rows: any[] = [];
         if (reportType === 'basic') rows = basicReportData || [];
         else if (reportType === 'log') rows = attendanceLogData || [];
-        else if (reportType === 'monthly') rows = monthlyReportData || [];
+        else if (reportType === 'monthly' || reportType === 'work_hours') rows = exportedMonthlyData || [];
         else if (reportType === 'audit') rows = auditLogs || [];
         else if (reportType === 'site_ot') rows = site_otReportData || [];
-        else if (reportType === 'work_hours') rows = work_hoursReportData || [];
 
         if (!rows || rows.length === 0) return <div className="text-center py-10 text-gray-400">No report data available</div>;
 
@@ -2898,25 +2594,7 @@ const AttendanceDashboard: React.FC = () => {
                     )}
                     <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
                         <div className="w-full">
-                            {(() => {
-                                const reportMonthValue = (dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1;
-                                const reportYearValue = dateRange.startDate?.getFullYear() || new Date().getFullYear();
-                                return reportType === 'work_hours' ? (
-                                    <MonthlyHoursReport 
-                                        month={reportMonthValue} 
-                                        year={reportYearValue} 
-                                        userId={selectedUser === 'all' ? undefined : selectedUser} 
-                                        scopedSettings={scopedSettings}
-                                        hideHeader
-                                        selectedStatus={selectedStatus}
-                                        selectedSite={selectedSite}
-                                        selectedSociety={selectedSociety}
-                                        selectedRole={selectedRole}
-                                    />
-                                ) : (
-                                    previewContent
-                                );
-                            })()}
+                                {previewContent}
                         </div>
                     </div>
                 </div>
