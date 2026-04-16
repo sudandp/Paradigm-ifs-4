@@ -235,7 +235,7 @@ const ApplyLeave: React.FC = () => {
             const basePayload: any = {
                 leaveType,
                 startDate,
-                endDate,
+                endDate: leaveType === 'Correction' ? startDate : endDate,
                 dayOption,
                 reason,
                 doctorCertificate,
