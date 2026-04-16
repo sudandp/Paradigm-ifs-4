@@ -412,8 +412,16 @@ export function evaluateAttendanceStatus(params: {
       if (String(lUserId) !== String(userId)) return false;
       const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
       if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
-      const startDateStr = format(new Date(lStartDate), 'yyyy-MM-dd');
-      const endDateStr = format(new Date(lEndDate), 'yyyy-MM-dd');
+
+      // Normalize dates to YYYY-MM-DD string format to avoid timezone shifts
+      const normalize = (d: any) => {
+          if (!d) return '';
+          if (typeof d === 'string') return d.substring(0, 10);
+          return format(new Date(d), 'yyyy-MM-dd');
+      };
+
+      const startDateStr = normalize(lStartDate);
+      const endDateStr = normalize(lEndDate);
       return dateStr >= startDateStr && dateStr <= endDateStr;
   });
 
@@ -422,6 +430,14 @@ export function evaluateAttendanceStatus(params: {
       const isHalf = l.dayOption === 'half' || (l as any).day_option === 'half';
       const prefix = isHalf ? '1/2' : '';
       const lType = String(l.leaveType || l.type || '').toLowerCase();
+      
+      // Handle Correction Status mapping
+      if (lType.includes('correction')) {
+          const cStatus = l.correctionStatus || (l.correctionDetails?.status) || '';
+          if (cStatus === 'W/H') return 'WFH';
+          return 'P';
+      }
+
       if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
       if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
       if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
@@ -495,7 +511,7 @@ export function evaluateAttendanceStatus(params: {
       const lType = String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase();
       
       // Manual corrections and Earned Comp Offs should bypass the eligibility rule
-      const isCorrection = lStatus === 'correction_made';
+      const isCorrection = lStatus === 'correction_made' || lType.includes('correction');
       const isCompOff = lType.includes('comp') || lType === 'c/o' || lType === 'co';
       
       if (isEligible || isCorrection || isCompOff) {

@@ -226,24 +226,41 @@ const ApplyLeave: React.FC = () => {
                 }
             }
 
+            // Sanitize payload to exclude internal UI-only fields from top-level DB columns
+            const { 
+                leaveType, startDate, endDate, dayOption, reason, doctorCertificate,
+                correctionStatus, punchIn, punchOut, includeBreak, breakIn, breakOut, locationName 
+            } = formData;
+
+            const basePayload: any = {
+                leaveType,
+                startDate,
+                endDate,
+                dayOption,
+                reason,
+                doctorCertificate,
+                userId: user.id,
+                userName: user.name
+            };
+
+            // Add correction details only for Correction type
+            if (leaveType === 'Correction') {
+                basePayload.correctionDetails = {
+                    status: correctionStatus,
+                    punchIn,
+                    punchOut,
+                    includeBreak,
+                    breakIn,
+                    breakOut,
+                    locationName
+                };
+            }
+
             if (isEditMode && editId) {
-                await api.updateLeaveRequest(editId, formData);
+                await api.updateLeaveRequest(editId, basePayload);
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
-                // If correction, build the correctionDetails object
-                let payload: any = { ...formData, userId: user.id, userName: user.name };
-                if (formData.leaveType === 'Correction') {
-                    payload.correctionDetails = {
-                        status: formData.correctionStatus,
-                        punchIn: formData.punchIn,
-                        punchOut: formData.punchOut,
-                        includeBreak: formData.includeBreak,
-                        breakIn: formData.breakIn,
-                        breakOut: formData.breakOut,
-                        locationName: formData.locationName
-                    };
-                }
-                await api.submitLeaveRequest(payload);
+                await api.submitLeaveRequest(basePayload);
                 setToast({ message: 'Leave request submitted successfully!', type: 'success' });
             }
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
