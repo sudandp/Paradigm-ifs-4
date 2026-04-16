@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 class RouteTrackingService {
   private intervalId: any = null;
   private isTracking: boolean = false;
+  private isRecording: boolean = false;
 
   public async startTracking(userId: string, intervalMinutes: number = 10) {
     if (this.isTracking) return;
@@ -31,10 +32,17 @@ class RouteTrackingService {
       this.intervalId = null;
     }
     this.isTracking = false;
+    this.isRecording = false;
   }
 
   private async recordPosition(userId: string) {
+    if (this.isRecording) {
+      console.log('[RouteTracking] Skip: Already recording a position');
+      return;
+    }
+
     try {
+      this.isRecording = true;
       // Use a slightly more lenient accuracy for periodic pings to save battery/time
       const pos = await getPrecisePosition(150, 15000); 
       
@@ -52,6 +60,8 @@ class RouteTrackingService {
       console.log('[RouteTracking] Position recorded:', routePoint.latitude, routePoint.longitude);
     } catch (err) {
       console.warn('[RouteTracking] Failed to record position:', err);
+    } finally {
+      this.isRecording = false;
     }
   }
 
