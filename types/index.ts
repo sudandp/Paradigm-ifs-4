@@ -1330,6 +1330,16 @@ export interface LeaveBalance {
   };
 }
 
+export interface CorrectionDetails {
+  status: 'Present' | 'Site Visit' | 'W/H';
+  punchIn: string; // HH:mm
+  punchOut: string; // HH:mm
+  includeBreak: boolean;
+  breakIn?: string;
+  breakOut?: string;
+  locationName: string;
+}
+
 export interface LeaveRequest {
   id: string;
   userId: string;
@@ -1346,6 +1356,7 @@ export interface LeaveRequest {
   currentApproverPhotoUrl?: string | null;
   approvalHistory: ApprovalRecord[];
   doctorCertificate?: UploadedFile | null;
+  correctionDetails?: CorrectionDetails | null;
 }
 
 export interface ExtraWorkLog {

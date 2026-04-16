@@ -4508,25 +4508,27 @@ export const api = {
     if (error) throw error;
   },
   approveLeaveRequest: async (id: string, approverId: string): Promise<void> => {
-    // Fetch request data including user_id, leave_type and dates
-    const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date, end_date, day_option').eq('id', id).single();
+    // Fetch request data including user_id, leave_type, dates and correction_details
+    const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date, end_date, day_option, correction_details').eq('id', id).single();
     if (fetchError) throw fetchError;
     
-    // Check balance
-    const balance = await api.getLeaveBalancesForUser(request.user_id);
-    const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
-    
-    const typeKeyStr = `${request.leave_type.toLowerCase()}Total`.replace('earnedtotal', 'earnedTotal').replace('sicktotal', 'sickTotal').replace('floatingtotal', 'floatingTotal').replace('compofftotal', 'compOffTotal');
-    const typeKey = typeKeyStr as keyof LeaveBalance;
-    const usedKey = typeKeyStr.replace('Total', 'Used') as keyof LeaveBalance;
-    
-    const available = (balance[typeKey] as number) - (balance[usedKey] as number);
-    
-    if (available < leaveDays) {
-      // Auto-decline if insufficient leaves
-      const reason = `Insufficient ${request.leave_type} balance. Available: ${available} days, Requested: ${leaveDays} days.`;
-      await api.rejectLeaveRequest(id, approverId, reason);
-      return;
+    // Check balance - skip for 'Loss of Pay', 'WFH', and 'Correction'
+    if (!['Loss of Pay', 'WFH', 'Correction'].includes(request.leave_type as any)) {
+      const balance = await api.getLeaveBalancesForUser(request.user_id);
+      const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
+      
+      const typeKeyStr = `${request.leave_type.toLowerCase()}Total`.replace('earnedtotal', 'earnedTotal').replace('sicktotal', 'sickTotal').replace('floatingtotal', 'floatingTotal').replace('compofftotal', 'compOffTotal');
+      const typeKey = typeKeyStr as keyof LeaveBalance;
+      const usedKey = typeKeyStr.replace('Total', 'Used') as keyof LeaveBalance;
+      
+      const available = (balance[typeKey] as number) - (balance[usedKey] as number);
+      
+      if (available < leaveDays) {
+        // Auto-decline if insufficient leaves
+        const reason = `Insufficient ${request.leave_type} balance. Available: ${available} days, Requested: ${leaveDays} days.`;
+        await api.rejectLeaveRequest(id, approverId, reason);
+        return;
+      }
     }
 
     const { finalConfirmationRole } = await api.getApprovalWorkflowSettings();
@@ -4562,11 +4564,99 @@ export const api = {
       return;
     }
 
-    // If it's a Correction request, Manager approval transitions it to Pending Admin Correction.
+    // If it's a Correction request, Manager approval triggers automatic attendance update
     if (request.leave_type === 'Correction') {
+        const details = toCamelCase(request.correction_details) as any;
+        
+        if (details) {
+            // 1. Delete existing events for that date
+            const dateStr = request.start_date;
+            const startDate = `${dateStr}T00:00:00Z`;
+            const endDate = `${dateStr}T23:59:59Z`;
+
+            await supabase
+                .from('attendance_events')
+                .delete()
+                .eq('user_id', request.user_id)
+                .gte('timestamp', startDate)
+                .lte('timestamp', endDate);
+
+            // 2. Insert new events
+            const eventsToInsert = [];
+            const timestampBase = dateStr;
+
+            // Punch In
+            const checkInDate = new Date(`${timestampBase}T${details.punchIn}:00`);
+            eventsToInsert.push({
+                user_id: request.user_id,
+                timestamp: checkInDate.toISOString(),
+                type: 'punch-in',
+                location_name: details.status === 'W/H' ? 'Work From Home' : details.locationName,
+                work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                is_manual: true,
+                created_by: approverId,
+                reason: 'Auto-updated from approved Correction Request'
+            });
+
+            // Punch Out
+            const checkOutDate = new Date(`${timestampBase}T${details.punchOut}:00`);
+            eventsToInsert.push({
+                user_id: request.user_id,
+                timestamp: checkOutDate.toISOString(),
+                type: 'punch-out',
+                location_name: details.status === 'W/H' ? 'Work From Home' : details.locationName,
+                work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                is_manual: true,
+                created_by: approverId,
+                reason: 'Auto-updated from approved Correction Request'
+            });
+
+            // Optional Breaks
+            if (details.includeBreak && details.breakIn && details.breakOut) {
+                const bIn = new Date(`${timestampBase}T${details.breakIn}:00`);
+                const bOut = new Date(`${timestampBase}T${details.breakOut}:00`);
+                
+                eventsToInsert.push({
+                    user_id: request.user_id,
+                    timestamp: bIn.toISOString(),
+                    type: 'break-in',
+                    location_name: details.status === 'W/H' ? 'Work From Home' : details.locationName,
+                    work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                    is_manual: true,
+                    created_by: approverId
+                });
+
+                eventsToInsert.push({
+                    user_id: request.user_id,
+                    timestamp: bOut.toISOString(),
+                    type: 'break-out',
+                    location_name: details.status === 'W/H' ? 'Work From Home' : details.locationName,
+                    work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                    is_manual: true,
+                    created_by: approverId
+                });
+            }
+
+            await supabase.from('attendance_events').insert(eventsToInsert);
+
+            // 3. Audit Log
+            await supabase.from('attendance_audit_logs').insert([{
+                action: 'MANUAL_ENTRY_ADDED',
+                performed_by: approverId,
+                target_user_id: request.user_id,
+                details: {
+                    date: dateStr,
+                    status: details.status,
+                    reason: 'Automatic update from Correction Request approval',
+                    correctionRequestId: id
+                }
+            }]);
+        }
+
+        // Finalize the request status
         const { error } = await supabase.from('leave_requests').update({ 
-          status: 'pending_admin_correction', 
-          current_approver_id: null, // Admin/HR can pick it up from the inbox
+          status: 'correction_made', 
+          current_approver_id: null, 
           approval_history: updatedHistory 
         }).eq('id', id);
         if (error) throw error;

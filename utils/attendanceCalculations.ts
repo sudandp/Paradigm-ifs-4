@@ -491,7 +491,14 @@ export function evaluateAttendanceStatus(params: {
           else status = workStatus;
       }
   } else if (approvedLeave) {
-      if (isEligible) {
+      const lStatus = String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase();
+      const lType = String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase();
+      
+      // Manual corrections and Earned Comp Offs should bypass the eligibility rule
+      const isCorrection = lStatus === 'correction_made';
+      const isCompOff = lType.includes('comp') || lType === 'c/o' || lType === 'co';
+      
+      if (isEligible || isCorrection || isCompOff) {
           status = getLeaveCode(approvedLeave);
       } else {
           // If not eligible, even approved leaves become Absent/Loss of Pay

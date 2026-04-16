@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild } from '../../types';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Clock } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
@@ -24,6 +24,14 @@ type LeaveRequestFormData = {
     reason: string;
     dayOption?: 'full' | 'half';
     doctorCertificate?: UploadedFile | null;
+    // Correction fields
+    correctionStatus?: 'Present' | 'Site Visit' | 'W/H';
+    punchIn?: string;
+    punchOut?: string;
+    includeBreak?: boolean;
+    breakIn?: string;
+    breakOut?: string;
+    locationName?: string;
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
@@ -45,6 +53,33 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
         },
         then: schema => schema.required(`A doctor's certificate is required for sick leave longer than ${threshold} days.`),
         otherwise: schema => schema.nullable().optional(),
+    }),
+    // Correction validation
+    correctionStatus: yup.string().when('leaveType', {
+        is: 'Correction',
+        then: schema => schema.required('Status is required for corrections'),
+        otherwise: schema => schema.optional()
+    }),
+    punchIn: yup.string().when('leaveType', {
+        is: 'Correction',
+        then: schema => schema.required('Punch in time is required'),
+        otherwise: schema => schema.optional()
+    }),
+    punchOut: yup.string().when('leaveType', {
+        is: 'Correction',
+        then: schema => schema.required('Punch out time is required'),
+        otherwise: schema => schema.optional()
+    }),
+    locationName: yup.string().optional(),
+    breakIn: yup.string().when(['leaveType', 'includeBreak'], {
+        is: (lt: string, ib: boolean) => lt === 'Correction' && ib === true,
+        then: schema => schema.required('Break in time is required'),
+        otherwise: schema => schema.optional()
+    }),
+    breakOut: yup.string().when(['leaveType', 'includeBreak'], {
+        is: (lt: string, ib: boolean) => lt === 'Correction' && ib === true,
+        then: schema => schema.required('Break out time is required'),
+        otherwise: schema => schema.optional()
     })
 });
 
@@ -76,7 +111,14 @@ const ApplyLeave: React.FC = () => {
             leaveType: 'Earned', 
             startDate: format(new Date(), 'yyyy-MM-dd'), 
             endDate: format(new Date(), 'yyyy-MM-dd'), 
-            dayOption: 'full' 
+            dayOption: 'full',
+            correctionStatus: 'Present',
+            punchIn: '09:00',
+            punchOut: '18:00',
+            includeBreak: false,
+            breakIn: '13:00',
+            breakOut: '14:00',
+            locationName: 'Office'
         }
     });
 
@@ -84,12 +126,19 @@ const ApplyLeave: React.FC = () => {
     const watchEndDate = watch('endDate');
     const watchLeaveType = watch('leaveType');
 
+    // Sync endDate with startDate for corrections
+    React.useEffect(() => {
+        if (watchLeaveType === 'Correction') {
+            setValue('endDate', watchStartDate);
+        }
+    }, [watchStartDate, watchLeaveType, setValue]);
+
     const isSingleDay = useMemo(() => {
         if (!watchStartDate || !watchEndDate) return false;
         return isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date(watchEndDate.replace(/-/g, '/')));
     }, [watchStartDate, watchEndDate]);
 
-    const showHalfDayOption = isSingleDay;
+    const showHalfDayOption = isSingleDay && watchLeaveType !== 'Correction';
     const showDoctorCertUpload = useMemo(() => {
         if (watchLeaveType !== 'Sick' || !watchStartDate || !watchEndDate) return false;
         const duration = differenceInCalendarDays(new Date(watchEndDate.replace(/-/g, '/')), new Date(watchStartDate.replace(/-/g, '/'))) + 1;
@@ -181,7 +230,20 @@ const ApplyLeave: React.FC = () => {
                 await api.updateLeaveRequest(editId, formData);
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
-                await api.submitLeaveRequest({ ...formData, userId: user.id, userName: user.name });
+                // If correction, build the correctionDetails object
+                let payload: any = { ...formData, userId: user.id, userName: user.name };
+                if (formData.leaveType === 'Correction') {
+                    payload.correctionDetails = {
+                        status: formData.correctionStatus,
+                        punchIn: formData.punchIn,
+                        punchOut: formData.punchOut,
+                        includeBreak: formData.includeBreak,
+                        breakIn: formData.breakIn,
+                        breakOut: formData.breakOut,
+                        locationName: formData.locationName
+                    };
+                }
+                await api.submitLeaveRequest(payload);
                 setToast({ message: 'Leave request submitted successfully!', type: 'success' });
             }
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
@@ -242,10 +304,11 @@ const ApplyLeave: React.FC = () => {
 
                             {isMobile ? (
                                 <DateRangePicker 
-                                    label="Select Dates"
+                                    label={watchLeaveType === 'Correction' ? "Select Date" : "Select Dates"}
                                     id="leaveRange"
                                     startDate={watchStartDate}
                                     endDate={watchEndDate}
+                                    singleDateOnly={watchLeaveType === 'Correction'}
                                     onChange={(start, end) => {
                                         if (start) setValue('startDate', start, { shouldValidate: true });
                                         if (end) setValue('endDate', end, { shouldValidate: true });
@@ -253,13 +316,21 @@ const ApplyLeave: React.FC = () => {
                                     error={errors.startDate?.message || errors.endDate?.message}
                                 />
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className={`grid gap-4 ${watchLeaveType === 'Correction' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
                                     <Controller name="startDate" control={control} render={({ field }) => (
-                                        <DatePicker label="Start Date" id="startDate" value={field.value} onChange={field.onChange} error={errors.startDate?.message} />
+                                        <DatePicker 
+                                            label={watchLeaveType === 'Correction' ? "Date" : "Start Date"} 
+                                            id="startDate" 
+                                            value={field.value} 
+                                            onChange={field.onChange} 
+                                            error={errors.startDate?.message} 
+                                        />
                                     )} />
-                                    <Controller name="endDate" control={control} render={({ field }) => (
-                                        <DatePicker label="End Date" id="endDate" value={field.value} onChange={field.onChange} error={errors.endDate?.message} />
-                                    )} />
+                                    {watchLeaveType !== 'Correction' && (
+                                        <Controller name="endDate" control={control} render={({ field }) => (
+                                            <DatePicker label="End Date" id="endDate" value={field.value} onChange={field.onChange} error={errors.endDate?.message} />
+                                        )} />
+                                    )}
                                 </div>
                             )}
 
@@ -270,6 +341,84 @@ const ApplyLeave: React.FC = () => {
                                         <option value="half">Half Day</option>
                                     </Select>
                                 )} />
+                            )}
+
+                            {watchLeaveType === 'Correction' && (
+                                <div className="space-y-4 pt-4 border-t border-border">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Controller name="correctionStatus" control={control} render={({ field }) => (
+                                            <Select label="Status" {...field} error={errors.correctionStatus?.message}>
+                                                <option value="Present">Present (Office)</option>
+                                                <option value="Site Visit">Site Visit (Field)</option>
+                                                <option value="W/H">Work From Home</option>
+                                            </Select>
+                                        )} />
+                                        {(watch('correctionStatus') === 'Present' || watch('correctionStatus') === 'Site Visit') && (
+                                            <Controller name="locationName" control={control} render={({ field }) => (
+                                                <div className="space-y-1">
+                                                    <label className="text-sm font-medium text-muted">Location / Site Name</label>
+                                                    <input 
+                                                        {...field} 
+                                                        placeholder={watch('correctionStatus') === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
+                                                        className="w-full p-2.5 rounded-lg bg-page border border-border text-primary-text focus:ring-2 focus:ring-accent outline-none"
+                                                    />
+                                                </div>
+                                            )} />
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20">
+                                        <Controller name="punchIn" control={control} render={({ field }) => (
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                    <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
+                                                </label>
+                                                <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
+                                            </div>
+                                        )} />
+                                        <Controller name="punchOut" control={control} render={({ field }) => (
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                    <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
+                                                </label>
+                                                <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
+                                            </div>
+                                        )} />
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="checkbox" 
+                                                id="includeBreak" 
+                                                {...register('includeBreak')} 
+                                                className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                            />
+                                            <label htmlFor="includeBreak" className="text-sm font-medium text-primary-text">Include Lunch Break?</label>
+                                        </div>
+
+                                        {watch('includeBreak') && (
+                                            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
+                                                <Controller name="breakIn" control={control} render={({ field }) => (
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break In</label>
+                                                        <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                        {errors.breakIn && <p className="text-xs text-red-500">{errors.breakIn.message}</p>}
+                                                    </div>
+                                                )} />
+                                                <Controller name="breakOut" control={control} render={({ field }) => (
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break Out</label>
+                                                        <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                        {errors.breakOut && <p className="text-xs text-red-500">{errors.breakOut.message}</p>}
+                                                    </div>
+                                                )} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             )}
                         </div>
 

@@ -1103,7 +1103,9 @@ const AttendanceDashboard: React.FC = () => {
         // PRE-INDEX: Group approved leaves by userId
         const approvedLeavesByUser = new Map<string, LeaveRequest[]>();
         leaves.forEach(l => {
-            if (l && l.status === 'approved' && l.userId) {
+            const lStatus = String(l?.status || '').toLowerCase();
+            const isValidStatus = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
+            if (l && isValidStatus && l.userId) {
                 const userId = String(l.userId);
                 if (!approvedLeavesByUser.has(userId)) {
                     approvedLeavesByUser.set(userId, []);

@@ -32,6 +32,7 @@ interface DateRangePickerProps {
   maxDate?: Date;
   minDate?: Date;
   className?: string;
+  singleDateOnly?: boolean;
 }
 
 const DateRangePicker: React.FC<DateRangePickerProps> = ({ 
@@ -43,7 +44,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   onChange, 
   maxDate, 
   minDate, 
-  className 
+  className,
+  singleDateOnly = false
 }) => {
   const [isOpenLocal, setIsOpenLocal] = useState(false);
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -92,6 +94,15 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     if (minDate && isBefore(startOfDay(date), startOfDay(minDate))) return;
     if (maxDate && isAfter(startOfDay(date), startOfDay(maxDate))) return;
 
+    if (singleDateOnly) {
+      setTempStart(date);
+      setTempEnd(date);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      onChange(dateStr, dateStr);
+      closePicker();
+      return;
+    }
+
     if (!tempStart || (tempStart && tempEnd)) {
       setTempStart(date);
       setTempEnd(null);
@@ -105,8 +116,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   };
 
   const handleDone = () => {
-    if (tempStart && tempEnd) {
-      onChange(format(tempStart, 'yyyy-MM-dd'), format(tempEnd, 'yyyy-MM-dd'));
+    if (tempStart && (singleDateOnly || tempEnd)) {
+      const startStr = format(tempStart, 'yyyy-MM-dd');
+      const endStr = singleDateOnly ? startStr : (tempEnd ? format(tempEnd, 'yyyy-MM-dd') : null);
+      onChange(startStr, endStr);
       closePicker();
     }
   };
@@ -132,7 +145,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
           <button onClick={closePicker} className="date-picker-btn p-3 -ml-2 bg-emerald-500/20 text-emerald-400 rounded-xl">
             <ChevronLeft className="h-6 w-6" />
           </button>
-          <h2 className="ml-4 text-xl font-bold text-white tracking-tight">Select Date Range</h2>
+          <h2 className="ml-4 text-xl font-bold text-white tracking-tight">{singleDateOnly ? 'Select Date' : 'Select Date Range'}</h2>
         </header>
       )}
 
@@ -191,14 +204,18 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
               <div className="text-center space-y-1">
                 <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Active Selection</span>
                 <span className="block text-lg font-bold text-emerald-400 tabular-nums">
-                  {tempStart ? format(tempStart, 'dd MMM') : '—'} 
-                  {tempEnd ? ` - ${format(tempEnd, 'dd MMM, yyyy')}` : ' - Select end'}
+                  {tempStart ? (
+                    singleDateOnly 
+                      ? format(tempStart, 'dd MMM, yyyy')
+                      : format(tempStart, 'dd MMM')
+                  ) : '—'} 
+                  {!singleDateOnly && (tempEnd ? ` - ${format(tempEnd, 'dd MMM, yyyy')}` : ' - Select end')}
                 </span>
               </div>
               <button 
                 onClick={handleDone}
-                disabled={!tempStart || !tempEnd}
-                className={`date-picker-btn bg-emerald-500 text-white px-8 py-3 text-sm font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-emerald-500/20 active:scale-95 ${(!tempStart || !tempEnd) ? 'opacity-30' : ''}`}
+                disabled={!tempStart || (!singleDateOnly && !tempEnd)}
+                className={`date-picker-btn bg-emerald-500 text-white px-8 py-3 text-sm font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-emerald-500/20 active:scale-95 ${(!tempStart || (!singleDateOnly && !tempEnd)) ? 'opacity-30' : ''}`}
               >
                 Done
               </button>
@@ -215,7 +232,11 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
       <div className="relative">
         <div className={`fo-input flex justify-between items-center cursor-pointer ${className || ''}`} onClick={openPicker}>
           <span className={startDate ? 'text-white' : 'text-white/30'}>
-            {startDate ? `${format(parseISO(startDate), 'dd MMM')} - ${endDate ? format(parseISO(endDate), 'dd MMM, yyyy') : '...'}` : 'Select date range'}
+            {startDate ? (
+              singleDateOnly 
+                ? format(parseISO(startDate), 'dd MMM, yyyy')
+                : `${format(parseISO(startDate), 'dd MMM')} - ${endDate ? format(parseISO(endDate), 'dd MMM, yyyy') : '...'}`
+            ) : (singleDateOnly ? 'Select date' : 'Select date range')}
           </span>
           <CalendarIcon className="h-4 w-4 text-emerald-500/50" />
         </div>
