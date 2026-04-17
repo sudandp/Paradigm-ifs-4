@@ -6,9 +6,25 @@ import { format, startOfDay } from 'date-fns';
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
 // Internal Helpers (Simplified)
-function getISTDateString(date: Date): string {
-  const istDate = new Date(date.getTime() + IST_OFFSET);
-  return istDate.toISOString().substring(0, 10);
+function getISTDateString(date: any): string {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return format(new Date(), 'yyyy-MM-dd'); // Fallback to safely formatted current date
+    const istDate = new Date(d.getTime() + IST_OFFSET);
+    return istDate.toISOString().substring(0, 10);
+  } catch {
+    return format(new Date(), 'yyyy-MM-dd');
+  }
+}
+
+function safeFormat(date: any, formatStr: string, fallback = '—') {
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, formatStr);
+  } catch {
+    return fallback;
+  }
 }
 
 function evaluateConditionalsInternal(str: string, data: Record<string, string>) {
@@ -61,14 +77,15 @@ const reportGenerators = {
       if (presentUserIds.has(user.id)) {
         const inTs = userFirstPunches[user.id];
         const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
-        pin = format(inDate, 'hh:mm a');
-        const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
+        pin = safeFormat(inDate, 'hh:mm a');
+        const inTime = !isNaN(inDate.getTime()) ? `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}` : '00:00';
         if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; lateCount++; }
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
         if (lastOut) {
-          pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+          const outDate = new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET);
+          pout = safeFormat(outDate, 'hh:mm a');
           const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
-          wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
+          wh = !isNaN(diff) ? `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m` : '—';
         }
       } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
       else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
@@ -81,8 +98,8 @@ const reportGenerators = {
     const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount);
 
     return {
-      date: format(nowIST, 'EEEE, MMMM do, yyyy'),
-      generatedTime: format(nowIST, 'hh:mm a'),
+      date: safeFormat(nowIST, 'EEEE, MMMM do, yyyy'),
+      generatedTime: safeFormat(nowIST, 'hh:mm a'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(totalAbsent),
@@ -111,8 +128,9 @@ const reportGenerators = {
       tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f3f4f6'};"><td style="border: 1px solid #bbb; padding: 4px; font-weight: 600;">${user.name}</td>`;
       let presentCount = 0;
       for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = format(new Date(nowIST.getFullYear(), nowIST.getMonth(), d), 'yyyy-MM-dd');
-        const hasPunch = events.some(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
+        const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
+        const dateStr = safeFormat(targetDate, 'yyyy-MM-dd');
+        const hasPunch = events.some(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
         if (hasPunch) { presentCount++; tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #16a34a; font-weight: bold;">P</td>`; }
         else { tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #dc2626;">A</td>`; }
       }
@@ -125,8 +143,8 @@ const reportGenerators = {
     const totalAbsent = totalPossible - totalPresentSum;
     return { 
       date: monthStr, 
-      reportDate: format(nowIST, 'dd MMM yyyy'),
-      generatedTime: format(nowIST, 'hh:mm a'),
+      reportDate: safeFormat(nowIST, 'dd MMM yyyy'),
+      generatedTime: safeFormat(nowIST, 'hh:mm a'),
       totalEmployees: String(users.length), 
       table: tableHtml,
       attendancePercentage: String(attendancePercentage),
@@ -195,13 +213,18 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     const nowIST = new Date(new Date().getTime() + IST_OFFSET);
     const reportData = await generator(supabase, nowIST);
 
+    const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
+      const dataKey = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
+      return dataKey ? (data as any)[dataKey] : match;
+    });
+
     // Support for custom message Injection from template variables
     let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
     if (template?.variables && Array.isArray(template.variables)) {
         const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
         if (customMsgObj && customMsgObj.description) {
             let evaluatedMsg = evaluateConditionalsInternal(customMsgObj.description, reportData || {});
-            greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+            greetingMessage = render(evaluatedMsg.replace(/\n/g, '<br/>'), reportData);
         }
     }
     
@@ -210,9 +233,9 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
     html = template?.body_template;
     if (!html || rule.report_type === 'attendance_monthly') {
-        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Monthly Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Attendance Grid</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
+        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Monthly Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Attendance Grid</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
 
-        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Intelligence Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Staff Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Present</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Late</div><div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
+        const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">Intelligence Report</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Staff Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Present</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center;"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Total Late</div><div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
 
         html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
     }
@@ -227,15 +250,8 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
         }
     }
 
-    subject = evaluateConditionalsInternal(template?.subject_template || rule.name, reportData);
-    html = evaluateConditionalsInternal(html, reportData);
-
-    const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
-      const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
-      return dataKey ? (reportData as any)[dataKey] : match;
-    });
-    subject = render(subject);
-    html = render(html);
+    subject = render(evaluateConditionalsInternal(template?.subject_template || rule.name, reportData), reportData);
+    html = render(evaluateConditionalsInternal(html, reportData), reportData);
 
     if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
       to = [testEmail];

@@ -204,7 +204,7 @@ const EmailConfigPanel: React.FC = () => {
     
     <div style="padding: 32px;">
       <div style="margin-bottom: 32px;">
-        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi Admin,</div>
+        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi,</div>
         <p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">
           ${customGreeting}
         </p>

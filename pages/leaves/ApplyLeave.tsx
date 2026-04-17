@@ -96,6 +96,7 @@ const ApplyLeave: React.FC = () => {
     const isEditMode = !!editId;
     const isFemale = user?.gender?.toLowerCase() === 'female';
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
+    const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
 
     React.useEffect(() => {
@@ -144,6 +145,93 @@ const ApplyLeave: React.FC = () => {
         const duration = differenceInCalendarDays(new Date(watchEndDate.replace(/-/g, '/')), new Date(watchStartDate.replace(/-/g, '/'))) + 1;
         return duration > sickLeaveCertificateThreshold;
     }, [watchLeaveType, watchStartDate, watchEndDate, sickLeaveCertificateThreshold]);
+
+    // Auto-fetch attendance logs for Correction type
+    React.useEffect(() => {
+        const fetchLogs = async () => {
+            if (watchLeaveType !== 'Correction' || !watchStartDate || !user || isInitialLoading) return;
+            
+            setIsFetchingLogs(true);
+            try {
+                // Use UTC boundaries to match common API patterns for specific day queries
+                const startDate = `${watchStartDate}T00:00:00Z`;
+                const endDate = `${watchStartDate}T23:59:59Z`;
+                const events = await api.getAttendanceEvents(user.id, startDate, endDate);
+                
+                if (events && events.length > 0) {
+                    const punchInEvents = events.filter(e => e.type === 'punch-in');
+                    const punchOutEvents = events.filter(e => e.type === 'punch-out');
+                    const breakInEvents = events.filter(e => e.type === 'break-in');
+                    const breakOutEvents = events.filter(e => e.type === 'break-out');
+
+                    // Punch In: Earliest
+                    if (punchInEvents.length > 0) {
+                        const earliestIn = punchInEvents.reduce((prev, curr) => 
+                            new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                        );
+                        setValue('punchIn', format(new Date(earliestIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                        if (earliestIn.locationName) setValue('locationName', earliestIn.locationName);
+                    } else {
+                        setValue('punchIn', '00:00', { shouldValidate: true });
+                    }
+
+                    // Punch Out: Latest
+                    if (punchOutEvents.length > 0) {
+                        const latestOut = punchOutEvents.reduce((prev, curr) => 
+                            new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                        );
+                        setValue('punchOut', format(new Date(latestOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                        // If no punch-in location, try punch-out location
+                        if (!punchInEvents[0]?.locationName && latestOut.locationName) {
+                            setValue('locationName', latestOut.locationName);
+                        }
+                    } else {
+                        setValue('punchOut', '00:00', { shouldValidate: true });
+                    }
+
+                    // Breaks: Earliest Break-in and Latest Break-out
+                    if (breakInEvents.length > 0 || breakOutEvents.length > 0) {
+                        setValue('includeBreak', true);
+                        if (breakInEvents.length > 0) {
+                            const earliestBIn = breakInEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                            );
+                            setValue('breakIn', format(new Date(earliestBIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                        } else {
+                            setValue('breakIn', '00:00', { shouldValidate: true });
+                        }
+
+                        if (breakOutEvents.length > 0) {
+                            const latestBOut = breakOutEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                            );
+                            setValue('breakOut', format(new Date(latestBOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                        } else {
+                            setValue('breakOut', '00:00', { shouldValidate: true });
+                        }
+                    } else {
+                        setValue('includeBreak', false);
+                        setValue('breakIn', '00:00');
+                        setValue('breakOut', '00:00');
+                    }
+                } else {
+                    // No events found - reset to 00:00 as requested
+                    setValue('punchIn', '00:00', { shouldValidate: true });
+                    setValue('punchOut', '00:00', { shouldValidate: true });
+                    setValue('includeBreak', false);
+                    setValue('breakIn', '00:00', { shouldValidate: true });
+                    setValue('breakOut', '00:00', { shouldValidate: true });
+                }
+            } catch (err) {
+                console.error('Failed to fetch attendance logs:', err);
+                // Non-blocking error, just keep as is or log it
+            } finally {
+                setIsFetchingLogs(false);
+            }
+        };
+
+        fetchLogs();
+    }, [watchStartDate, watchLeaveType, user, setValue, isInitialLoading]);
 
     React.useEffect(() => {
         const fetchRequest = async () => {
@@ -408,7 +496,12 @@ const ApplyLeave: React.FC = () => {
                                         )}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20">
+                                    <div className={`grid grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20 relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        {isFetchingLogs && (
+                                            <div className="absolute inset-0 flex items-center justify-center z-10">
+                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
+                                            </div>
+                                        )}
                                         <Controller name="punchIn" control={control} render={({ field }) => (
                                             <div className="space-y-1">
                                                 <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">

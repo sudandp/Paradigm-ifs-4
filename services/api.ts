@@ -2888,7 +2888,7 @@ export const api = {
     if (error) throw error;
   },
 
-  testEmailScheduleRule: async (ruleId: string): Promise<void> => {
+  testEmailScheduleRule: async (ruleId: string, testEmail?: string): Promise<void> => {
     const { data: { session } } = await supabase.auth.getSession();
     
     // Call the Vercel API runner (server-side generation)
@@ -2901,7 +2901,7 @@ export const api = {
       body: JSON.stringify({ 
         ruleId, 
         test: true,
-        testEmail: session?.user?.email
+        testEmail: testEmail
       })
     });
 
