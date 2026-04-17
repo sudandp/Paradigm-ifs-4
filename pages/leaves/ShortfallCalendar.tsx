@@ -32,7 +32,7 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
         const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
         if (dayEvents.length === 0) return { shortfallMinutes: 0 };
 
-        const { workingHours } = calculateWorkingHours(dayEvents);
+        const { workingHours } = calculateWorkingHours(dayEvents, date);
         
         // Only calculate shortfall if they actually worked something (standard logic)
         // or as per user request: if they worked less than 8h.

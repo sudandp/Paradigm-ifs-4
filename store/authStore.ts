@@ -503,7 +503,7 @@ export const useAuthStore = create<AuthState>()(
                     return;
                 }
 
-                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours } = processDailyEvents(events);
+                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours } = processDailyEvents(events, new Date());
                 const lastEvent = events[events.length - 1];
                 
                 // --- INDEPENDENT FLOW LOGIC ---

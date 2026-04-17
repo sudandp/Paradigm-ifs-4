@@ -47,7 +47,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
 
         if (dayEvents.length === 0) return { hoursOT: 0, hasOtPunch: false };
 
-        const { workingHours } = calculateWorkingHours(dayEvents);
+        const { workingHours } = calculateWorkingHours(dayEvents, date);
         const hasOtPunch = dayEvents.some(e => e.type === 'punch-in' && e.isOt);
 
         const otMinutes = Math.max(0, (workingHours * 60) - (threshold * 60));

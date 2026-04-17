@@ -188,22 +188,29 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   },
   
   acknowledgeNotification: async (notificationId: string) => {
+    // Optimistic update
+    const previousNotifications = get().notifications;
+    const isCurrentlyUnread = !previousNotifications.find(n => n.id === notificationId)?.isRead;
+    
+    set((state) => {
+      const newUnreadCount = Math.max(0, state.unreadCount - (isCurrentlyUnread ? 1 : 0));
+      return {
+        notifications: state.notifications.map(n =>
+          n.id === notificationId ? { ...n, acknowledgedAt: new Date().toISOString(), isRead: true } : n
+        ),
+        unreadCount: newUnreadCount,
+        totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
+      };
+    });
+
     try {
       await api.acknowledgeNotification(notificationId);
-      set((state) => {
-        const isCurrentlyUnread = !state.notifications.find(n => n.id === notificationId)?.isRead;
-        const newUnreadCount = Math.max(0, state.unreadCount - (isCurrentlyUnread ? 1 : 0));
-        return {
-          notifications: state.notifications.map(n =>
-            n.id === notificationId ? { ...n, acknowledgedAt: new Date().toISOString(), isRead: true } : n
-          ),
-          unreadCount: newUnreadCount,
-          totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
-        };
-      });
       get().updateBadgeCount();
     } catch (err) {
       console.error("Failed to acknowledge notification:", err);
+      // Rollback on failure
+      set({ notifications: previousNotifications });
+      toast.error('Failed to acknowledge request.');
     }
   },
 
@@ -247,13 +254,16 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${user.id}`,
         },
         async (payload) => {
-          const newNotif = api.toCamelCase(payload.new) as Notification;
+          console.log('[NotificationStore] Realtime event:', payload.eventType, payload);
+
+          if (payload.eventType === 'INSERT') {
+            const newNotif = api.toCamelCase(payload.new) as Notification;
           
           set((state) => {
             const newUnreadCount = state.unreadCount + 1;
@@ -315,7 +325,44 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
               console.error('Failed to schedule local notification:', err);
             }
           }
+        } else if (payload.eventType === 'UPDATE') {
+          const updatedNotif = api.toCamelCase(payload.new) as Notification;
+          console.log('[NotificationStore] Updating notification from realtime:', updatedNotif.id);
+          
+          set((state) => {
+            const oldNotif = state.notifications.find(n => n.id === updatedNotif.id);
+            if (!oldNotif) return state;
+
+            const wasUnread = !oldNotif.isRead;
+            const isNowRead = updatedNotif.isRead;
+            
+            let newUnreadCount = state.unreadCount;
+            if (wasUnread && isNowRead) {
+              newUnreadCount = Math.max(0, state.unreadCount - 1);
+            }
+
+            return {
+              notifications: state.notifications.map(n => n.id === updatedNotif.id ? updatedNotif : n),
+              unreadCount: newUnreadCount,
+              totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
+            };
+          });
+          
+          get().updateBadgeCount();
+        } else if (payload.eventType === 'DELETE') {
+           const deletedId = (payload.old as any).id;
+           set((state) => {
+              const deletedNotif = state.notifications.find(n => n.id === deletedId);
+              const newUnreadCount = deletedNotif && !deletedNotif.isRead ? Math.max(0, state.unreadCount - 1) : state.unreadCount;
+              return {
+                  notifications: state.notifications.filter(n => n.id !== deletedId),
+                  unreadCount: newUnreadCount,
+                  totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
+              };
+           });
+           get().updateBadgeCount();
         }
+      }
       )
       .subscribe();
 

@@ -16,7 +16,8 @@ export interface SiteTravelBreakdown {
 export function calculateSiteTravelTime(
   events: AttendanceEvent[], 
   graceMinutes: number = 0, 
-  userRole?: string
+  userRole?: string,
+  processingDate?: Date
 ): SiteTravelBreakdown {
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
@@ -95,7 +96,13 @@ export function calculateSiteTravelTime(
 
   // Handle ongoing session if it's the current day
   const now = new Date();
-  if (lastEventTime && isSameDay(now, lastEventTime)) {
+  const isToday = !processingDate || (
+    now.getFullYear() === processingDate.getFullYear() &&
+    now.getMonth() === processingDate.getMonth() &&
+    now.getDate() === processingDate.getDate()
+  );
+
+  if (lastEventTime && isToday) {
     const elapsed = differenceInMinutes(now, lastEventTime);
     if (elapsed > 0) {
       if (isOnBreak) totalBreakMinutes += elapsed;
@@ -235,7 +242,8 @@ export function getFieldStaffStatus(
   events: AttendanceEvent[],
   rules: StaffAttendanceRules,
   violation?: FieldAttendanceViolation,
-  userRole?: string
+  userRole?: string,
+  processingDate?: Date
 ): {
   status: 'P' | '3/4P' | '1/2P' | '1/4P' | 'A';
   breakdown: SiteTravelBreakdown;
@@ -243,7 +251,7 @@ export function getFieldStaffStatus(
   grantedByManager: boolean;
 } {
   const graceMinutes = rules.fieldStaffGraceMinutes ?? 15;
-  const breakdown = calculateSiteTravelTime(events, graceMinutes, userRole);
+  const breakdown = calculateSiteTravelTime(events, graceMinutes, userRole, processingDate);
   const minSite = rules.minimumSitePercentage ?? 75;
 
   // No activity

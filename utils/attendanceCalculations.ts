@@ -17,7 +17,8 @@ export function calculateDailyHours(checkIn: string, checkOut: string): number {
  * Chronological state-based accumulator for robust calculation.
  */
 export function calculateWorkingHours(
-  events: AttendanceEvent[]
+  events: AttendanceEvent[],
+  processingDate?: Date
 ): { 
   totalHours: number; 
   breakHours: number; 
@@ -85,11 +86,17 @@ export function calculateWorkingHours(
   });
 
   // 4. Handle ongoing session (from last event to 'now')
-  // Use a 16-hour max window instead of isSameDay() to support
-  // cross-midnight shifts (e.g., 9 PM → 7 AM next day)
+  // CRITICAL FIX: Only calculate ongoing duration if processing today's date.
+  // Otherwise, historical days with missing punch-outs would aggregate time incorrectly.
   const now = new Date();
+  const isToday = !processingDate || (
+    now.getFullYear() === processingDate.getFullYear() &&
+    now.getMonth() === processingDate.getMonth() &&
+    now.getDate() === processingDate.getDate()
+  );
+
   const MAX_SESSION_HOURS = 16;
-  if (lastEventTime) {
+  if (lastEventTime && isToday) {
     const hoursSinceLastEvent = (now.getTime() - lastEventTime.getTime()) / (1000 * 60 * 60);
     if (hoursSinceLastEvent >= 0 && hoursSinceLastEvent < MAX_SESSION_HOURS) {
       const elapsed = differenceInMinutes(now, lastEventTime);
@@ -231,7 +238,7 @@ export function calculateHoursBasedStatus(
  * @param events All attendance events for a day
  * @returns Summary of the day's attendance
  */
-export function processDailyEvents(events: AttendanceEvent[]): {
+export function processDailyEvents(events: AttendanceEvent[], processingDate?: Date): {
   checkIn: string | null;
   checkOut: string | null;
   firstBreakIn: string | null;
@@ -260,7 +267,7 @@ export function processDailyEvents(events: AttendanceEvent[]): {
   const firstCheckIn = sortedEvents.find(e => e.type === 'punch-in');
   const lastCheckOut = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
   
-  const result = calculateWorkingHours(events);
+  const result = calculateWorkingHours(events, processingDate);
   
   return {
     checkIn: firstCheckIn?.timestamp || null,

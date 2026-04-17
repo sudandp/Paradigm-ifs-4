@@ -115,7 +115,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
         // Calculate total worked time and break time for each day
         Object.values(groups).forEach((group) => {
-            const { totalHours, breakHours } = processDailyEvents(group.events);
+            const { totalHours, breakHours } = processDailyEvents(group.events, new Date(group.date));
             // processDailyEvents returns hours, convert to minutes for display formatting
             group.totalWorkMinutes = (totalHours * 60) - (breakHours * 60);
             group.totalBreakMinutes = breakHours * 60;

@@ -1,8 +1,7 @@
-// deno-lint-ignore-file no-explicit-any
-// @ts-ignore - Deno environment
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore - Deno environment
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
 
 // @ts-ignore - Deno global
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
@@ -22,8 +21,16 @@ const toCamelCase = (obj: any): any => {
 };
 
 serve(async (_req: Request) => {
+  // Handle CORS
+  if (_req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return new Response(JSON.stringify({ error: 'Missing environment variables' }), { status: 500 });
+    return new Response(JSON.stringify({ error: 'Missing environment variables' }), { 
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -97,10 +104,15 @@ serve(async (_req: Request) => {
     }
 
     console.log(`[DEBUG] Final results: ${results.length} notifications sent`);
-    return new Response(JSON.stringify({ success: true, processedCount: results.length }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, processedCount: results.length }), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: errorMsg }), { status: 500 });
+    return new Response(JSON.stringify({ error: errorMsg }), { 
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 });
 

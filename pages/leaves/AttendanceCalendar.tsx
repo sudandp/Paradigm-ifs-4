@@ -224,7 +224,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 count += 1;
             } else if (status === 'present') {
                 const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
-                const { workingHours } = calculateWorkingHours(dayEvents);
+                const { workingHours } = calculateWorkingHours(dayEvents, date);
                 if (workingHours > 0) {
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
@@ -297,7 +297,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
                         if (status === 'present' || status === 'holiday-present') {
                             const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
-                            const { workingHours } = calculateWorkingHours(dayEvents);
+                            const { workingHours } = calculateWorkingHours(dayEvents, date);
                             const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             

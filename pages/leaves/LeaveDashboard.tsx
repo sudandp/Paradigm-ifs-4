@@ -319,7 +319,7 @@ const LeaveDashboard: React.FC = () => {
 
             Object.entries(dayLogs).forEach(([dateStr, dayEvents]) => {
                 const date = new Date(dateStr);
-                const { workingHours } = calculateWorkingHours(dayEvents);
+                const { workingHours } = calculateWorkingHours(dayEvents, date);
                 
                 // OT
                 if (workingHours > shiftThreshold) {

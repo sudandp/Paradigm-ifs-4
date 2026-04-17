@@ -752,11 +752,11 @@ const AttendanceDashboard: React.FC = () => {
                     const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
 
                     const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
-                    const { workingHours } = calculateWorkingHours(dayEvents);
+                    const { workingHours } = calculateWorkingHours(dayEvents, day);
                     let fStatus = '';
                     const uCat = userCategory as string;
                     if ((uCat === 'field' || uCat === 'site') && userRules?.enableSiteTimeTracking) {
-                        const fRes = getFieldStaffStatus(dayEvents, userRules, undefined, user.role);
+                        const fRes = getFieldStaffStatus(dayEvents, userRules, undefined, user.role, day);
                         fStatus = fRes.status;
                     }
 
@@ -799,7 +799,7 @@ const AttendanceDashboard: React.FC = () => {
                         if (cin) checkIn = format(new Date(cin.timestamp), 'hh:mm a');
                         if (cout) checkOut = format(new Date(cout.timestamp), 'hh:mm a');
 
-                        const { workingHours } = calculateWorkingHours(dayEvents);
+                        const { workingHours } = calculateWorkingHours(dayEvents, day);
                         const fullDayThreshold = userRules.minimumHoursFullDay || 8;
                         if (workingHours > fullDayThreshold) {
                             dailyOT = Math.round((workingHours - fullDayThreshold) * 10) / 10;
@@ -946,7 +946,7 @@ const AttendanceDashboard: React.FC = () => {
                         userEvents[e.userId].push(e);
                     });
                     Object.values(userEvents).forEach(ue => {
-                        const { workingHours } = calculateWorkingHours(ue);
+                        const { workingHours } = calculateWorkingHours(ue, day);
                         totalHours += workingHours;
                     });
                     productivityTrend.push(uniqueUsersPresent > 0 ? parseFloat((totalHours / uniqueUsersPresent).toFixed(1)) : 0);
@@ -1194,11 +1194,11 @@ const AttendanceDashboard: React.FC = () => {
                 let checkOut = '-';
                 let duration = '-';
 
-                const { workingHours } = calculateWorkingHours(dayEvents);
+                const { workingHours } = calculateWorkingHours(dayEvents, day);
                 let fStatus = '';
                 const uCatCheck = userCategory as string;
                 if ((uCatCheck === 'field' || uCatCheck === 'site') && userRules?.enableSiteTimeTracking) {
-                    const fRes = getFieldStaffStatus(dayEvents, userRules, undefined, user.role);
+                    const fRes = getFieldStaffStatus(dayEvents, userRules, undefined, user.role, day);
                     fStatus = fRes.status;
                 }
 
@@ -1233,7 +1233,7 @@ const AttendanceDashboard: React.FC = () => {
                     const checkOutEvent = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
                     if (checkInEvent) checkIn = format(new Date(checkInEvent.timestamp), 'HH:mm');
                     if (checkOutEvent) checkOut = format(new Date(checkOutEvent.timestamp), 'HH:mm');
-                    const { workingHours } = calculateWorkingHours(dayEvents);
+                    const { workingHours } = calculateWorkingHours(dayEvents, day);
                     const hours = Math.floor(workingHours);
                     const minutes = Math.round((workingHours - hours) * 60);
                     duration = `${hours}h ${minutes}m`;

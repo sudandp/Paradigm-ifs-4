@@ -281,7 +281,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const isFuture = isAfter(currentDate, startOfDay(new Date()));
 
       if (hasActivity) {
-        const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents);
+        const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents, currentDate);
         netHours = wHours; grossHours = totalHours; breakHours = bHrs;
         currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
         currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
@@ -295,7 +295,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
         const uCat = category as string;
         if ((uCat === 'field' || uCat === 'site') && rules?.enableSiteTimeTracking) {
-            const fRes = getFieldStaffStatus(dayEvents, rules, undefined, user.role);
+            const fRes = getFieldStaffStatus(dayEvents, rules, undefined, user.role, currentDate);
             fieldResultStatus = fRes.status;
         }
 
