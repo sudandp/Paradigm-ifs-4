@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getStaffCategory } from '../../utils/attendanceCalculations';
+
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild } from '../../types';
@@ -32,6 +34,9 @@ type LeaveRequestFormData = {
     breakIn?: string;
     breakOut?: string;
     locationName?: string;
+    includeSiteOt?: boolean;
+    siteOtIn?: string;
+    siteOtOut?: string;
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
@@ -80,6 +85,16 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
         is: (lt: string, ib: boolean) => lt === 'Correction' && ib === true,
         then: schema => schema.required('Break out time is required'),
         otherwise: schema => schema.optional()
+    }),
+    siteOtIn: yup.string().when(['leaveType', 'includeSiteOt'], {
+        is: (lt: string, ot: boolean) => lt === 'Correction' && ot === true,
+        then: schema => schema.required('Site OT in time is required'),
+        otherwise: schema => schema.optional()
+    }),
+    siteOtOut: yup.string().when(['leaveType', 'includeSiteOt'], {
+        is: (lt: string, ot: boolean) => lt === 'Correction' && ot === true,
+        then: schema => schema.required('Site OT out time is required'),
+        otherwise: schema => schema.optional()
     })
 });
 
@@ -91,6 +106,7 @@ const ApplyLeave: React.FC = () => {
     const { attendance: { office: { sickLeaveCertificateThreshold } } } = useSettingsStore();
 
     const validationSchema = useMemo(() => getLeaveValidationSchema(sickLeaveCertificateThreshold), [sickLeaveCertificateThreshold]);
+    const userCategory = useMemo(() => getStaffCategory(user?.role), [user?.role]);
     const [searchParams] = useSearchParams();
     const editId = searchParams.get('edit');
     const isEditMode = !!editId;
@@ -119,7 +135,10 @@ const ApplyLeave: React.FC = () => {
             includeBreak: false,
             breakIn: '13:00',
             breakOut: '14:00',
-            locationName: 'Office'
+            locationName: 'Office',
+            includeSiteOt: false,
+            siteOtIn: '20:00',
+            siteOtOut: '22:00'
         }
     });
 
@@ -163,6 +182,8 @@ const ApplyLeave: React.FC = () => {
                     const punchOutEvents = events.filter(e => e.type === 'punch-out');
                     const breakInEvents = events.filter(e => e.type === 'break-in');
                     const breakOutEvents = events.filter(e => e.type === 'break-out');
+                    const siteOtInEvents = events.filter(e => e.type === 'site-ot-in');
+                    const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out');
 
                     // Punch In: Earliest
                     if (punchInEvents.length > 0) {
@@ -201,18 +222,33 @@ const ApplyLeave: React.FC = () => {
                             setValue('breakIn', '00:00', { shouldValidate: true });
                         }
 
-                        if (breakOutEvents.length > 0) {
-                            const latestBOut = breakOutEvents.reduce((prev, curr) => 
+                        setValue('breakOut', '00:00');
+                    }
+
+                    // Site OT: Earliest OT-in and Latest OT-out
+                    if (siteOtInEvents.length > 0 || siteOtOutEvents.length > 0) {
+                        setValue('includeSiteOt', true);
+                        if (siteOtInEvents.length > 0) {
+                            const earliestOTIn = siteOtInEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                            );
+                            setValue('siteOtIn', format(new Date(earliestOTIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                        } else {
+                            setValue('siteOtIn', '00:00', { shouldValidate: true });
+                        }
+
+                        if (siteOtOutEvents.length > 0) {
+                            const latestOTOut = siteOtOutEvents.reduce((prev, curr) => 
                                 new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
                             );
-                            setValue('breakOut', format(new Date(latestBOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                            setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
                         } else {
-                            setValue('breakOut', '00:00', { shouldValidate: true });
+                            setValue('siteOtOut', '00:00', { shouldValidate: true });
                         }
                     } else {
-                        setValue('includeBreak', false);
-                        setValue('breakIn', '00:00');
-                        setValue('breakOut', '00:00');
+                        setValue('includeSiteOt', false);
+                        setValue('siteOtIn', '22:00');
+                        setValue('siteOtOut', '23:00');
                     }
                 } else {
                     // No events found - reset to 00:00 as requested
@@ -221,6 +257,9 @@ const ApplyLeave: React.FC = () => {
                     setValue('includeBreak', false);
                     setValue('breakIn', '00:00', { shouldValidate: true });
                     setValue('breakOut', '00:00', { shouldValidate: true });
+                    setValue('includeSiteOt', false);
+                    setValue('siteOtIn', '22:00', { shouldValidate: true });
+                    setValue('siteOtOut', '23:00', { shouldValidate: true });
                 }
             } catch (err) {
                 console.error('Failed to fetch attendance logs:', err);
@@ -341,7 +380,8 @@ const ApplyLeave: React.FC = () => {
             // Sanitize payload to exclude internal UI-only fields from top-level DB columns
             const { 
                 leaveType, startDate, endDate, dayOption, reason, doctorCertificate,
-                correctionStatus, punchIn, punchOut, includeBreak, breakIn, breakOut, locationName 
+                correctionStatus, punchIn, punchOut, includeBreak, breakIn, breakOut, 
+                locationName, includeSiteOt, siteOtIn, siteOtOut
             } = formData;
 
             const basePayload: any = {
@@ -361,10 +401,12 @@ const ApplyLeave: React.FC = () => {
                     status: correctionStatus,
                     punchIn,
                     punchOut,
-                    includeBreak,
                     breakIn,
                     breakOut,
-                    locationName
+                    locationName,
+                    includeSiteOt,
+                    siteOtIn,
+                    siteOtOut
                 };
             }
 
@@ -552,6 +594,43 @@ const ApplyLeave: React.FC = () => {
                                             </div>
                                         )}
                                     </div>
+
+                                    {(userCategory === 'field' || userCategory === 'site') && (
+                                        <div className="space-y-3 pt-4 border-t border-border">
+                                            <div className="flex items-center gap-2">
+                                                <input 
+                                                    type="checkbox" 
+                                                    id="includeSiteOt" 
+                                                    {...register('includeSiteOt')} 
+                                                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-600"
+                                                />
+                                                <label htmlFor="includeSiteOt" className="text-sm font-medium text-primary-text">Include Site Overtime?</label>
+                                            </div>
+
+                                            {watch('includeSiteOt') && (
+                                                <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
+                                                    <Controller name="siteOtIn" control={control} render={({ field }) => (
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT In
+                                                            </label>
+                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                            {errors.siteOtIn && <p className="text-xs text-red-500">{errors.siteOtIn.message}</p>}
+                                                        </div>
+                                                    )} />
+                                                    <Controller name="siteOtOut" control={control} render={({ field }) => (
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT Out
+                                                            </label>
+                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
+                                                            {errors.siteOtOut && <p className="text-xs text-red-500">{errors.siteOtOut.message}</p>}
+                                                        </div>
+                                                    )} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

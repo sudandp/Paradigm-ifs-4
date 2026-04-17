@@ -992,7 +992,7 @@ export interface AttendanceEvent {
   deviceId?: string | null;
   checkoutNote?: string;
   attachmentUrl?: string | null;
-  workType?: 'office' | 'field';
+  workType?: 'office' | 'field' | 'site';
   fieldReportId?: string;
   isManual?: boolean;
   createdBy?: string;

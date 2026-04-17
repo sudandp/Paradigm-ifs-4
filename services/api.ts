@@ -4638,6 +4638,32 @@ export const api = {
                 });
             }
 
+            // Optional Site Overtime
+            if (details.includeSiteOt && details.siteOtIn && details.siteOtOut) {
+                const otIn = new Date(`${timestampBase}T${details.siteOtIn}:00`);
+                const otOut = new Date(`${timestampBase}T${details.siteOtOut}:00`);
+                
+                eventsToInsert.push({
+                    user_id: request.user_id,
+                    timestamp: otIn.toISOString(),
+                    type: 'site-ot-in',
+                    location_name: details.locationName || 'Field Site',
+                    work_type: 'field',
+                    is_manual: true,
+                    created_by: approverId
+                });
+
+                eventsToInsert.push({
+                    user_id: request.user_id,
+                    timestamp: otOut.toISOString(),
+                    type: 'site-ot-out',
+                    location_name: details.locationName || 'Field Site',
+                    work_type: 'field',
+                    is_manual: true,
+                    created_by: approverId
+                });
+            }
+
             await supabase.from('attendance_events').insert(eventsToInsert);
 
             // 3. Audit Log

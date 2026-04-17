@@ -39,7 +39,8 @@ export function calculateWorkingHours(
   let lastBreakOut: string | null = null;
   
   // State Trackers
-  let isPunchedIn = false;
+  let isMainPunchedIn = false;
+  let isAtSite = false;
   let isOnBreak = false;
   let lastEventTime: Date | null = null;
 
@@ -51,13 +52,15 @@ export function calculateWorkingHours(
       const elapsed = differenceInMinutes(eventTime, lastEventTime);
       
       // Accumulate logic based on PREVIOUS state during this interval
-      if (isPunchedIn && !isOnBreak) {
+      const isCurrentlyPunchedIn = isMainPunchedIn || isAtSite;
+      
+      if (isCurrentlyPunchedIn && !isOnBreak) {
         netWorkMinutes += elapsed;
       }
       if (isOnBreak) {
         totalBreakMinutes += elapsed;
       }
-      if (isPunchedIn) {
+      if (isCurrentlyPunchedIn) {
         grossWorkMinutes += elapsed;
       }
     }
@@ -65,10 +68,25 @@ export function calculateWorkingHours(
     // 3. Update state for the NEXT interval
     switch (event.type) {
       case 'punch-in':
-        isPunchedIn = true;
+        if (event.workType === 'field' || event.workType === 'site') {
+          isAtSite = true;
+        } else {
+          isMainPunchedIn = true;
+        }
         break;
       case 'punch-out':
-        isPunchedIn = false;
+        if (event.workType === 'field' || event.workType === 'site') {
+          isAtSite = false;
+        } else {
+          isMainPunchedIn = false;
+          isAtSite = false; // Primary logout closes all active sub-sessions
+        }
+        break;
+      case 'site-ot-in':
+        isAtSite = true;
+        break;
+      case 'site-ot-out':
+        isAtSite = false;
         break;
       case 'break-in':
         isOnBreak = true;
@@ -100,13 +118,15 @@ export function calculateWorkingHours(
     const hoursSinceLastEvent = (now.getTime() - lastEventTime.getTime()) / (1000 * 60 * 60);
     if (hoursSinceLastEvent >= 0 && hoursSinceLastEvent < MAX_SESSION_HOURS) {
       const elapsed = differenceInMinutes(now, lastEventTime);
-      if (isPunchedIn && !isOnBreak) {
+      const isCurrentlyPunchedIn = isMainPunchedIn || isAtSite;
+      
+      if (isCurrentlyPunchedIn && !isOnBreak) {
         netWorkMinutes += elapsed;
       }
       if (isOnBreak) {
         totalBreakMinutes += elapsed;
       }
-      if (isPunchedIn) {
+      if (isCurrentlyPunchedIn) {
         grossWorkMinutes += elapsed;
       }
     }
