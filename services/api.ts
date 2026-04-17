@@ -2900,7 +2900,8 @@ export const api = {
       },
       body: JSON.stringify({ 
         ruleId, 
-        test: true
+        test: true,
+        testEmail: session?.user?.email
       })
     });
 

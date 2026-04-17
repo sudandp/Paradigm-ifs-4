@@ -28,7 +28,7 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
     const todayStr = getISTDateString(nowIST);
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
-      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single(),
+      supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
       supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified'),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
@@ -190,7 +190,8 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     
     const { data: template } = rule.template_id ? await supabase.from('email_templates').select('*').eq('id', rule.template_id).single() : { data: null };
     
-    const generator = (reportGenerators as any)[rule.report_type] || reportGenerators.attendance_daily;
+    const reportTypeKey = rule.report_type?.toLowerCase().replace(/\s+/g, '_');
+    const generator = (reportGenerators as any)[reportTypeKey] || reportGenerators.attendance_daily;
     const nowIST = new Date(new Date().getTime() + IST_OFFSET);
     const reportData = await generator(supabase, nowIST);
 
