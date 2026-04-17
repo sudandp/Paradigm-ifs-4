@@ -93,6 +93,14 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      // Site staff with shift management enabled punch out manually — skip auto-checkout.
+      // Admin can still force-checkout via the manual override button.
+      if (group === 'site' && rules.enableShiftManagement && !isManualOverride) {
+        report.groups[group] = { status: 'skipped', reason: 'shift management enabled — site staff punch out manually' };
+        console.log(`[site] Skipped: enableShiftManagement is ON, site staff handle their own punch-out.`);
+        continue;
+      }
+
       // Check Timing for this specific group
       const checkoutTime = rules.fixedOfficeHours?.checkOutTime || '19:30';
       // Handle both ':' and '.' as separators

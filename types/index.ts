@@ -999,6 +999,8 @@ export interface AttendanceEvent {
   reason?: string;
   /** True when this event belongs to an overtime (2nd+) punch cycle. */
   isOt?: boolean;
+  /** Auto-detected shift ID for site staff (e.g. 'shift_a', 'shift_c'). Populated on punch-in. */
+  detectedShiftId?: string;
 }
 
 export interface RoutePoint {
@@ -1121,6 +1123,23 @@ export interface StaffAttendanceRules {
   quarterDayHours?: number;            // Hours threshold for 1/4P status (default: 2)
   weekendPresentThreshold?: number;    // Min days present in week to earn W/O (default: 3)
   enableHoursBasedFallback?: boolean;  // For field/site: if site tracking returns A but hours exist, use hours (default: true)
+  // --- Shift Management (Site Staff) ---
+  enableShiftManagement?: boolean;     // When true, shifts are auto-detected by punch-in time
+  siteShifts?: SiteShiftDefinition[];  // Configured shift windows
+}
+
+/**
+ * Defines a shift time window for site staff.
+ * Shifts are NOT pre-assigned to users — they are auto-detected
+ * based on the punch-in time matching the closest shift window.
+ */
+export interface SiteShiftDefinition {
+  id: string;                          // e.g. 'shift_a', 'shift_b', 'shift_c'
+  name: string;                        // e.g. 'Shift A (Morning)'
+  startTime: string;                   // HH:mm e.g. '07:00'
+  endTime: string;                     // HH:mm e.g. '15:00'
+  crossesMidnight: boolean;            // true if endTime < startTime (night shift)
+  autoCheckoutBufferMinutes?: number;  // Grace period after shift end (default 30)
 }
 
 export interface UserHoliday {

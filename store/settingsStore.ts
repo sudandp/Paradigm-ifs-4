@@ -73,7 +73,7 @@ const initialAttendance: AttendanceSettings = {
     maxViolationsPerMonth: 3,
     fixedOfficeHours: {
       checkInTime: '09:00',
-      checkOutTime: '18:00',
+      checkOutTime: '19:30',
     },
     dailyWorkingHours: {
       min: 7,
@@ -135,7 +135,7 @@ const initialAttendance: AttendanceSettings = {
     maxViolationsPerMonth: 3,
     fixedOfficeHours: {
       checkInTime: '09:00',
-      checkOutTime: '18:00',
+      checkOutTime: '19:30',
     },
     dailyWorkingHours: {
       min: 7,
@@ -147,6 +147,13 @@ const initialAttendance: AttendanceSettings = {
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     enableMaternityChildCare: true,
+    // Shift Management defaults (disabled until admin enables)
+    enableShiftManagement: false,
+    siteShifts: [
+      { id: 'shift_a', name: 'Shift A (Morning)', startTime: '07:00', endTime: '15:00', crossesMidnight: false, autoCheckoutBufferMinutes: 30 },
+      { id: 'shift_b', name: 'Shift B (Afternoon)', startTime: '14:00', endTime: '21:00', crossesMidnight: false, autoCheckoutBufferMinutes: 30 },
+      { id: 'shift_c', name: 'Shift C (Night)', startTime: '21:00', endTime: '07:00', crossesMidnight: true, autoCheckoutBufferMinutes: 30 },
+    ],
   }
 };
 

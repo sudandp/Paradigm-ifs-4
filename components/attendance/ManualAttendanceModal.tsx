@@ -29,7 +29,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [status, setStatus] = useState<string>('Present'); // Present, W/H, On Leave
     const [checkInTime, setCheckInTime] = useState<string>('09:00');
-    const [checkOutTime, setCheckOutTime] = useState<string>('18:00');
+    const [checkOutTime, setCheckOutTime] = useState<string>('19:30');
     const [locationName, setLocationName] = useState<string>('Office');
     const [reason, setReason] = useState<string>('');
     const [breakInTime, setBreakInTime] = useState<string>('13:00');
@@ -47,7 +47,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setDate(format(new Date(), 'yyyy-MM-dd'));
             setStatus('Present');
             setCheckInTime('09:00');
-            setCheckOutTime('18:00');
+            setCheckOutTime('19:30');
             setBreakInTime('13:00');
             setBreakOutTime('14:00');
             setIncludeBreak(false);
@@ -133,7 +133,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     // Reset to defaults if no logs found for this user/date
                     setExistingEventIds([]);
                     setCheckInTime('09:00');
-                    setCheckOutTime('18:00');
+                    setCheckOutTime('19:30');
                     setBreakInTime('13:00');
                     setBreakOutTime('14:00');
                     setIncludeBreak(false);

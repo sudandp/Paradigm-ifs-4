@@ -85,17 +85,23 @@ export function calculateWorkingHours(
   });
 
   // 4. Handle ongoing session (from last event to 'now')
+  // Use a 16-hour max window instead of isSameDay() to support
+  // cross-midnight shifts (e.g., 9 PM → 7 AM next day)
   const now = new Date();
-  if (lastEventTime && isSameDay(now, lastEventTime)) {
-    const elapsed = differenceInMinutes(now, lastEventTime);
-    if (isPunchedIn && !isOnBreak) {
-      netWorkMinutes += elapsed;
-    }
-    if (isOnBreak) {
-      totalBreakMinutes += elapsed;
-    }
-    if (isPunchedIn) {
-      grossWorkMinutes += elapsed;
+  const MAX_SESSION_HOURS = 16;
+  if (lastEventTime) {
+    const hoursSinceLastEvent = (now.getTime() - lastEventTime.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceLastEvent >= 0 && hoursSinceLastEvent < MAX_SESSION_HOURS) {
+      const elapsed = differenceInMinutes(now, lastEventTime);
+      if (isPunchedIn && !isOnBreak) {
+        netWorkMinutes += elapsed;
+      }
+      if (isOnBreak) {
+        totalBreakMinutes += elapsed;
+      }
+      if (isPunchedIn) {
+        grossWorkMinutes += elapsed;
+      }
     }
   }
 

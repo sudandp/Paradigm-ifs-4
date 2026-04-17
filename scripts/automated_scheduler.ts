@@ -11,10 +11,10 @@ import { format, startOfDay } from 'date-fns';
 import * as dotenv from 'dotenv';
 import { reportGenerators, evaluateConditionals, resolveRecipients } from '../utils/reportGenerators';
 
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 // Configuration from Environment Variables
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -103,13 +103,19 @@ async function run() {
 
       // Frequency Check
       const freq = config.frequency || 'daily';
-      if (freq === 'weekly' && config.dayOfWeek !== undefined && config.dayOfWeek !== nowIST.getUTCDay()) {
-        console.log(`  → Skipped: Wrong day of week (Target: ${config.dayOfWeek})`);
-        continue;
+      if (freq === 'weekly') {
+        const targetDay = config.dayOfWeek !== undefined ? config.dayOfWeek : 5;
+        if (targetDay !== nowIST.getUTCDay()) {
+          console.log(`  → Skipped: Wrong day of week (Target: ${targetDay})`);
+          continue;
+        }
       }
-      if (freq === 'monthly' && config.dayOfMonth !== undefined && config.dayOfMonth !== nowIST.getUTCDate()) {
-        console.log(`  → Skipped: Wrong day of month (Target: ${config.dayOfMonth})`);
-        continue;
+      if (freq === 'monthly') {
+        const targetDay = config.dayOfMonth !== undefined ? config.dayOfMonth : 1;
+        if (targetDay !== nowIST.getUTCDate()) {
+          console.log(`  → Skipped: Wrong day of month (Target: ${targetDay})`);
+          continue;
+        }
       }
 
       // Already Sent Check

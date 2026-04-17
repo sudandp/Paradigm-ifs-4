@@ -114,7 +114,7 @@ const ApplyLeave: React.FC = () => {
             dayOption: 'full',
             correctionStatus: 'Present',
             punchIn: '09:00',
-            punchOut: '18:00',
+            punchOut: '19:30',
             includeBreak: false,
             breakIn: '13:00',
             breakOut: '14:00',
@@ -182,6 +182,30 @@ const ApplyLeave: React.FC = () => {
     const onSubmit: SubmitHandler<LeaveRequestFormData> = async (formData) => {
         if (!user) return;
         try {
+            // --- DUPLICATE CHECK ---
+            // Fetch any existing requests for this user that overlap with the selected dates
+            const { data: existingRequests } = await api.getLeaveRequests({ 
+                userId: user.id,
+                startDate: formData.startDate,
+                endDate: formData.leaveType === 'Correction' ? formData.startDate : formData.endDate
+            });
+
+            // Filter out rejected requests and the current request if in Edit Mode
+            const conflictingRequests = existingRequests.filter(req => 
+                req.status !== 'rejected' && 
+                (!isEditMode || req.id !== editId)
+            );
+
+            if (conflictingRequests.length > 0) {
+                const conflict = conflictingRequests[0];
+                const typeName = getLeaveTypeDisplay(conflict.leaveType);
+                setToast({ 
+                    message: `Conflict Detected: You already have a ${typeName} request (${conflict.status.replace(/_/g, ' ')}) for these dates. Duplicate requests are not allowed.`, 
+                    type: 'error' 
+                });
+                return;
+            }
+
             // Check balance before submitting (only for new requests)
             // Skip balance check for 'Loss of Pay', 'WFH', and 'Correction'
             if (!isEditMode && !['Loss of Pay', 'WFH', 'Correction'].includes(formData.leaveType)) {

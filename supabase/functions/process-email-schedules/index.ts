@@ -240,17 +240,24 @@ serve(async (req: Request) => {
         const istDayOfWeek = nowIST.getUTCDay();
         const istDayOfMonth = nowIST.getUTCDate();
 
-        if (freq === 'weekly' && config.dayOfWeek !== undefined && config.dayOfWeek !== istDayOfWeek) {
-          const reason = `Wrong day of week (need: ${config.dayOfWeek}, current IST: ${istDayOfWeek})`;
-          console.log(`  → SKIPPED: ${reason}`);
-          processingLog.push({ rule: rule.name, status: 'skipped', reason });
-          continue;
+        if (freq === 'weekly') {
+          const targetDay = config.dayOfWeek !== undefined ? config.dayOfWeek : 5; // Default to Friday
+          if (targetDay !== istDayOfWeek) {
+            const reason = `Wrong day of week (need: ${targetDay}, current IST: ${istDayOfWeek})`;
+            console.log(`  → SKIPPED: ${reason}`);
+            processingLog.push({ rule: rule.name, status: 'skipped', reason });
+            continue;
+          }
         }
-        if (freq === 'monthly' && config.dayOfMonth !== undefined && config.dayOfMonth !== istDayOfMonth) {
-          const reason = `Wrong day of month (need: ${config.dayOfMonth}, current IST: ${istDayOfMonth})`;
-          console.log(`  → SKIPPED: ${reason}`);
-          processingLog.push({ rule: rule.name, status: 'skipped', reason });
-          continue;
+        
+        if (freq === 'monthly') {
+          const targetDay = config.dayOfMonth !== undefined ? config.dayOfMonth : 1; // Default to 1st
+          if (targetDay !== istDayOfMonth) {
+            const reason = `Wrong day of month (need: ${targetDay}, current IST: ${istDayOfMonth})`;
+            console.log(`  → SKIPPED: ${reason}`);
+            processingLog.push({ rule: rule.name, status: 'skipped', reason });
+            continue;
+          }
         }
 
         // ── Already-sent-today check (using IST date string comparison) ──

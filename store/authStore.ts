@@ -464,8 +464,16 @@ export const useAuthStore = create<AuthState>()(
             
             try {
                 const today = new Date();
-                const startOfDayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
                 const endOfDayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+
+                // For site staff with shift management, look back further to catch
+                // active night-shift sessions that cross midnight (e.g., 9 PM → 7 AM).
+                // 16 hours covers any reasonable shift start from the previous day.
+                const isSiteStaffRole = !['admin', 'hr', 'finance', 'developer', 'field_staff', 'field_officer', 'operation_manager'].includes(user.role);
+                const siteShiftLookbackMs = isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0;
+                const startOfDayStr = siteShiftLookbackMs > 0
+                    ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
+                    : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
 
                 // Run data fetching concurrently to save time
                 const [eventsResult, unlockCountResult, dailyUnlockCountResult] = await Promise.allSettled([

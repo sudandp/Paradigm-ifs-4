@@ -6,12 +6,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit } from 'lucide-react';
+import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon } from 'lucide-react';
 import DatePicker from '../../components/ui/DatePicker';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import Select from '../../components/ui/Select';
-import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role, SiteStaffDesignation } from '../../types';
+import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role, SiteStaffDesignation, SiteShiftDefinition } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -746,7 +746,7 @@ const AttendanceSettings: React.FC = () => {
                                 label="Check-out End Time"
                                 id="checkOutTime"
                                 type="time"
-                                value={currentRules.fixedOfficeHours?.checkOutTime || '18:00'}
+                                value={currentRules.fixedOfficeHours?.checkOutTime || '19:30'}
                                 onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, checkOutTime: e.target.value })}
                             />
                             <Input
@@ -764,6 +764,164 @@ const AttendanceSettings: React.FC = () => {
                                 onChange={(e) => handleSettingChange('dailyWorkingHours', { ...currentRules.dailyWorkingHours, max: parseFloat(e.target.value) || 9 })}
                             />
                         </div>
+                    </section>
+                    )}
+
+                    {/* Shift Management - Only for Site Staff */}
+                    {activeTab === 'site' && (
+                    <section className="pt-6 border-t border-border">
+                        <h3 className="text-lg font-semibold text-primary-text mb-2 flex items-center">
+                            <Clock className="mr-2 h-5 w-5 text-muted" />Shift Management
+                        </h3>
+                        <p className="text-sm text-muted mb-4">Configure shift windows for site staff. Attendance is auto-detected based on punch-in time — no duty roster needed.</p>
+                        
+                        <div className="mb-4">
+                            <Checkbox
+                                id="enableShiftManagement"
+                                label="Enable Shift Management"
+                                description="When enabled, auto-checkout is disabled for site staff. They punch out manually. Hours are calculated based on the detected shift window."
+                                checked={currentRules.enableShiftManagement || false}
+                                onChange={(e) => handleSettingChange('enableShiftManagement', e.target.checked)}
+                            />
+                        </div>
+
+                        {currentRules.enableShiftManagement && (
+                            <>
+                                {/* Shift Table */}
+                                <div className="rounded-xl border border-border overflow-hidden mb-4">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-page">
+                                            <tr>
+                                                <th className="text-left px-4 py-3 font-semibold text-primary-text">Shift Name</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-primary-text">Start Time</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-primary-text">End Time</th>
+                                                <th className="text-center px-4 py-3 font-semibold text-primary-text">Night Shift</th>
+                                                <th className="text-left px-4 py-3 font-semibold text-primary-text">Buffer (min)</th>
+                                                <th className="text-center px-4 py-3 font-semibold text-primary-text">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(currentRules.siteShifts || []).map((shift: SiteShiftDefinition, idx: number) => {
+                                                // Auto-detect if shift crosses midnight
+                                                const startMin = parseInt(shift.startTime.split(':')[0]) * 60 + parseInt(shift.startTime.split(':')[1] || '0');
+                                                const endMin = parseInt(shift.endTime.split(':')[0]) * 60 + parseInt(shift.endTime.split(':')[1] || '0');
+                                                const isCrossMidnight = endMin < startMin;
+
+                                                return (
+                                                    <tr key={shift.id} className="border-t border-border/50 hover:bg-accent/5 transition-colors">
+                                                        <td className="px-4 py-3">
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-transparent border border-border/50 rounded-lg px-2 py-1.5 text-sm text-primary-text focus:border-accent focus:outline-none"
+                                                                value={shift.name}
+                                                                onChange={(e) => {
+                                                                    const updated = [...(currentRules.siteShifts || [])];
+                                                                    updated[idx] = { ...updated[idx], name: e.target.value };
+                                                                    handleSettingChange('siteShifts', updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <input
+                                                                type="time"
+                                                                className="bg-transparent border border-border/50 rounded-lg px-2 py-1.5 text-sm text-primary-text focus:border-accent focus:outline-none"
+                                                                value={shift.startTime}
+                                                                onChange={(e) => {
+                                                                    const updated = [...(currentRules.siteShifts || [])];
+                                                                    const newStart = e.target.value;
+                                                                    const newEndMin = parseInt(updated[idx].endTime.split(':')[0]) * 60 + parseInt(updated[idx].endTime.split(':')[1] || '0');
+                                                                    const newStartMin = parseInt(newStart.split(':')[0]) * 60 + parseInt(newStart.split(':')[1] || '0');
+                                                                    updated[idx] = { ...updated[idx], startTime: newStart, crossesMidnight: newEndMin < newStartMin };
+                                                                    handleSettingChange('siteShifts', updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <input
+                                                                type="time"
+                                                                className="bg-transparent border border-border/50 rounded-lg px-2 py-1.5 text-sm text-primary-text focus:border-accent focus:outline-none"
+                                                                value={shift.endTime}
+                                                                onChange={(e) => {
+                                                                    const updated = [...(currentRules.siteShifts || [])];
+                                                                    const newEnd = e.target.value;
+                                                                    const newStartMin = parseInt(updated[idx].startTime.split(':')[0]) * 60 + parseInt(updated[idx].startTime.split(':')[1] || '0');
+                                                                    const newEndMin = parseInt(newEnd.split(':')[0]) * 60 + parseInt(newEnd.split(':')[1] || '0');
+                                                                    updated[idx] = { ...updated[idx], endTime: newEnd, crossesMidnight: newEndMin < newStartMin };
+                                                                    handleSettingChange('siteShifts', updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            {isCrossMidnight 
+                                                                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 text-xs font-bold"><Moon className="h-3 w-3" />Night</span>
+                                                                : <span className="text-muted text-xs">—</span>
+                                                            }
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max="120"
+                                                                className="w-20 bg-transparent border border-border/50 rounded-lg px-2 py-1.5 text-sm text-primary-text focus:border-accent focus:outline-none"
+                                                                value={shift.autoCheckoutBufferMinutes ?? 30}
+                                                                onChange={(e) => {
+                                                                    const updated = [...(currentRules.siteShifts || [])];
+                                                                    updated[idx] = { ...updated[idx], autoCheckoutBufferMinutes: parseInt(e.target.value) || 0 };
+                                                                    handleSettingChange('siteShifts', updated);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const updated = (currentRules.siteShifts || []).filter((_: any, i: number) => i !== idx);
+                                                                    handleSettingChange('siteShifts', updated);
+                                                                }}
+                                                                className="text-red-400 hover:text-red-600 transition-colors p-1"
+                                                                title="Remove shift"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Add Shift Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const shifts = [...(currentRules.siteShifts || [])];
+                                        const nextId = `shift_${String.fromCharCode(97 + shifts.length)}`; // shift_d, shift_e, etc.
+                                        shifts.push({
+                                            id: nextId,
+                                            name: `Shift ${String.fromCharCode(65 + shifts.length)}`,
+                                            startTime: '06:00',
+                                            endTime: '14:00',
+                                            crossesMidnight: false,
+                                            autoCheckoutBufferMinutes: 30
+                                        });
+                                        handleSettingChange('siteShifts', shifts);
+                                    }}
+                                    className="flex items-center gap-2 text-sm font-medium text-accent hover:text-accent-dark transition-colors px-4 py-2 rounded-lg border border-dashed border-accent/30 hover:border-accent/60"
+                                >
+                                    <Plus className="h-4 w-4" /> Add Shift
+                                </button>
+
+                                {/* Info Card */}
+                                <div className="mt-4 p-3 bg-blue-500/5 border border-blue-500/15 rounded-lg">
+                                    <p className="text-xs text-blue-600 font-medium">
+                                        <strong>How shift detection works:</strong> When site staff punches in, the system automatically matches 
+                                        them to the shift window that contains their punch-in time. Night shifts (crossing midnight) will keep the 
+                                        session active until the next morning. Auto-checkout is <strong>disabled</strong> for site staff — they must punch out manually.
+                                    </p>
+                                </div>
+                            </>
+                        )}
                     </section>
                     )}
 

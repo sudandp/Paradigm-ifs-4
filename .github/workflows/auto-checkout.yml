@@ -1,0 +1,40 @@
+name: Auto Checkout Cron
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Every 30 minutes
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  run-auto-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Missed Checkouts Edge Function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # Use SERVICE_ROLE_KEY if available, else ANON_KEY
+          AUTH_KEY="${SUPABASE_SERVICE_ROLE_KEY:-$SUPABASE_ANON_KEY}"
+          
+          if [ -z "$AUTH_KEY" ]; then
+            echo "Error: Neither SUPABASE_SERVICE_ROLE_KEY nor SUPABASE_ANON_KEY is set."
+            exit 1
+          fi
+
+          echo "Triggering missed checkouts..."
+          response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$SUPABASE_URL/functions/v1/trigger-missed-checkouts" \
+            -H "Authorization: Bearer $AUTH_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          http_status=$(echo "$response" | grep "HTTP_STATUS" | cut -d':' -f2)
+          body=$(echo "$response" | sed '/HTTP_STATUS:/d')
+
+          echo "Response HTTP Status: $http_status"
+          echo "Response Body: $body"
+
+          if [ "$http_status" -ne 200 ]; then
+            echo "Error: Failed to trigger missed checkouts."
+            exit 1
+          fi
