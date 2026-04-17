@@ -412,7 +412,7 @@ const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSe
                     </button>
                     <button
                         disabled={isSending || !email}
-                        onClick={() => onSend({ to: [email], subject, body: message, triggerType: 'manual' })}
+                        onClick={() => onSend({ to: [email], subject, html: message, triggerType: 'manual' })}
                         className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                     >
                         {isSending ? (
@@ -1881,7 +1881,8 @@ const AttendanceDashboard: React.FC = () => {
                 }
             });
 
-            setToast({ message: `Report successfully sent to ${payload.to}`, type: 'success' });
+            const recipientText = Array.isArray(payload.to) ? payload.to.join(', ') : payload.to;
+            setToast({ message: `Report successfully sent to ${recipientText}`, type: 'success' });
             setIsMailModalOpen(false);
         } catch (error: any) {
             console.error('Mail Report Error:', error);

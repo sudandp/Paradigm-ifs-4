@@ -40,9 +40,12 @@ function evaluateConditionalsInternal(str: string, data: Record<string, string>)
 
 // Inlined Report Generators to avoid import crashes
 const reportGenerators = {
-  attendance_daily: async (supabase: SupabaseClient, nowIST: Date) => {
-    const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
-    const todayStr = getISTDateString(nowIST);
+  attendance_daily: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const todayStr = (filters?.dateRange?.start && filters?.dateRange?.end && filters?.dateRange?.start === filters?.dateRange?.end) 
+      ? filters.dateRange.start 
+      : getISTDateString(nowIST);
+    
+    const startOfTodayUTC = startOfDay(new Date(new Date(todayStr).getTime()));
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
       supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified'),
@@ -55,6 +58,18 @@ const reportGenerators = {
       return roleName.toLowerCase() !== 'management';
     });
     const staffIds = new Set(filteredUsers.map((u: any) => u.id));
+    
+    // Apply additional filters from dashboard
+    let targetUsers = filteredUsers;
+    if (filters?.user?.id) {
+      targetUsers = filteredUsers.filter((u: any) => u.id === filters.user.id);
+    } else if (filters?.role) {
+      targetUsers = filteredUsers.filter((u: any) => {
+        const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
+        return roleName === filters.role;
+      });
+    }
+
     const todayEvents = (eventsRes.data || []).filter((e: any) => staffIds.has(e.user_id));
     const onLeaveUserIds = new Set((leavesRes.data || []).map((l: any) => l.user_id));
     const tenDaysAgoUTC = new Date(startOfTodayUTC.getTime() - (9 * 24 * 60 * 60 * 1000));
@@ -70,7 +85,7 @@ const reportGenerators = {
 
     let tableHtml = '';
     let lateCount = 0;
-    filteredUsers.forEach((user: any, i: number) => {
+    targetUsers.forEach((user: any, i: number) => {
       let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
       dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
       let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
@@ -95,24 +110,25 @@ const reportGenerators = {
     
     const totalPresent = presentUserIds.size;
     const onLeaveCount = Array.from(onLeaveUserIds).filter(id => staffIds.has(id)).length;
-    const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount);
+    const totalAbsent = Math.max(0, targetUsers.length - totalPresent - onLeaveCount);
 
     return {
-      date: safeFormat(nowIST, 'EEEE, MMMM do, yyyy'),
+      date: safeFormat(new Date(todayStr), 'EEEE, MMMM do, yyyy'),
       generatedTime: safeFormat(nowIST, 'hh:mm a'),
-      totalEmployees: String(filteredUsers.length),
+      totalEmployees: String(targetUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(totalAbsent),
       lateCount: String(lateCount),
-      attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
+      attendancePercentage: targetUsers.length > 0 ? Math.round((totalPresent/targetUsers.length)*100).toString() : '0',
       onLeaveCount: String(onLeaveCount),
       table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
     };
   },
-  attendance_monthly: async (supabase: SupabaseClient, nowIST: Date) => {
-    const firstDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
-    const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
-    const monthStr = format(nowIST, 'MMMM yyyy');
+  attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
+    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : nowIST;
+    const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    const monthStr = format(targetDate, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
     let totalPresentSum = 0;
     const [usersRes, eventsRes] = await Promise.all([
@@ -121,14 +137,19 @@ const reportGenerators = {
     ]);
     const users = usersRes.data || [];
     const events = eventsRes.data || [];
+    let targetUsers = users;
+    if (filters?.user?.id) {
+      targetUsers = users.filter(u => u.id === filters.user.id);
+    }
+    
     let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;"><thead><tr style="background: #e5e7eb; color: #111827;"><th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     for (let d = 1; d <= daysInMonth; d++) tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
     tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">Tot</th></tr></thead><tbody>`;
-    users.forEach((user, idx) => {
+    targetUsers.forEach((user, idx) => {
       tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f3f4f6'};"><td style="border: 1px solid #bbb; padding: 4px; font-weight: 600;">${user.name}</td>`;
       let presentCount = 0;
       for (let d = 1; d <= daysInMonth; d++) {
-        const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
+        const targetDate = new Date(firstDayOfMonth.getFullYear(), firstDayOfMonth.getMonth(), d);
         const dateStr = safeFormat(targetDate, 'yyyy-MM-dd');
         const hasPunch = events.some(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
         if (hasPunch) { presentCount++; tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: #16a34a; font-weight: bold;">P</td>`; }
@@ -138,14 +159,14 @@ const reportGenerators = {
       totalPresentSum += presentCount;
     });
     tableHtml += `</tbody></table>`;
-    const totalPossible = users.length * daysInMonth;
+    const totalPossible = targetUsers.length * daysInMonth;
     const attendancePercentage = totalPossible > 0 ? Math.round((totalPresentSum / totalPossible) * 100) : 0;
     const totalAbsent = totalPossible - totalPresentSum;
     return { 
       date: monthStr, 
       reportDate: safeFormat(nowIST, 'dd MMM yyyy'),
       generatedTime: safeFormat(nowIST, 'hh:mm a'),
-      totalEmployees: String(users.length), 
+      totalEmployees: String(targetUsers.length), 
       table: tableHtml,
       attendancePercentage: String(attendancePercentage),
       totalAbsent: String(totalAbsent),
@@ -153,7 +174,7 @@ const reportGenerators = {
       totalPresent: String(totalPresentSum)
     };
   },
-  document_expiry: async (supabase: SupabaseClient, nowIST: Date) => {
+  document_expiry: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
     return { date: format(nowIST, 'yyyy-MM-dd'), items: '0' };
   }
 };
@@ -195,7 +216,10 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
   const { url, serviceKey } = getSupabaseConfig(supabaseUrl, supabaseServiceKey);
   const supabase = createClient(url, serviceKey);
   
-  let { to, cc, subject, html, ruleId, test, testEmail, smtpConfig, triggerType } = body;
+  let { to, cc, subject, html, ruleId, test, testEmail, smtpConfig, triggerType, reportType, filters } = body;
+  
+  // Fallback for body vs html naming mismatch
+  if (!html && body.body) html = body.body;
   
   // Use provided SMTP config (from UI) or fallback to DB
   const config = smtpConfig || await getSmtpConfig(supabase);
@@ -263,6 +287,27 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
     
     if (!triggerType) triggerType = 'automatic';
+  } else if (reportType && triggerType === 'manual') {
+    // Handle manual triggers from dashboard without a ruleId
+    const reportTypeKey = reportType.toLowerCase().replace(/\s+/g, '_');
+    const generator = (reportGenerators as any)[reportTypeKey] || reportGenerators.attendance_daily;
+    const nowIST = new Date(new Date().getTime() + IST_OFFSET);
+    const reportData = await generator(supabase, nowIST, filters);
+
+    const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
+      const dataKey = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
+      return dataKey ? (data as any)[dataKey] : match;
+    });
+
+    const userMessage = html || ''; // Original message from modal
+    const greetingMessage = userMessage || `Here is your requested <strong>${reportType.replace(/_/g, ' ')}</strong> status update for <strong>{date}</strong>.`;
+    
+    reportData.greetingMessage = greetingMessage;
+    reportData.customGreeting = greetingMessage;
+
+    const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .attendance-table { font-size: 8px !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><span style="font-size: 24px; font-weight: 800;">PARADIGM</span></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">${reportType.replace(/_/g, ' ')}</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 8px;">Hi,</div><p style="margin: 0; color: #64748b; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Report Overview</h3></div><div style="overflow-x: auto;" class="attendance-table">{table}</div></div></div></div></body></html>`;
+
+    html = render(getDefaultPremiumTemplate(), reportData);
   }
 
   const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
