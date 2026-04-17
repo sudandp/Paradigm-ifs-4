@@ -8,6 +8,8 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 const ALARM_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3';
 const ALARM_TIMEOUT_MS = 120000; // 2 minutes
 
+import DOMPurify from 'dompurify';
+
 export const PingAlarmOverlay: React.FC = () => {
     const { notifications, acknowledgeNotification } = useNotificationStore();
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -113,7 +115,7 @@ export const PingAlarmOverlay: React.FC = () => {
                 </div>
             </div>
 
-            <style dangerouslySetInnerHTML={{ __html: `
+            <style dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(`
                 @keyframes shake {
                     0%, 100% { transform: rotate(0deg); }
                     25% { transform: rotate(15deg); }
@@ -129,7 +131,7 @@ export const PingAlarmOverlay: React.FC = () => {
                 .animate-bounce-subtle {
                     animation: bounce-subtle 3s ease-in-out infinite;
                 }
-            `}} />
+            `)}} />
         </div>
     );
 };

@@ -336,8 +336,8 @@ const App: React.FC = () => {
   // Configure StatusBar on native
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
-    StatusBar.setBackgroundColor({ color: '#041b0f' }).catch(() => {});
+    StatusBar.setStyle({ style: Style.Dark }).catch(e => console.warn('[App] StatusBar setStyle failed:', e));
+    StatusBar.setBackgroundColor({ color: '#041b0f' }).catch(e => console.warn('[App] StatusBar setBackgroundColor failed:', e));
   }, []);
 
   // Handle Android hardware back button
@@ -634,7 +634,7 @@ const App: React.FC = () => {
           }).catch(err => console.error('Error synchronizing auth token:', err));
           
           if (session.user.email) {
-            Preferences.set({ key: 'rememberedEmail', value: session.user.email }).catch(() => {});
+            Preferences.set({ key: 'rememberedEmail', value: session.user.email }).catch(e => console.warn('[App] Prefs auth save failed:', e));
           }
         }
       }
@@ -664,7 +664,7 @@ const App: React.FC = () => {
                     userId: appUser.id,
                     message: `Good morning, ${appUser.name || 'there'}! Welcome to Paradigm Services.`,
                     type: 'greeting',
-                  }).catch(() => {});
+                  }).catch(e => console.warn('[App] Push notification init failed:', e));
                   localStorage.setItem(greetKey, '1');
                 }
 
@@ -682,7 +682,7 @@ const App: React.FC = () => {
           setUser(null);
           resetAttendance();
           useOnboardingStore.getState().reset();
-          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {});
+          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(e => console.warn('[App] Prefs remove failed:', e));
           // pushNotificationService.logout(); // Implement if needed, though tokens are per-device
         }
       }
@@ -709,7 +709,7 @@ const App: React.FC = () => {
           const { value: refreshToken } = await Preferences.get({ key: 'supabase.auth.rememberMe' });
           if (refreshToken) {
             console.log('[AppState] Attempting to restore lost session...');
-            await supabase.auth.refreshSession({ refresh_token: refreshToken }).catch(() => {});
+            await supabase.auth.refreshSession({ refresh_token: refreshToken }).catch(e => console.warn('[App] Session refresh failed:', e));
           }
         }
       }

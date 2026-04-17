@@ -747,7 +747,7 @@ const ActivityGreetingConfig: React.FC<ActivityGreetingConfigProps> = ({ rules, 
         e.stopPropagation();
         const rule = getGreetingRule(eventId);
         if (rule) {
-            api.deleteNotificationRule(rule.id).catch(() => {});
+            api.deleteNotificationRule(rule.id).catch(e => console.warn('[Notifications] deleteRule failed:', e));
             setRules(prev => prev.filter(r => r.id !== rule.id));
         }
         saveCustomActivities(customActivities.filter(a => a.id !== eventId));

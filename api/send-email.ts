@@ -182,11 +182,19 @@ const reportGenerators = {
 async function resolveRecipientsInternal(supabase: SupabaseClient, rule: any): Promise<string[]> {
   if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
   if (rule.recipient_type === 'role') {
-    const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []);
+    // [SECURITY FIX H11] Added is_active=true and is_deleted=false filters
+    const { data: users } = await supabase.from('users').select('email')
+      .in('role_id', rule.recipient_roles || [])
+      .eq('is_active', true)
+      .eq('is_deleted', false);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
   if (rule.recipient_type === 'users') {
-    const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []);
+    // [SECURITY FIX H11] Added is_active=true and is_deleted=false filters
+    const { data: users } = await supabase.from('users').select('email')
+      .in('id', rule.recipient_user_ids || [])
+      .eq('is_active', true)
+      .eq('is_deleted', false);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
   return [];
@@ -194,7 +202,8 @@ async function resolveRecipientsInternal(supabase: SupabaseClient, rule: any): P
 
 const getSupabaseConfig = (urlOverride?: string, keyOverride?: string) => ({
   url: urlOverride || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
-  serviceKey: keyOverride || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
+  // [SECURITY FIX C7] Removed fallback to VITE_SUPABASE_ANON_KEY
+  serviceKey: keyOverride || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 });
 
 async function getSmtpConfig(supabase: SupabaseClient) {
@@ -319,7 +328,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     port: config.port || config.smtpPort, 
     secure: config.secure !== undefined ? config.secure : config.smtpSecure,
     auth: { user: config.user || config.smtpUser, pass: config.pass || config.smtpPass },
-    tls: { rejectUnauthorized: false }
+    // [SECURITY FIX C6] TLS validation enabled (removed rejectUnauthorized: false)
   });
 
   const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();

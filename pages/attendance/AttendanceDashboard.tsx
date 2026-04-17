@@ -1855,6 +1855,18 @@ const AttendanceDashboard: React.FC = () => {
             setIsExportingLeaves(false);
         }
     };
+    
+    const blobToBase64 = (blob: Blob): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = (reader.result as string).split(',')[1];
+                resolve(base64String);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
 
     const handleSendEmailReport = async (payload: ReportEmailPayload) => {
         setIsSendingEmail(true);
@@ -1865,9 +1877,84 @@ const AttendanceDashboard: React.FC = () => {
             // Format report name for subject if not provided
             const reportName = reportType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Report';
             
+            // Generate PDF for attachment
+            let pdfBlob: Blob | undefined;
+            try {
+                const generatedBy = user?.name || 'Paradigm System';
+                const logoBase64 = ''; // You might want to pass the actual logo here if available
+                
+                switch (reportType) {
+                    case 'basic':
+                        pdfBlob = await pdf(<BasicReportDocument 
+                            data={basicReportData} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            logoUrl={logoBase64}
+                        />).toBlob();
+                        break;
+                    case 'monthly':
+                    case 'work_hours': {
+                        const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
+                        pdfBlob = await pdf(<MonthlyReportDocument 
+                            data={exportedMonthlyData} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            logoUrl={logoBase64}
+                            days={days}
+                        />).toBlob();
+                        break;
+                    }
+                    case 'log':
+                        pdfBlob = await pdf(<AttendanceLogDocument 
+                            data={attendanceLogData} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            logoUrl={logoBase64}
+                        />).toBlob();
+                        break;
+                    case 'site_ot':
+                        pdfBlob = await pdf(<SiteOtReportDocument 
+                            data={site_otReportData} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            logoUrl={logoBase64}
+                        />).toBlob();
+                        break;
+                    case 'audit': {
+                        const auditData = auditLogs.map(log => ({
+                            dateTime: format(new Date(log.created_at), 'dd MMM yyyy HH:mm'),
+                            action: log.action,
+                            performer_name: log.performer_name,
+                            target_name: log.target_name,
+                            detailsStr: JSON.stringify(log.details).substring(0, 100) + (JSON.stringify(log.details).length > 100 ? '...' : '')
+                        }));
+                        pdfBlob = await pdf(<AuditLogDocument 
+                            data={auditData} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            logoUrl={logoBase64}
+                        />).toBlob();
+                        break;
+                    }
+                }
+            } catch (pdfErr) {
+                console.warn('PDF Attachment Generation failed, sending email without attachment:', pdfErr);
+            }
+
+            const attachments = [];
+            if (pdfBlob) {
+                const base64Content = await blobToBase64(pdfBlob);
+                attachments.push({
+                    filename: `${reportName}_${format(new Date(), 'dd_MMM_yyyy')}.pdf`,
+                    content: base64Content,
+                    contentType: 'application/pdf'
+                });
+            }
+            
             await api.sendReportEmail({
                 ...payload,
                 reportType,
+                attachments,
                 filters: {
                     user: selectedUser,
                     role: selectedRole,

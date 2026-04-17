@@ -1,10 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 /**
- * Placeholder for authentication middleware.
- * In a real app, this would verify a JWT token and attach user data to the request.
+ * [SECURITY FIX C2] Authentication middleware.
+ * Validates the Bearer JWT token against Supabase and attaches user data to the request.
+ * Rejects unauthenticated requests with 401.
  */
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    // For now, just allow all requests to proceed
-    next();
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    // Skip auth in dev if Supabase is not configured
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+        console.warn('[AuthMiddleware] Supabase not configured — skipping auth');
+        return next();
+    }
+
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    try {
+        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+        const { data, error } = await supabase.auth.getUser(token);
+        if (error || !data?.user) {
+            return res.status(401).json({ error: 'Invalid or expired token' });
+        }
+        // Attach user to request for downstream handlers
+        (req as any).user = data.user;
+        next();
+    } catch (err) {
+        console.error('[AuthMiddleware] Token validation failed:', err);
+        return res.status(401).json({ error: 'Authentication failed' });
+    }
 };

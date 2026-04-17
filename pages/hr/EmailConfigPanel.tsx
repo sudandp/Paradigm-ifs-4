@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import {
     Mail,
     Settings,
@@ -433,7 +434,7 @@ const EmailConfigPanel: React.FC = () => {
                             <button onClick={() => setPreviewHtml(null)} className="p-1 hover:bg-slate-100 rounded-lg"><CloseIcon className="h-5 w-5" /></button>
                         </div>
                         <div className="p-6 overflow-y-auto max-h-[70vh]">
-                            <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
                         </div>
                     </div>
                 </div>

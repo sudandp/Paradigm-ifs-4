@@ -163,7 +163,7 @@ async function processSchedules(req: VercelRequest) {
     port: emailConfig.port || 587,
     secure: emailConfig.secure || false,
     auth: { user: emailConfig.user, pass: emailConfig.pass },
-    tls: { rejectUnauthorized: false }
+    // [SECURITY FIX C6] TLS validation enabled (removed rejectUnauthorized: false)
   });
 
   const now = new Date();
@@ -226,12 +226,12 @@ async function processSchedules(req: VercelRequest) {
         subject, html
       });
       await Promise.all([
-        ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', trigger_type: 'automatic' })),
+        ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', metadata: { trigger_type: 'automatic' } })),
         supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id)
       ]);
       totalSent += emails.length;
     } catch (mailErr: any) {
-      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, trigger_type: 'automatic' })));
+      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, metadata: { trigger_type: 'automatic' } })));
     }
   }
   return { success: true, processed: totalSent };

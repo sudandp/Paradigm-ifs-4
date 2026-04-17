@@ -20,12 +20,14 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
 
         // If profile not found, create one on the fly. This handles the first login after signup.
         if (error && error.code === 'PGRST116') { // PGRST116: Row not found
+            // [SECURITY FIX C5] Generate a random temporary passcode instead of hardcoded '5687'
+            const randomPasscode = String(Math.floor(1000 + Math.random() * 9000)); // 4-digit random PIN
             const newUserProfile = {
                 id: supabaseUser.id,
                 name: supabaseUser.user_metadata.name || 'New User',
                 email: supabaseUser.email!,
                 role_id: 'unverified',
-                passcode: '5687'
+                passcode: randomPasscode
             };
 
             const { data: createdData, error: insertError } = await supabase
@@ -39,10 +41,10 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
                 return null; // Creation failed, login fails.
             }
 
-            // Sync the default passcode with Supabase Auth password so they can login with email/passcode later.
+            // Sync the temporary passcode with Supabase Auth password so they can login with email/passcode later.
             // This works because the user is currently authenticated via Google.
             try {
-                await supabase.auth.updateUser({ password: '5687' });
+                await supabase.auth.updateUser({ password: `PAR_${randomPasscode}` });
             } catch (authUpdateError) {
                 console.warn("Failed to set default auth password for new user:", authUpdateError);
                 // We don't block login if this fails, as they can still use Google.

@@ -258,12 +258,10 @@ export const useAuthStore = create<AuthState>()(
                 await Preferences.set({ key: 'rememberedEmail', value: email });
                 await Preferences.set({ key: 'supabase.auth.rememberMe', value: data.session.refresh_token });
                 
-                // USER REQUEST: Optionally remember password for convenience (Web App)
-                if (rememberMe) {
-                    await Preferences.set({ key: 'rememberedPassword', value: password });
-                } else {
-                    await Preferences.remove({ key: 'rememberedPassword' });
-                }
+                // [SECURITY FIX C8] Removed plaintext password storage.
+                // The refresh token above provides persistent sessions without storing credentials.
+                // Always clean up any previously stored password.
+                await Preferences.remove({ key: 'rememberedPassword' });
                 
                 const appUser = await authService.getAppUserProfile(data.user);
 
@@ -795,7 +793,7 @@ export const useAuthStore = create<AuthState>()(
                                 locationId = loc.id;
                                 locationName = loc.name;
                                 // Auto-assign this location to the user
-                                api.assignLocationToUser(user.id, loc.id).catch(() => {});
+                                api.assignLocationToUser(user.id, loc.id).catch(e => console.warn('[authStore] assignLocationToUser failed:', e));
                                 break;
                             }
                         }

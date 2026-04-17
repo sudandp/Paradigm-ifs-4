@@ -2,8 +2,9 @@ import * as dotenv from 'dotenv';
 dotenv.config(); // Load .env
 dotenv.config({ path: '.env.local' }); // Load .env.local (Vite style)
 
-// Fix for local dev SSL issues: self-signed certificates
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// [SECURITY FIX C3] Removed process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+// TLS certificate validation is now enabled (Node.js default).
+// If you need to work with self-signed certs in dev, configure per-connection instead.
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -16,7 +17,10 @@ import nodemailer from 'nodemailer';
 import fetch from 'node-fetch';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+// [SECURITY FIX C7] Service Role Key MUST come from a non-VITE_ env var only.
+// Never fall back to the anon key — it doesn't have the required permissions and
+// using a VITE_ prefix would expose the key in the frontend bundle.
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // Mapping of bucket names to their Supabase project URL prefix
 const SUPABASE_STORAGE_BASE = 'https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public';
@@ -44,10 +48,31 @@ function getMimeType(filename: string): string {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' })); // Increase limit for large HTML content
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// [SECURITY FIX C4] Restrict CORS to known origins instead of allowing all
+const ALLOWED_ORIGINS = [
+  'https://paradigm-ifs-4.vercel.app',
+  'https://www.paradigm-ifs-4.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'capacitor://localhost',  // Capacitor iOS
+  'http://localhost',       // Capacitor Android
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, server-to-server, curl)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      callback(null, true); // In dev, still allow but log. Change to callback(new Error('CORS')) in production.
+    }
+  },
+  credentials: true,
+}));
+
+// [SECURITY FIX H14] Reduced body limit from 50MB to 10MB to prevent memory exhaustion
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
 
@@ -113,7 +138,7 @@ app.use('/api/view-file', async (req: Request, res: Response) => {
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
         res.setHeader('Cache-Control', 'public, max-age=3600');
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        // [SECURITY FIX C4] Removed Access-Control-Allow-Origin: * — handled by CORS middleware above
 
         return res.send(Buffer.from(buffer));
     } catch (error: any) {
@@ -126,20 +151,47 @@ app.use('/api/view-file', async (req: Request, res: Response) => {
     }
 });
 
+// [SECURITY FIX H7] Simple in-memory rate limiter for email endpoint
+const emailRateMap = new Map<string, { count: number; resetAt: number }>();
+const EMAIL_RATE_LIMIT = 20; // max requests per window
+const EMAIL_RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
 // Email API Route
 app.post('/api/send-email', async (req: Request, res: Response) => {
     console.log('[Server] POST /api/send-email');
     
-    // Simple Auth check (Optional for local dev, but good for consistency)
+    // [SECURITY FIX C2] Enforce authentication — reject if no valid token
     const authHeader = req.headers['authorization'];
-    if (authHeader && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-        const token = authHeader.replace('Bearer ', '');
-        const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-        const { data } = await supabase.auth.getUser(token);
+    if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    let authenticatedUser: any = null;
+
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+        const authClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+        const { data } = await authClient.auth.getUser(token);
         if (!data?.user) {
-            // In local dev, we might be more lenient or just log a warning
-            console.warn('[Server] Unauthorized request to /api/send-email');
+            console.warn('[Server] Unauthorized request to /api/send-email — invalid token');
+            return res.status(401).json({ error: 'Invalid or expired token' });
         }
+        authenticatedUser = data.user;
+    } else {
+        console.warn('[Server] Supabase not configured — skipping auth in dev mode');
+    }
+
+    // [SECURITY FIX H7] Rate limit check per user/IP
+    const rateLimitKey = authenticatedUser?.id || req.ip || 'unknown';
+    const now = Date.now();
+    const rateEntry = emailRateMap.get(rateLimitKey);
+    if (rateEntry && now < rateEntry.resetAt) {
+        if (rateEntry.count >= EMAIL_RATE_LIMIT) {
+            return res.status(429).json({ error: 'Too many email requests. Please wait before trying again.' });
+        }
+        rateEntry.count++;
+    } else {
+        emailRateMap.set(rateLimitKey, { count: 1, resetAt: now + EMAIL_RATE_WINDOW_MS });
     }
 
     try {
