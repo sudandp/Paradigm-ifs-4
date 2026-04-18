@@ -102,10 +102,10 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                     </div>
                     
                     <div className="company-text flex flex-col items-center">
-                        <h2 className={`${fullScreen ? 'text-5xl' : 'text-3xl'} font-black text-white lg:text-[#1A4331] tracking-[0.2em] uppercase mb-1`}>
+                        <h2 className={`${fullScreen ? 'text-4xl' : 'text-2xl'} font-black text-white lg:text-[#1A4331] tracking-[0.2em] uppercase mb-1`}>
                             PARADIGM
                         </h2>
-                        <h3 className={`${fullScreen ? 'text-2xl' : 'text-xl'} font-bold text-gray-200 lg:text-[#2f6a42] tracking-[0.4em] uppercase opacity-90`}>
+                        <h3 className={`${fullScreen ? 'text-xl' : 'text-base'} font-bold text-gray-200 lg:text-[#2f6a42] tracking-[0.4em] uppercase opacity-90`}>
                             SERVICES
                         </h3>
                     </div>
