@@ -6,6 +6,9 @@ export * from './organization';
 export * from './onboarding';
 export * from './settings';
 export * from './attendance';
+export * from './common';
+
+import { UploadedFile } from './common';
 
 // Unmapped legacy types
 
@@ -24,17 +27,6 @@ export interface BiometricDevice {
   organization?: {
     shortName: string;
   } | null;
-}
-
-export interface UploadedFile {
-  name: string;
-  type: string;
-  size: number;
-  preview: string;
-  url?: string;
-  path?: string | null; // Path in Supabase storage bucket
-  file?: File;
-  progress?: number;
 }
 
 export interface Policy {

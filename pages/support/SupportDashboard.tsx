@@ -45,21 +45,21 @@ const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) =
 const TicketCard: React.FC<{ ticket: SupportTicket, onClick: () => void }> = ({ ticket, onClick }) => (
     <div
         onClick={onClick}
-        className="group bg-card hover:bg-accent/5 p-5 rounded-xl border border-border hover:border-accent cursor-pointer transition-all duration-300 flex flex-col justify-between h-full shadow-sm hover:shadow-md"
+        className="group bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 hover:border-emerald-500/30 cursor-pointer transition-all duration-500 flex flex-col justify-between h-full shadow-sm md:shadow-sm dark:shadow-lg hover:shadow-emerald-500/5 hover:translate-y-[-2px]"
     >
         <div>
             <div className="flex justify-between items-start gap-3 mb-2">
-                <h4 className="font-bold text-primary-text leading-snug group-hover:text-accent transition-colors line-clamp-2">
+                <h4 className="font-bold text-gray-900 dark:text-emerald-50 leading-snug group-hover:text-accent transition-colors line-clamp-2">
                     {ticket.title}
                 </h4>
                 <div className="flex-shrink-0 mt-1"><PriorityIndicator priority={ticket.priority} /></div>
             </div>
             <p className="text-xs text-muted font-mono">#{ticket.ticketNumber}</p>
         </div>
-        <div className="mt-4 pt-4 border-t border-border/50">
-            <div className="flex justify-between items-center text-xs text-muted mb-3">
-                <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[10px] text-white font-bold">
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-emerald-500/10">
+            <div className="flex justify-between items-center text-[10px] text-gray-500 dark:text-muted mb-3 font-medium uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] text-white font-black shadow-lg">
                         {ticket.raisedByName.charAt(0)}
                     </div>
                     <span>{ticket.raisedByName}</span>
@@ -78,15 +78,18 @@ const NearbyUserItem: React.FC<{
     onAction: (targetUser: User, type: 'call' | 'sms' | 'whatsapp') => void,
     onPing: (user: User) => void
 }> = ({ user, onAction, onPing }) => (
-    <div className={`flex items-center gap-4 p-3 rounded-xl bg-card border transition-colors ${user.isNearby ? 'border-accent/40 bg-accent/5' : 'border-border hover:border-accent/50'}`}>
+    <div className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 ${user.isNearby ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-emerald-500/5 shadow-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 hover:border-emerald-500/20 shadow-sm md:shadow-sm'}`}>
         <div className="relative flex-shrink-0">
             <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className="w-12 h-12 rounded-full shadow-sm" />
             <span className={`absolute -bottom-0.5 -right-0.5 block h-4 w-4 rounded-full ${user.isAvailable ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-rose-600 shadow-[0_0_6px_rgba(225,29,72,0.6)]'} ring-2 ring-white`}></span>
         </div>
         <div className="flex-grow min-w-0">
             <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-primary-text truncate">{user.name}</p>
-                {user.isNearby && (
+                <p className="text-sm font-bold text-gray-900 dark:text-emerald-50 truncate">{user.name}</p>
+                {user.isTeamMember && (
+                    <span className="text-[10px] bg-blue-500/20 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Team</span>
+                )}
+                {user.isNearby && !user.isTeamMember && (
                     <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Nearby</span>
                 )}
             </div>
@@ -398,8 +401,8 @@ const SupportDashboard: React.FC = () => {
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl lg:text-3xl font-bold text-gray-900">Support & Audit</h2>
-                    <p className="text-gray-500 text-sm mt-1">
+                    <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-primary-text tracking-tight uppercase">Support & Audit</h2>
+                    <p className="text-gray-500 dark:text-muted text-sm mt-1 font-medium italic opacity-80 font-mono tracking-tight lowercase">
                         Track issues, request audits, and connect with support staff in real-time.
                     </p>
                 </div>
@@ -408,9 +411,9 @@ const SupportDashboard: React.FC = () => {
                         <Button
                             onClick={() => setIsNearbyModalOpen(true)}
                             variant="secondary"
-                            className="flex-1 lg:flex-none bg-gray-100 text-gray-900 hover:bg-gray-200 border-none shadow-none p-0 text-sm transition-colors"
+                            className="flex-1 lg:flex-none bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/20 shadow-none px-4 text-xs font-bold uppercase tracking-widest"
                         >
-                            <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Nearby
+                            <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Nearby Staff
                         </Button>
                     )}
                     {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
@@ -431,31 +434,31 @@ const SupportDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Global Filters Card */}
-            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Global Filters Card - Emerald Glassmorphism on Mobile, Clean on Web */}
+            <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl flex flex-col gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div className="relative">
-                        <label htmlFor="search-input" className="block text-xs font-medium text-gray-500 mb-1.5">Search Tickets</label>
+                        <label htmlFor="search-input" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Search Tickets</label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-emerald-500/30" />
                             <Input
                                 id="search-input"
                                 name="search"
-                                placeholder="Search by title, number..."
-                                className="!pl-10 bg-gray-50/50 border-gray-200 focus:bg-white transition-all"
+                                placeholder="Ticket #, title..."
+                                className="!pl-12 h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 focus:bg-white md:focus:bg-white dark:focus:bg-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text placeholder:text-gray-400 dark:placeholder:text-emerald-500/20 rounded-xl transition-all"
                                 value={filters.searchTerm}
                                 onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
                             />
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="role-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Filter by Role</label>
+                        <label htmlFor="role-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Filter by Role</label>
                         <Select
                             id="role-filter-global"
                             name="role"
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
-                            className="bg-gray-50/50 border-gray-200"
+                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
                         >
                             <option value="all">All Roles</option>
                             {uniqueRoles.map(r => (
@@ -464,13 +467,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="status-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Status</label>
+                        <label htmlFor="status-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Status</label>
                         <Select
                             id="status-filter-global"
                             name="status"
                             value={filters.status}
                             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-                            className="bg-gray-50/50 border-gray-200"
+                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
                         >
                             <option value="all">All Status</option>
                             <option>Open</option>
@@ -481,13 +484,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="priority-filter-global" className="block text-xs font-medium text-gray-500 mb-1.5">Priority</label>
+                        <label htmlFor="priority-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Priority</label>
                         <Select
                             id="priority-filter-global"
                             name="priority"
                             value={filters.priority}
                             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-                            className="bg-gray-50/50 border-gray-200"
+                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
                         >
                             <option value="all">All Priority</option>
                             <option>Low</option>
@@ -502,19 +505,16 @@ const SupportDashboard: React.FC = () => {
             {/* Stats Grid - Unified Horizontal Pattern */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {[
-                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, color: "bg-gray-600" },
-                    { title: "Open", value: stats.open, icon: AlertTriangle, color: "bg-rose-500" },
-                    { title: "In Progress", value: stats.inProgress, icon: Loader2, color: "bg-blue-500" },
-                    { title: "Resolved", value: stats.resolved, icon: UserCheck, color: "bg-emerald-500" },
-                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, color: "bg-amber-500" }
+                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, shadow: "shadow-gray-500/10" },
+                    { title: "Open Issues", value: stats.open, icon: AlertTriangle, shadow: "shadow-rose-500/10", textColor: "text-rose-500" },
+                    { title: "In Progress", value: stats.inProgress, icon: Loader2, shadow: "shadow-blue-500/10", textColor: "text-blue-500" },
+                    { title: "Resolved Jobs", value: stats.resolved, icon: UserCheck, shadow: "shadow-emerald-500/10", textColor: "text-emerald-500" },
+                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, shadow: "shadow-amber-500/10", textColor: "text-amber-500" }
                 ].map((stat, i) => (
-                    <div key={i} className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
-                        <div className={`p-2.5 rounded-full ${stat.color} text-white`}>
-                            <stat.icon className={`h-5 w-5 ${stat.icon === Loader2 ? 'animate-spin' : ''}`} />
-                        </div>
+                    <div key={i} className={`flex items-center gap-4 bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:${stat.shadow} transition-all hover:scale-[1.02]`}>
                         <div className="flex flex-col min-w-0">
-                            <p className="text-[10px] sm:text-xs font-medium text-gray-500 mb-0.5 truncate uppercase tracking-wider">{stat.title}</p>
-                            <p className="text-xl sm:text-2xl font-bold text-gray-900 leading-none">{stat.value}</p>
+                            <p className="text-[9px] font-black text-gray-400 dark:text-muted mb-1 truncate uppercase tracking-[0.15em] opacity-60">{stat.title}</p>
+                            <p className={`text-2xl font-black ${stat.textColor || 'text-gray-900 dark:text-primary-text'} leading-none tracking-tighter`}>{stat.value}</p>
                         </div>
                     </div>
                 ))}
@@ -522,14 +522,14 @@ const SupportDashboard: React.FC = () => {
 
 
             {/* ─── Top Performers Section ─── */}
-            <div className="bg-card rounded-2xl border border-border shadow-sm p-6">
+            <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl p-8">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-amber-50 rounded-xl">
-                            <Trophy className="h-6 w-6 text-amber-600" />
+                        <div className="p-3 bg-amber-50 md:bg-amber-50 dark:bg-amber-500/10 border border-amber-200 md:border-amber-200 dark:border-amber-500/20 rounded-2xl shadow-sm md:shadow-sm dark:shadow-xl dark:shadow-amber-500/5">
+                            <Trophy className="h-6 w-6 text-amber-600 md:text-amber-600 dark:text-amber-500" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-primary-text flex items-center gap-2">
                                 Team Performance
                                 <button
                                     onClick={() => setIsScoreInfoModalOpen(true)}
@@ -551,7 +551,7 @@ const SupportDashboard: React.FC = () => {
                                     type="checkbox"
                                     checked={showAllScores}
                                     onChange={(e) => setShowAllScores(e.target.checked)}
-                                    className="w-4 h-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
+                                    className="w-4 h-4 rounded border-gray-300 md:border-gray-300 dark:border-emerald-500/20 bg-white md:bg-white dark:bg-emerald-500/5 text-emerald-600 focus:ring-emerald-500"
                                 />
                                 Show All
                             </label>
@@ -592,7 +592,7 @@ const SupportDashboard: React.FC = () => {
                                         return (
                                             <div
                                                 key={emp.userId}
-                                                className="relative bg-background rounded-xl border border-amber-300/50 shadow-md p-4 hover:shadow-lg transition-all duration-300 group"
+                                                className="relative bg-white md:bg-white dark:bg-[#0d2c18]/40 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-md rounded-2xl border border-amber-200 md:border-amber-200 dark:border-amber-500/20 shadow-sm md:shadow-sm dark:shadow-xl p-5 hover:border-amber-500/40 hover:scale-[1.02] transition-all duration-500 group"
                                             >
                                                 {/* Rank Badge */}
                                                 <div className={`absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-md z-10 bg-gradient-to-br ${medalColor} text-white`}>
@@ -603,8 +603,8 @@ const SupportDashboard: React.FC = () => {
                                                 <div className="flex items-center gap-3 mb-4">
                                                     <ProfilePlaceholder photoUrl={emp.userPhotoUrl} seed={emp.userId} className="w-10 h-10 rounded-full shadow-sm" />
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-bold text-primary-text truncate">{emp.userName}</p>
-                                                        <p className="text-[10px] text-muted uppercase tracking-wider font-medium truncate">{emp.userRole.replace(/_/g, ' ')}</p>
+                                                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{emp.userName}</p>
+                                                        <p className="text-[10px] text-gray-400 dark:text-muted uppercase tracking-wider font-medium truncate">{emp.userRole.replace(/_/g, ' ')}</p>
                                                     </div>
                                                 </div>
 
@@ -629,7 +629,7 @@ const SupportDashboard: React.FC = () => {
 
                                                 {/* Overall Score Bar */}
                                                 <div className="flex items-center gap-2">
-                                                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div className="flex-1 h-2 bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/5 rounded-full overflow-hidden border border-gray-100 md:border-gray-100 dark:border-emerald-500/10">
                                                         <div
                                                             className={`h-full rounded-full transition-all duration-500 ${
                                                                 emp.scores.overallScore >= 80 ? 'bg-green-500' :
@@ -638,7 +638,7 @@ const SupportDashboard: React.FC = () => {
                                                             style={{ width: `${emp.scores.overallScore}%` }}
                                                         />
                                                     </div>
-                                                    <span className="text-xs font-black text-primary-text min-w-[28px] text-right">{emp.scores.overallScore}</span>
+                                                    <span className="text-xs font-black text-gray-900 dark:text-primary-text min-w-[28px] text-right">{emp.scores.overallScore}</span>
                                                 </div>
                                             </div>
                                         );
@@ -653,13 +653,13 @@ const SupportDashboard: React.FC = () => {
             <div className="lg:grid lg:grid-cols-3 lg:gap-8">
                 {/* Main Content - Ticket List */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-transparent p-5 rounded-2xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                <MessageSquare className="h-5 w-5 text-emerald-600" /> Support Tickets
+                    <div className="bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-6 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 shadow-sm md:shadow-sm">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="font-black text-gray-900 dark:text-emerald-100 flex items-center gap-2 uppercase tracking-tight">
+                                <MessageSquare className="h-5 w-5 text-emerald-500" /> Active Tickets
                             </h3>
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
-                                {filteredTickets.length} Results
+                            <span className="text-[10px] font-black bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/10 text-gray-500 dark:text-emerald-500 px-3 py-1 rounded-full uppercase tracking-widest">
+                                {filteredTickets.length} Found
                             </span>
                         </div>
 
@@ -686,12 +686,12 @@ const SupportDashboard: React.FC = () => {
 
                 {/* Sidebar - Nearby Users (Desktop) */}
                 <aside className="hidden lg:block space-y-6">
-                    <div className="bg-card p-6 rounded-2xl border border-border shadow-sm sticky top-6">
+                    <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-8 rounded-[2.5rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl sticky top-6">
                         <div className="flex items-center justify-between mb-6">
-                            <h3 className="font-bold text-lg text-primary-text flex items-center gap-2">
+                            <h3 className="font-bold text-lg text-gray-900 dark:text-emerald-50 flex items-center gap-2">
                                 <Users className="h-5 w-5 text-accent" /> Nearby Support
                             </h3>
-                            <span className="text-xs font-medium bg-accent/10 text-accent px-2 py-1 rounded-full">
+                            <span className="text-xs font-medium bg-gray-100 md:bg-gray-100 dark:bg-accent/10 text-gray-500 dark:text-accent px-2 py-1 rounded-full">
                                 {nearbyUsers.filter(u => u.isAvailable).length} Online
                             </span>
                         </div>
@@ -719,12 +719,12 @@ const SupportDashboard: React.FC = () => {
                 onClick={() => setIsScoreInfoModalOpen(false)}
             >
                 <div 
-                    className="bg-card w-full max-w-sm sm:max-w-md rounded-2xl shadow-xl overflow-hidden animate-fade-in-scale transform" 
+                    className="bg-[#041b0f] border border-emerald-500/20 w-full max-w-sm sm:max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-scale transform" 
                     onClick={e => e.stopPropagation()}
                 >
-                    <div className="px-5 py-4 border-b border-border flex justify-between items-center bg-accent/5">
-                        <h3 className="text-base sm:text-lg font-bold text-primary-text flex items-center gap-2">
-                            <Info className="w-5 h-5 text-accent" /> Score System
+                    <div className="px-6 py-5 border-b border-emerald-500/10 flex justify-between items-center bg-emerald-500/5 backdrop-blur-xl">
+                        <h3 className="text-base sm:text-lg font-black text-primary-text flex items-center gap-3 uppercase tracking-tight">
+                            <Info className="w-5 h-5 text-emerald-500" /> Score Architecture
                         </h3>
                         <button 
                             onClick={() => setIsScoreInfoModalOpen(false)} 
@@ -746,9 +746,9 @@ const SupportDashboard: React.FC = () => {
                             </ul>
                         </div>
                         
-                        <div className="pt-4 border-t border-border">
-                            <h4 className="font-bold text-primary-text mb-2 flex items-center gap-2">
-                                <Award className="w-4 h-4 text-amber-500" /> Tiebreaker
+                        <div className="pt-5 border-t border-emerald-500/10">
+                            <h4 className="font-black text-primary-text mb-2 flex items-center gap-2 uppercase text-xs tracking-widest">
+                                <Award className="w-4 h-4 text-amber-500" /> Executive Tiebreaker
                             </h4>
                             <p className="text-sm text-muted">
                                 If members tie with an identical overall score, the system breaks the tie using <strong>Punctuality</strong>.<br/><br/>
@@ -756,7 +756,7 @@ const SupportDashboard: React.FC = () => {
                             </p>
                         </div>
                     </div>
-                    <div className="px-5 py-4 border-t border-border bg-gray-50/50 dark:bg-black/20 flex justify-end">
+                    <div className="px-6 py-5 border-t border-emerald-500/10 bg-emerald-500/5 backdrop-blur-xl flex justify-end">
                         <Button onClick={() => setIsScoreInfoModalOpen(false)} className="w-full sm:w-auto">Got it</Button>
                     </div>
                 </div>

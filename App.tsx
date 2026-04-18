@@ -422,6 +422,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isInitialized || !permissionsComplete) return;
 
+    // GUARD: Only initialize push notifications on native mobile platforms
+    // to prevent browser console errors and unnecessary overhead.
+    if (!Capacitor.isNativePlatform()) return;
+
     console.log('[App] Initializing Push Notification Service');
     pushNotificationService.init();
     pushNotificationService.listen();
@@ -520,7 +524,7 @@ const App: React.FC = () => {
         setLoading(false);
         setInitialized(true);
       }
-    }, 10000); // 10 seconds fallback (reduced from 30s)
+    }, 5000); // Optimized fallback (reduced from 10s)
 
     const initializeApp = async () => {
       setLoading(true);
@@ -1044,7 +1048,9 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_enrollment_rules" />}>
             <Route path="hr/enrollment-rules" element={<EnrollmentRules />} />
-            <Route path="hr/field-staff-tracking" element={<ProtectedRoute requiredPermission="view_field_staff_tracking"><FieldStaffTracking /></ProtectedRoute>} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_field_staff_tracking" />}>
+            <Route path="hr/field-staff-tracking" element={<FieldStaffTracking />} />
           </Route>
 
           {/* Location Management (Geofencing) */}

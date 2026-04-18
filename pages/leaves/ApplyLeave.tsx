@@ -14,6 +14,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
 import DatePicker from '../../components/ui/DatePicker';
+import NativeDatePicker from '../../components/ui/NativeDatePicker';
 import DateRangePicker from '../../components/ui/DateRangePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -114,13 +115,7 @@ const ApplyLeave: React.FC = () => {
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
     const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
-
-    React.useEffect(() => {
-        if (!user || user.gender !== 'Female') return;
-        api.getUserChildren(user.id)
-            .then(data => setUserChildren(data))
-            .catch(err => console.error('Failed to load children:', err));
-    }, [user?.id, user?.gender]);
+    const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
@@ -145,6 +140,35 @@ const ApplyLeave: React.FC = () => {
     const watchStartDate = watch('startDate');
     const watchEndDate = watch('endDate');
     const watchLeaveType = watch('leaveType');
+
+    // Fetch leave balance and holidays
+    React.useEffect(() => {
+        const fetchData = async () => {
+            if (!user) return;
+            try {
+                // Fetch Balances
+                const balance = await api.getLeaveBalancesForUser(user.id);
+                const baseType = watchLeaveType.toLowerCase().replace(/\s/g, '');
+                let balanceKeyBase = baseType;
+                
+                if (baseType === 'compoff') balanceKeyBase = 'compOff';
+                else if (baseType === 'childcare') balanceKeyBase = 'childCare';
+                else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
+                
+                const typeKeyStr = `${balanceKeyBase}Total`;
+                const usedKeyStr = `${balanceKeyBase}Used`;
+                const pendingKeyStr = `${balanceKeyBase}Pending`;
+
+                const total = (balance[typeKeyStr as keyof LeaveBalance] as number) || 0;
+                const used = (balance[usedKeyStr as keyof LeaveBalance] as number) || 0;
+                const pending = (balance[pendingKeyStr as keyof LeaveBalance] as number) || 0;
+                setLeaveBalance(total - used - pending);
+            } catch (err) {
+                console.error('Failed to fetch initial data:', err);
+            }
+        };
+        fetchData();
+    }, [user, watchLeaveType]);
 
     // Sync endDate with startDate for corrections
     React.useEffect(() => {
@@ -444,124 +468,208 @@ const ApplyLeave: React.FC = () => {
         <div className={`min-h-screen bg-page ${isMobile ? '' : 'p-6'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
-            <div className="w-full bg-card rounded-2xl shadow-card overflow-hidden">
+            <div className="w-full">
                 <header 
-                    className={`p-4 flex items-center gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f] border-b border-[#1f3d2b]' : 'border-b'}`}
+                    className={`p-4 flex items-center gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f]/80 backdrop-blur-lg border-b border-emerald-500/10' : 'mb-8'}`}
                     style={isMobile ? { paddingTop: 'calc(1rem + env(safe-area-inset-top))' } : {}}
                 >
-                    <Button variant="icon" onClick={() => navigate(-1)} aria-label="Go back">
+                    <Button 
+                        variant="secondary" 
+                        onClick={() => navigate(-1)} 
+                        className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
+                    >
                         <ArrowLeft className="h-6 w-6" />
                     </Button>
-                    <h1 className="text-xl font-bold text-primary-text">
-                        {isEditMode ? 'Edit Leave Request' : `Applying for ${getLeaveTypeDisplay(watchLeaveType)}`}
-                    </h1>
+                    <div>
+                        <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg">
+                            {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                        </h1>
+                        {!isEditMode && (
+                            <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
+                                Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                            </p>
+                        )}
+                    </div>
                 </header>
 
-                <div className={`${isMobile ? 'px-4' : 'p-6'}`} style={isMobile ? { paddingTop: 'calc(5rem + env(safe-area-inset-top))' } : {}}>
-                    <form id="leave-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        <div className="bg-card/50 p-4 rounded-xl border border-border space-y-4">
-                            <Controller name="leaveType" control={control} render={({ field }) => (
-                                <Select label="Leave Type" {...field} error={errors.leaveType?.message} className={isMobile ? 'pro-select pro-select-arrow' : ''}>
-                                    <option value="Earned">Earned</option>
-                                    <option value="Sick">Sick</option>
-                                    <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
-                                    <option value="Comp Off">Comp Off</option>
-                                    <option value="Loss of Pay">Loss of Pay</option>
-                                    {isFemale && userChildren.length > 0 && <option value="Child Care">Child Care</option>}
-                                    <option value="WFH">Work From Home (WFH)</option>
-                                    <option value="Correction">Request for Correction</option>
-                                </Select>
-                            )} />
+                <div 
+                    className={`${isMobile ? 'px-4' : ''}`} 
+                    style={isMobile ? { paddingTop: 'calc(5rem + env(safe-area-inset-top))' } : {}}
+                >
+                    <form 
+                        id="leave-form" 
+                        onSubmit={handleSubmit(onSubmit)} 
+                        className="bg-[#0d2c18]/30 backdrop-blur-xl rounded-[2.5rem] p-8 border border-emerald-500/10 shadow-2xl space-y-8"
+                    >
+                        <div className="space-y-6">
+                            <Controller 
+                                name="leaveType" 
+                                control={control} 
+                                render={({ field }) => (
+                                    <Select 
+                                        label="Leave Type" 
+                                        {...field} 
+                                        error={errors.leaveType?.message} 
+                                        className={isMobile ? 'pro-select pro-select-arrow' : ''}
+                                    >
+                                        <option value="Earned">Earned</option>
+                                        <option value="Sick">Sick</option>
+                                        <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
+                                        <option value="Comp Off">Comp Off</option>
+                                        <option value="Loss of Pay">Loss of Pay</option>
+                                        {isFemale && userChildren.length > 0 && <option value="Child Care">Child Care</option>}
+                                        <option value="WFH">Work From Home (WFH)</option>
+                                        <option value="Correction">Request for Correction</option>
+                                    </Select>
+                                )} 
+                            />
 
                             {isMobile ? (
-                                <DateRangePicker 
-                                    label={watchLeaveType === 'Correction' ? "Select Date" : "Select Dates"}
-                                    id="leaveRange"
-                                    startDate={watchStartDate}
-                                    endDate={watchEndDate}
-                                    singleDateOnly={watchLeaveType === 'Correction'}
-                                    onChange={(start, end) => {
-                                        if (start) setValue('startDate', start, { shouldValidate: true });
-                                        if (end) setValue('endDate', end, { shouldValidate: true });
-                                    }}
-                                    error={errors.startDate?.message || errors.endDate?.message}
-                                />
+                                <div className="space-y-6">
+                                    <div className={`grid gap-4 ${watchLeaveType === 'Correction' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                        <Controller
+                                            name="startDate"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <NativeDatePicker
+                                                    label={watchLeaveType === 'Correction' ? "Target Date" : "From"}
+                                                    value={field.value}
+                                                    onChange={(e) => field.onChange(e.target.value)}
+                                                    error={errors.startDate?.message}
+                                                />
+                                            )}
+                                        />
+                                        {watchLeaveType !== 'Correction' && (
+                                            <Controller
+                                                name="endDate"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <NativeDatePicker
+                                                        label="To"
+                                                        value={field.value}
+                                                        onChange={(e) => field.onChange(e.target.value)}
+                                                        min={watchStartDate}
+                                                        error={errors.endDate?.message}
+                                                    />
+                                                )}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
                             ) : (
                                 <div className={`grid gap-4 ${watchLeaveType === 'Correction' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
-                                    <Controller name="startDate" control={control} render={({ field }) => (
-                                        <DatePicker 
-                                            label={watchLeaveType === 'Correction' ? "Date" : "Start Date"} 
-                                            id="startDate" 
-                                            value={field.value} 
-                                            onChange={field.onChange} 
-                                            error={errors.startDate?.message} 
-                                        />
-                                    )} />
+                                    <Controller 
+                                        name="startDate" 
+                                        control={control} 
+                                        render={({ field }) => (
+                                            <DatePicker 
+                                                label={watchLeaveType === 'Correction' ? "Date" : "Start Date"} 
+                                                id="startDate" 
+                                                value={field.value} 
+                                                onChange={field.onChange} 
+                                                error={errors.startDate?.message} 
+                                            />
+                                        )} 
+                                    />
                                     {watchLeaveType !== 'Correction' && (
-                                        <Controller name="endDate" control={control} render={({ field }) => (
-                                            <DatePicker label="End Date" id="endDate" value={field.value} onChange={field.onChange} error={errors.endDate?.message} />
-                                        )} />
+                                        <Controller 
+                                            name="endDate" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <DatePicker 
+                                                    label="End Date" 
+                                                    id="endDate" 
+                                                    value={field.value} 
+                                                    onChange={field.onChange} 
+                                                    error={errors.endDate?.message} 
+                                                />
+                                            )} 
+                                        />
                                     )}
                                 </div>
                             )}
 
                             {showHalfDayOption && (
-                                <Controller name="dayOption" control={control} render={({ field }) => (
-                                    <Select label="Day Option" {...field} className={isMobile ? 'pro-select pro-select-arrow' : ''}>
-                                        <option value="full">Full Day</option>
-                                        <option value="half">Half Day</option>
-                                    </Select>
-                                )} />
+                                <Controller 
+                                    name="dayOption" 
+                                    control={control} 
+                                    render={({ field }) => (
+                                        <Select 
+                                            label="Day Option" 
+                                            {...field} 
+                                            className={isMobile ? 'pro-select pro-select-arrow' : ''}
+                                        >
+                                            <option value="full">Full Day</option>
+                                            <option value="half">Half Day</option>
+                                        </Select>
+                                    )} 
+                                />
                             )}
 
                             {watchLeaveType === 'Correction' && (
-                                <div className="space-y-4 pt-4 border-t border-border">
+                                <div className="space-y-4 pt-4 border-t border-emerald-500/10">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <Controller name="correctionStatus" control={control} render={({ field }) => (
-                                            <Select label="Status" {...field} error={errors.correctionStatus?.message}>
-                                                <option value="Present">Present (Office)</option>
-                                                <option value="Site Visit">Site Visit (Field)</option>
-                                                <option value="W/H">Work From Home</option>
-                                            </Select>
-                                        )} />
+                                        <Controller 
+                                            name="correctionStatus" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <Select label="Status" {...field} error={errors.correctionStatus?.message}>
+                                                    <option value="Present">Present (Office)</option>
+                                                    <option value="Site Visit">Site Visit (Field)</option>
+                                                    <option value="W/H">Work From Home</option>
+                                                </Select>
+                                            )} 
+                                        />
                                         {(watch('correctionStatus') === 'Present' || watch('correctionStatus') === 'Site Visit') && (
-                                            <Controller name="locationName" control={control} render={({ field }) => (
-                                                <div className="space-y-1">
-                                                    <label className="text-sm font-medium text-muted">Location / Site Name</label>
-                                                    <input 
-                                                        {...field} 
-                                                        placeholder={watch('correctionStatus') === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
-                                                        className="w-full p-2.5 rounded-lg bg-page border border-border text-primary-text focus:ring-2 focus:ring-accent outline-none"
-                                                    />
-                                                </div>
-                                            )} />
+                                            <div className="space-y-1">
+                                                <label className="text-sm font-medium text-muted">Location / Site Name</label>
+                                                <Controller
+                                                    name="locationName"
+                                                    control={control}
+                                                    render={({ field }) => (
+                                                        <input 
+                                                            {...field} 
+                                                            placeholder={watch('correctionStatus') === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
+                                                            className="w-full p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-primary-text focus:ring-2 focus:ring-accent outline-none placeholder:text-white/10"
+                                                        />
+                                                    )}
+                                                />
+                                            </div>
                                         )}
                                     </div>
 
-                                    <div className={`grid grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20 relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <div className={`grid grid-cols-2 gap-4 bg-emerald-500/5 p-5 rounded-2xl border border-emerald-500/10 relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''}`}>
                                         {isFetchingLogs && (
                                             <div className="absolute inset-0 flex items-center justify-center z-10">
                                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
                                             </div>
                                         )}
-                                        <Controller name="punchIn" control={control} render={({ field }) => (
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
-                                                    <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
-                                                </label>
-                                                <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
-                                            </div>
-                                        )} />
-                                        <Controller name="punchOut" control={control} render={({ field }) => (
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
-                                                    <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
-                                                </label>
-                                                <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
-                                            </div>
-                                        )} />
+                                        <Controller 
+                                            name="punchIn" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
+                                                    </label>
+                                                    <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                    {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
+                                                </div>
+                                            )} 
+                                        />
+                                        <Controller 
+                                            name="punchOut" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
+                                                    </label>
+                                                    <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                    {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
+                                                </div>
+                                            )} 
+                                        />
                                     </div>
 
                                     <div className="space-y-3">
@@ -576,27 +684,35 @@ const ApplyLeave: React.FC = () => {
                                         </div>
 
                                         {watch('includeBreak') && (
-                                            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
-                                                <Controller name="breakIn" control={control} render={({ field }) => (
-                                                    <div className="space-y-1">
-                                                        <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break In</label>
-                                                        <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                        {errors.breakIn && <p className="text-xs text-red-500">{errors.breakIn.message}</p>}
-                                                    </div>
-                                                )} />
-                                                <Controller name="breakOut" control={control} render={({ field }) => (
-                                                    <div className="space-y-1">
-                                                        <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break Out</label>
-                                                        <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                        {errors.breakOut && <p className="text-xs text-red-500">{errors.breakOut.message}</p>}
-                                                    </div>
-                                                )} />
+                                            <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-orange-500/5 border border-orange-500/20">
+                                                <Controller 
+                                                    name="breakIn" 
+                                                    control={control} 
+                                                    render={({ field }) => (
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break In</label>
+                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                            {errors.breakIn && <p className="text-xs text-red-500">{errors.breakIn.message}</p>}
+                                                        </div>
+                                                    )} 
+                                                />
+                                                <Controller 
+                                                    name="breakOut" 
+                                                    control={control} 
+                                                    render={({ field }) => (
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break Out</label>
+                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                            {errors.breakOut && <p className="text-xs text-red-500">{errors.breakOut.message}</p>}
+                                                        </div>
+                                                    )} 
+                                                />
                                             </div>
                                         )}
                                     </div>
 
                                     {(userCategory === 'field' || userCategory === 'site') && (
-                                        <div className="space-y-3 pt-4 border-t border-border">
+                                        <div className="space-y-3 pt-4 border-t border-emerald-500/10">
                                             <div className="flex items-center gap-2">
                                                 <input 
                                                     type="checkbox" 
@@ -608,63 +724,75 @@ const ApplyLeave: React.FC = () => {
                                             </div>
 
                                             {watch('includeSiteOt') && (
-                                                <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
-                                                    <Controller name="siteOtIn" control={control} render={({ field }) => (
-                                                        <div className="space-y-1">
-                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
-                                                                <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT In
-                                                            </label>
-                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                            {errors.siteOtIn && <p className="text-xs text-red-500">{errors.siteOtIn.message}</p>}
-                                                        </div>
-                                                    )} />
-                                                    <Controller name="siteOtOut" control={control} render={({ field }) => (
-                                                        <div className="space-y-1">
-                                                            <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
-                                                                <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT Out
-                                                            </label>
-                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-card border border-border text-sm" />
-                                                            {errors.siteOtOut && <p className="text-xs text-red-500">{errors.siteOtOut.message}</p>}
-                                                        </div>
-                                                    )} />
+                                                <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-purple-500/5 border border-purple-500/20">
+                                                    <Controller 
+                                                        name="siteOtIn" 
+                                                        control={control} 
+                                                        render={({ field }) => (
+                                                            <div className="space-y-1">
+                                                                <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                    <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT In
+                                                                </label>
+                                                                <input type="time" {...field} className="w-full p-3 rounded-xl bg-[#041b0f] border border-emerald-500/20 text-white text-sm outline-none" />
+                                                                {errors.siteOtIn && <p className="text-xs text-red-500">{errors.siteOtIn.message}</p>}
+                                                            </div>
+                                                        )} 
+                                                    />
+                                                    <Controller 
+                                                        name="siteOtOut" 
+                                                        control={control} 
+                                                        render={({ field }) => (
+                                                            <div className="space-y-1">
+                                                                <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                    <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT Out
+                                                                </label>
+                                                                <input type="time" {...field} className="w-full p-3 rounded-xl bg-[#041b0f] border border-emerald-500/20 text-white text-sm outline-none" />
+                                                                {errors.siteOtOut && <p className="text-xs text-red-500">{errors.siteOtOut.message}</p>}
+                                                            </div>
+                                                        )} 
+                                                    />
                                                 </div>
                                             )}
                                         </div>
                                     )}
                                 </div>
                             )}
-                        </div>
 
-                        <div className="bg-card/50 p-4 rounded-xl border border-border">
-                            <label className="block text-sm font-medium text-muted mb-2">
-                                {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
-                            </label>
-                            <textarea 
-                                {...register('reason')} 
-                                rows={4} 
-                                placeholder="Please provide details about your leave request..."
-                                className={`w-full p-4 rounded-xl bg-page border border-border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all ${errors.reason ? 'border-red-500' : ''}`} 
-                            />
-                            {errors.reason && <p className="mt-2 text-xs text-red-500">{errors.reason.message}</p>}
-                        </div>
-
-                        {showDoctorCertUpload && (
-                            <div className="bg-card/50 p-4 rounded-xl border border-border">
-                                <Controller name="doctorCertificate" control={control} render={({ field, fieldState }) => (
-                                    <UploadDocument 
-                                        label="Doctor's Certificate (Required)" 
-                                        file={field.value} 
-                                        onFileChange={field.onChange} 
-                                        error={fieldState.error?.message} 
-                                        allowCapture 
-                                    />
-                                )} />
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium text-muted mb-2 tracking-wide uppercase text-[10px] font-black">
+                                    {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
+                                </label>
+                                <textarea 
+                                    {...register('reason')} 
+                                    rows={4} 
+                                    placeholder="Please provide details about your leave request..."
+                                    className={`w-full p-5 rounded-[1.5rem] bg-emerald-500/5 border border-emerald-500/10 text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all placeholder:text-white/10 ${errors.reason ? 'border-red-500' : ''}`} 
+                                />
+                                {errors.reason && <p className="mt-2 text-xs text-red-500 font-bold">{errors.reason.message}</p>}
                             </div>
-                        )}
+
+                            {showDoctorCertUpload && (
+                                <div className="pt-4 border-t border-emerald-500/10">
+                                    <Controller 
+                                        name="doctorCertificate" 
+                                        control={control} 
+                                        render={({ field, fieldState }) => (
+                                            <UploadDocument 
+                                                label="Doctor's Certificate (Required)" 
+                                                file={field.value} 
+                                                onFileChange={field.onChange} 
+                                                error={fieldState.error?.message} 
+                                                allowCapture 
+                                            />
+                                        )} 
+                                    />
+                                </div>
+                            )}
+                        </div>
 
                         <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-4'}`}>
-                            <Button type="button" variant="secondary" onClick={() => navigate(-1)} className="flex-1">Cancel</Button>
-                            <Button type="submit" form="leave-form" className="flex-2">{isEditMode ? 'Update Request' : 'Submit Request'}</Button>
+                            <Button type="button" variant="danger" onClick={() => navigate(-1)} className="flex-1">Cancel</Button>
+                            <Button type="submit" form="leave-form" className="flex-1">{isEditMode ? 'Update Request' : 'Submit'}</Button>
                         </div>
                     </form>
                 </div>

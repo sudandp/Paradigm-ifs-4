@@ -12,11 +12,13 @@ import { reverseGeocode } from '../../utils/locationUtils';
 import Pagination from '../../components/ui/Pagination';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
+import { useAuthStore } from '../../store/authStore';
+import { isAdmin } from '../../utils/auth';
 
 // --- Constants & Helpers ---
 
-const getEventLabel = (type: string, workType?: 'office' | 'field'): string => {
-    if (workType === 'field') {
+const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): string => {
+    if (workType === 'field' || workType === 'site') {
         const fieldLabels: Record<string, string> = {
             'punch-in': 'Check-In',
             'punch-out': 'Check-Out',
@@ -438,6 +440,7 @@ const FieldStaffTracking: React.FC = () => {
     const [pageSize, setPageSize] = useState(20);
 
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const { user: currentUser } = useAuthStore();
     
     // Map of role IDs (snake_case from API) to Display Names
     const roleLabelsMap = useMemo(() => {
@@ -455,10 +458,19 @@ const FieldStaffTracking: React.FC = () => {
 
     // All users that are in any project role, sorted A-Z
     const trackingUsers = useMemo(() => {
-        return users
-            .filter(u => trackingRoleSlugs.includes(u.role))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [users, trackingRoleSlugs]);
+        let filtered = users.filter(u => trackingRoleSlugs.includes(u.role));
+
+        // Apply Team Filtering for Operation Managers
+        if (currentUser && !isAdmin(currentUser.role) && currentUser.role === 'Operation Manager') {
+            filtered = filtered.filter(u => 
+                u.reportingManagerId === currentUser.id || 
+                u.reportingManager2Id === currentUser.id || 
+                u.reportingManager3Id === currentUser.id
+            );
+        }
+
+        return filtered.sort((a, b) => a.name.localeCompare(b.name));
+    }, [users, trackingRoleSlugs, currentUser]);
 
     // Users available for selection based on the TEMPORARY role filter
     const selectableUsers = useMemo(() => {

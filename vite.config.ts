@@ -84,22 +84,16 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-core': ['react', 'react-dom', 'react-router-dom'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'pdf-vendor': ['@react-pdf/renderer', 'jspdf', 'jspdf-autotable'],
           'excel-vendor': ['exceljs', 'jszip'],
           'charts-vendor': ['chart.js'],
-          'supabase-vendor': ['@supabase/supabase-js'],
-          'ui-shared': ['lucide-react', 'react-date-range', 'framer-motion'],
-          'utils-shared': ['date-fns', 'file-saver', 'zustand', 'pako'],
-          'capacitor-vendor': [
-            '@capacitor/core', 
-            '@capacitor/preferences', 
-            '@capacitor/geolocation', 
-            '@capacitor/camera', 
-            '@capacitor/filesystem',
-            '@capacitor/app',
-            '@capacitor/browser'
-          ]
+          'database-vendor': ['@supabase/supabase-js'],
+          'animation-vendor': ['framer-motion'],
+          'icons-vendor': ['lucide-react'],
+          'date-vendor': ['date-fns', 'react-date-range'],
+          'capacitor-core': ['@capacitor/core', '@capacitor/preferences', '@capacitor/app', '@capacitor/browser'],
+          'capacitor-native': ['@capacitor/geolocation', '@capacitor/camera', '@capacitor/filesystem', '@capacitor/status-bar', '@capacitor/keyboard']
         }
       }
     }

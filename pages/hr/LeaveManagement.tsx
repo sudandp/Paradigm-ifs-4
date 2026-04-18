@@ -113,6 +113,7 @@ const LeaveManagement: React.FC = () => {
     const [activePreset, setActivePreset] = useState<string>('This Month');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningId, setActioningId] = useState<string | null>(null);
+    const [teamIds, setTeamIds] = useState<string[]>([]);
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [isCompOffFeatureEnabled, setIsCompOffFeatureEnabled] = useState(true);
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -155,8 +156,10 @@ const LeaveManagement: React.FC = () => {
                 let users;
                 if (isFullAccess) {
                     users = await api.getUsers({ fetchAll: true });
+                    setTeamIds([]); // No restriction for full access
                 } else {
                     users = await api.getTeamMembers(user?.id || '');
+                    setTeamIds(users.map((u: any) => u.id));
                 }
                 setAllUsers(users.sort((a: any, b: any) => a.name.localeCompare(b.name)));
             } catch (e) {
@@ -593,14 +596,20 @@ const LeaveManagement: React.FC = () => {
 
         // HR/Admin can edit leave type for any request that is not rejected/withdrawn/cancelled
         const isSuperAdmin = ['admin', 'super_admin'].includes(user.role);
-        const isHRAdmin = ['admin', 'super_admin', 'hr'].includes(user.role);
-        const isMyTurn = request.currentApproverId === user.id || isSuperAdmin;
+        const isGlobalHR = ['admin', 'super_admin', 'hr'].includes(user.role);
+        
+        // A manager has "full control" if the request belongs to their team member
+        const isTeamMember = teamIds.includes(request.userId);
+        const isManagerWithControl = ['operation_manager', 'site_manager'].includes(user.role) && isTeamMember;
+        
+        const isAuthorizedToManage = isGlobalHR || isManagerWithControl;
+        const isMyTurn = request.currentApproverId === user.id || isSuperAdmin || (isManagerWithControl && (request.status === 'pending_manager_approval' || request.status === 'pending_hr_confirmation'));
 
-        if (isSuperAdmin || isMyTurn) {
+        if (isSuperAdmin || isAuthorizedToManage || isMyTurn) {
             return (
                 <div className="flex gap-2">
                     {/* Approval Actions */}
-                    {isMyTurn && (
+                    {(isMyTurn || isAuthorizedToManage) && (
                         <>
                             {request.status === 'pending_manager_approval' && (
                                 <div className="flex gap-2">
@@ -618,7 +627,7 @@ const LeaveManagement: React.FC = () => {
                     )}
 
                     {/* Edit Action */}
-                    {isHRAdmin && !['rejected', 'cancelled', 'withdrawn'].includes(request.status) && (
+                    {isAuthorizedToManage && !['rejected', 'cancelled', 'withdrawn'].includes(request.status) && (
                         <Button 
                             size="sm" 
                             variant="icon" 
@@ -632,7 +641,7 @@ const LeaveManagement: React.FC = () => {
                     )}
 
                     {/* Cancel Action */}
-                    {request.status === 'approved' && (isHRAdmin || request.currentApproverId === user.id) && (
+                    {request.status === 'approved' && isAuthorizedToManage && (
                         <Button 
                             size="sm" 
                             variant="icon" 
@@ -660,7 +669,7 @@ const LeaveManagement: React.FC = () => {
                     )}
 
                     {/* Correct Action (Admin Correction Required) */}
-                    {request.status === 'pending_admin_correction' && (isHRAdmin || isSuperAdmin) && (
+                    {request.status === 'pending_admin_correction' && isAuthorizedToManage && (
                         <Button 
                             size="sm" 
                             variant="icon" 

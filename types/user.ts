@@ -1,3 +1,5 @@
+import { UploadedFile } from './common';
+
 export type UserRole = string;
 
 export interface Role {
@@ -100,6 +102,10 @@ export interface User {
    * Flag indicating if the user is considered "nearby" the current user.
    */
   isNearby?: boolean;
+  /**
+   * Flag indicating if the user is a team member (direct/indirect report) of the viewer.
+   */
+  isTeamMember?: boolean;
   location?: string;
   societyId?: string;
   societyName?: string;

@@ -241,7 +241,7 @@ export const useAuthStore = create<AuthState>()(
                     ? await loginPromise 
                     : await withTimeout(
                         loginPromise,
-                        20000, 
+                        12000, // Reduced from 20s for better web responsiveness
                         'Login attempt timed out. Please check your network connection.'
                     ).catch(e => ({ data: { user: null, session: null }, error: { message: e.message } }));
 

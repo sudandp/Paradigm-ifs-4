@@ -228,7 +228,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
 
   return (
     <div ref={pickerRef} className="w-full">
-      {label && <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider text-emerald-500/60">{label}</label>}
+      {label && <label className="block text-sm font-medium text-muted mb-2">{label}</label>}
       <div className="relative">
         <div className={`fo-input flex justify-between items-center cursor-pointer ${className || ''}`} onClick={openPicker}>
           <span className={startDate ? 'text-white' : 'text-white/30'}>

@@ -29,11 +29,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
   
   const inputElement = (
     <div className="relative">
-      {icon && (
-        <div className="absolute left-5 top-1/2 -translate-y-1/2 text-muted pointer-events-none">
-          {icon}
-        </div>
-      )}
       <input
         ref={ref}
         id={inputId}
@@ -48,7 +43,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
         type={inputType}
         onChange={(e) => {
           const isTextField = !props.type || props.type === 'text';
-          if (autoCapitalizeCustom && isTextField) {
+          const isPasswordOrEmail = props.type === 'password' || props.type === 'email';
+          
+          if (autoCapitalizeCustom && isTextField && !isPasswordOrEmail) {
             const originalValue = e.target.value;
             // Capitalize first letter of each word for Names/Cities/Addresses
             const capitalizedValue = originalValue.replace(/\b\w/g, char => char.toUpperCase());
@@ -66,6 +63,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
           }
         }}
       />
+      {icon && (
+        <div className="absolute left-5 top-1/2 -translate-y-1/2 text-muted z-10 pointer-events-none flex items-center justify-center">
+          {icon}
+        </div>
+      )}
       {isPassword && (
         <button
           type="button"
@@ -73,7 +75,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, labelClas
           className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white/40 hover:text-emerald-400 transition-all focus:outline-none btn-icon !bg-transparent !border-none !shadow-none password-toggle"
           tabIndex={-1}
         >
-          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          {showPassword ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
         </button>
       )}
     </div>

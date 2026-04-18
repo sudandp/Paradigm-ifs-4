@@ -28,7 +28,7 @@ const SiteDashboard: React.FC = () => {
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [selectedOrgId, setSelectedOrgId] = useState<string | undefined>(user?.organizationId);
 
-    const canSelectOrg = user && isAdmin(user.role);
+    const canSelectOrg = user && (isAdmin(user.role) || ['operation_manager', 'site_manager'].includes(user.role));
 
     useEffect(() => {
         if (canSelectOrg) {
@@ -43,7 +43,7 @@ const SiteDashboard: React.FC = () => {
 
     const fetchSubmissions = useCallback(async () => {
         if (!selectedOrgId) {
-            if (user?.organizationId) setIsLoading(false);
+            setIsLoading(false);
             return;
         }
         setIsLoading(true);

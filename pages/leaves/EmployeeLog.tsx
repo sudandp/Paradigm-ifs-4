@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { AttendanceEvent } from '../../types';
-import { Loader2, MapPin, Clock, Calendar } from 'lucide-react';
+import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
@@ -214,9 +214,9 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                 <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                     <button
                         onClick={() => handleDateChange('prev')}
-                        className="px-3 py-1 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors"
+                        className="p-1.5 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200"
                     >
-                        ←
+                        <ChevronLeft className="h-5 w-5 text-gray-600" />
                     </button>
                     <div className="flex items-center gap-2 font-semibold text-gray-900">
                         <Calendar className="h-4 w-4" />
@@ -224,9 +224,9 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                     </div>
                     <button
                         onClick={() => handleDateChange('next')}
-                        className="px-3 py-1 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors"
+                        className="p-1.5 bg-white rounded-md shadow-sm hover:bg-gray-100 transition-colors flex items-center justify-center border border-gray-200"
                     >
-                        →
+                        <ChevronRight className="h-5 w-5 text-gray-600" />
                     </button>
                 </div>
             </div>

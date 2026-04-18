@@ -18,27 +18,27 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen min-h-[100dvh] font-sans flex items-center justify-center py-8 px-4 relative overflow-auto" style={{ backgroundColor: 'transparent' }}>
-                {/* Background for Mobile */}
+            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col items-center justify-center py-8 pb-[calc(2rem+env(safe-area-inset-bottom))] px-4 relative overflow-y-auto" style={{ backgroundColor: '#041b0f' }}>
+                {/* Background for Mobile with improved contrast overlay */}
                 <div className="fixed inset-0 w-full h-full" style={{ zIndex: 0 }}>
-                    <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0 auth-bg-overlay" style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}></div>
+                    <img src="/assets/auth/office-background.webp" alt="" className="absolute inset-0 w-full h-full object-cover opacity-45" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/80"></div>
                 </div>
 
-                <div className="relative z-10 w-full flex flex-col items-center px-4">
+                <div className="relative z-10 w-full max-w-[min(95vw,420px)] flex flex-col items-center">
                     {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
-                    <div className="w-full max-w-[360px] auth-glass-panel auth-card-container text-left">
-                        <div className="flex justify-center mb-6">
+                    <div className="w-full bg-white/10 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 text-left mb-8">
+                        <div className="flex justify-center mb-8">
                             <img 
                                 src="/Paradigm-Logo-3-1024x157.png" 
                                 alt="Paradigm Logo" 
-                                className="h-10 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]" 
+                                className="h-12 w-auto object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" 
                             />
                         </div>
 
-                        <div className="text-left mb-4">
-                            <h2 className="text-[16px] font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
-                            <p className="text-white/70 text-[11px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
+                        <div className="text-left mb-6">
+                            <h2 className="text-[clamp(18px,4vw,22px)] font-bold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
+                            <p className="text-white/80 text-[clamp(13px,3.5vw,14px)] font-medium leading-relaxed">{pageInfo.subtitle}</p>
                         </div>
 
                         <div className="auth-form-outlet leading-normal">

@@ -53,7 +53,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             case 'fixed': return 'bg-emerald-600 text-white border-emerald-700 shadow-sm'; // Green for Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
             case 'user': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Purple for User
-            default: return 'bg-gray-50 text-gray-400 border-gray-100'; // Neutral
+            default: return 'bg-emerald-500/5 text-muted/40 border-emerald-500/10'; // Neutral
         }
     };
 
@@ -63,7 +63,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
+        <div className="rounded-xl w-full flex flex-col h-full space-y-4">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-sm font-semibold text-primary-text">Holidays</h3>
                 <div className="flex items-center gap-1">

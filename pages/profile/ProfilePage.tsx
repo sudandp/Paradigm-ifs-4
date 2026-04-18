@@ -648,19 +648,18 @@ const ProfilePage: React.FC = () => {
                                                             navigate('/attendance/request-unlock');
                                                             return;
                                                         }
-                                                        // Always use 'office' for the main day punch, even for field staff.
-                                                        // This separates the Daily Punch (Day Start) from Site Visits.
                                                         navigate('/attendance/check-in?workType=office');
                                                     }}
                                                     disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
                                                     className={`
                                                         relative overflow-hidden rounded-xl border p-0 transition-all duration-300 active:scale-[0.98] shadow-lg
                                                         flex flex-col items-center justify-center gap-1 h-[72px]
-                                                        ${isPunchBlocked 
-                                                            ? 'bg-gradient-to-br from-amber-500 to-orange-600 border-amber-400/30 shadow-amber-500/20' 
-                                                            : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400/30 shadow-emerald-500/20'
+                                                        ${(isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending'))
+                                                            ? 'bg-gray-800/40 text-white/40 border-white/10 cursor-not-allowed'
+                                                            : isPunchBlocked 
+                                                                ? 'bg-gradient-to-br from-amber-500 to-orange-600 border-amber-400/30 shadow-amber-500/20 hover:brightness-110' 
+                                                                : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400/30 shadow-emerald-500/20 hover:brightness-110'
                                                         }
-                                                        ${(isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')) ? 'bg-gray-800/40 text-white/40 cursor-not-allowed' : 'hover:brightness-110'}
                                                     `}
                                                 >
                                                     {/* Shine Effect */}
@@ -678,8 +677,10 @@ const ProfilePage: React.FC = () => {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <LogIn className={`h-6 w-6 text-white drop-shadow-sm ${!isCheckedIn ? 'animate-pulse' : ''}`} />
-                                                            <span className="text-white font-bold text-sm tracking-wide drop-shadow-sm">PUNCH IN</span>
+                                                             <LogIn className={`h-6 w-6 text-white drop-shadow-sm ${(isCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked) ? '' : 'animate-pulse'}`} />
+                                                             <span className="text-white font-bold text-sm tracking-wide drop-shadow-sm">
+                                                                 {isCheckedIn ? 'CHECKED IN' : 'PUNCH IN'}
+                                                             </span>
                                                         </>
                                                     )}
                                                 </button>
@@ -807,22 +808,22 @@ const ProfilePage: React.FC = () => {
                     <section>
                         <h3 className="fo-section-title mb-4">Account Actions</h3>
                         <div className="space-y-4">
-                            <button 
+                             <button 
                                 onClick={() => navigate('/leaves/dashboard')} 
-                                className="w-full group relative overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl py-3 px-4 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
+                                className="w-full group relative overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-4 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
                             >
                                 <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors"></div>
                                 <div className="flex items-center gap-4 relative z-10">
-                                    <div className="p-2 rounded-xl bg-white/20 text-white backdrop-blur-sm">
-                                        <Crosshair className="h-5 w-5" />
+                                    <div className="p-3 rounded-xl bg-white/20 text-white backdrop-blur-sm">
+                                        <Crosshair className="h-6 w-6" />
                                     </div>
                                     <div className="text-left">
-                                        <p className="text-white font-bold text-sm">Leave Tracker</p>
-                                        <p className="text-emerald-100 text-[10px] mt-0.5">View history & balances</p>
+                                        <p className="text-white font-bold text-base">Leave Tracker</p>
+                                        <p className="text-emerald-100 text-xs mt-0.5">View history & balances</p>
                                     </div>
                                 </div>
-                                <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/70 group-hover:bg-white group-hover:text-emerald-700 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 group-hover:bg-white group-hover:text-emerald-700 transition-all">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                     </svg>
                                 </div>

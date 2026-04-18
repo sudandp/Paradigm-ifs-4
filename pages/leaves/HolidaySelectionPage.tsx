@@ -168,7 +168,7 @@ const HolidaySelectionPage: React.FC = () => {
                 </div>
 
                 <div className="max-w-2xl mx-auto space-y-6">
-                    <div className="bg-card rounded-2xl p-6 shadow-card border border-border">
+                    <div className="bg-[#0d2c18]/40 backdrop-blur-xl rounded-[2rem] p-8 border border-emerald-500/10 shadow-2xl">
                         <p className="text-lg mb-6">Are you sure you want to save these <span className="font-bold text-accent">{selectedHolidays.length}</span> holidays?</p>
                         
                         <div className="space-y-3">
@@ -177,15 +177,15 @@ const HolidaySelectionPage: React.FC = () => {
                                 const displayDate = new Date(dateStr.replace(/-/g, '/'));
                                 
                                 return (
-                                    <div key={i} className="flex items-center justify-between p-4 rounded-xl border border-border hover:bg-accent/5 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-lg bg-accent/10 flex flex-col items-center justify-center text-accent">
-                                                <span className="text-[8px] font-bold uppercase leading-none">{displayDate.toLocaleDateString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-sm font-bold leading-none mt-0.5">{displayDate.getDate()}</span>
+                                    <div key={i} className="flex items-center justify-between p-5 rounded-2xl border border-emerald-500/10 bg-emerald-500/5 transition-all hover:bg-emerald-500/10">
+                                        <div className="flex items-center gap-5">
+                                            <div className="h-12 w-12 rounded-xl bg-accent/20 flex flex-col items-center justify-center text-accent ring-1 ring-accent/30">
+                                                <span className="text-[9px] font-black uppercase leading-none tracking-tighter">{displayDate.toLocaleDateString('en-IN', { month: 'short' })}</span>
+                                                <span className="text-lg font-black leading-none mt-1">{displayDate.getDate()}</span>
                                             </div>
-                                            <span className="font-semibold text-primary-text text-lg">{h.name}</span>
+                                            <span className="font-bold text-primary-text text-xl tracking-tight">{h.name}</span>
                                         </div>
-                                        <span className="text-sm text-muted font-medium bg-muted/10 px-3 py-1 rounded-full">
+                                        <span className="text-xs text-muted/60 font-bold bg-muted/5 px-4 py-1.5 rounded-full border border-white/5 uppercase tracking-widest">
                                             {displayDate.toLocaleDateString('en-IN', { weekday: 'short' })}
                                         </span>
                                     </div>
@@ -250,7 +250,7 @@ const HolidaySelectionPage: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Selection Section */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-card rounded-2xl p-6 shadow-card border border-border">
+                    <div className="rounded-2xl space-y-6">
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-lg font-semibold flex items-center gap-2">
                                 <CalendarIcon className="h-5 w-5 text-accent" />
@@ -276,46 +276,46 @@ const HolidaySelectionPage: React.FC = () => {
                                         key={index}
                                         onClick={() => toggleHoliday(holiday.name, holiday.date)}
                                         disabled={isPastOrToday}
-                                        className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-200 text-left ${
-                                            !isPastOrToday ? 'hover:scale-[1.01] active:scale-[0.99]' : 'cursor-not-allowed'
+                                        className={`flex items-center justify-between p-5 rounded-[2rem] border transition-all duration-300 text-left ${
+                                            !isPastOrToday ? 'hover:scale-[1.02] active:scale-[0.98]' : 'cursor-not-allowed'
                                         } ${
                                             isSelected 
-                                            ? 'bg-accent/10 border-accent shadow-sm ring-1 ring-accent/20' 
+                                            ? 'bg-accent/20 border-accent/40 shadow-[0_0_20px_rgba(0,107,63,0.1)]' 
                                             : isPastOrToday 
-                                                ? 'bg-gray-100 border-gray-200 opacity-60' 
-                                                : 'bg-transparent border-border hover:border-accent/30 hover:bg-accent/5'
+                                                ? 'bg-red-500/5 border-red-500/10' 
+                                                : 'bg-[#0d2c18]/30 border-emerald-500/10 hover:border-accent/40'
                                         }`}
                                     >
-                                        <div className="flex items-center gap-4">
-                                            <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center transition-colors ${
+                                        <div className="flex items-center gap-5 flex-1 min-w-0">
+                                            <div className={`h-14 w-14 rounded-[1.25rem] flex-shrink-0 flex flex-col items-center justify-center transition-all ${
                                                 isSelected 
-                                                    ? (isPastOrToday ? 'bg-gray-400 text-white' : 'bg-accent text-white') 
-                                                    : 'bg-muted/10 text-muted'
+                                                    ? 'bg-emerald-600 text-white shadow-[0_4px_12px_rgba(5,150,105,0.3)]' 
+                                                    : isPastOrToday
+                                                        ? 'bg-red-500 text-white shadow-[0_4px_12px_rgba(239,68,68,0.3)]'
+                                                        : 'bg-emerald-500/10 text-emerald-500/80'
                                             }`}>
-                                                <span className="text-[10px] font-bold uppercase leading-none">{dateObj.toLocaleDateString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-lg font-bold leading-none mt-0.5">{dateObj.getDate()}</span>
+                                                <span className="text-[10px] font-black uppercase leading-none tracking-tight">{dateObj.toLocaleDateString('en-IN', { month: 'short' })}</span>
+                                                <span className="text-xl font-black leading-none mt-1">{dateObj.getDate()}</span>
                                             </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className={`text-lg font-semibold ${isSelected ? 'text-accent' : 'text-primary-text'} ${isPastOrToday && !isSelected ? 'text-muted' : ''}`}>{holiday.name}</p>
-                                                    {isPastOrToday && isSelected && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
-                                                </div>
-                                                <p className="text-sm text-muted">
+                                            <div className="flex-1 min-w-0">
+                                                <p className={`text-lg md:text-xl font-bold tracking-tight line-clamp-2 ${isSelected ? 'text-accent' : isPastOrToday ? 'text-red-500/80' : 'text-primary-text'}`}>{holiday.name}</p>
+                                                <p className="text-sm font-medium text-muted/60 mt-0.5 truncate">
                                                     {formattedDate} 
-                                                    {isPastOrToday && (
-                                                        <span className="ml-2 text-[10px] items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 uppercase font-bold">
-                                                            {dateObj < today ? 'Passed' : 'Today'}
-                                                        </span>
-                                                    )}
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className={`h-6 w-6 rounded-full flex items-center justify-center border transition-all duration-300 ${
+                                        <div className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all duration-500 ${
                                             isSelected 
-                                            ? (isPastOrToday ? 'bg-gray-300 border-gray-300 text-white' : 'bg-accent border-accent text-white rotate-0 scale-100')
-                                            : 'border-border bg-card rotate-90 scale-75 opacity-50'
+                                            ? 'bg-emerald-600 border-emerald-600 text-white scale-100'
+                                            : isPastOrToday
+                                                ? 'bg-red-500 border-red-500 text-white scale-100'
+                                                : 'border-emerald-500/20 bg-transparent scale-90 opacity-40'
                                         }`}>
-                                            {isSelected && (isPastOrToday ? <Lock className="h-3 w-3" /> : <Check className="h-4 w-4" />)}
+                                            {isSelected ? (
+                                                <Check className="h-5 w-5 stroke-[4]" />
+                                            ) : isPastOrToday ? (
+                                                <span className="text-xl font-black leading-none">×</span>
+                                            ) : null}
                                         </div>
                                     </button>
                                 );
@@ -362,7 +362,7 @@ const HolidaySelectionPage: React.FC = () => {
 
             {/* Floating Save Selection Bar */}
             <div 
-                className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-card via-card to-transparent border-t border-border z-40"
+                className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent border-t border-emerald-500/10 z-40"
                 style={{ 
                     bottom: isMobile ? 'calc(4rem + env(safe-area-inset-bottom))' : '0' 
                 }}

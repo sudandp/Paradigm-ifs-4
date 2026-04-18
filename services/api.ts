@@ -1476,12 +1476,22 @@ export const api = {
       const sameOrg = currentUser?.organizationId && u.organizationId === currentUser.organizationId;
       const sameLocation = currentUserLocation && u.locationName === currentUserLocation;
       
+      // Multi-level team check
+      const isTeamMember = currentUserId && (
+        u.reportingManagerId === currentUserId || 
+        u.reportingManager2Id === currentUserId || 
+        u.reportingManager3Id === currentUserId
+      );
+      
       return { 
         ...u, 
-        isNearby: sameLocation || sameOrg
+        isNearby: sameLocation || sameOrg || isTeamMember,
+        isTeamMember
       };
     }).sort((a, b) => {
-      // Sort: same location first, then same org, then alphabetical
+      // Sort: Team members first, then same location, then same org, then alphabetical
+      if (a.isTeamMember && !b.isTeamMember) return -1;
+      if (!a.isTeamMember && b.isTeamMember) return 1;
       if (a.locationName === currentUserLocation && b.locationName !== currentUserLocation) return -1;
       if (a.locationName !== currentUserLocation && b.locationName === currentUserLocation) return 1;
       if (currentUser?.organizationId) {
