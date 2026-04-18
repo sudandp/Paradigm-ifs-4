@@ -1232,32 +1232,36 @@ body {
        This block MUST stay at the END of the mobile media query.
        ═══════════════════════════════════════════════════════════════════ */
 
-    /* 1. Card container — Height reduced ~10% for Goldilocks fit */
-     .auth-card-container {
-         background: rgba(0, 0, 0, 0.72) !important;
-         backdrop-filter: blur(24px) !important;
-         -webkit-backdrop-filter: blur(24px) !important;
-         border: 1px solid rgba(255, 255, 255, 0.08) !important;
-         border-radius: 1rem !important;
-         box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.8) !important;
-         background-image: none !important;
-         opacity: 1 !important;
-         animation: none !important;
-         transform: none !important;
-         width: auto !important;
-         margin: 0 !important;
-         padding: 2.25rem 1.25rem !important;
-     }
-    .auth-card-container * {
+    /* 1. Card container — Glassmorphism (dark-green tinted glass) */
+    .auth-card-container,
+    .auth-glass-panel {
+        background: rgba(4, 27, 15, 0.45) !important;
+        backdrop-filter: blur(20px) saturate(1.4) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(1.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 1.25rem !important;
+        box-shadow:
+            0 8px 32px rgba(0, 0, 0, 0.35),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+        background-image: none !important;
+        opacity: 1 !important;
+        animation: none !important;
+        transform: none !important;
+        width: auto !important;
+        margin: 0 !important;
+        padding: 2.25rem 1.25rem !important;
+    }
+    .auth-card-container *,
+    .auth-glass-panel * {
         animation: none !important;
         opacity: 1 !important;
     }
 
-    /* 2. Background overlay */
+    /* 2. Background overlay — very subtle so background image is clearly visible */
     .auth-bg-overlay {
-        background-color: rgba(0, 0, 0, 0.75) !important;
-        backdrop-filter: blur(4px) !important;
-        -webkit-backdrop-filter: blur(4px) !important;
+        background-color: rgba(0, 0, 0, 0.15) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
     }
 
     /* 3. Inputs */

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import Logo from '../ui/Logo';
 import { useAuthLayoutStore } from '../../store/authLayoutStore';
 import { useDevice } from '../../hooks/useDevice';
 
@@ -19,28 +18,33 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen min-h-[100dvh] font-sans flex items-center justify-center py-8 px-4 relative overflow-auto bg-page">
+            <div className="min-h-screen min-h-[100dvh] font-sans flex items-center justify-center py-8 px-4 relative overflow-auto" style={{ backgroundColor: 'transparent' }}>
                 {/* Background for Mobile */}
-                <div className="fixed inset-0 w-full h-full">
+                <div className="fixed inset-0 w-full h-full" style={{ zIndex: 0 }}>
                     <img src="/assets/auth/office-background.png" alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/65 backdrop-blur-sm auth-bg-overlay"></div>
+                    <div className="absolute inset-0 auth-bg-overlay" style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}></div>
                 </div>
 
-                {/* Mobile Dark Glassmorphic Card (Shrunk Mode) — Centered Logo + Left Header */}
-                <div className="relative z-10 w-[92%] max-w-[360px] bg-black/50 backdrop-blur-2xl border border-white/10 rounded-2xl px-6 pt-3 pb-2 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.7)] auth-card-container text-left">
-                    <div className="flex justify-center mb-4">
-                        <Logo className="h-[30px] opacity-100" />
-                    </div>
-                    
-                    <div className="text-left mb-4">
-                        <h2 className="text-[16px] font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
-                        <p className="text-white/70 text-[11px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
-                    </div>
+                <div className="relative z-10 w-full flex flex-col items-center px-4">
+                    {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
+                    <div className="w-full max-w-[360px] auth-glass-panel auth-card-container text-left">
+                        <div className="flex justify-center mb-6">
+                            <img 
+                                src="/Paradigm-Logo-3-1024x157.png" 
+                                alt="Paradigm Logo" 
+                                className="h-10 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]" 
+                            />
+                        </div>
 
-                    <div className="auth-form-outlet leading-normal">
-                        <Outlet />
-                    </div>
+                        <div className="text-left mb-4">
+                            <h2 className="text-[16px] font-bold text-white mb-1 tracking-tight">{pageInfo.title}</h2>
+                            <p className="text-white/70 text-[11px] font-medium leading-relaxed">{pageInfo.subtitle}</p>
+                        </div>
 
+                        <div className="auth-form-outlet leading-normal">
+                            <Outlet />
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -63,7 +67,11 @@ const AuthLayout: React.FC = () => {
                         <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full -ml-32 -mb-32 blur-3xl"></div>
 
                         <div className="relative z-10">
-                            <Logo className="h-10 brightness-0 invert" />
+                            <img 
+                                src="/Paradigm-Logo-3-1024x157.png" 
+                                alt="Paradigm Logo" 
+                                className="h-12 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]" 
+                            />
                             <div className="mt-24">
                                 <h1 className="text-4xl font-bold text-white leading-tight">
                                     Welcome to the Future of Onboarding.
