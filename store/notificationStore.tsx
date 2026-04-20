@@ -14,6 +14,16 @@ export interface BadgeHelperPlugin {
 }
 const BadgeHelper = registerPlugin<BadgeHelperPlugin>('BadgeHelper');
 
+// ─── Singleton channel guard ──────────────────────────────────────────────────
+// Supabase throws if you call .on() on a channel that has already been
+// subscribed (same channel name, second call). This happens because the
+// auth flow emits SIGNED_IN + INITIAL_SESSION + TOKEN_REFRESHED in quick
+// succession, each updating `user` and re-triggering the subscription effect
+// in App.tsx. We track the active channel and user ID at module level so we
+// can skip duplicate subscriptions and remove stale ones between user sessions.
+let _activeChannel: ReturnType<typeof supabase.channel> | null = null;
+let _activeChannelUserId: string | null = null;
+
 interface NotificationState {
   notifications: Notification[];
   unreadCount: number;
@@ -249,8 +259,39 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
     const user = useAuthStore.getState().user;
     if (!user) return () => {};
 
+    const channelName = `user-notifications-${user.id}`;
+
+    // ── Singleton guard ────────────────────────────────────────────────────
+    // The auth flow fires SIGNED_IN + INITIAL_SESSION + TOKEN_REFRESHED in quick
+    // succession. Each event updates `user` → triggers the useEffect in App.tsx
+    // → calls subscribeToNotifications() again. Supabase throws if you try to
+    // add listeners to a channel that is already subscribed.
+    //
+    // STRATEGY: If the active channel is already for THIS user, skip creating
+    // a new one and just return the cleanup function. If it's for a different
+    // user (e.g. after logout + new login), remove the old one first.
+    if (_activeChannelUserId === user.id && _activeChannel !== null) {
+      console.log(`[NotificationStore] Realtime channel already active for user ${user.id} — skipping duplicate.`);
+      // Return a cleanup that will properly tear down the channel
+      return () => {
+        if (_activeChannel) {
+          supabase.removeChannel(_activeChannel);
+          _activeChannel = null;
+          _activeChannelUserId = null;
+        }
+      };
+    }
+
+    // Remove stale channel from a previous user session
+    if (_activeChannel !== null) {
+      console.log(`[NotificationStore] Removing stale realtime channel for previous user.`);
+      supabase.removeChannel(_activeChannel);
+      _activeChannel = null;
+      _activeChannelUserId = null;
+    }
+
     const channel = supabase
-      .channel(`user-notifications-${user.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -366,8 +407,17 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       )
       .subscribe();
 
+    // Track the active channel for deduplication
+    _activeChannel = channel;
+    _activeChannelUserId = user.id;
+
     return () => {
       supabase.removeChannel(channel);
+      // Clear singleton refs only if this cleanup owns the current channel
+      if (_activeChannel === channel) {
+        _activeChannel = null;
+        _activeChannelUserId = null;
+      }
     };
   },
 }));
