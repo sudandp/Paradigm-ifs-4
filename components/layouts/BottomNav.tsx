@@ -69,48 +69,53 @@ const BottomNav: React.FC = () => {
 
     return (
         <nav
-            className="fixed bottom-6 left-4 right-4 z-40 select-none"
-            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+            className="fixed left-0 right-0 z-40 select-none"
+            style={{ bottom: 0, paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
         >
-            <div className="max-w-md mx-auto bg-[#041b0f]/95 backdrop-blur-xl rounded-[32px] h-[72px] flex items-center justify-between px-3 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 relative overflow-hidden">
-                
-                {/* Navigation Items Section */}
-                <div className="flex-1 flex justify-around items-center h-full px-2">
+            {/* Pill container — responsive width with horizontal padding that scales on larger phones */}
+            <div className="w-full px-3 sm:px-6 max-w-lg mx-auto">
+                <div className="w-full bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] h-[68px] flex items-center justify-around shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 relative overflow-hidden px-1">
+
                     {navItems.map((item) => {
                         const active = isActive(item.to);
                         return (
-                                <NavLink
-                                    key={item.to}
-                                    to={item.to}
-                                    className="relative flex items-center justify-center p-2 rounded-full transition-all duration-300"
-                                >
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                className="relative flex-1 flex items-center justify-center h-full"
+                            >
+                                <div className="relative flex items-center justify-center">
                                     <AnimatePresence>
                                         {active && (
                                             <motion.div
                                                 layoutId="activePill"
                                                 className="absolute inset-0 bg-[#dcfce7] rounded-full z-0"
+                                                style={{ padding: '0 12px' }}
                                                 transition={{ type: "spring", stiffness: 350, damping: 30 }}
                                             />
                                         )}
                                     </AnimatePresence>
-                                    
-                                    <div className="relative z-10 flex items-center gap-2 px-2">
-                                        <item.icon 
-                                            className={`w-6 h-6 transition-colors duration-300 ${
+
+                                    <div className="relative z-10 flex items-center gap-1.5 px-3 py-2">
+                                        <item.icon
+                                            className={`transition-colors duration-300 ${
                                                 active ? 'text-[#041b0f]' : 'text-[#22c55e]'
-                                            }`} 
+                                            }`}
+                                            style={{ width: 'clamp(20px, 5vw, 24px)', height: 'clamp(20px, 5vw, 24px)' }}
                                         />
                                         {active && (
                                             <motion.span
-                                                initial={{ opacity: 0, x: -5 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                className="text-[11px] font-bold text-[#041b0f] tracking-tight whitespace-nowrap"
+                                                initial={{ opacity: 0, width: 0 }}
+                                                animate={{ opacity: 1, width: 'auto' }}
+                                                exit={{ opacity: 0, width: 0 }}
+                                                className="text-[11px] font-bold text-[#041b0f] tracking-tight whitespace-nowrap overflow-hidden"
                                             >
                                                 {item.label}
                                             </motion.span>
                                         )}
                                     </div>
-                                </NavLink>
+                                </div>
+                            </NavLink>
                         );
                     })}
                 </div>

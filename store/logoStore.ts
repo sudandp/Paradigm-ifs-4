@@ -15,19 +15,31 @@ interface LogoState {
 export const useLogoStore = create(
   persist<LogoState>(
     (set) => ({
-      currentLogo: originalDefaultLogoBase64,
-      defaultLogo: originalDefaultLogoBase64,
+      currentLogo: '/paradigm-logo.png',
+      defaultLogo: '/paradigm-logo.png',
       setCurrentLogo: (logoBase64) => set({ currentLogo: logoBase64 }),
       setDefaultLogo: () => set((state) => ({ defaultLogo: state.currentLogo })),
       resetToDefault: () => set((state) => ({ currentLogo: state.defaultLogo })),
       resetToOriginal: () => set({ 
-          currentLogo: originalDefaultLogoBase64, 
-          defaultLogo: originalDefaultLogoBase64 
+          currentLogo: '/paradigm-logo.png', 
+          defaultLogo: '/paradigm-logo.png' 
       }),
     }),
     {
       name: 'paradigm-app-logo',
       storage: createJSONStorage(() => localStorage),
+      version: 2, // Bump version to trigger migration
+      migrate: (persistedState: any, version: number) => {
+        if (version < 2) {
+          // Force reset to new logo for legacy users while preserving existing state methods/structure
+          return {
+            ...persistedState,
+            currentLogo: '/paradigm-logo.png',
+            defaultLogo: '/paradigm-logo.png'
+          } as LogoState;
+        }
+        return persistedState as LogoState;
+      },
     }
   )
 );

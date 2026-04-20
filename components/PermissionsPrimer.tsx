@@ -34,6 +34,21 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   const verifyPermissions = async () => {
     setIsChecking(true);
     setStatusMessage('Connecting to security bridge...');
+
+    // iOS Standalone PWA fast-path:
+    // The Permissions API is unreliable in iOS Safari PWA mode.
+    // If we somehow reached PermissionsPrimer on iOS PWA, immediately complete.
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isStandaloneIOS = isIOS && (
+      (window.navigator as any).standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches
+    );
+    if (isStandaloneIOS && !Capacitor.isNativePlatform()) {
+      console.log('[PermissionsPrimer] iOS standalone — immediately completing.');
+      setIsChecking(false);
+      setTimeout(() => { onComplete(); }, 500);
+      return;
+    }
     
     // Defensive wait: check if Capacitor is ready. On some Android devices,
     // the bridge injection might be delayed.

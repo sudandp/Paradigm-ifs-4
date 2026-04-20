@@ -217,14 +217,19 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                 <div className={`p-2 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
                     <div className="flex items-center justify-center flex-1">
                         {isCollapsed ? (
-                            <div className="h-8 w-8 overflow-hidden">
+                            <div className="h-8 w-8 flex items-center justify-center overflow-hidden rounded-lg">
                                 <Logo 
-                                    className="h-8 max-w-none object-left object-cover" 
-                                    variant={mode === 'dark' ? 'white' : 'bottle-green'} 
+                                    className="h-7 max-w-none object-left" 
+                                    variant={mode === 'dark' ? 'white' : 'original'} 
                                 />
                             </div>
                         ) : (
-                            <Logo variant={mode === 'dark' ? 'white' : 'bottle-green'} />
+                            <div className="w-full px-2 flex justify-start pl-4">
+                                <Logo 
+                                    className="h-8 md:h-9 w-auto max-w-full" 
+                                    variant={mode === 'dark' ? 'white' : 'original'} 
+                                />
+                            </div>
                         )}
                     </div>
                     {!isCollapsed && (

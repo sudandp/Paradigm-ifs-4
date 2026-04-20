@@ -30,7 +30,7 @@ const AuthLayout: React.FC = () => {
                     {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
                     <div className="w-full bg-white/10 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 text-left mb-8">
                         <div className="flex justify-center mb-8">
-                            <Logo className="h-12" />
+                            <Logo className="h-14" variant="original" />
                         </div>
 
                         <div className="text-left mb-6">
@@ -64,7 +64,7 @@ const AuthLayout: React.FC = () => {
                         <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full -ml-32 -mb-32 blur-3xl"></div>
 
                         <div className="relative z-10">
-                            <Logo className="h-12" />
+                            <Logo className="h-14" variant="original" />
                             <div className="mt-24">
                                 <h1 className="text-4xl font-bold text-white leading-tight">
                                     Welcome to the Future of Onboarding.

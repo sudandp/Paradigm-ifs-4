@@ -4,7 +4,7 @@ import { getStaffCategory } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import type { LeaveType, UploadedFile, LeaveBalance, UserChild } from '../../types';
+import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules } from '../../types';
 import { ArrowLeft, Clock } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -41,7 +41,7 @@ type LeaveRequestFormData = {
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
-    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction']).required('Leave type is required'),
+    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction', 'Permission']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required'),
     endDate: yup.string().required('End date is required')
         .test('is-after-start', 'End date must be on or after start date', function (value) {
@@ -62,38 +62,38 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
     }),
     // Correction validation
     correctionStatus: yup.string().when('leaveType', {
-        is: 'Correction',
-        then: schema => schema.required('Status is required for corrections'),
+        is: (val: string) => ['Correction', 'Permission'].includes(val),
+        then: schema => schema.required('Status is required for corrections or permissions'),
         otherwise: schema => schema.optional()
     }),
     punchIn: yup.string().when('leaveType', {
-        is: 'Correction',
+        is: (val: string) => ['Correction', 'Permission'].includes(val),
         then: schema => schema.required('Punch in time is required'),
         otherwise: schema => schema.optional()
     }),
     punchOut: yup.string().when('leaveType', {
-        is: 'Correction',
+        is: (val: string) => ['Correction', 'Permission'].includes(val),
         then: schema => schema.required('Punch out time is required'),
         otherwise: schema => schema.optional()
     }),
     locationName: yup.string().optional(),
     breakIn: yup.string().when(['leaveType', 'includeBreak'], {
-        is: (lt: string, ib: boolean) => lt === 'Correction' && ib === true,
+        is: (lt: string, ib: boolean) => ['Correction', 'Permission'].includes(lt) && ib === true,
         then: schema => schema.required('Break in time is required'),
         otherwise: schema => schema.optional()
     }),
     breakOut: yup.string().when(['leaveType', 'includeBreak'], {
-        is: (lt: string, ib: boolean) => lt === 'Correction' && ib === true,
+        is: (lt: string, ib: boolean) => ['Correction', 'Permission'].includes(lt) && ib === true,
         then: schema => schema.required('Break out time is required'),
         otherwise: schema => schema.optional()
     }),
     siteOtIn: yup.string().when(['leaveType', 'includeSiteOt'], {
-        is: (lt: string, ot: boolean) => lt === 'Correction' && ot === true,
+        is: (lt: string, ot: boolean) => ['Correction', 'Permission'].includes(lt) && ot === true,
         then: schema => schema.required('Site OT in time is required'),
         otherwise: schema => schema.optional()
     }),
     siteOtOut: yup.string().when(['leaveType', 'includeSiteOt'], {
-        is: (lt: string, ot: boolean) => lt === 'Correction' && ot === true,
+        is: (lt: string, ot: boolean) => ['Correction', 'Permission'].includes(lt) && ot === true,
         then: schema => schema.required('Site OT out time is required'),
         otherwise: schema => schema.optional()
     })
@@ -170,9 +170,9 @@ const ApplyLeave: React.FC = () => {
         fetchData();
     }, [user, watchLeaveType]);
 
-    // Sync endDate with startDate for corrections
+    // Sync endDate with startDate for corrections/permissions
     React.useEffect(() => {
-        if (watchLeaveType === 'Correction') {
+        if (['Correction', 'Permission'].includes(watchLeaveType)) {
             setValue('endDate', watchStartDate);
         }
     }, [watchStartDate, watchLeaveType, setValue]);
@@ -182,7 +182,7 @@ const ApplyLeave: React.FC = () => {
         return isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date(watchEndDate.replace(/-/g, '/')));
     }, [watchStartDate, watchEndDate]);
 
-    const showHalfDayOption = isSingleDay && watchLeaveType !== 'Correction';
+    const showHalfDayOption = isSingleDay && !['Correction', 'Permission'].includes(watchLeaveType);
     const showDoctorCertUpload = useMemo(() => {
         if (watchLeaveType !== 'Sick' || !watchStartDate || !watchEndDate) return false;
         const duration = differenceInCalendarDays(new Date(watchEndDate.replace(/-/g, '/')), new Date(watchStartDate.replace(/-/g, '/'))) + 1;
@@ -358,8 +358,8 @@ const ApplyLeave: React.FC = () => {
             }
 
             // Check balance before submitting (only for new requests)
-            // Skip balance check for 'Loss of Pay', 'WFH', and 'Correction'
-            if (!isEditMode && !['Loss of Pay', 'WFH', 'Correction'].includes(formData.leaveType)) {
+            // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
+            if (!isEditMode && !['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
                 const balance = await api.getLeaveBalancesForUser(user.id);
                 const startDate = new Date(formData.startDate.replace(/-/g, '/'));
                 const endDate = new Date(formData.endDate.replace(/-/g, '/'));
@@ -400,6 +400,95 @@ const ApplyLeave: React.FC = () => {
                     return;
                 }
             }
+            
+            // Check Limits for Permission
+            if (formData.leaveType === 'Permission') {
+                const { attendance } = useSettingsStore.getState();
+                const rules = (attendance as any)[userCategory] as StaffAttendanceRules;
+                
+                if (!rules?.enablePermission) {
+                    setToast({ message: 'Permissions are currently disabled by the administrator.', type: 'error' });
+                    return;
+                }
+
+                // Verify duration
+                const getMinutes = (timeStr: string) => {
+                    if (!timeStr) return 0;
+                    const [h, m] = timeStr.split(':').map(Number);
+                    return h * 60 + m;
+                };
+
+                const startMins = getMinutes(formData.punchIn || '00:00');
+                const endMins = getMinutes(formData.punchOut || '00:00');
+                let durationHours = (endMins - startMins) / 60;
+                if (durationHours < 0) durationHours += 24;
+
+                const maxHours = rules.maxPermissionDurationHours || 2;
+                if (durationHours > maxHours) {
+                    setToast({ message: `Permission requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
+                    return;
+                }
+
+                if (!isEditMode) {
+                    const currentMonthStart = formData.startDate.substring(0, 7);
+                    const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
+                    const monthPerms = allReqs.filter(r => 
+                        r.leaveType === 'Permission' && 
+                        r.status !== 'rejected' &&
+                        r.status !== 'withdrawn' &&
+                        r.startDate.startsWith(currentMonthStart)
+                    );
+
+                    const maxPerms = rules.maxPermissionsPerMonth || 3;
+                    if (monthPerms.length >= maxPerms) {
+                        setToast({ message: `You have reached the maximum allowed permissions (${maxPerms}) for this month.`, type: 'error' });
+                        return;
+                    }
+                }
+            }
+            
+            // Check Limits for Correction
+            if (formData.leaveType === 'Correction') {
+                const { attendance } = useSettingsStore.getState();
+                const rules = (attendance as any)[userCategory] as StaffAttendanceRules;
+                
+                if (rules?.enableCorrectionLimits) {
+                    // Verify duration
+                    const getMinutes = (timeStr: string) => {
+                        if (!timeStr) return 0;
+                        const [h, m] = timeStr.split(':').map(Number);
+                        return h * 60 + m;
+                    };
+
+                    const startMins = getMinutes(formData.punchIn || '00:00');
+                    const endMins = getMinutes(formData.punchOut || '00:00');
+                    let durationHours = (endMins - startMins) / 60;
+                    if (durationHours < 0) durationHours += 24;
+
+                    const maxHours = rules.maxCorrectionDurationHours || 2;
+                    if (durationHours > maxHours) {
+                        setToast({ message: `Correction requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
+                        return;
+                    }
+
+                    if (!isEditMode) {
+                        const currentMonthStart = formData.startDate.substring(0, 7);
+                        const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
+                        const monthCorrections = allReqs.filter(r => 
+                            r.leaveType === 'Correction' && 
+                            r.status !== 'rejected' &&
+                            r.status !== 'withdrawn' &&
+                            r.startDate.startsWith(currentMonthStart)
+                        );
+
+                        const maxCorrections = rules.maxCorrectionsPerMonth || 3;
+                        if (monthCorrections.length >= maxCorrections) {
+                            setToast({ message: `You have reached the maximum allowed corrections (${maxCorrections}) for this month.`, type: 'error' });
+                            return;
+                        }
+                    }
+                }
+            }
 
             // Sanitize payload to exclude internal UI-only fields from top-level DB columns
             const { 
@@ -411,7 +500,7 @@ const ApplyLeave: React.FC = () => {
             const basePayload: any = {
                 leaveType,
                 startDate,
-                endDate: leaveType === 'Correction' ? startDate : endDate,
+                endDate: ['Correction', 'Permission'].includes(leaveType) ? startDate : endDate,
                 dayOption,
                 reason,
                 doctorCertificate,
@@ -419,8 +508,8 @@ const ApplyLeave: React.FC = () => {
                 userName: user.name
             };
 
-            // Add correction details only for Correction type
-            if (leaveType === 'Correction') {
+            // Add correction details only for Correction and Permission types
+            if (['Correction', 'Permission'].includes(leaveType)) {
                 basePayload.correctionDetails = {
                     status: correctionStatus,
                     punchIn,
@@ -458,6 +547,7 @@ const ApplyLeave: React.FC = () => {
             case 'Child Care': return 'Child Care Leave';
             case 'WFH': return 'Work From Home (WFH)';
             case 'Correction': return 'Correction';
+            case 'Permission': return 'Request for Permission';
             default: return type;
         }
     };
@@ -468,18 +558,20 @@ const ApplyLeave: React.FC = () => {
         <div className={`min-h-screen bg-page ${isMobile ? '' : 'p-6'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             
-            <div className="w-full">
+            <div className={`w-full ${isMobile ? '' : 'md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
                 <header 
                     className={`p-4 flex items-center gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f]/80 backdrop-blur-lg border-b border-emerald-500/10' : 'mb-8'}`}
                     style={isMobile ? { paddingTop: 'calc(1rem + env(safe-area-inset-top))' } : {}}
                 >
-                    <Button 
-                        variant="secondary" 
-                        onClick={() => navigate(-1)} 
-                        className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                    >
-                        <ArrowLeft className="h-6 w-6" />
-                    </Button>
+                    {isMobile && (
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => navigate(-1)} 
+                            className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
+                        >
+                            <ArrowLeft className="h-6 w-6" />
+                        </Button>
+                    )}
                     <div>
                         <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg">
                             {isEditMode ? 'Edit Request' : `Applying for Leave`}
@@ -499,7 +591,7 @@ const ApplyLeave: React.FC = () => {
                     <form 
                         id="leave-form" 
                         onSubmit={handleSubmit(onSubmit)} 
-                        className="bg-[#0d2c18]/30 backdrop-blur-xl rounded-[2.5rem] p-8 border border-emerald-500/10 shadow-2xl space-y-8"
+                        className={`space-y-8 ${isMobile ? 'bg-[#0d2c18]/30 backdrop-blur-xl rounded-[2.5rem] p-8 border border-emerald-500/10 shadow-2xl' : ''}`}
                     >
                         <div className="space-y-6">
                             <Controller 
@@ -520,26 +612,27 @@ const ApplyLeave: React.FC = () => {
                                         {isFemale && userChildren.length > 0 && <option value="Child Care">Child Care</option>}
                                         <option value="WFH">Work From Home (WFH)</option>
                                         <option value="Correction">Request for Correction</option>
+                                        <option value="Permission">Request for Permission</option>
                                     </Select>
                                 )} 
                             />
 
                             {isMobile ? (
                                 <div className="space-y-6">
-                                    <div className={`grid gap-4 ${watchLeaveType === 'Correction' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                    <div className={`grid gap-4 ${['Correction', 'Permission'].includes(watchLeaveType) ? 'grid-cols-1' : 'grid-cols-2'}`}>
                                         <Controller
                                             name="startDate"
                                             control={control}
                                             render={({ field }) => (
                                                 <NativeDatePicker
-                                                    label={watchLeaveType === 'Correction' ? "Target Date" : "From"}
+                                                    label={['Correction', 'Permission'].includes(watchLeaveType) ? "Target Date" : "From"}
                                                     value={field.value}
                                                     onChange={(e) => field.onChange(e.target.value)}
                                                     error={errors.startDate?.message}
                                                 />
                                             )}
                                         />
-                                        {watchLeaveType !== 'Correction' && (
+                                        {!['Correction', 'Permission'].includes(watchLeaveType) && (
                                             <Controller
                                                 name="endDate"
                                                 control={control}
@@ -557,13 +650,13 @@ const ApplyLeave: React.FC = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <div className={`grid gap-4 ${watchLeaveType === 'Correction' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+                                <div className={`grid gap-4 ${['Correction', 'Permission'].includes(watchLeaveType) ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
                                     <Controller 
                                         name="startDate" 
                                         control={control} 
                                         render={({ field }) => (
                                             <DatePicker 
-                                                label={watchLeaveType === 'Correction' ? "Date" : "Start Date"} 
+                                                label={['Correction', 'Permission'].includes(watchLeaveType) ? "Date" : "Start Date"} 
                                                 id="startDate" 
                                                 value={field.value} 
                                                 onChange={field.onChange} 
@@ -571,7 +664,7 @@ const ApplyLeave: React.FC = () => {
                                             />
                                         )} 
                                     />
-                                    {watchLeaveType !== 'Correction' && (
+                                    {!['Correction', 'Permission'].includes(watchLeaveType) && (
                                         <Controller 
                                             name="endDate" 
                                             control={control} 
@@ -606,7 +699,7 @@ const ApplyLeave: React.FC = () => {
                                 />
                             )}
 
-                            {watchLeaveType === 'Correction' && (
+                            {['Correction', 'Permission'].includes(watchLeaveType) && (
                                 <div className="space-y-4 pt-4 border-t border-emerald-500/10">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <Controller 
@@ -630,7 +723,7 @@ const ApplyLeave: React.FC = () => {
                                                         <input 
                                                             {...field} 
                                                             placeholder={watch('correctionStatus') === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
-                                                            className="w-full p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-primary-text focus:ring-2 focus:ring-accent outline-none placeholder:text-white/10"
+                                                            className={`w-full p-3 rounded-xl border focus:ring-2 focus:ring-accent outline-none transition-all ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10 text-primary-text placeholder:text-white/10' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'}`}
                                                         />
                                                     )}
                                                 />
@@ -638,7 +731,7 @@ const ApplyLeave: React.FC = () => {
                                         )}
                                     </div>
 
-                                    <div className={`grid grid-cols-2 gap-4 bg-emerald-500/5 p-5 rounded-2xl border border-emerald-500/10 relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''} ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-gray-50 border-gray-100'}`}>
                                         {isFetchingLogs && (
                                             <div className="absolute inset-0 flex items-center justify-center z-10">
                                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
@@ -652,7 +745,7 @@ const ApplyLeave: React.FC = () => {
                                                     <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
                                                         <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
                                                     </label>
-                                                    <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                     {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
                                                 </div>
                                             )} 
@@ -665,7 +758,7 @@ const ApplyLeave: React.FC = () => {
                                                     <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
                                                         <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
                                                     </label>
-                                                    <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                     {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
                                                 </div>
                                             )} 
@@ -684,14 +777,14 @@ const ApplyLeave: React.FC = () => {
                                         </div>
 
                                         {watch('includeBreak') && (
-                                            <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-orange-500/5 border border-orange-500/20">
+                                            <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border ${isMobile ? 'bg-orange-500/5 border-orange-500/20' : 'bg-orange-50 border-orange-100'}`}>
                                                 <Controller 
                                                     name="breakIn" 
                                                     control={control} 
                                                     render={({ field }) => (
                                                         <div className="space-y-1">
                                                             <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break In</label>
-                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                            <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                             {errors.breakIn && <p className="text-xs text-red-500">{errors.breakIn.message}</p>}
                                                         </div>
                                                     )} 
@@ -702,7 +795,7 @@ const ApplyLeave: React.FC = () => {
                                                     render={({ field }) => (
                                                         <div className="space-y-1">
                                                             <label className="text-xs font-semibold text-muted uppercase tracking-wider">Break Out</label>
-                                                            <input type="time" {...field} className="w-full p-2.5 rounded-lg bg-[#041b0f] border border-emerald-500/20 text-white text-sm" />
+                                                            <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                             {errors.breakOut && <p className="text-xs text-red-500">{errors.breakOut.message}</p>}
                                                         </div>
                                                     )} 
@@ -724,7 +817,7 @@ const ApplyLeave: React.FC = () => {
                                             </div>
 
                                             {watch('includeSiteOt') && (
-                                                <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-purple-500/5 border border-purple-500/20">
+                                                <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border ${isMobile ? 'bg-purple-500/5 border-purple-500/20' : 'bg-purple-50 border-purple-100'}`}>
                                                     <Controller 
                                                         name="siteOtIn" 
                                                         control={control} 
@@ -733,7 +826,7 @@ const ApplyLeave: React.FC = () => {
                                                                 <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
                                                                     <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT In
                                                                 </label>
-                                                                <input type="time" {...field} className="w-full p-3 rounded-xl bg-[#041b0f] border border-emerald-500/20 text-white text-sm outline-none" />
+                                                                <input type="time" {...field} className={`w-full p-3 rounded-xl border text-sm outline-none ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                                 {errors.siteOtIn && <p className="text-xs text-red-500">{errors.siteOtIn.message}</p>}
                                                             </div>
                                                         )} 
@@ -746,7 +839,7 @@ const ApplyLeave: React.FC = () => {
                                                                 <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
                                                                     <Clock className="w-3.5 h-3.5 text-purple-500" /> Site OT Out
                                                                 </label>
-                                                                <input type="time" {...field} className="w-full p-3 rounded-xl bg-[#041b0f] border border-emerald-500/20 text-white text-sm outline-none" />
+                                                                <input type="time" {...field} className={`w-full p-3 rounded-xl border text-sm outline-none ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
                                                                 {errors.siteOtOut && <p className="text-xs text-red-500">{errors.siteOtOut.message}</p>}
                                                             </div>
                                                         )} 
@@ -766,7 +859,7 @@ const ApplyLeave: React.FC = () => {
                                     {...register('reason')} 
                                     rows={4} 
                                     placeholder="Please provide details about your leave request..."
-                                    className={`w-full p-5 rounded-[1.5rem] bg-emerald-500/5 border border-emerald-500/10 text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all placeholder:text-white/10 ${errors.reason ? 'border-red-500' : ''}`} 
+                                    className={`w-full p-5 rounded-2xl border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10 placeholder:text-white/10' : 'bg-white border-gray-200 placeholder:text-gray-400'} ${errors.reason ? 'border-red-500' : ''}`} 
                                 />
                                 {errors.reason && <p className="mt-2 text-xs text-red-500 font-bold">{errors.reason.message}</p>}
                             </div>
@@ -790,9 +883,9 @@ const ApplyLeave: React.FC = () => {
                             )}
                         </div>
 
-                        <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-4'}`}>
-                            <Button type="button" variant="danger" onClick={() => navigate(-1)} className="flex-1">Cancel</Button>
-                            <Button type="submit" form="leave-form" className="flex-1">{isEditMode ? 'Update Request' : 'Submit'}</Button>
+                        <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-6 justify-end'}`}>
+                            <Button type="button" variant="danger" onClick={() => navigate(-1)} className="flex-1 md:flex-none md:w-32">Cancel</Button>
+                            <Button type="submit" form="leave-form" className="flex-1 md:flex-none md:w-48">{isEditMode ? 'Update Request' : 'Submit'}</Button>
                         </div>
                     </form>
                 </div>

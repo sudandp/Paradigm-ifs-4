@@ -15,6 +15,36 @@ const NOTIFICATION_IDS = {
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Detect if running as an iOS standalone/PWA (Add to Home Screen) app.
+ * navigator.standalone is an iOS-only property, true when launched from Home Screen.
+ */
+const isIosStandalone = (): boolean => {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isStandalone =
+        (window.navigator as any).standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches;
+    return isIOS && isStandalone;
+};
+
+/**
+ * Safely query the Permissions API with fallback for unsupported browsers.
+ * iOS Safari (especially in PWA/standalone mode) does NOT support
+ * navigator.permissions.query for camera/geolocation — it throws or returns null.
+ * Returns null when unsupported (caller should treat null as "don't block").
+ */
+const safePermissionQuery = async (name: string): Promise<PermissionState | null> => {
+    try {
+        if (!navigator.permissions || typeof navigator.permissions.query !== 'function') {
+            return null;
+        }
+        const result = await navigator.permissions.query({ name: name as PermissionName });
+        return result.state;
+    } catch (_e) {
+        return null;
+    }
+};
+
+/**
  * Robustly check if all required permissions are granted.
  * Categories: Camera, Location, Notifications, Nearby Devices, Photos/Videos, Contacts, Music/Audio
  */
@@ -22,30 +52,24 @@ export const checkRequiredPermissions = async () => {
     // ─── Web Platform ────────────────────────────────────────────────────────
     if (!Capacitor.isNativePlatform()) {
         const missing: string[] = [];
-        
-        // 1. Camera check
-        let camStatus = 'prompt';
-        try {
-            if (navigator.permissions && (navigator.permissions as any).query) {
-                const res = await navigator.permissions.query({ name: 'camera' as any }).catch(() => null);
-                if (res) camStatus = res.state;
-            }
-        } catch (e) {
-            console.warn('[PermissionUtils] Web: Camera permission query UNSUPPORTED');
-        }
-        if (camStatus !== 'granted') missing.push('Camera');
 
-        // 2. Location check
-        let locStatus = 'prompt';
-        try {
-            if (navigator.permissions && (navigator.permissions as any).query) {
-                const res = await navigator.permissions.query({ name: 'geolocation' as any }).catch(() => null);
-                if (res) locStatus = res.state;
-            }
-        } catch (e) {
-            console.warn('[PermissionUtils] Web: Location permission query UNSUPPORTED');
+        // ── iOS Standalone (Add to Home Screen) Fast-Path ──────────────────
+        // On iOS PWA, the Permissions API is unsupported or returns unreliable
+        // results, and querying geolocation can trigger repeated popups.
+        // We bypass all web permission pre-checks and let the app start normally.
+        // Actual permission prompts will appear just-in-time when features are used.
+        if (isIosStandalone()) {
+            console.log('[PermissionUtils] iOS standalone detected — bypassing web permission pre-check.');
+            return { allGranted: true, missing: [] };
         }
-        if (locStatus !== 'granted') missing.push('Location');
+
+        // 1. Camera check — safe query, defaults to not-blocking if unsupported
+        const camStatus = await safePermissionQuery('camera');
+        if (camStatus !== null && camStatus !== 'granted') missing.push('Camera');
+
+        // 2. Location check — safe query, defaults to not-blocking if unsupported
+        const locStatus = await safePermissionQuery('geolocation');
+        if (locStatus !== null && locStatus !== 'granted') missing.push('Location');
 
         // 3. Notifications check (Unified)
         const notifPermission = (window as any).Notification?.permission || 'default';
@@ -132,10 +156,19 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
     };
 
     if (!Capacitor.isNativePlatform()) {
-        console.log('[PermissionUtils] Requesting permissions on Web (Optimized Flow)...');
+    
+    console.log('[PermissionUtils] Requesting permissions on Web (Optimized Flow)...');
         
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const webReqDelay = isSafari ? 400 : 800;
+        // On iOS standalone (PWA), we don't pre-request permissions.
+        // Permissions are requested just-in-time via actual feature use
+        // (e.g., geolocation on punch-in) to prevent iOS popup loops.
+        if (isIosStandalone()) {
+            console.log('[PermissionUtils] iOS standalone — skipping web permission request sequence.');
+            if (onProgress) onProgress('', []);
+            return;
+        }
 
         // 1. Notifications
         try {
@@ -167,7 +200,9 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
             }
         } catch (e) { console.error('Web Camera req failed', e); }
 
-        // 3. Location
+        // 3. Location — Only request if permission is NOT already granted or denied.
+        // On iOS Safari (in-browser), requesting this will show the native prompt.
+        // We NEVER call this in iOS standalone mode (handled by early return above).
         try {
             let { missing } = await checkRequiredPermissions();
             if (missing.includes('Location')) {

@@ -78,7 +78,7 @@ const MobileLayout: React.FC = () => {
                 style={{ 
                     paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit'))
                         ? 'env(safe-area-inset-bottom)' 
-                        : 'calc(9.1rem + env(safe-area-inset-bottom))' 
+                        : 'calc(7rem + max(0.5rem, env(safe-area-inset-bottom)))' 
                 }}
             >
                 <Outlet />

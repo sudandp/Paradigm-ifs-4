@@ -1,6 +1,6 @@
 // Trigger Rebuild: 2026-01-08 18:25
 // App.tsx
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
@@ -857,16 +857,20 @@ const App: React.FC = () => {
   const isIOSUA = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isLikelyMobile = isAndroidUA || isIOSUA || Capacitor.isNativePlatform();
 
+  // Stable callback — must not be re-created on every render to avoid
+  // re-running Splash's initialization effect (which could cause a loop).
+  const handleSplashComplete = useCallback(() => {
+    console.log('[App] Splash sequence complete.');
+    setPermissionsComplete(true);
+  }, []);
+
   // While the initial authentication check OR the permissions check is running, show the splash screen.
   // This prevents the router from rendering and making incorrect navigation decisions
   // and ensures push notification and other dependent services have the required state to initialize.
   if (!isInitialized || !permissionsComplete) {
     return (
       <Splash 
-        onComplete={() => {
-          console.log('[App] Splash sequence complete.');
-          setPermissionsComplete(true);
-        }} 
+        onComplete={handleSplashComplete}
       />
     );
   }

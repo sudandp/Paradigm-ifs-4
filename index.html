@@ -124,38 +124,44 @@
     <div id="modal-root"></div>
     <script type="module" src="/index.tsx"></script>
     <script>
-      // Service worker recovery logic: Unregister existing workers if they are in a broken state
+      // Service Worker recovery logic.
+      // CRITICAL iOS PWA FIX: localStorage can be cleared between cold launches on
+      // iOS Home Screen PWA mode (standalone). We use a TWO-LAYER guard:
+      //   1. sessionStorage — never persists across cold launches, acts as a
+      //      "already-reloaded-this-session" guard to prevent infinite reloads.
+      //   2. localStorage — persists across launches when iOS allows it.
+      // If both are absent we unregister broken SWs and reload ONCE per session.
       if ("serviceWorker" in navigator) {
-        const FIX_KEY = "pifs_sw_fix_v5";
-        if (!localStorage.getItem(FIX_KEY)) {
-          navigator.serviceWorker.getRegistrations().then(
-            (registrations) => {
-              for (let registration of registrations) {
-                registration.unregister();
-                console.log(
-                  "Unregistered legacy service worker for fix update (" + registration.scope + ")",
-                );
-              }
-              localStorage.setItem(FIX_KEY, "true");
-              
-              console.log("Cleanup complete. Reloading...");
-              // Reload to ensure clean registration
-              window.location.reload();
-            },
-          );
-        }
+        var FIX_KEY = "pifs_sw_fix_v5";
+        var SESSION_RELOAD_KEY = "pifs_sw_reloaded_session";
 
-        /* Commented out to avoid conflict with OneSignal Service Worker registration
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js")
-            .then((reg) =>
-              console.log("Service Worker registered:", reg)
-            )
-            .catch((err) =>
-              console.log("Service Worker registration failed:", err)
-            );
-        });
-        */
+        // Check if we already reloaded in THIS session (prevents infinite loop)
+        var alreadyReloadedThisSession = sessionStorage.getItem(SESSION_RELOAD_KEY);
+        // Check if the fix has ever been applied (persists across sessions when possible)
+        var fixApplied = localStorage.getItem(FIX_KEY);
+
+        if (!fixApplied && !alreadyReloadedThisSession) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            var hadRegistrations = registrations.length > 0;
+            for (var i = 0; i < registrations.length; i++) {
+              registrations[i].unregister();
+              console.log("[PWA] Unregistered legacy SW: " + registrations[i].scope);
+            }
+            // Mark as done in BOTH storages before reloading
+            try { localStorage.setItem(FIX_KEY, "true"); } catch(e) {}
+            try { sessionStorage.setItem(SESSION_RELOAD_KEY, "true"); } catch(e) {}
+            if (hadRegistrations) {
+              console.log("[PWA] SW cleanup complete. Reloading once...");
+              window.location.reload();
+            }
+          }).catch(function(e) {
+            // On error, still mark session as handled to prevent loops
+            try { sessionStorage.setItem(SESSION_RELOAD_KEY, "true"); } catch(e2) {}
+          });
+        } else if (!fixApplied) {
+          // Session guard prevented reload — persist the fix flag now
+          try { localStorage.setItem(FIX_KEY, "true"); } catch(e) {}
+        }
       }
     </script>
   </body>

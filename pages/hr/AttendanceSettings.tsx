@@ -564,6 +564,66 @@ const AttendanceSettings: React.FC = () => {
                             checked={currentRules.enableViolationBlocking ?? true}
                             onChange={(e) => handleSettingChange('enableViolationBlocking', e.target.checked)}
                         />
+                        <Checkbox
+                            id="enablePermission"
+                            label="Enable Permissions"
+                            description="Allow users to request short permissions (e.g. arriving late or leaving early) up to a specific time limit. Approval required from reporting manager."
+                            checked={currentRules.enablePermission || false}
+                            onChange={(e) => handleSettingChange('enablePermission', e.target.checked)}
+                        />
+                        {currentRules.enablePermission && (
+                            <div className="pl-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Input
+                                    label="Max Permission Duration (Hours)"
+                                    id="maxPermissionDurationHours"
+                                    type="number"
+                                    min="0.5"
+                                    step="0.5"
+                                    value={currentRules.maxPermissionDurationHours || 2}
+                                    onChange={(e) => handleSettingChange('maxPermissionDurationHours', parseFloat(e.target.value) || 2)}
+                                    description="Maximum duration per permission request."
+                                />
+                                <Input
+                                    label="Max Permissions Per Month"
+                                    id="maxPermissionsPerMonth"
+                                    type="number"
+                                    min="1"
+                                    value={currentRules.maxPermissionsPerMonth || 3}
+                                    onChange={(e) => handleSettingChange('maxPermissionsPerMonth', parseInt(e.target.value) || 3)}
+                                    description="Maximum number of permission requests allowed per month."
+                                />
+                            </div>
+                        )}
+                        <Checkbox
+                            id="enableCorrectionLimits"
+                            label="Enable Correction Limits"
+                            description="Apply a specific duration limit and monthly quota to correction requests."
+                            checked={currentRules.enableCorrectionLimits || false}
+                            onChange={(e) => handleSettingChange('enableCorrectionLimits', e.target.checked)}
+                        />
+                        {currentRules.enableCorrectionLimits && (
+                            <div className="pl-8 grid grid-cols-1 sm:grid-cols-2 gap-4 border-l-2 border-red-500 rounded-md">
+                                <Input
+                                    label="Max Correction Duration (Hours)"
+                                    id="maxCorrectionDurationHours"
+                                    type="number"
+                                    min="0.5"
+                                    step="0.5"
+                                    value={currentRules.maxCorrectionDurationHours || 2}
+                                    onChange={(e) => handleSettingChange('maxCorrectionDurationHours', parseFloat(e.target.value) || 2)}
+                                    description="Maximum duration per correction request."
+                                />
+                                <Input
+                                    label="Max Corrections Per Month"
+                                    id="maxCorrectionsPerMonth"
+                                    type="number"
+                                    min="1"
+                                    value={currentRules.maxCorrectionsPerMonth || 3}
+                                    onChange={(e) => handleSettingChange('maxCorrectionsPerMonth', parseInt(e.target.value) || 3)}
+                                    description="Maximum number of correction requests allowed per month."
+                                />
+                            </div>
+                        )}
                         {currentRules.enableOtToCompOffConversion && (
                             <div className="pl-8 w-full max-w-xs">
                                 <Input
@@ -1272,7 +1332,7 @@ const AttendanceSettings: React.FC = () => {
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Recurring Holidays</h3>
                     <div className="p-4 bg-page rounded-lg">
                         <h4 className="font-semibold mb-2">Add Recurring Holiday</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
                             <Select label="Occurrence" value={newRecurringN} onChange={e => setNewRecurringN(parseInt(e.target.value))}>
                                 <option value={1}>1st</option>
                                 <option value={2}>2nd</option>
@@ -1303,7 +1363,7 @@ const AttendanceSettings: React.FC = () => {
                                         setToast({ message: 'Failed to add recurring holiday.', type: 'error' });
                                     }
                                 }} 
-                                className="w-full sm:w-auto h-[46px] px-6 text-sm"
+                                className="w-full sm:w-auto py-2 px-6"
                             >
                                 <Plus className="mr-2 h-4 w-4" /> Add Rule
                             </Button>
@@ -1370,12 +1430,12 @@ const AttendanceSettings: React.FC = () => {
                                 )}
                             </div>
                         )}
-                        <form onSubmit={handleAddHoliday} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                        <form onSubmit={handleAddHoliday} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
                             <Input label="Holiday Name" id="holidayName" value={newHolidayName} onChange={e => setNewHolidayName(e.target.value)} />
                             <DatePicker label="Date" id="holidayDate" value={newHolidayDate} onChange={setNewHolidayDate} />
                             <Button 
                                 type="submit" 
-                                className="w-full sm:w-auto h-[46px] px-8 text-sm"
+                                className="w-full sm:w-auto py-2 px-6"
                                 disabled={currentHolidays.length >= (currentRules.enableCustomHolidays ? (currentRules.adminAllocatedHolidays || 5) : (currentRules.maxHolidaysPerCategory || 10))}
                             >
                                 <Plus className="mr-2 h-4 w-4" /> Add
@@ -1445,7 +1505,7 @@ const AttendanceSettings: React.FC = () => {
                                 <h4 className="text-sm font-semibold text-emerald-600 mb-4 flex items-center">
                                     <Plus className="mr-2 h-4 w-4" /> {editingPoolIndex !== null ? 'Edit Pool Holiday' : 'Add to Selection Pool'}
                                 </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                                <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
                                     <Input 
                                         label="Holiday Name" 
                                         value={newPoolHolidayName} 
@@ -1464,7 +1524,7 @@ const AttendanceSettings: React.FC = () => {
                                     <div className="flex gap-2">
                                         <Button 
                                             onClick={editingPoolIndex !== null ? handleSavePoolEdit : handleAddPoolHoliday}
-                                            className="flex-1 h-[46px] text-sm"
+                                            className="w-full sm:w-auto py-2 px-6"
                                         >
                                             {editingPoolIndex !== null ? 'Update' : 'Add to Pool'}
                                         </Button>
@@ -1476,7 +1536,7 @@ const AttendanceSettings: React.FC = () => {
                                                     setNewPoolHolidayName('');
                                                     setNewPoolHolidayDate('');
                                                 }}
-                                                className="h-[46px] px-4"
+                                                className="py-2 px-6"
                                             >
                                                 Cancel
                                             </Button>

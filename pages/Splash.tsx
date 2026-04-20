@@ -1,39 +1,67 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import Logo from '../components/ui/Logo';
 import PermissionsPrimer from '../components/PermissionsPrimer';
 
 import { checkRequiredPermissions } from '../utils/permissionUtils';
 
+/** Returns true when running as an iOS Add-to-Home-Screen PWA. */
+const isIosStandalonePWA = (): boolean => {
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return isIOS && (
+    (window.navigator as any).standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches
+  );
+};
+
 interface SplashProps {
   onComplete: () => void;
 }
 
 const Splash: React.FC<SplashProps> = ({ onComplete }) => {
-  const [showPrimer, setShowPrimer] = useState(false);
+  // Use a ref so we never re-run the splash init effect when the parent
+  // re-renders and recreates the onComplete inline arrow function.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  // showPrimer is either 'yes', 'no', or 'pending'
+  const [showPrimer, setShowPrimer] = React.useState<'pending' | 'show' | 'skip'>('pending');
 
   useEffect(() => {
     const initializePermissions = async () => {
-      // Check all required permissions (Camera, Location, Notifications)
+      // iOS Standalone PWA fast-path:
+      // The Permissions API is unreliable/unsupported on iOS Safari PWA.
+      // Showing PermissionsPrimer there causes an infinite loop.
+      // Skip directly to app launch — iOS will prompt for permissions on demand.
+      if (isIosStandalonePWA()) {
+        console.log('[Splash] iOS standalone PWA detected — skipping permission primer.');
+        const timer = setTimeout(() => { onCompleteRef.current(); }, 1800);
+        return () => clearTimeout(timer);
+      }
+
+      // Non-iOS-PWA path: check permissions normally
       const { allGranted } = await checkRequiredPermissions();
       
-      if (!allGranted) {
-        // Show the permission bridge if anything is missing
-        setShowPrimer(true);
+      if (!allGranted && !Capacitor.isNativePlatform()) {
+        // Web browser (non-iOS-PWA): show the permission bridge
+        setShowPrimer('show');
+      } else if (!allGranted && Capacitor.isNativePlatform()) {
+        // Native mobile: show permission primer
+        setShowPrimer('show');
       } else {
-        // All set, complete splash after a short animation time
-        const timer = setTimeout(() => {
-          onComplete();
-        }, 2200);
+        // All permissions already granted — skip primer
+        setShowPrimer('skip');
+        const timer = setTimeout(() => { onCompleteRef.current(); }, 2200);
         return () => clearTimeout(timer);
       }
     };
 
     initializePermissions();
-  }, [onComplete]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — only run once on mount
 
-  if (showPrimer) {
-    return <PermissionsPrimer onComplete={onComplete} />;
+  if (showPrimer === 'show') {
+    return <PermissionsPrimer onComplete={() => onCompleteRef.current()} />;
   }
 
   return (

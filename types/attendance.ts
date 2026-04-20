@@ -1,3 +1,5 @@
+import { UploadedFile } from './common';
+
 export type AttendanceEventType = 'punch-in' | 'punch-out' | 'break-in' | 'break-out' | 'site-ot-in' | 'site-ot-out';
 
 export interface AttendanceEvent {
@@ -158,6 +160,14 @@ export interface StaffAttendanceRules {
   quarterDayHours?: number;            // Hours threshold for 1/4P status (default: 2)
   weekendPresentThreshold?: number;    // Min days present in week to earn W/O (default: 3)
   enableHoursBasedFallback?: boolean;  // For field/site: if site tracking returns A but hours exist, use hours (default: true)
+  // Short Permission Leaves
+  enablePermission?: boolean;
+  maxPermissionDurationHours?: number;
+  maxPermissionsPerMonth?: number;
+  // Correction Limits
+  enableCorrectionLimits?: boolean;
+  maxCorrectionDurationHours?: number;
+  maxCorrectionsPerMonth?: number;
   // --- Shift Management (Site Staff) ---
   enableShiftManagement?: boolean;     // When true, shifts are auto-detected by punch-in time
   siteShifts?: SiteShiftDefinition[];  // Configured shift windows
@@ -308,7 +318,7 @@ export interface DailyAttendanceRecord {
 
 // Types for Leave Management
 
-export type LeaveType = 'Earned' | 'Sick' | 'Floating' | 'Comp Off' | 'Loss of Pay' | 'Maternity' | 'Child Care' | 'Pink Leave' | 'WFH' | 'Correction';
+export type LeaveType = 'Earned' | 'Sick' | 'Floating' | 'Comp Off' | 'Loss of Pay' | 'Maternity' | 'Child Care' | 'Pink Leave' | 'WFH' | 'Correction' | 'Permission';
 
 export type LeaveRequestStatus = 'pending_manager_approval' | 'pending_hr_confirmation' | 'pending_admin_correction' | 'correction_made' | 'approved' | 'rejected' | 'cancelled' | 'withdrawn';
 
