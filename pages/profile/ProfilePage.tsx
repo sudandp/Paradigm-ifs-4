@@ -12,10 +12,12 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import { format } from 'date-fns';
 import Modal from '../../components/ui/Modal';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
@@ -59,6 +61,15 @@ const ProfilePage: React.FC = () => {
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
+
+    // Haptic feedback helper
+    const triggerHaptic = async (style: ImpactStyle = ImpactStyle.Medium) => {
+        try {
+            await Haptics.impact({ style });
+        } catch (e) {
+            // Silently fail if not on native
+        }
+    };
 
     const [isSaving, setIsSaving] = useState(false);
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
@@ -457,441 +468,464 @@ const ProfilePage: React.FC = () => {
 
     if (isMobileView) {
         return (
-            <div className="p-4 space-y-8 md:bg-transparent bg-[#041b0f]">
+            <div className="p-4 space-y-8 md:bg-transparent bg-[#041b0f] min-h-screen overflow-x-hidden relative">
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-                <div className="flex flex-col items-center text-center gap-4">
-                    <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} />
-                    <div className="space-y-1">
-                        <h2 className="text-2xl font-bold text-white">{user.name}</h2>
-                        <p className="text-emerald-400/90 font-medium text-sm">{user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                {/* Editorial Watermark Background */}
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 opacity-[0.03] text-[120px] font-black text-white pointer-events-none select-none uppercase tracking-tighter leading-none z-0 overflow-hidden w-full text-center whitespace-nowrap">
+                    {user.role.replace(/_/g, ' ')}
+                </div>
+
+                {/* Premium Header Section */}
+                <div className="flex flex-col items-center text-center gap-6 relative z-10 pt-6">
+                    <div className="relative flex items-center justify-center">
+                        {/* Breathing Status Ring */}
+                        <motion.div 
+                            animate={{ scale: [1, 1.1, 1], opacity: [0.2, 0.4, 0.2] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                            className={`absolute w-40 h-40 rounded-full blur-2xl ${effectivelyCheckedIn ? 'bg-emerald-500/50' : 'bg-rose-500/30'}`}
+                        />
+                        <div className="relative z-10 w-40 h-40 flex items-center justify-center">
+                            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
+                                <motion.circle
+                                    cx="50%"
+                                    cy="50%"
+                                    r="45%"
+                                    fill="none"
+                                    stroke={effectivelyCheckedIn ? '#dcfce7' : '#fda4af'}
+                                    strokeWidth="2"
+                                    strokeDasharray="6 4"
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+                                    className="opacity-70"
+                                />
+                            </svg>
+                            <div className="relative z-10 w-28 h-28 rounded-2xl overflow-hidden flex items-center justify-center">
+                                <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} hideControls={true} />
+                            </div>
+                        </div>
                     </div>
+                    
+                    <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-4"
+                    >
+                        <div className="space-y-1">
+                            <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+                                {user.name.split(' ')[0]}<span className="text-emerald-500">.</span>
+                            </h2>
+                            <div className="flex items-center justify-center gap-2">
+                                 <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase tracking-[0.2em] border border-emerald-500/20 shadow-lg shadow-black/20">
+                                    {user.role.replace(/_/g, ' ')}
+                                 </span>
+                                 {effectivelyCheckedIn && (
+                                    <span className="flex items-center gap-1.5 text-[9px] font-black text-emerald-400 tracking-widest bg-black/40 px-2 py-1 rounded-full border border-emerald-500/10">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                                        LIVE
+                                    </span>
+                                 )}
+                            </div>
+                        </div>
+
+                        {/* Custom Avatar Controls */}
+                        <div className="flex items-center justify-center gap-2">
+                            <button 
+                                onClick={() => document.getElementById('avatar-upload')?.click()}
+                                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:bg-white/10"
+                            >
+                                <Edit className="w-3 h-3 text-emerald-400" />
+                                Change
+                            </button>
+                            <button 
+                                onClick={() => document.getElementById('avatar-hidden-capture-btn')?.click()}
+                                className="px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:bg-rose-500/20"
+                            >
+                                <Camera className="w-3 h-3" />
+                                Capture
+                            </button>
+                        </div>
+                    </motion.div>
                 </div>
 
                 <div className="space-y-6">
-                    <section>
-                        <h3 className="fo-section-title mb-4">Profile Details</h3>
-                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
-                            <Input label="Full Name" id="name" error={profileErrors.name?.message} registration={register('name')} autoComplete="name" />
-                            <Input label="Email Address" id="email" type="email" error={profileErrors.email?.message} registration={register('email')} readOnly className="!bg-gray-700/50" autoComplete="email" />
-                            <Input label="Phone Number" id="phone" type="tel" error={profileErrors.phone?.message} registration={register('phone')} autoComplete="tel" />
-                            <div className="space-y-1">
-                                <label htmlFor="gender" className="block text-sm font-medium text-gray-300">Gender</label>
-                                <select id="gender" {...register('gender')} className="form-input !bg-[#0d2c18] !border-emerald-500/20 !text-white w-full">
-                                    <option value="" disabled>Select Gender</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                                {profileErrors.gender && <p className="text-red-500 text-xs mt-1">{profileErrors.gender.message}</p>}
-                            </div>
-                            <div className="flex justify-end pt-2"><Button type="submit" isLoading={isSaving} disabled={!isDirty}>Save Changes</Button></div>
-                        </form>
-                    </section>
- 
-                    <section className="bg-emerald-500/5 rounded-2xl border border-emerald-500/10 p-5 mt-4">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
-                                <Lock className="h-5 w-5" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white">Authentication Passcode</h3>
-                        </div>
-                        <div className="space-y-6">
-                            <p className="text-sm text-gray-400/80 leading-relaxed">Update your 4-digit numeric passcode for secure access. This is used for attendance recording.</p>
-                            
-                            <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                <Input 
-                                    label="Current Passcode" 
-                                    id="oldPasscode" 
-                                    type="password" 
-                                    inputMode="numeric"
-                                    maxLength={4}
-                                    placeholder="Enter current 4 digits"
-                                    registration={registerPasscode('oldPasscode')}
-                                    error={passcodeErrors.oldPasscode?.message}
-                                />
-                                
-                                <div className="space-y-4 pt-4 border-t border-emerald-500/10">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <Input 
-                                            label="New Passcode" 
-                                            id="newPasscode" 
-                                            type="password" 
-                                            inputMode="numeric"
-                                            maxLength={4}
-                                            placeholder="Enter new 4 digits"
-                                            registration={registerPasscode('newPasscode')}
-                                            error={passcodeErrors.newPasscode?.message}
-                                        />
-                                        
-                                        <Input 
-                                            label="Confirm New Passcode" 
-                                            id="confirmPasscode" 
-                                            type="password" 
-                                            inputMode="numeric"
-                                            maxLength={4}
-                                            placeholder="Confirm new 4 digits"
-                                            registration={registerPasscode('confirmPasscode')}
-                                            error={passcodeErrors.confirmPasscode?.message}
-                                        />
-                                    </div>
-                                </div>
 
-                                <Button 
-                                    type="submit"
-                                    isLoading={isSavingPasscode}
-                                    disabled={!isPasscodeDirty}
-                                    className="w-full"
-                                >
-                                    Update Passcode
-                                </Button>
-                            </form>
-
-                            <div className="flex items-center gap-2 text-[10px] text-emerald-400/60 mt-1">
-                                <Info className="h-3 w-3" />
-                                <span>Contact Admin if you forgot your current passcode.</span>
-                            </div>
-                        </div>
-                    </section>
 
 
                     {user.role !== 'management' && (
-                        <section className={`relative transition-all duration-500 ${isOnBreak ? 'ring-2 ring-rose-500 ring-offset-2 ring-offset-[#041b0f] rounded-2xl' : ''}`}>
-                            {isOnBreak && (
-                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 bg-rose-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg shadow-rose-900/50 animate-pulse uppercase tracking-tighter">
-                                    Active Break
+                        <section className="relative">
+                            <div className="flex items-center justify-between mb-6 px-2">
+                                <h3 className="text-lg font-black text-white/90 uppercase tracking-widest flex items-center gap-2">
+                                    <Clock className="h-5 w-5 text-emerald-500" /> TIMELINE
+                                </h3>
+                                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                                    {format(new Date(), 'dd MMM yyyy')}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-4 px-2">
+                                {/* Vertical Flux Line */}
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-3 h-3 rounded-full border-2 ${lastCheckInTime ? 'bg-emerald-500 border-emerald-300' : 'bg-gray-800 border-gray-700'}`} />
+                                    <div className="w-[2px] flex-1 bg-gradient-to-b from-emerald-500/50 via-blue-500/50 to-rose-500/50 my-1 rounded-full opacity-20" />
+                                    <div className={`w-3 h-3 rounded-full border-2 ${lastCheckOutTime ? 'bg-rose-500 border-rose-300' : 'bg-gray-800 border-gray-700'}`} />
+                                </div>
+
+                                <div className="flex-1 space-y-6">
+                                    {/* Temporal Nodes */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-black text-emerald-500/70 uppercase">First Entry</p>
+                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckInTime)}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-black text-rose-500/70 uppercase">Last Exit</p>
+                                            <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckOutTime)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Accumulation Stats */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Zap className="h-3 w-3 text-emerald-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Work Vol.</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {totalWorkingDurationToday > 0 
+                                                    ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m` 
+                                                    : '0.0h'}
+                                            </p>
+                                         </div>
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Clock className="h-3 w-3 text-blue-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Break Vol.</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {totalBreakDurationToday > 0 
+                                                    ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m` 
+                                                    : '0.0h'}
+                                            </p>
+                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {/* ═══ COMMAND CENTER ═══ */}
+                    {user.role !== 'management' && (
+                        <section className="flex flex-col items-center justify-center py-8 relative">
+                            {/* ── The Punch Orb ── */}
+                            {isAttendanceLoading ? (
+                                <div className="w-40 h-40 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                                    <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+                                </div>
+                            ) : (
+                                <div className="relative flex items-center justify-center">
+                                    {/* Orbital Background Rings - Moved inside center container */}
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] z-0">
+                                        <motion.div 
+                                            animate={{ rotate: 360 }}
+                                            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
+                                            className="w-56 h-56 border border-dashed border-emerald-500 rounded-full" 
+                                        />
+                                        <motion.div 
+                                            animate={{ rotate: -360 }}
+                                            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                                            className="absolute w-72 h-72 border border-dashed border-emerald-300 rounded-full" 
+                                        />
+                                    </div>
+                                    <motion.button
+                                        whileTap={{ scale: 0.93 }}
+                                        onClick={() => {
+                                            triggerHaptic(ImpactStyle.Heavy);
+                                            if (isPunchBlocked) {
+                                                if (unlockRequestStatus === 'pending') return;
+                                                navigate('/attendance/request-unlock');
+                                                return;
+                                            }
+                                            if (isCheckedIn) navigate('/attendance/check-out?workType=office');
+                                            else navigate('/attendance/check-in?workType=office');
+                                        }}
+                                        disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending')}
+                                        className={`
+                                            relative w-40 h-40 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl overflow-hidden
+                                            ${isOnBreak || isSubmittingAttendance ? 'opacity-50 grayscale cursor-not-allowed' : ''}
+                                            ${effectivelyCheckedIn 
+                                                ? 'bg-gradient-to-br from-[#1a0a0a] to-[#0a0505] border-[3px] border-rose-500/40' 
+                                                : isPunchBlocked 
+                                                    ? 'bg-gradient-to-br from-amber-600 to-orange-800 border-[3px] border-amber-400/30'
+                                                    : 'bg-gradient-to-br from-emerald-500 to-teal-700 border-[3px] border-[#dcfce7]/30'
+                                            }
+                                        `}
+                                    >
+                                        <motion.div 
+                                            animate={{ scale: [1, 1.15, 1], opacity: [0.05, 0.2, 0.05] }}
+                                            transition={{ duration: 3, repeat: Infinity }}
+                                            className={`absolute inset-[-8px] rounded-full blur-xl ${effectivelyCheckedIn ? 'bg-rose-500' : 'bg-emerald-400'}`}
+                                        />
+                                        <AnimatePresence mode="wait">
+                                            <motion.div
+                                                key={effectivelyCheckedIn ? 'out' : 'in'}
+                                                initial={{ y: 15, opacity: 0 }}
+                                                animate={{ y: 0, opacity: 1 }}
+                                                exit={{ y: -15, opacity: 0 }}
+                                                className="flex flex-col items-center relative z-10"
+                                            >
+                                                {effectivelyCheckedIn ? (
+                                                    <>
+                                                        <LogOut className="h-9 w-9 text-rose-500 mb-1 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                                                        <span className="text-base font-black text-white tracking-widest">PUNCH OUT</span>
+                                                    </>
+                                                ) : isPunchBlocked ? (
+                                                    <>
+                                                        {unlockRequestStatus === 'pending' ? <Clock className="h-9 w-9 text-amber-400 mb-1" /> : <Lock className="h-9 w-9 text-white mb-1" />}
+                                                        <span className="text-xs font-black text-white tracking-tight leading-tight px-4">
+                                                            {unlockRequestStatus === 'pending' ? 'PENDING' : 'REQUEST ACCESS'}
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <LogIn className="h-10 w-10 text-[#dcfce7] mb-1 drop-shadow-[0_0_12px_rgba(220,252,231,0.5)] animate-pulse" />
+                                                        <span className="text-lg font-black text-white tracking-widest">PUNCH IN</span>
+                                                    </>
+                                                )}
+                                            </motion.div>
+                                        </AnimatePresence>
+                                        <div className={`absolute bottom-0 left-0 w-full h-1 transition-colors duration-500 ${effectivelyCheckedIn ? 'bg-rose-500' : 'bg-emerald-400'}`} />
+                                    </motion.button>
                                 </div>
                             )}
-                            <h3 className="fo-section-title mb-4">Work Hours Tracking</h3>
-                            <div className="bg-[#0f291e]/80 backdrop-blur-md rounded-2xl border border-white/5 p-5 shadow-xl relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-                                
-                                {/* 2x2 Grid for Attendance Times */}
-                                <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
-                                    <div className="text-center p-3 bg-black/30 rounded-xl border border-white/10">
-                                        <p className="text-[9px] text-emerald-400 mb-1 uppercase tracking-widest font-bold flex items-center justify-center gap-1">
-                                            <LogIn className="h-3 w-3" /> First In
-                                        </p>
-                                        <p className="text-base font-bold text-white font-mono">{formatTime(lastCheckInTime)}</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/30 rounded-xl border border-white/10">
-                                        <p className="text-[9px] text-rose-400 mb-1 uppercase tracking-widest font-bold flex items-center justify-center gap-1">
-                                            <LogOut className="h-3 w-3" /> Last Out
-                                        </p>
-                                        <p className="text-base font-bold text-white font-mono">{formatTime(lastCheckOutTime)}</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/30 rounded-xl border border-white/10">
-                                        <p className="text-[9px] text-blue-400 mb-1 uppercase tracking-widest font-bold flex items-center justify-center gap-1">
-                                            <CheckCircle className="h-3 w-3" /> First B-In
-                                        </p>
-                                        <p className="text-base font-bold text-white font-mono">{formatTime(firstBreakInTime)}</p>
-                                    </div>
-                                    <div className="text-center p-3 bg-black/30 rounded-xl border border-white/10">
-                                        <p className="text-[9px] text-amber-400 mb-1 uppercase tracking-widest font-bold flex items-center justify-center gap-1">
-                                            <CheckCircle className="h-3 w-3" /> Last B-Out
-                                        </p>
-                                        <p className="text-base font-bold text-white font-mono">{formatTime(lastBreakOutTime)}</p>
-                                    </div>
-                                </div>
 
-                                {/* Stats Grid: Break & Work */}
-                                <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
-                                    <div className="px-4 py-4 bg-blue-500/5 rounded-xl border border-blue-500/10 flex flex-col items-center justify-center gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle className="h-5 w-5 text-blue-500" />
-                                            <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Total Break</span>
-                                        </div>
-                                        <p className="text-lg font-bold text-white font-mono">
-                                            {totalBreakDurationToday > 0 
-                                                ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m` 
-                                                : '0h 0m'}
-                                        </p>
+                            {/* ── Action Grid: Break / Site / Site OT ── */}
+                            {isCheckedIn && !isPunchBlocked && (
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.15 }}
+                                    className="w-full mt-8 px-2 space-y-3"
+                                >
+                                    {/* Break Row */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            onClick={() => { triggerHaptic(); navigate('/attendance/break-in'); }}
+                                            disabled={isOnBreak || isSubmittingAttendance}
+                                            className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                ${isOnBreak 
+                                                    ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
+                                                    : 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20'
+                                                }`}
+                                        >
+                                            <Clock className="h-3.5 w-3.5" />
+                                            Break In
+                                        </button>
+                                        <button
+                                            onClick={() => { triggerHaptic(); navigate('/attendance/break-out'); }}
+                                            disabled={!isOnBreak || isSubmittingAttendance}
+                                            className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                ${isOnBreak 
+                                                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20' 
+                                                    : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <CheckCircle className="h-3.5 w-3.5" />
+                                            Break Out
+                                        </button>
                                     </div>
-                                    <div className="px-4 py-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10 flex flex-col items-center justify-center gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <ClipboardList className="h-5 w-5 text-emerald-500" />
-                                            <span className="text-xs text-gray-400 uppercase tracking-wider font-bold">Total Work</span>
-                                        </div>
-                                        <p className="text-lg font-bold text-white font-mono">
-                                            {totalWorkingDurationToday > 0 
-                                                ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m` 
-                                                : '0h 0m'}
-                                        </p>
-                                    </div>
-                                </div>
 
-                                {isAttendanceLoading ? (
-                                    <div className="flex items-center justify-center text-emerald-500 h-[60px] bg-black/20 rounded-xl border border-white/5"><Loader2 className="h-6 w-6 animate-spin" /></div>
-                                ) : (
-                                        <div className="space-y-4 relative z-10">
-                                            <div className="flex flex-col space-y-3">
-                                                <div className="flex items-center gap-2 px-0.5">
-                                                    <button 
-                                                        onClick={() => handleToggleHint('punch')}
-                                                        className="focus:outline-none hover:scale-110 transition-all active:scale-95 !bg-transparent !border-none !p-0 !shadow-none !ring-0 flex items-center justify-center"
-                                                        title="Click for hint"
-                                                    >
-                                                        <Info className="h-5 w-5 text-emerald-400" />
-                                                    </button>
-                                                    {showPunchHint && (
-                                                        <span className="text-base italic text-emerald-100/70 font-medium leading-tight animate-in fade-in slide-in-from-left-2 duration-300">
-                                                            Punch in is required when starting the day, and Punch out when the day ends
-                                                        </span>
-                                                    )}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3 relative z-10">
-                                                {/* Punch In / Request Unlock Button */}
-                                                 <button
-                                                    onClick={() => {
-                                                        if (isPunchBlocked) {
-                                                            if (unlockRequestStatus === 'pending') return;
-                                                            navigate('/attendance/request-unlock');
-                                                            return;
-                                                        }
-                                                        navigate('/attendance/check-in?workType=office');
-                                                    }}
-                                                    disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
-                                                    className={`
-                                                        relative overflow-hidden rounded-xl border p-0 transition-all duration-300 active:scale-[0.98] shadow-lg
-                                                        flex flex-col items-center justify-center gap-1 h-[72px]
-                                                        ${(isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending'))
-                                                            ? 'bg-gray-800/40 text-white/40 border-white/10 cursor-not-allowed'
-                                                            : isPunchBlocked 
-                                                                ? 'bg-gradient-to-br from-amber-500 to-orange-600 border-amber-400/30 shadow-amber-500/20 hover:brightness-110' 
-                                                                : 'bg-gradient-to-br from-emerald-500 to-teal-600 border-emerald-400/30 shadow-emerald-500/20 hover:brightness-110'
-                                                        }
-                                                    `}
-                                                >
-                                                    {/* Shine Effect */}
-                                                    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none"></div>
-                                                    
-                                                    {isPunchBlocked ? (
-                                                        <>
-                                                            {unlockRequestStatus === 'pending' 
-                                                                ? <Clock className="h-6 w-6 text-white drop-shadow-sm" />
-                                                                : <Lock className="h-6 w-6 text-white drop-shadow-sm" />
-                                                            }
-                                                            <span className="text-white font-bold text-sm tracking-wide drop-shadow-sm">
-                                                                {unlockRequestStatus === 'pending' ? 'PENDING' : 'REQUEST PUNCH IN'}
-                                                            </span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                             <LogIn className={`h-6 w-6 text-white drop-shadow-sm ${(isCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked) ? '' : 'animate-pulse'}`} />
-                                                             <span className="text-white font-bold text-sm tracking-wide drop-shadow-sm">
-                                                                 {isCheckedIn ? 'CHECKED IN' : 'PUNCH IN'}
-                                                             </span>
-                                                        </>
-                                                    )}
-                                                </button>
-
-                                                {/* Punch Out Button */}
-                                                 <button
-                                                    onClick={() => navigate('/attendance/check-out?workType=office')}
-                                                    disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked}
-                                                    className={`
-                                                        relative overflow-hidden rounded-xl border p-0 transition-all duration-300 active:scale-[0.98] shadow-lg
-                                                        flex flex-col items-center justify-center gap-1 h-[72px]
-                                                        ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked)
-                                                            ? 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed' // Disabled Glass State
-                                                            : 'bg-gradient-to-br from-rose-500 to-pink-600 border-rose-400/30 shadow-rose-500/20 hover:brightness-110'
-                                                        }
-                                                    `}
-                                                >
-                                                    {(!(!effectivelyCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked)) && (
-                                                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none"></div>
-                                                    )}
-                                                    <LogOut className={`h-6 w-6 ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/40' : 'text-white drop-shadow-sm'}`} />
-                                                    <span className={`font-bold text-sm tracking-wide ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked) ? 'text-white/40' : 'text-white drop-shadow-sm'}`}>
-                                                        PUNCH OUT
-                                                    </span>
-                                                </button>
-                                            </div>
-
-                    {/* Field Staff & Site Staff Buttons */}
-                    {(isFieldStaffRole || isSiteStaffRole) && isCheckedIn && !isPunchBlocked && (
-                                                    <div className="grid grid-cols-2 gap-3 pb-2 border-b border-white/5">
-                                                         <Button
-                                                             onClick={() => navigate("/attendance/check-in?workType=field")}
-                                                             disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
-                                                             variant="primary"
-                                                             className={`attendance-action-btn !bg-blue-600 !border-blue-700 ${!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <MapPin className="mr-2 h-4 w-4" />
-                                                             Site Check In
-                                                         </Button>
- 
-                                                         <Button
-                                                             onClick={() => navigate("/attendance/check-out?workType=field")}
-                                                             disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
-                                                             variant="secondary"
-                                                             className={`attendance-action-btn !bg-amber-600 !border-amber-700 !text-white ${!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <MapPin className="mr-2 h-4 w-4" />
-                                                             Site Check Out
-                                                         </Button>
-                                                    </div>
-                                                )}
-
-                                                {/* Site Staff - Site OT Buttons */}
-                                                {isSiteStaffRole && isCheckedIn && !isPunchBlocked && (
-                                                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 pb-2 border-b border-white/5">
-                                                         <Button
-                                                             onClick={() => navigate("/attendance/check-in?action=site-ot-in")}
-                                                             disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
-                                                             variant="primary"
-                                                             className={`attendance-action-btn !bg-indigo-600 !border-indigo-700 ${!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <Clock className="mr-2 h-4 w-4" />
-                                                             Site OT In
-                                                         </Button>
-   
-                                                         <Button
-                                                             onClick={() => navigate("/attendance/check-out?action=site-ot-out")}
-                                                             disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
-                                                             variant="secondary"
-                                                             className={`attendance-action-btn !bg-indigo-800 !border-indigo-900 !text-white ${!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <CheckCircle className="mr-2 h-4 w-4" />
-                                                             Site OT Out
-                                                         </Button>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            
-                                              {isCheckedIn && (
-                                                <div className="flex flex-col space-y-3 pt-2 border-t border-white/5">
-                                                    <div className="flex items-center gap-2 px-0.5">
-                                                        <button 
-                                                            onClick={() => handleToggleHint('break')}
-                                                            className="focus:outline-none hover:scale-110 transition-all active:scale-95 !bg-transparent !border-none !p-0 !shadow-none !ring-0 flex items-center justify-center"
-                                                            title="Click for hint"
-                                                        >
-                                                            <Info className="h-5 w-5 text-blue-400" />
-                                                        </button>
-                                                        {showBreakHint && (
-                                                            <span className="text-base italic text-blue-100/70 font-medium leading-tight animate-in fade-in slide-in-from-left-2 duration-300">
-                                                                Break in when user goes for lunch is mandatory, or it will be a violation
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                         <Button
-                                                             onClick={() => navigate('/attendance/break-in')}
-                                                             disabled={((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isActionInProgress || isPunchBlocked}
-                                                             variant="primary"
-                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${(((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <CheckCircle className="mr-2 h-4 w-4" />
-                                                             Break In
-                                                         </Button>
-                                                         <Button
-                                                             onClick={() => navigate('/attendance/break-out')}
-                                                             disabled={!isOnBreak || isActionInProgress || isPunchBlocked}
-                                                             variant="primary"
-                                                             className={`attendance-action-btn !bg-emerald-600 !border-emerald-700 ${(!isOnBreak || isPunchBlocked) ? 'pointer-events-none !text-white/40' : ''}`}
-                                                         >
-                                                             <CheckCircle className="mr-2 h-4 w-4" />
-                                                             Break Out
-                                                         </Button>
-                                                    </div>
-                                                </div>
-                                             )}
+                                    {/* Site In/Out Row — for field & site staff */}
+                                    {(isFieldStaffRole || isSiteStaffRole) && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-in?workType=field'); }}
+                                                disabled={isFieldCheckedIn || isOnBreak || isSubmittingAttendance || isSiteOtCheckedIn}
+                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                    ${isFieldCheckedIn || isOnBreak || isSiteOtCheckedIn 
+                                                        ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
+                                                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                                                    }`}
+                                            >
+                                                <MapPin className="h-3.5 w-3.5" />
+                                                Site In
+                                            </button>
+                                            <button
+                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-out?workType=field'); }}
+                                                disabled={!isFieldCheckedIn || isOnBreak || isSubmittingAttendance || isSiteOtCheckedIn}
+                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                    ${isFieldCheckedIn && !isOnBreak && !isSiteOtCheckedIn
+                                                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                                                        : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
+                                                    }`}
+                                            >
+                                                <MapPin className="h-3.5 w-3.5" />
+                                                Site Out
+                                            </button>
                                         </div>
                                     )}
-                                </div>
-                            </section>
-                        )}
+
+                                    {/* Site OT Row — for site staff only */}
+                                    {isSiteStaffRole && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-in?action=site-ot-in'); }}
+                                                disabled={isSiteOtCheckedIn || isOnBreak || isSubmittingAttendance || isFieldCheckedIn}
+                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                    ${isSiteOtCheckedIn || isOnBreak || isFieldCheckedIn
+                                                        ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
+                                                        : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20'
+                                                    }`}
+                                            >
+                                                <Zap className="h-3.5 w-3.5" />
+                                                Site OT In
+                                            </button>
+                                            <button
+                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-out?action=site-ot-out'); }}
+                                                disabled={!isSiteOtCheckedIn || isOnBreak || isSubmittingAttendance || isFieldCheckedIn}
+                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
+                                                    ${isSiteOtCheckedIn && !isOnBreak && !isFieldCheckedIn
+                                                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
+                                                        : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
+                                                    }`}
+                                            >
+                                                <CheckCircle className="h-3.5 w-3.5" />
+                                                Site OT Out
+                                            </button>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+
+                            {/* Hint Zone */}
+                            <div className="mt-6 px-8 text-center min-h-[32px]">
+                                {isCheckedIn ? (
+                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[9px] text-emerald-200 uppercase tracking-[0.15em] font-black leading-relaxed">
+                                        active session · remember to punch out
+                                    </motion.p>
+                                ) : (
+                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[9px] text-gray-500 uppercase tracking-[0.15em] font-black leading-relaxed">
+                                        tap the orb to register presence
+                                    </motion.p>
+                                )}
+                            </div>
+                        </section>
+                    )}
 
 
-                    <section>
-                        <h3 className="fo-section-title mb-4">Account Actions</h3>
-                        <div className="space-y-4">
+
+                    {/* Glass Fragment Account Actions */}
+                    <section className="space-y-3 px-2">
+                        <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Core Utilities</h3>
+                        
+                        <div className="grid grid-cols-1 gap-2">
                              <button 
                                 onClick={() => navigate('/leaves/dashboard')} 
-                                className="w-full group relative overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-4 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
+                                className="w-full bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between transition-all active:scale-[0.98] group"
                             >
-                                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors"></div>
-                                <div className="flex items-center gap-4 relative z-10">
-                                    <div className="p-3 rounded-xl bg-white/20 text-white backdrop-blur-sm">
-                                        <Crosshair className="h-6 w-6" />
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-transform">
+                                        <Crosshair className="h-5 w-5" />
                                     </div>
                                     <div className="text-left">
-                                        <p className="text-white font-bold text-base">Leave Tracker</p>
-                                        <p className="text-emerald-100 text-xs mt-0.5">View history & balances</p>
+                                        <p className="text-white font-bold text-sm uppercase tracking-tight">Leave Tracker</p>
+                                        <p className="text-gray-500 text-[10px] uppercase font-bold">History & Balance</p>
                                     </div>
                                 </div>
-                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 group-hover:bg-white group-hover:text-emerald-700 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
-                            </button>
-
-                            <button 
-                                onClick={async () => {
-                                    try {
-                                        if ('serviceWorker' in navigator) {
-                                            const registrations = await navigator.serviceWorker.getRegistrations();
-                                            for (const registration of registrations) {
-                                                await registration.unregister();
-                                            }
-                                        }
-                                        if ('caches' in window) {
-                                            const cacheNames = await caches.keys();
-                                            await Promise.all(cacheNames.map(name => caches.delete(name)));
-                                        }
-                                        setToast({ message: 'Cache cleared! Reloading...', type: 'success' });
-                                        setTimeout(() => window.location.reload(), 1000);
-                                    } catch (error) {
-                                        console.error('Failed to clear cache:', error);
-                                        setToast({ message: 'Failed to clear cache. Try again.', type: 'error' });
-                                    }
-                                }}
-                                className="w-full group relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-4 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
-                            >
-                                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors"></div>
-                                <div className="flex items-center gap-4 relative z-10">
-                                    <div className="p-3 rounded-xl bg-white/20 text-white backdrop-blur-sm">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                        </svg>
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="text-white font-bold text-base">Clear Cache & Reload</p>
-                                        <p className="text-blue-100 text-xs mt-0.5">Fix loading issues</p>
-                                    </div>
-                                </div>
-                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 group-hover:bg-white group-hover:text-blue-700 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
+                                <Zap className="h-4 w-4 text-emerald-500/30 group-hover:text-emerald-500 transition-colors" />
                             </button>
 
                             <button 
                                 onClick={handleLogoutClick} 
-                                className="w-full group relative overflow-hidden bg-gradient-to-br from-rose-600 to-rose-800 rounded-2xl p-4 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
+                                className="w-full bg-rose-500/5 border border-rose-500/10 rounded-xl p-4 flex items-center justify-between transition-all active:scale-[0.98] group"
                             >
-                                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-colors"></div>
-                                <div className="flex items-center gap-4 relative z-10">
-                                    <div className="p-3 rounded-xl bg-white/20 text-white backdrop-blur-sm">
-                                        <LogOut className="h-6 w-6" />
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 rounded-lg bg-rose-500/10 text-rose-500 group-hover:scale-110 transition-transform">
+                                        <LogOut className="h-5 w-5" />
                                     </div>
                                     <div className="text-left">
-                                        <p className="text-white font-bold text-base">Log Out</p>
-                                        <p className="text-rose-100 text-xs mt-0.5">Sign out of your account</p>
+                                        <p className="text-white font-bold text-sm uppercase tracking-tight">Terminate Session</p>
+                                        <p className="text-rose-500/50 text-[10px] uppercase font-bold">Log out completely</p>
                                     </div>
                                 </div>
-                                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 group-hover:bg-white group-hover:text-rose-700 transition-all">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
+                                <Zap className="h-4 w-4 text-rose-500/30 group-hover:text-rose-500 transition-colors" />
                             </button>
                         </div>
                     </section>
+
+                    {/* Secondary Management Sections */}
+                    <div className="space-y-8 px-2 pb-24 text-white">
+                        {/* Profile Details Fragment */}
+                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <UserIcon className="h-5 w-5 text-emerald-400" />
+                                <h3 className="text-sm font-black uppercase tracking-widest">Identity Details</h3>
+                            </div>
+                            <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                                <div className="space-y-4">
+                                    <Input label="Display Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
+                                    <Input label="Contact Direct" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-black text-gray-500 uppercase">Biological Gender</label>
+                                        <select {...register('gender')} className="w-full bg-black/20 border border-white/5 rounded-xl h-12 px-4 text-sm font-bold text-white focus:border-emerald-500 outline-none transition-all">
+                                            <option value="Male">Male</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-4">Update Profile</Button>
+                            </form>
+                        </section>
+
+                        {/* Passcode Fragment */}
+                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Lock className="h-5 w-5 text-amber-400" />
+                                <h3 className="text-sm font-black uppercase tracking-widest">Security Pin</h3>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mb-6 leading-relaxed uppercase font-bold tracking-tight">4-digit code required for high-security attendance verification.</p>
+                            <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                <Input label="Current Pin" id="oldPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-2">Update Security</Button>
+                            </form>
+                        </section>
+
+                        {/* Family Section Fragment */}
+                        {user.gender === 'Female' && (
+                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <Baby className="h-5 w-5 text-pink-400" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest">Family Matrix</h3>
+                                </div>
+                                {/* Reusing the logic but styled for dark mode */}
+                                {isChildrenLoading ? (
+                                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-pink-400" />
+                                ) : (
+                                    <div className="space-y-4">
+                                        {children.map(child => (
+                                            <div key={child.id} className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                                                <div>
+                                                    <p className="text-sm font-bold text-white">{child.childName}</p>
+                                                    <p className="text-[10px] text-gray-500 font-bold uppercase">{child.dateOfBirth}</p>
+                                                </div>
+                                                <button onClick={() => handleDeleteChild(child.id)} className="p-2 text-rose-500/50 hover:text-rose-500 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                                            </div>
+                                        ))}
+                                        {children.length < 2 && (
+                                            <button 
+                                                onClick={() => setToast({ message: 'Use desktop to add children details for now.', type: 'info' })}
+                                                className="w-full py-4 border-2 border-dashed border-white/10 rounded-xl text-[10px] font-black text-gray-500 uppercase hover:bg-white/5 transition-all"
+                                            >
+                                                + Add Member
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
+                        )}
+                    </div>
                 </div>
             </div>
         );

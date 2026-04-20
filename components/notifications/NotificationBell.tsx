@@ -17,6 +17,7 @@ import {
     ArrowLeft,
     MessageSquare
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 import type { Notification, NotificationType } from '../../types';
 
@@ -66,24 +67,43 @@ const NotificationBell: React.FC<{ className?: string }> = ({ className = '' }) 
         <div className={`relative ${className}`}>
             <button
                 onClick={togglePanel}
-                className={`group relative p-2.5 rounded-xl transition-all duration-300 btn-icon ${
+                className={`group relative p-2 rounded-xl transition-all duration-300 flex items-center justify-center ${
                     isPanelOpen 
-                    ? 'bg-accent/10 text-accent ring-2 ring-accent/20' 
-                    : 'bg-transparent text-accent md:text-gray-500 hover:bg-page hover:text-primary-text'
+                    ? 'bg-emerald-500/10 text-emerald-500' 
+                    : 'bg-transparent text-emerald-500/80 hover:bg-emerald-500/5 hover:text-emerald-500'
                 }`}
             >
                 <Bell 
                     strokeWidth={2.5}
-                    className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'} text-slate-600 opacity-100! z-10 -translate-x-2.5 translate-y-2`} 
+                    className={`h-6 w-6 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
                 />
-                {totalUnreadCount > 0 && (
-                    <span className="absolute top-1 right-1 flex z-20">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        <span className={`relative inline-flex rounded-full ${totalUnreadCount > 9 ? 'px-1 h-[14.5px] min-w-[14.5px]' : 'h-[14.5px] w-[14.5px]'} bg-rose-600 text-[9px] items-center justify-center font-bold text-white shadow-sm border border-white translate-x-1`}>
-                            {totalUnreadCount}
-                        </span>
-                    </span>
-                )}
+                <AnimatePresence>
+                    {totalUnreadCount > 0 && (
+                        <motion.span 
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ 
+                                scale: 1, 
+                                opacity: 1,
+                                transition: { type: "spring", stiffness: 500, damping: 25 }
+                            }}
+                            exit={{ scale: 0, opacity: 0 }}
+                            className="absolute -top-1 -right-1 flex z-20"
+                        >
+                            <motion.span 
+                                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.2, 0.5] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                                className="absolute inline-flex h-full w-full rounded-full bg-rose-400"
+                            />
+                            <span className={`relative inline-flex items-center justify-center rounded-full bg-rose-600 text-white font-black leading-none shadow-lg border-2 border-[#041b0f] ${
+                                totalUnreadCount > 9 
+                                ? 'px-1.5 h-5 min-w-[20px] text-[10px]' 
+                                : 'w-5 h-5 text-[11px]'
+                            }`}>
+                                {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                            </span>
+                        </motion.span>
+                    )}
+                </AnimatePresence>
             </button>
         </div>
     );

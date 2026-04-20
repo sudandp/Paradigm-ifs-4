@@ -51,17 +51,25 @@ export function calculateWorkingHours(
     if (lastEventTime) {
       const elapsed = differenceInMinutes(eventTime, lastEventTime);
       
+      // Safely ignore excessively long anomalous intervals (e.g., missed punch outs)
+      // 16 hours is the maximum continuous valid interval between events
+      const MAX_INTERVAL_MINUTES = 16 * 60;
+      let validElapsed = elapsed;
+      if (elapsed > MAX_INTERVAL_MINUTES) {
+        validElapsed = 0;
+      }
+      
       // Accumulate logic based on PREVIOUS state during this interval
       const isCurrentlyPunchedIn = isMainPunchedIn || isAtSite;
       
       if (isCurrentlyPunchedIn && !isOnBreak) {
-        netWorkMinutes += elapsed;
+        netWorkMinutes += validElapsed;
       }
       if (isOnBreak) {
-        totalBreakMinutes += elapsed;
+        totalBreakMinutes += validElapsed;
       }
       if (isCurrentlyPunchedIn) {
-        grossWorkMinutes += elapsed;
+        grossWorkMinutes += validElapsed;
       }
     }
 
@@ -77,9 +85,11 @@ export function calculateWorkingHours(
       case 'punch-out':
         if (event.workType === 'field' || event.workType === 'site') {
           isAtSite = false;
+          isOnBreak = false; // Primary logout closes all active sub-sessions
         } else {
           isMainPunchedIn = false;
-          isAtSite = false; // Primary logout closes all active sub-sessions
+          isAtSite = false;
+          isOnBreak = false;
         }
         break;
       case 'site-ot-in':
@@ -87,6 +97,7 @@ export function calculateWorkingHours(
         break;
       case 'site-ot-out':
         isAtSite = false;
+        isOnBreak = false;
         break;
       case 'break-in':
         isOnBreak = true;
@@ -114,21 +125,25 @@ export function calculateWorkingHours(
   );
 
   const MAX_SESSION_HOURS = 16;
+  const MAX_SESSION_MINUTES = MAX_SESSION_HOURS * 60;
+  
   if (lastEventTime && isToday) {
-    const hoursSinceLastEvent = (now.getTime() - lastEventTime.getTime()) / (1000 * 60 * 60);
-    if (hoursSinceLastEvent >= 0 && hoursSinceLastEvent < MAX_SESSION_HOURS) {
-      const elapsed = differenceInMinutes(now, lastEventTime);
-      const isCurrentlyPunchedIn = isMainPunchedIn || isAtSite;
-      
-      if (isCurrentlyPunchedIn && !isOnBreak) {
-        netWorkMinutes += elapsed;
-      }
-      if (isOnBreak) {
-        totalBreakMinutes += elapsed;
-      }
-      if (isCurrentlyPunchedIn) {
-        grossWorkMinutes += elapsed;
-      }
+    const elapsed = differenceInMinutes(now, lastEventTime);
+    let validElapsed = elapsed;
+    if (elapsed > MAX_SESSION_MINUTES) {
+      validElapsed = 0; // If they missed a punch, don't accumulate indefinitely into 'now'
+    }
+
+    const isCurrentlyPunchedIn = isMainPunchedIn || isAtSite;
+    
+    if (isCurrentlyPunchedIn && !isOnBreak) {
+      netWorkMinutes += validElapsed;
+    }
+    if (isOnBreak) {
+      totalBreakMinutes += validElapsed;
+    }
+    if (isCurrentlyPunchedIn) {
+      grossWorkMinutes += validElapsed;
     }
   }
 
@@ -284,10 +299,27 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   // Sort events chronologically
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   
-  const firstCheckIn = sortedEvents.find(e => e.type === 'punch-in');
-  const lastCheckOut = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
+  // Discard previous day's COMPLETED shifts.
+  // The 16-hour lookback can pull in yesterday's completed day shift.
+  // We find the last explicit punch-out that occurred before today's midnight
+  // and discard all events up to and including it.
+  const targetDate = processingDate || new Date();
+  const startOfTargetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0);
+
+  let cutoffIndex = -1;
+  for (let i = 0; i < sortedEvents.length; i++) {
+     const eventTime = new Date(sortedEvents[i].timestamp);
+     if (eventTime < startOfTargetDay && sortedEvents[i].type === 'punch-out') {
+         cutoffIndex = i;
+     }
+  }
   
-  const result = calculateWorkingHours(events, processingDate);
+  const relevantEvents = cutoffIndex >= 0 ? sortedEvents.slice(cutoffIndex + 1) : sortedEvents;
+
+  const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in');
+  const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out');
+  
+  const result = calculateWorkingHours(relevantEvents, processingDate);
   
   return {
     checkIn: firstCheckIn?.timestamp || null,

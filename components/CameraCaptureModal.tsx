@@ -92,7 +92,9 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
       }
 
       const image = await Camera.getPhoto({
-        quality: 90, allowEditing: false,
+        quality: 85,
+        width: 1024,
+        allowEditing: false,
         resultType: CameraResultType.Base64,
         source: CameraSource.Camera,
         saveToGallery: false,

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import Logo from '../ui/Logo';
@@ -51,17 +52,18 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
 
     return (
         <header
-            className={`sticky top-0 z-40 transition-all duration-200 flex-shrink-0 ${isMobile ? 'bg-[#041b0f] shadow-md' : 'bg-white border-b border-gray-200/60'}`}
-            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+            className={`transition-all duration-300 flex-shrink-0 ${
+                isMobile 
+                ? 'bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] border border-white/5 shadow-[0_10px_30px_rgba(0,0,0,0.4)]' 
+                : 'bg-white border-b border-gray-200/60'
+            }`}
         >
-            <div className="px-4 sm:px-6 lg:px-8">
-                <div className="flex items-center h-12">
-                    <div className="flex-1 flex justify-center md:justify-start min-w-0 px-2">
-                         {/* Logo is now only shown here on mobile, or if we want it on desktop header too? 
-                             Original code showed it only on isMobile. Keeping that logic. */}
+            <div className="px-4">
+                <div className="flex items-center h-14">
+                    <div className="flex-1 flex justify-center md:justify-start min-w-0">
                             {isMobile && (
-                                <div className="flex items-center justify-center bg-transparent p-2 border-0">
-                                    <Logo className="border-0 h-[42px]" />
+                                <div className="flex items-center justify-center bg-transparent py-2 border-0">
+                                    <Logo className="border-0 h-[46px]" />
                                 </div>
                             )}
                         </div>

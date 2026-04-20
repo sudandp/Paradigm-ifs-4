@@ -9,9 +9,42 @@ import { Capacitor } from '@capacitor/core';
 interface AvatarUploadProps {
   file: UploadedFile | undefined | null;
   onFileChange: (file: UploadedFile | null) => void;
+  hideControls?: boolean;
 }
 
-export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }) => {
+const resizeImageFile = (file: File, maxWidth = 1024, maxHeight = 1024): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject('No context');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(url);
+        if (blob) resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+        else reject('Failed to convert canvas to blob');
+      }, 'image/jpeg', 0.85);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject('Failed to load image');
+    };
+    img.src = url;
+  });
+};
+
+export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, hideControls = false }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -43,7 +76,16 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      handleFileSelect(selectedFile);
+      setIsLoading(true);
+      try {
+        const compressedFile = await resizeImageFile(selectedFile);
+        handleFileSelect(compressedFile);
+      } catch (err) {
+        console.error('Resize failed:', err);
+        handleFileSelect(selectedFile); // Fallback to original
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -67,23 +109,36 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
 
   // ─── Native camera via HTML5 file input ───
   // This directly opens the native Android/iOS camera without any plugin
-  const handleNativeCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNativeCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     setIsLoading(true);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      setCapturedPreview(dataUrl);
-      setIsCameraOpen(true);
-      setIsLoading(false);
-    };
-    reader.onerror = () => {
-      setError("Failed to read captured photo.");
-      setIsLoading(false);
-    };
-    reader.readAsDataURL(selectedFile);
+    try {
+      const compressedFile = await resizeImageFile(selectedFile);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setCapturedPreview(dataUrl);
+        setIsCameraOpen(true);
+        setIsLoading(false);
+      };
+      reader.onerror = () => {
+        setError("Failed to read captured photo.");
+        setIsLoading(false);
+      };
+      reader.readAsDataURL(compressedFile);
+    } catch (err) {
+      console.error('Resize failed:', err);
+      // Fallback
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCapturedPreview(reader.result as string);
+        setIsCameraOpen(true);
+        setIsLoading(false);
+      };
+      reader.readAsDataURL(selectedFile);
+    }
   };
 
   const handleCaptureClick = () => {
@@ -160,30 +215,32 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange }
             type="button"
             onClick={handleRemove}
             id="avatar-delete-button"
-            className="avatar-delete-btn btn-icon absolute -top-2 -right-2 p-2 rounded-full transition-all !bg-white !text-red-600 shadow-lg hover:!bg-red-50 hover:scale-110 z-10"
+            className="avatar-delete-btn btn-icon absolute -top-1 -right-1 p-1.5 rounded-full transition-all !bg-white !text-red-500 shadow-xl border border-red-100 hover:!bg-red-50 hover:!text-red-700 hover:scale-110 z-20 flex items-center justify-center"
             aria-label="Remove photo"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 style={{ color: '#ef4444' }} className="w-4 h-4 !text-red-500" />
           </button>
         )}
       </div>
       <button id="avatar-hidden-capture-btn" className="hidden" onClick={handleCaptureClick} type="button"></button>
-      <div className="flex items-center space-x-2 md:hidden">
-        <label htmlFor={inputId} className={`w-32 h-10 cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-          <Edit className="w-4 h-4 mr-2" />
-          {file ? 'Change' : 'Upload'}
-        </label>
-        <input id={inputId} name={inputId} type="file" className="sr-only" onChange={handleFileChange} accept="image/*" disabled={isLoading} />
-        <button
-          type="button"
-          onClick={handleCaptureClick}
-          disabled={isLoading}
-          className={`avatar-capture-btn w-32 h-10 inline-flex items-center justify-center font-semibold rounded-full transition-colors duration-200 text-sm border border-red-200 !text-red-600 hover:!bg-red-50 !bg-card/70 backdrop-blur-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <Camera className="w-4 h-4 mr-2" />
-          Capture
-        </button>
-      </div>
+      {!hideControls && (
+        <div className="flex items-center space-x-2 md:hidden">
+          <label htmlFor={inputId} className={`w-32 h-10 cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <Edit className="w-4 h-4 mr-2" />
+            {file ? 'Change' : 'Upload'}
+          </label>
+          <input id={inputId} name={inputId} type="file" className="sr-only" onChange={handleFileChange} accept="image/*" disabled={isLoading} />
+          <button
+            type="button"
+            onClick={handleCaptureClick}
+            disabled={isLoading}
+            className={`avatar-capture-btn w-32 h-10 inline-flex items-center justify-center font-semibold rounded-full transition-colors duration-200 text-sm border border-red-200 !text-red-600 hover:!bg-red-50 !bg-card/70 backdrop-blur-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            Capture
+          </button>
+        </div>
+      )}
       {error && (
         <p className="text-xs text-red-600 text-center max-w-[160px] flex items-center gap-1">
           <AlertTriangle className="h-3 w-3 flex-shrink-0" /> {error}

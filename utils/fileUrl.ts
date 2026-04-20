@@ -1,8 +1,13 @@
 import { UploadedFile } from '../types';
+import { Capacitor } from '@capacitor/core';
 
 /**
  * Utility functions for professional file URL handling.
  * Converts raw Supabase storage URLs to proxy URLs served through our own domain.
+ * 
+ * On native platforms (Android/iOS via Capacitor), the proxy is skipped because
+ * there is no Express server running on the device. The raw Supabase public URL
+ * is used directly instead.
  */
 
 const SUPABASE_STORAGE_PREFIX = 'https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public/';
@@ -10,15 +15,24 @@ const SUPABASE_STORAGE_PREFIX = 'https://fmyafuhxlorbafbacywa.supabase.co/storag
 /**
  * Convert a raw Supabase storage URL to our proxy URL.
  * 
- * Input:  https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public/compliance-documents/documents/uid/123/Invoice.pdf
- * Output: /api/view-file/compliance-documents/documents/uid/123/Invoice.pdf
+ * On web: proxies through /api/view-file/ for CORS/security.
+ * On native (Android/iOS): returns the raw Supabase URL directly since there is
+ * no local Express server to handle the proxy route.
  * 
  * If the URL is not a Supabase URL, it is returned as-is.
  */
 export function getProxyUrl(supabaseUrl: string): string {
   if (!supabaseUrl) return supabaseUrl;
   
+  // On native platforms, skip proxy — no Express server available on device.
+  // The WebView can load Supabase public URLs directly over the internet.
+  const isNative = Capacitor.isNativePlatform() || navigator.userAgent.includes('ParadigmApp');
+  
   if (supabaseUrl.startsWith(SUPABASE_STORAGE_PREFIX)) {
+    if (isNative) {
+      // Return the raw public URL — the native WebView loads it directly
+      return supabaseUrl;
+    }
     const storagePath = supabaseUrl.replace(SUPABASE_STORAGE_PREFIX, '');
     return `/api/view-file/${storagePath}`;
   }

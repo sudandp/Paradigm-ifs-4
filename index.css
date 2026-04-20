@@ -321,7 +321,7 @@ body {
 }
 @media (max-width: 767px) {
     html {
-        font-size: 100% !important;
+        font-size: 77% !important;
     }
     body {
         min-height: 100vh;
@@ -780,7 +780,7 @@ body {
     }
     .fo-slider-text {
         color: #22c55e !important;
-        font-size: 14px !important;
+        font-size: 12px !important;
         font-weight: 600 !important;
         user-select: none !important;
         z-index: 1 !important;
@@ -822,20 +822,7 @@ body {
         width: 35px !important;
         height: 35px !important;
     }
-    nav.fixed.bottom-0 svg {
-        width: 32px !important;
-        height: 32px !important;
-    }
-    nav.fixed.bottom-0 a[href*="profile"] > div,
-    nav.fixed.bottom-0 a[href*="home"] > div {
-        width: 72px !important;
-        height: 72px !important;
-    }
-    nav.fixed.bottom-0 a[href*="profile"] svg,
-    nav.fixed.bottom-0 a[href*="home"] svg {
-        width: 38px !important;
-        height: 38px !important;
-    }
+    /* Removed legacy mobile nav overrides that clashed with new design */
     /* ═══════════════════════════════════════════════════════════════════
        AUTH PAGE ISOLATION — Overrides ALL global mobile rules above.
        Every property that the global rules force is explicitly reset here.
@@ -883,7 +870,7 @@ body {
         border-radius: 0.5rem !important;
         color: #ffffff !important;
         padding: 0.875rem 1rem 0.875rem 3.5rem !important;
-        font-size: 16px !important;
+        font-size: 12px !important;
         transition: all 0.2s ease !important;
         text-overflow: ellipsis !important;
         white-space: nowrap !important;
@@ -1043,7 +1030,7 @@ body {
 
     /* 15. Base font-size */
     .auth-card-container {
-        font-size: 14px !important;
+        font-size: 11px !important;
     }
     .auth-card-container p,
     .auth-card-container span,
@@ -1632,8 +1619,8 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
 
 @media (max-width: 767px) {
     .auth-card-container {
-        transform: scale(1.7) !important;
-        width: 58.8% !important;
+        transform: scale(1.2) !important;
+        width: 83.3% !important;
         margin-left: auto !important;
         margin-right: auto !important;
     }
@@ -1647,7 +1634,7 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
     text-align: center !important;
     padding: 0 16px !important;
     width: 100% !important;
-    font-size: 14px !important;
+    font-size: 11px !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
