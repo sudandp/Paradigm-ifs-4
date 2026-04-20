@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { useAuthLayoutStore } from '../../store/authLayoutStore';
 import { useDevice } from '../../hooks/useDevice';
+import Logo from '../ui/Logo';
 
 const AuthLayout: React.FC = () => {
     const { isMobile } = useDevice();
@@ -29,11 +30,7 @@ const AuthLayout: React.FC = () => {
                     {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
                     <div className="w-full bg-white/10 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 text-left mb-8">
                         <div className="flex justify-center mb-8">
-                            <img 
-                                src="/Paradigm-Logo-3-1024x157.png" 
-                                alt="Paradigm Logo" 
-                                className="h-12 w-auto object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" 
-                            />
+                            <Logo className="h-12" />
                         </div>
 
                         <div className="text-left mb-6">
@@ -67,11 +64,7 @@ const AuthLayout: React.FC = () => {
                         <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full -ml-32 -mb-32 blur-3xl"></div>
 
                         <div className="relative z-10">
-                            <img 
-                                src="/Paradigm-Logo-3-1024x157.png" 
-                                alt="Paradigm Logo" 
-                                className="h-12 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]" 
-                            />
+                            <Logo className="h-12" />
                             <div className="mt-24">
                                 <h1 className="text-4xl font-bold text-white leading-tight">
                                     Welcome to the Future of Onboarding.

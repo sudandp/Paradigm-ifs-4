@@ -37,16 +37,16 @@ const Splash: React.FC<SplashProps> = ({ onComplete }) => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#041b0f]">
       <div className="animate-fade-in text-center">
         <Logo className="h-16 w-auto mx-auto" />
       </div>
       <div className="mt-8">
-        <div className="h-1 w-48 bg-gray-100 rounded-full overflow-hidden mx-auto">
+        <div className="h-1 w-48 bg-white/10 rounded-full overflow-hidden mx-auto">
           <div className="h-full bg-emerald-500 animate-loading-bar rounded-full" />
         </div>
       </div>
-      <p className="mt-4 text-gray-500 font-medium animate-pulse text-center">
+      <p className="mt-4 text-white/40 font-bold uppercase tracking-[0.2em] animate-pulse text-[10px] text-center">
         Initializing system...
       </p>
     </div>

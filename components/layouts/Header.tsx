@@ -54,22 +54,22 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
         <header
             className={`transition-all duration-300 flex-shrink-0 ${
                 isMobile 
-                ? 'bg-[#041b0f]/95 backdrop-blur-xl rounded-[28px] border border-white/5 shadow-[0_10px_30px_rgba(0,0,0,0.4)]' 
+                ? 'bg-transparent' 
                 : 'bg-white border-b border-gray-200/60'
             }`}
         >
             <div className="px-4">
-                <div className="flex items-center h-14">
-                    <div className="flex-1 flex justify-center md:justify-start min-w-0">
+                <div className={`flex items-center h-14 ${isMobile ? 'justify-center gap-3' : ''}`}>
+                    <div className={`${isMobile ? 'flex-none' : 'flex-1'} flex justify-center md:justify-start`}>
                             {isMobile && (
                                 <div className="flex items-center justify-center bg-transparent py-2 border-0">
-                                    <Logo className="border-0 h-[46px]" />
+                                    <Logo className="border-0 h-[42px]" />
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex-none flex justify-end w-auto min-w-10">
-                            <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex-none flex items-center justify-center">
+                            <div className="flex items-center">
                                 <NotificationBell />
                                 {!isMobile && user && (
                                     <div className="relative" ref={userMenuRef}>
