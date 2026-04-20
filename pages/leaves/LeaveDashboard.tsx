@@ -12,7 +12,7 @@ import Select from '../../components/ui/Select';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear } from 'date-fns';
+import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays } from 'date-fns';
 import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
 import DatePicker from '../../components/ui/DatePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -229,7 +229,8 @@ const LeaveDashboard: React.FC = () => {
         
         try {
             const dateStr = format(viewingDate, 'yyyy-MM-dd');
-            const startStr = startOfMonth(viewingDate).toISOString();
+            const startOfMonthDate = startOfMonth(viewingDate);
+            const startStr = startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).toISOString();
             const endStr = endOfMonth(viewingDate).toISOString();
 
             const startOfYearStr = startOfYear(viewingDate).toISOString();
@@ -721,7 +722,7 @@ const LeaveDashboard: React.FC = () => {
                                                 <LeaveStatusChip status={req.status} />
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
-                                                {req.status === 'pending_manager_approval' ? (
+                                                {['pending_manager_approval', 'rejected', 'cancelled'].includes(req.status) ? (
                                                     <div className="flex justify-end gap-1">
                                                         {actioningRequestId === req.id ? (
                                                             <Loader2 className="h-4 w-4 animate-spin text-accent" />
@@ -730,7 +731,7 @@ const LeaveDashboard: React.FC = () => {
                                                                 <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
                                                                     <Edit className="h-4 w-4" />
                                                                 </button>
-                                                                <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Cancel Request">
+                                                                <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title={req.status === 'cancelled' ? "Delete Request" : "Cancel Request"}>
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </button>
                                                             </>

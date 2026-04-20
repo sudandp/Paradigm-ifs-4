@@ -736,6 +736,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 1. Generate Logs using Unified Logic
                 let daysPresentInWeek = 0;
+                let daysActiveInWeek = 0;
                 let daysPresentInPreviousWeek = 0; // True evaluation strictly from DB buffer events
                 
                 // Track week presence for the buffer period as well
@@ -745,8 +746,9 @@ const AttendanceDashboard: React.FC = () => {
                     
                     // Reset weekly presence counter on Monday (1)
                     if (dayOfWeek === 1) {
-                        daysPresentInPreviousWeek = daysPresentInWeek;
+                        daysPresentInPreviousWeek = daysActiveInWeek;
                         daysPresentInWeek = 0;
+                        daysActiveInWeek = 0;
                     }
                     
                     const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
@@ -781,8 +783,15 @@ const AttendanceDashboard: React.FC = () => {
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
-                    if (statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H' || (statusRaw.includes('L') && !statusRaw.includes('LOP'))) {
-                        daysPresentInWeek += (statusRaw.includes('1/2') ? 0.5 : 1);
+                    const isPresence = statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H';
+                    const isApprovedLeave = statusRaw.includes('L') && !statusRaw.includes('LOP');
+                    
+                    if (isPresence || isApprovedLeave) {
+                        const val = (statusRaw.includes('1/2') ? 0.5 : 1);
+                        daysActiveInWeek += val;
+                        if (isPresence) {
+                            daysPresentInWeek += val;
+                        }
                     }
 
                     // Map specific utility codes to dashboard display format (e.g., 'H/P' -> 'HP')
@@ -1141,6 +1150,7 @@ const AttendanceDashboard: React.FC = () => {
 
             // Track days present in rolling week for W/O threshold.
             let daysPresentInWeek = 0;
+            let daysActiveInWeek = 0;
             let daysPresentInPreviousWeek = 0; 
 
             if (dateRange.startDate) {
@@ -1148,8 +1158,9 @@ const AttendanceDashboard: React.FC = () => {
                 let checkDate = bufferStart;
                 while (isBefore(checkDate, dateRange.startDate)) {
                     if (checkDate.getDay() === 1) {
-                        daysPresentInPreviousWeek = daysPresentInWeek;
+                        daysPresentInPreviousWeek = daysActiveInWeek;
                         daysPresentInWeek = 0;
+                        daysActiveInWeek = 0;
                     }
 
                     const dateStrStr = format(checkDate, 'yyyy-MM-dd');
@@ -1165,8 +1176,12 @@ const AttendanceDashboard: React.FC = () => {
                     const prevDayEvents = userEventsMap?.get(dateStrStr) || [];
                     const hasActivityCheck = prevDayEvents.length > 0;
 
-                    if (hasActivityCheck || hasApprovedLeaveCheck) {
-                        daysPresentInWeek++;
+                    if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
+                        daysActiveInWeek++;
+                        // Only physical presence or holidays count towards Sunday W/O
+                        if (hasActivityCheck || isConfiguredHolidayCheck) {
+                            daysPresentInWeek++;
+                        }
                     }
                     checkDate = addDays(checkDate, 1);
                 }
@@ -1174,8 +1189,9 @@ const AttendanceDashboard: React.FC = () => {
 
             dayInfos.forEach(({ day, dateStr, displayDate, dayName, dayOfMonth, dayOfWeek }) => {
                 if (dayOfWeek === 1) {
-                    daysPresentInPreviousWeek = daysPresentInWeek;
+                    daysPresentInPreviousWeek = daysActiveInWeek;
                     daysPresentInWeek = 0;
+                    daysActiveInWeek = 0;
                 }
 
                 // O(1) Lookup instead of O(L) filter
@@ -1223,8 +1239,15 @@ const AttendanceDashboard: React.FC = () => {
                     fieldStatus: fStatus
                 });
 
-                if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
-                    daysPresentInWeek += (status.includes('1/2') ? 0.5 : 1);
+                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H';
+                const isApprovedLeave = status.includes('L') && !status.includes('LOP');
+                
+                if (isPresence || isApprovedLeave) {
+                    const val = (status.includes('1/2') ? 0.5 : 1);
+                    daysActiveInWeek += val;
+                    if (isPresence) {
+                        daysPresentInWeek += val;
+                    }
                 }
 
                 if (dayEvents.length > 0) {

@@ -196,13 +196,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const bufferStart = subDays(monthStart, 15);
     
     let daysPresentInCurrentWeek = 0;
+    let daysActiveInCurrentWeek = 0;
     let daysPresentInPreviousWeek = 0;
 
     let checkDate = startOfWeek(subDays(monthStart, 15), { weekStartsOn: 1 });
     while (isBefore(checkDate, monthStart)) {
         if (checkDate.getDay() === 1) {
-            daysPresentInPreviousWeek = daysPresentInCurrentWeek;
+            daysPresentInPreviousWeek = daysActiveInCurrentWeek;
             daysPresentInCurrentWeek = 0;
+            daysActiveInCurrentWeek = 0;
         }
 
         const dateStrStr = format(checkDate, 'yyyy-MM-dd');
@@ -218,8 +220,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         );
         const hasActivityCheck = events.some(e => e.timestamp.startsWith(dateStrStr));
 
-        if (hasActivityCheck || hasApprovedLeaveCheck) {
-            daysPresentInCurrentWeek++;
+        if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
+            daysActiveInCurrentWeek++;
+            if (hasActivityCheck || isConfiguredHolidayCheck) {
+                daysPresentInCurrentWeek++;
+            }
         }
         checkDate = addDays(checkDate, 1);
     }
@@ -268,8 +273,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(year, month - 1, day);
       if (currentDate.getDay() === 1) {
-          daysPresentInPreviousWeek = daysPresentInCurrentWeek;
+          daysPresentInPreviousWeek = daysActiveInCurrentWeek;
           daysPresentInCurrentWeek = 0;
+          daysActiveInCurrentWeek = 0;
       }
 
       let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
@@ -330,8 +336,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       if (status === 'W/O' && hasActivity) status = 'WOP';
 
-      if (status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || (status.includes('L') && !status.includes('LOP'))) {
-        daysPresentInCurrentWeek += (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
+      const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H';
+      const isApprovedLeave = status.includes('L') && !status.includes('LOP');
+      
+      if (isPresence || isApprovedLeave) {
+        const val = (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
+        daysActiveInCurrentWeek += val;
+        if (isPresence) {
+          daysPresentInCurrentWeek += val;
+        }
       }
 
       if (!isFuture) {

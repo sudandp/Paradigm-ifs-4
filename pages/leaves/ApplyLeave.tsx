@@ -4,7 +4,7 @@ import { getStaffCategory } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules } from '../../types';
+import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus } from '../../types';
 import { ArrowLeft, Clock } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -306,8 +306,9 @@ const ApplyLeave: React.FC = () => {
                 const requestToEdit = userRequests.find(r => r.id === editId);
                 
                 if (requestToEdit) {
-                    if (requestToEdit.status !== 'pending_manager_approval') {
-                        setToast({ message: 'Only pending requests can be edited.', type: 'error' });
+                    const editableStatuses: LeaveRequestStatus[] = ['pending_manager_approval', 'rejected', 'cancelled'];
+                    if (!editableStatuses.includes(requestToEdit.status)) {
+                        setToast({ message: 'This request cannot be edited in its current state.', type: 'error' });
                         setTimeout(() => navigate('/leaves/dashboard'), 1500);
                         return;
                     }
@@ -341,9 +342,11 @@ const ApplyLeave: React.FC = () => {
                 endDate: formData.leaveType === 'Correction' ? formData.startDate : formData.endDate
             });
 
-            // Filter out rejected requests and the current request if in Edit Mode
+            // Filter out rejected, cancelled, and withdrawn requests, and the current request if in Edit Mode
             const conflictingRequests = existingRequests.filter(req => 
                 req.status !== 'rejected' && 
+                req.status !== 'cancelled' &&
+                req.status !== 'withdrawn' &&
                 (!isEditMode || req.id !== editId)
             );
 
@@ -524,7 +527,12 @@ const ApplyLeave: React.FC = () => {
             }
 
             if (isEditMode && editId) {
-                await api.updateLeaveRequest(editId, basePayload);
+                // When editing a request that was previously rejected or cancelled, 
+                // reset its status to start the approval flow again.
+                await api.updateLeaveRequest(editId, {
+                    ...basePayload,
+                    status: 'pending_manager_approval'
+                });
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
                 await api.submitLeaveRequest(basePayload);

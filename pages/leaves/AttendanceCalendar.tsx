@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, getDay, isAfter, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, getDay, isAfter, startOfDay, endOfDay, startOfWeek, subDays } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -99,86 +99,114 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         });
     }, [currentDate]);
 
+    // PRE-CALCULATE STATUS MAP FOR THE MONTH (WITH BUFFER)
+    const dayStatusMap = useMemo(() => {
+        const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number }>();
+        if (!settings || !user) return statusMap;
+
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
+        const threshold = (settings as any)?.[staffCategory]?.weekendPresentThreshold ?? 3;
+        
+        // Start buffer to seed counters
+        const bufferStart = startOfWeek(subDays(startOfMonth(currentDate), 15), { weekStartsOn: 1 });
+        const intervalDays = eachDayOfInterval({ start: bufferStart, end: endOfMonth(currentDate) });
+
+        let daysPresentInWeek = 0;
+        let daysActiveInWeek = 0;
+        let daysPresentInPreviousWeek = 0;
+
+        intervalDays.forEach(day => {
+            const dateStr = format(day, 'yyyy-MM-dd');
+            const dayOfWeek = day.getDay();
+
+            if (dayOfWeek === 1) {
+                daysPresentInPreviousWeek = daysActiveInWeek;
+                daysPresentInWeek = 0;
+                daysActiveInWeek = 0;
+            }
+
+            const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), day));
+            const hasCheckIn = dayEvents.some(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'));
+            const hasCheckOut = dayEvents.some(e => e.type.toLowerCase().includes('out'));
+            const isToday = isSameDay(day, startOfDay(new Date()));
+            const isPast = isAfter(startOfDay(new Date()), startOfDay(day));
+            const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
+
+            const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, day));
+            const floatingExpiryDate = (settings as any)?.[staffCategory]?.floatingLeavesExpiryDate;
+            const isFloatingExpired = floatingExpiryDate && dateStr > floatingExpiryDate;
+
+            const foundConfigured = holidays.find(h => {
+                const [y, m, d] = h.date.split('-').map(Number);
+                return isSameDay(new Date(y, m - 1, d), day);
+            });
+            const foundFixed = FIXED_HOLIDAYS.find(fh => {
+                const [m, d] = fh.date.split('-').map(Number);
+                return isSameDay(new Date(day.getFullYear(), m - 1, d), day);
+            });
+            const foundPool = userHolidays.find(uh => {
+                const [y, m, d] = uh.holidayDate.split('-').map(Number);
+                return isSameDay(new Date(y, m - 1, d), day);
+            });
+
+            const isCompanyHoliday = !!foundConfigured || !!foundFixed || !!foundPool;
+            const isSunday = dayOfWeek === 0;
+            const holidayName = foundConfigured?.name || foundFixed?.name || foundPool?.holidayName || (isRecurringHoliday && !isFloatingExpired ? '3rd Saturday' : isSunday ? 'Sunday' : '');
+
+            const foundLeave = leaveRequests.find(req => {
+                if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation' && req.status !== 'correction_made') return false;
+                return day >= startOfDay(new Date(req.startDate)) && day <= endOfDay(new Date(req.endDate));
+            });
+
+            const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
+            const meetsThreshold = daysPresentInWeek >= threshold;
+
+            let finalStatus = 'neutral';
+            let presenceVal = 0;
+
+            if (isDetailedPresent) {
+                if (isSunday || isCompanyHoliday || (isRecurringHoliday && !isFloatingExpired)) {
+                    finalStatus = 'holiday-present';
+                } else {
+                    finalStatus = 'present';
+                }
+            } else if (foundLeave) {
+                finalStatus = 'leave';
+            } else if (isRecurringHoliday && !isFloatingExpired) {
+                finalStatus = isActiveInPreviousWeek ? 'floating-holiday' : (isPast ? 'absent' : 'neutral');
+            } else if (isCompanyHoliday) {
+                finalStatus = isActiveInPreviousWeek ? 'company-holiday' : (isPast ? 'absent' : 'neutral');
+            } else if (isSunday) {
+                finalStatus = meetsThreshold ? 'sunday' : (isPast ? 'absent' : 'neutral');
+            } else if (isPast) {
+                finalStatus = 'absent';
+            }
+
+            // Update Counters
+            const isPresenceForThreshold = ['present', 'holiday-present'].includes(finalStatus) || (isCompanyHoliday && !isPast);
+            const isLeaveForActivity = finalStatus === 'leave' && !['loss of pay', 'lop'].includes((foundLeave?.leaveType || '').toLowerCase());
+            
+            if (isPresenceForThreshold || isLeaveForActivity) {
+                const val = (foundLeave?.dayOption === 'half' || finalStatus === '0.5P') ? 0.5 : 1; 
+                // Note: AttendanceCalendar simplified present check (isDetailedPresent)
+                // If it's a holiday, it counts as 1.
+                const inc = (isDetailedPresent && dayEvents.length > 0) ? 1 : 1; // Simplify to 1 for calendar threshold
+                
+                daysActiveInWeek += inc;
+                if (isPresenceForThreshold) {
+                    daysPresentInWeek += inc;
+                }
+            }
+
+            statusMap.set(dateStr, { status: finalStatus, holidayName, presenceVal });
+        });
+
+        return statusMap;
+    }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user]);
+
     const getDayStatus = (date: Date) => {
-        const currentYear = date.getFullYear();
-        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-        
-        // Check for attendance (present)
-        const hasCheckIn = events.some(e => isSameDay(new Date(e.timestamp), date) && (e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in')));
-        const hasCheckOut = events.some(e => isSameDay(new Date(e.timestamp), date) && (e.type.toLowerCase().includes('out')));
-        const isToday = isSameDay(date, startOfDay(new Date()));
-        const isPast = isAfter(startOfDay(new Date()), startOfDay(date));
-        const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
-
-        // Check for configured recurring holiday (Floating Holiday)
-        const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, date));
-        
-        // Expiry Check for Floating Holiday
-        const floatingExpiryDate = (settings as any)?.[staffCategory]?.floatingLeavesExpiryDate;
-        const isFloatingExpired = floatingExpiryDate && format(date, 'yyyy-MM-dd') > floatingExpiryDate;
-
-        // Check for general expiry (if all allocation rules are expired, hide highlights)
         const dateStr = format(date, 'yyyy-MM-dd');
-        const earnedExpiry = (settings as any)?.[staffCategory]?.earnedLeavesExpiryDate;
-        const sickExpiry = (settings as any)?.[staffCategory]?.sickLeavesExpiryDate;
-        const compOffExpiry = (settings as any)?.[staffCategory]?.compOffLeavesExpiryDate;
-        
-        const isEarnedExpired = earnedExpiry && dateStr > earnedExpiry;
-        const isSickExpired = sickExpiry && dateStr > sickExpiry;
-        const isCompOffExpired = compOffExpiry && dateStr > compOffExpiry;
-        
-        // Check for specific date holiday from admin settings (Company Holiday)
-        const foundConfigured = holidays.find(h => {
-            const [y, m, d] = h.date.split('-').map(Number);
-            return isSameDay(new Date(y, m - 1, d), date);
-        });
-
-        // Check for FIXED holidays (like Republic Day on 26th)
-        const foundFixed = FIXED_HOLIDAYS.find(fh => {
-            const [m, d] = fh.date.split('-').map(Number);
-            const fixedDate = new Date(currentYear, m - 1, d);
-            return isSameDay(fixedDate, date);
-        });
-
-        const foundPool = userHolidays.find(uh => {
-            const [y, m, d] = uh.holidayDate.split('-').map(Number);
-            const poolDate = new Date(y, m - 1, d);
-            return isSameDay(poolDate, date);
-        });
-
-        const isCompanyHoliday = !!foundConfigured || !!foundFixed || !!foundPool;
-        const isSunday = getDay(date) === 0;
-        const holidayName = foundConfigured?.name || foundFixed?.name || foundPool?.holidayName || (isRecurringHoliday && !isFloatingExpired ? '3rd Saturday' : isSunday ? 'Sunday' : '');
-
-        // Define if all holiday-related rules are expired
-        const isAllocationExpired = isFloatingExpired && isEarnedExpired && isSickExpired && isCompOffExpired;
-
-        // Check for Approved Leave
-        const foundLeave = leaveRequests.find(req => {
-            if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
-            const start = new Date(req.startDate);
-            const end = new Date(req.endDate);
-            return date >= startOfDay(start) && date <= endOfDay(end);
-        });
-
-        // Priority Logic:
-        const validRecurringHoliday = isRecurringHoliday && !isFloatingExpired;
-
-        if ((validRecurringHoliday || isCompanyHoliday || isSunday) && hasCheckIn) {
-            return { status: 'holiday-present', holidayName };
-        }
-
-        if (foundLeave) return { status: 'leave', holidayName: `${foundLeave.leaveType} Leave: ${foundLeave.reason}` };
-        if (isDetailedPresent) return { status: 'present', holidayName: '' };
-        if (isAllocationExpired) return { status: 'neutral', holidayName: '' };
-
-        if (isRecurringHoliday && !isFloatingExpired) return { status: 'floating-holiday', holidayName: '3rd Saturday (Holiday)' };
-        if (isCompanyHoliday) return { status: 'company-holiday', holidayName };
-        if (isSunday) return { status: 'sunday', holidayName: 'Sunday (Weekly Off)' };
-
-        if (isPast) return { status: 'absent', holidayName: '' };
-
-        return { status: 'neutral', holidayName: '' };
+        return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '' };
     };
 
     const getStatusColor = (status: string) => {
@@ -203,53 +231,40 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const today = startOfDay(new Date());
 
         daysInMonth.forEach(date => {
-            // Exclude future days from accrued real-time pay calculation
-            if (isAfter(startOfDay(date), today)) {
-                return;
-            }
+            if (isAfter(startOfDay(date), today)) return;
 
-            const holidayInfo = getDayStatus(date);
-            const status = typeof holidayInfo === 'string' ? holidayInfo : holidayInfo.status;
+            const res = getDayStatus(date);
+            const status = res.status;
             
-            if (status === 'holiday-present') {
-                count += 1;
-            } else if (status === 'present') {
-                const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
-                const { workingHours } = calculateWorkingHours(dayEvents, date);
-                if (workingHours > 0) {
+            if (['present', 'holiday-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
+                // For 'present', we should still check if it's a half day in actual events
+                if (status === 'present') {
+                    const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                    const { workingHours } = calculateWorkingHours(dayEvents, date);
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                     count += (workingHours >= shiftThreshold) ? 1 : 0.5;
+                } else {
+                    count += 1;
                 }
-            } else if (['floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
-                count += 1;
             } else if (status === 'leave') {
+                const dateStr = format(date, 'yyyy-MM-dd');
                 const leaveReq = leaveRequests?.find(req => {
-                    if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
-                    const start = startOfDay(new Date(req.startDate));
-                    const end = endOfDay(new Date(req.endDate));
-                    return date >= start && date <= end;
+                    return date >= startOfDay(new Date(req.startDate)) && date <= endOfDay(new Date(req.endDate));
                 });
                 
-                const isHalfDay = leaveReq?.dayOption === 'half';
-                
-                if (isHalfDay) {
-                    // 0.5 for the leave part (if not LOP)
-                    if (leaveReq.leaveType !== 'Loss of Pay') {
-                        count += 0.5;
+                if (leaveReq && leaveReq.leaveType !== 'Loss of Pay') {
+                    count += (leaveReq.dayOption === 'half') ? 0.5 : 1;
+                    // If half day leave, check if they worked the other half
+                    if (leaveReq.dayOption === 'half') {
+                        const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                        if (dayEvents.length > 0) count += 0.5;
                     }
-                    // 0.5 for the worked part (if they checked in)
-                    const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
-                    if (dayEvents.length > 0) {
-                        count += 0.5;
-                    }
-                } else if (!leaveReq || leaveReq.leaveType !== 'Loss of Pay') {
-                    count += 1;
                 }
             }
         });
         return count;
-    }, [daysInMonth, getDayStatus, events, settings, user]);
+    }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests]);
 
     useEffect(() => {
         if (onMonthPaydaysChange) {
