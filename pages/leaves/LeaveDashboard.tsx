@@ -422,15 +422,7 @@ const LeaveDashboard: React.FC = () => {
                 description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(0))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
                 icon: Baby, 
             }] : [])
-        ] : [
-            { 
-                title: '3rd Saturday Leave', 
-                value: `${parseFloat((balanceDataState.floatingTotal - balanceDataState.floatingUsed - (balanceDataState.floatingPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.floatingTotal.toFixed(1))}`, 
-                description: `Total: ${parseFloat(balanceDataState.floatingTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.floatingTotal - balanceDataState.floatingUsed - (balanceDataState.floatingPending || 0)).toFixed(1))}d.${(balanceDataState.floatingPending || 0) > 0 ? ` (Pending: ${balanceDataState.floatingPending}d)` : ''}`,
-                icon: Plane,
-                isExpired: balanceDataState.expiryStates?.floating
-            }
-        ]),
+        ] : []),
         { 
             title: 'Compensatory Off', 
             value: `${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}`, 

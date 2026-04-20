@@ -3243,35 +3243,13 @@ export const api = {
     // We NO LONGER automatically add all entries from rules.holidayPool.
     // This fixed the issue where unselected elective holidays were earning Comp Offs.
     
-    const floatingTotal = 0;
-    let dynamicCompOffTotal = 0;
-    let day17Floating = false;
-    
-    // 1. Comp Offs based on attendance on Sundays or Public Holidays (Earned via Work)
-    attendedDates.forEach(dateStr => {
-        const date = new Date(dateStr.replace(/-/g, '/'));
-        const dayName = format(date, 'EEEE');
-        
-        // Only count work up to the end of the viewed month
-        if (date > endOfMonth(referenceDate)) return;
-
-        // Comp Off Accrual Check (Sunday or Public Holiday)
-        if (dayName === 'Sunday' || holidayDates.has(dateStr)) {
-            dynamicCompOffTotal += 1;
-        }
-    });
-
-    // 2. Floating Holiday Allocation (Calendar-based, not attendance-based)
-    // Grant 1.0 Floating Holiday for EACH matching recurring holiday (e.g. 3rd Saturday)
-    // occurring between the start of the year (or opening date) and the end of the month.
-    const floatingHolidayDates: Date[] = [];
+    // 1. Identify all Recurring Holiday dates in the year to support Comp Off accrual (Earned via Work)
     const intervalDays = eachDayOfInterval({ start: new Date(yearStart.replace(/-/g, '/')), end: endOfMonth(referenceDate) });
     intervalDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const dayName = format(day, 'EEEE');
         
-        const isMale = (userData.gender || '').toLowerCase() !== 'female';
-        const isFloatingRecurringHoliday = isMale && ((recurringHolidays || []).some(rh => {
+        const isRecurringHoliday = (recurringHolidays || []).some(rh => {
              const rhType = rh.type || rh.roleType;
              const rhN = typeof rh.n !== 'undefined' ? rh.n : rh.occurrence;
              
@@ -3280,11 +3258,27 @@ export const api = {
              if (rhN === 0) return true; 
              const nth = Math.ceil(day.getDate() / 7);
              return rhN === nth;
-        }) || (dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3));
+        }) || (dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3);
 
-        if (isFloatingRecurringHoliday) {
-            floatingHolidayDates.push(day);
-            if (dateStr === '2026-01-17') day17Floating = true;
+        if (isRecurringHoliday) {
+            holidayDates.add(dateStr);
+        }
+    });
+
+    const floatingTotal = 0;
+    let dynamicCompOffTotal = 0;
+    
+    // 2. Comp Offs based on attendance on Sundays or Public/Recurring Holidays (Earned via Work)
+    attendedDates.forEach(dateStr => {
+        const date = new Date(dateStr.replace(/-/g, '/'));
+        const dayName = format(date, 'EEEE');
+        
+        // Only count work up to the end of the viewed month
+        if (date > endOfMonth(referenceDate)) return;
+
+        // Comp Off Accrual Check (Sunday or Public/Recurring Holiday)
+        if (dayName === 'Sunday' || holidayDates.has(dateStr)) {
+            dynamicCompOffTotal += 1;
         }
     });
 
@@ -3340,7 +3334,7 @@ export const api = {
       sickTotal,
       sickUsed: 0,
       sickPending: 0,
-      floatingTotal: 0, // Calculated below via overflow rules
+      floatingTotal: 0, 
       floatingUsed: 0,
       floatingPending: 0,
       compOffTotal: finalCompOffTotal, // Only Attendance on Holidays/Sundays
@@ -3470,55 +3464,6 @@ export const api = {
         }
       }
     });
-
-    // For females, Pink Leave replaces the standard Floating Holiday pool
-    if (userGender === 'female') {
-      balance.floatingTotal = 0;
-      balance.floatingUsed = 0;
-    } else {
-      // --- Floating Holiday Logic for Males (3rd Saturday) ---
-      // User says: "3rd saturday if he A that means he availed the leave so it need to show 0/1, if he worked 1/1"
-      
-      let finalFHTotal = 0;
-      const usedFHDates = new Set<string>();
-
-      // 1. Add manual floating leave requests to the used set
-      approvedLeaves.forEach(leave => {
-          const type = (leave.leave_type || '').toLowerCase();
-          if (type.includes('floating') || type === 'fh' || type === 'hp') {
-              const start = leave.start_date;
-              const duration = differenceInCalendarDays(new Date(leave.end_date.replace(/-/g, '/')), new Date(start.replace(/-/g, '/'))) + 1;
-              for (let i = 0; i < duration; i++) {
-                  usedFHDates.add(format(addDays(new Date(start.replace(/-/g, '/')), i), 'yyyy-MM-dd'));
-              }
-          }
-      });
-
-      const fhExpiryDateStr = rules.floatingLeavesExpiryDate;
-      const fhExpiryDate = fhExpiryDateStr ? new Date(fhExpiryDateStr.replace(/-/g, '/')) : null;
-
-      floatingHolidayDates.sort((a, b) => a.getTime() - b.getTime()).forEach(fhDate => {
-          const dateStr = format(fhDate, 'yyyy-MM-dd');
-          
-          // Check expiry
-          const isExpiredByRules = fhExpiryDate && fhDate > fhExpiryDate;
-          const isExpiredByView = fhExpiryDate && fhExpiryDate < startOfMonth(referenceDate);
-          if (isExpiredByRules || isExpiredByView) return;
-
-          finalFHTotal++;
-
-          // If the date has passed (or is today) and they didn't work, mark it as used (availed)
-          // fhDate is at 00:00, so we check against startOfDay(today)
-          if (fhDate <= startOfDay(new Date())) {
-              if (!attendedDates.has(dateStr)) {
-                  usedFHDates.add(dateStr);
-              }
-          }
-      });
-
-      balance.floatingTotal = finalFHTotal;
-      balance.floatingUsed = usedFHDates.size;
-    }
 
     balance.debug = {
         staffType,

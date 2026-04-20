@@ -57,26 +57,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const end = endOfMonth(currentDate);
         const days = eachDayOfInterval({ start, end });
 
-        // Get the allowed number of floating holidays per month from settings
-        const allowedFloatingHolidays = (user?.role === 'field_staff'
-            ? settings?.field?.monthlyFloatingLeaves
-            : settings?.office?.monthlyFloatingLeaves) ?? 0;
-
-        let foundHolidays = 0;
-
         recurringRules.forEach(rule => {
-            // If we've already found enough holidays for this month, stop.
-            // Note: This logic assumes we want to prioritize rules in the order they are defined.
-            // If 'allowedFloatingHolidays' is 0, no recurring holidays will be shown.
-            if (foundHolidays >= allowedFloatingHolidays) return;
-
             let count = 0;
             for (const day of days) {
                 if (format(day, 'EEEE').toLowerCase() === rule.day.toLowerCase()) {
                     count++;
                     if (count === rule.n) {
                         dates.push(day);
-                        foundHolidays++;
                         break; // Found the specific occurrence (e.g. 3rd Saturday)
                     }
                 }
