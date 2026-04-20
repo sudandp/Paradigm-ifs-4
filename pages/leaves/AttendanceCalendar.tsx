@@ -46,7 +46,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const recurringRules = useMemo(() => {
         const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-        return recurringHolidays.filter(rule => (rule.type || 'office') === roleType);
+        const isMale = (user?.gender || '').toLowerCase() === 'male';
+        return recurringHolidays.filter(rule => {
+            if ((rule.type || 'office') !== roleType) return false;
+            // 3rd Saturday holiday applies ONLY to users EXPLICITLY marked as MALE (per HR policy)
+            if (rule.day === 'Saturday' && !isMale) return false;
+            return true;
+        });
     }, [user, recurringHolidays, settings]);
 
 

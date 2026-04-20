@@ -26,22 +26,27 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
     }, [viewingDate]);
 
     const getDayStatus = (date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+
         // 1. Check Fixed Common Holidays
         const isFixed = FIXED_HOLIDAYS.some(fh => {
             const datePart = fh.date.startsWith('-') ? fh.date : `-${fh.date}`;
-            const fixedDate = new Date(`${currentYear}${datePart}`.replace(/-/g, '/'));
-            return isSameDay(fixedDate, date);
+            const fixedDateStr = `${currentYear}${datePart}`;
+            return fixedDateStr === dateStr;
         });
         if (isFixed) return 'fixed';
 
         // 2. Check Admin/HR Allocated Holidays
-        const isAdminAllocated = adminHolidays.some(h => isSameDay(new Date(h.date), date));
+        const isAdminAllocated = adminHolidays.some(h => {
+            const hDate = h.date?.startsWith('-') ? `${currentYear}${h.date}` : h.date;
+            return hDate === dateStr;
+        });
         if (isAdminAllocated) return 'admin';
 
         // 3. Check User Selected Holidays
         const isUserSelected = userSelectedHolidays.some(h => {
-             // holidayDate format in UserHoliday is likely YYYY-MM-DD
-             return isSameDay(new Date(h.holidayDate), date);
+             const hDate = h.holidayDate?.startsWith('-') ? `${currentYear}${h.holidayDate}` : h.holidayDate;
+             return hDate === dateStr;
         });
         if (isUserSelected) return 'user';
 

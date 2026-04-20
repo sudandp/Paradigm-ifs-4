@@ -57,7 +57,12 @@ const HolidaySelectionPage: React.FC = () => {
     const toggleHoliday = (name: string, date: string) => {
         const isSelected = selectedHolidays.some(h => h.name === name);
         
-        // Prevent changes to past or current day holidays
+        // Special case for Jan 15 (Processed holiday)
+        if (date === '-01-15') {
+            setToast({ message: "This holiday is locked as it has been processed based on your attendance on Jan 15.", type: 'error' });
+            return;
+        }
+
         const dateStr = date.startsWith('-') ? `${currentYear}${date}` : date;
         const holidayDate = new Date(dateStr.replace(/-/g, '/'));
         const today = new Date();
@@ -134,16 +139,20 @@ const HolidaySelectionPage: React.FC = () => {
         ...FIXED_HOLIDAYS.map(fh => ({
             id: `fixed-${fh.date}`,
             name: fh.name,
-            date: `${currentYear}-${fh.date}`,
+            date: fh.date.startsWith('-') ? `${currentYear}${fh.date}` : `${currentYear}-${fh.date}`,
             type: category as any
         })),
-        ...storeHolidays.filter(h => !FIXED_HOLIDAYS.some(fh => fh.name === h.name))
+        ...storeHolidays.map(h => ({
+            ...h,
+            id: h.id || `admin-${h.name}`,
+            date: h.date?.startsWith('-') ? `${currentYear}${h.date}` : h.date
+        }))
     ];
 
     const calendarUserHolidays = selectedHolidays.map(h => ({
         id: `user-${h.name}`,
         holidayName: h.name,
-        holidayDate: `${currentYear}${h.date}`, // Convert -MM-DD to YYYY-MM-DD
+        holidayDate: h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date,
         userId: user?.id || '',
         year: currentYear
     }));
@@ -312,7 +321,11 @@ const HolidaySelectionPage: React.FC = () => {
                                                 : 'border-emerald-500/20 bg-transparent scale-90 opacity-40'
                                         }`}>
                                             {isSelected ? (
-                                                <Check className="h-5 w-5 stroke-[4]" />
+                                                holiday.date === '-01-15' ? (
+                                                    <Lock className="h-4 w-4 stroke-[3]" />
+                                                ) : (
+                                                    <Check className="h-5 w-5 stroke-[4]" />
+                                                )
                                             ) : isPastOrToday ? (
                                                 <span className="text-xl font-black leading-none">×</span>
                                             ) : null}

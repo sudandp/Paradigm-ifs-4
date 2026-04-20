@@ -3244,19 +3244,22 @@ export const api = {
     // This fixed the issue where unselected elective holidays were earning Comp Offs.
     
     // 1. Identify all Recurring Holiday dates in the year to support Comp Off accrual (Earned via Work)
-    // 3rd Saturday rule applies to MALE employees only (per HR policy)
-    const isMale = (userData.gender || '').toLowerCase() !== 'female';
+    // 3rd Saturday rule applies ONLY to users EXPLICITLY marked as MALE (per HR policy)
+    const isMale = (userData.gender || '').toLowerCase() === 'male';
     const intervalDays = eachDayOfInterval({ start: new Date(yearStart.replace(/-/g, '/')), end: endOfMonth(referenceDate) });
     intervalDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const dayName = format(day, 'EEEE');
         
+        // 3rd Saturday recurring holiday rule is male-only per HR policy
         const isRecurringHoliday = (recurringHolidays || []).some(rh => {
              const rhType = rh.type || rh.roleType;
              const rhN = typeof rh.n !== 'undefined' ? rh.n : rh.occurrence;
              
              if (rhType && rhType !== staffType) return false;
              if (rh.day !== dayName) return false;
+             // If this rule matches a Saturday, only apply to male employees
+             if (rh.day === 'Saturday' && !isMale) return false;
              if (rhN === 0) return true; 
              const nth = Math.ceil(day.getDate() / 7);
              return rhN === nth;
