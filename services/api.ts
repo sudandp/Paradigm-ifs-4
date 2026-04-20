@@ -3258,12 +3258,18 @@ export const api = {
              
              if (rhType && rhType !== staffType) return false;
              if (rh.day !== dayName) return false;
+             
              // If this rule matches a Saturday, only apply to male employees
-             if (rh.day === 'Saturday' && !isMale) return false;
+             // AND ONLY if the policy has not expired (Monthly Floating Holidays expiry applies)
+             if (rh.day === 'Saturday') {
+                 if (!isMale) return false;
+                 if (rules.floatingLeavesExpiryDate && dateStr > rules.floatingLeavesExpiryDate) return false;
+             }
+             
              if (rhN === 0) return true; 
              const nth = Math.ceil(day.getDate() / 7);
              return rhN === nth;
-        }) || (isMale && dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3);
+        }) || (isMale && dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3 && (!rules.floatingLeavesExpiryDate || dateStr <= rules.floatingLeavesExpiryDate));
 
         if (isRecurringHoliday) {
             holidayDates.add(dateStr);

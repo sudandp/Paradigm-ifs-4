@@ -29,28 +29,28 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
         const dateStr = format(date, 'yyyy-MM-dd');
 
         // 1. Check Fixed Common Holidays
-        const isFixed = FIXED_HOLIDAYS.some(fh => {
+        const fixedHoliday = FIXED_HOLIDAYS.find(fh => {
             const datePart = fh.date.startsWith('-') ? fh.date : `-${fh.date}`;
             const fixedDateStr = `${currentYear}${datePart}`;
             return fixedDateStr === dateStr;
         });
-        if (isFixed) return 'fixed';
+        if (fixedHoliday) return { status: 'fixed', name: fixedHoliday.name };
 
         // 2. Check Admin/HR Allocated Holidays
-        const isAdminAllocated = adminHolidays.some(h => {
+        const adminHoliday = adminHolidays.find(h => {
             const hDate = h.date?.startsWith('-') ? `${currentYear}${h.date}` : h.date;
             return hDate === dateStr;
         });
-        if (isAdminAllocated) return 'admin';
+        if (adminHoliday) return { status: 'admin', name: adminHoliday.name };
 
         // 3. Check User Selected Holidays
-        const isUserSelected = userSelectedHolidays.some(h => {
+        const userHoliday = userSelectedHolidays.find(h => {
              const hDate = h.holidayDate?.startsWith('-') ? `${currentYear}${h.holidayDate}` : h.holidayDate;
              return hDate === dateStr;
         });
-        if (isUserSelected) return 'user';
+        if (userHoliday) return { status: 'user', name: userHoliday.holidayName };
 
-        return 'neutral';
+        return { status: 'neutral', name: null };
     };
 
     const getStatusColor = (status: string) => {
@@ -89,14 +89,14 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                         <div key={`empty-${i}`} className="h-9" />
                     ))}
                     {daysInMonth.map(date => {
-                        const status = getDayStatus(date);
-                        const colorClass = getStatusColor(status);
+                        const holidayInfo = getDayStatus(date);
+                        const colorClass = getStatusColor(holidayInfo.status);
                         return (
                             <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent hover:border-border/50`}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
-                                {status !== 'neutral' && (
+                                {holidayInfo.status !== 'neutral' && (
                                     <div className="absolute bottom-[-30px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transition-opacity">
-                                        {status === 'fixed' ? 'Common Holiday' : status === 'admin' ? 'Admin Allocated' : 'User Selected'}
+                                        {holidayInfo.name || (holidayInfo.status === 'fixed' ? 'Common Holiday' : holidayInfo.status === 'admin' ? 'Admin Allocated' : 'User Selected')}
                                     </div>
                                 )}
                             </div>

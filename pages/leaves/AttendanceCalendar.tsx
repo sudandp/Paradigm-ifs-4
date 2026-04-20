@@ -62,6 +62,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const start = startOfMonth(currentDate);
         const end = endOfMonth(currentDate);
         const days = eachDayOfInterval({ start, end });
+        
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+        const categorySettings = (settings as any)?.[staffCategory];
+        const expiryDate = categorySettings?.floating_leaves_expiry_date || categorySettings?.floatingLeavesExpiryDate;
 
         recurringRules.forEach(rule => {
             let count = 0;
@@ -69,8 +73,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 if (format(day, 'EEEE').toLowerCase() === rule.day.toLowerCase()) {
                     count++;
                     if (count === rule.n) {
-                        dates.push(day);
-                        break; // Found the specific occurrence (e.g. 3rd Saturday)
+                        // Check if this recurring holiday is expired (e.g. 3rd Saturday after Feb 1st)
+                        const dateStr = format(day, 'yyyy-MM-dd');
+                        if (rule.day === 'Saturday' && expiryDate && dateStr > expiryDate) {
+                            // Expired - do not add to holiday dates
+                        } else {
+                            dates.push(day);
+                        }
+                        break; // Found the specific occurrence
                     }
                 }
             }
@@ -92,7 +102,6 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const getDayStatus = (date: Date) => {
         const currentYear = date.getFullYear();
         const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-        const activePool = (settings as any)?.[staffCategory]?.holidayPool || HOLIDAY_SELECTION_POOL;
         
         // Check for attendance (present)
         const hasCheckIn = events.some(e => isSameDay(new Date(e.timestamp), date) && (e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in')));
@@ -119,69 +128,57 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const isCompOffExpired = compOffExpiry && dateStr > compOffExpiry;
         
         // Check for specific date holiday from admin settings (Company Holiday)
-        const isConfiguredHoliday = holidays.some(h => {
+        const foundConfigured = holidays.find(h => {
             const [y, m, d] = h.date.split('-').map(Number);
             return isSameDay(new Date(y, m - 1, d), date);
         });
 
         // Check for FIXED holidays (like Republic Day on 26th)
-        const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
+        const foundFixed = FIXED_HOLIDAYS.find(fh => {
             const [m, d] = fh.date.split('-').map(Number);
             const fixedDate = new Date(currentYear, m - 1, d);
             return isSameDay(fixedDate, date);
         });
 
-        const isPoolHoliday = userHolidays.some(uh => {
+        const foundPool = userHolidays.find(uh => {
             const [y, m, d] = uh.holidayDate.split('-').map(Number);
             const poolDate = new Date(y, m - 1, d);
             return isSameDay(poolDate, date);
         });
 
-        // Combine all company holiday sources
-        const isCompanyHoliday = isConfiguredHoliday || isFixedHoliday || isPoolHoliday;
-
-        // Check if it's a Sunday (weekly off)
+        const isCompanyHoliday = !!foundConfigured || !!foundFixed || !!foundPool;
         const isSunday = getDay(date) === 0;
+        const holidayName = foundConfigured?.name || foundFixed?.name || foundPool?.holidayName || (isRecurringHoliday && !isFloatingExpired ? '3rd Saturday' : isSunday ? 'Sunday' : '');
 
         // Define if all holiday-related rules are expired
-        // If everything is expired, we shouldn't show "fixed" highlights that imply an active allocation period.
         const isAllocationExpired = isFloatingExpired && isEarnedExpired && isSickExpired && isCompOffExpired;
 
         // Check for Approved Leave
-        const isApprovedLeave = leaveRequests.some(req => {
+        const foundLeave = leaveRequests.find(req => {
             if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
             const start = new Date(req.startDate);
             const end = new Date(req.endDate);
-            // Check intersection (inclusive)
             return date >= startOfDay(start) && date <= endOfDay(end);
         });
 
         // Priority Logic:
-        // 1. If it's a valid holiday (active recurring, company holiday, or Sunday) AND the user checked in -> Holiday Present (comp-off earned)
         const validRecurringHoliday = isRecurringHoliday && !isFloatingExpired;
 
         if ((validRecurringHoliday || isCompanyHoliday || isSunday) && hasCheckIn) {
-            return 'holiday-present';
+            return { status: 'holiday-present', holidayName };
         }
 
-        // 2. Approved Leave
-        if (isApprovedLeave) return 'leave';
+        if (foundLeave) return { status: 'leave', holidayName: `${foundLeave.leaveType} Leave: ${foundLeave.reason}` };
+        if (isDetailedPresent) return { status: 'present', holidayName: '' };
+        if (isAllocationExpired) return { status: 'neutral', holidayName: '' };
 
-        // 3. If it's not a holiday but has full check-in/out or is current day check-in -> Present
-        if (isDetailedPresent) return 'present';
+        if (isRecurringHoliday && !isFloatingExpired) return { status: 'floating-holiday', holidayName: '3rd Saturday (Holiday)' };
+        if (isCompanyHoliday) return { status: 'company-holiday', holidayName };
+        if (isSunday) return { status: 'sunday', holidayName: 'Sunday (Weekly Off)' };
 
-        // 4. If allocation is expired, everything else is neutral
-        if (isAllocationExpired) return 'neutral';
+        if (isPast) return { status: 'absent', holidayName: '' };
 
-        // 5. If it's a holiday and NO check-in -> Holiday (or Floating Holiday)
-        if (isRecurringHoliday && !isFloatingExpired) return 'floating-holiday'; // Yellow
-        if (isConfiguredHoliday || isFixedHoliday || isPoolHoliday) return 'company-holiday'; // Blue
-        if (isSunday) return 'sunday'; // Sunday as weekly off
-
-        // 6. Check for absent (past date, no check-in, not holiday, OR missing punch)
-        if (isPast) return 'absent';
-
-        return 'neutral';
+        return { status: 'neutral', holidayName: '' };
     };
 
     const getStatusColor = (status: string) => {
@@ -211,7 +208,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 return;
             }
 
-            const status = getDayStatus(date);
+            const holidayInfo = getDayStatus(date);
+            const status = typeof holidayInfo === 'string' ? holidayInfo : holidayInfo.status;
             
             if (status === 'holiday-present') {
                 count += 1;
@@ -282,10 +280,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         <div key={`empty-${i}`} className="h-9" />
                     ))}
                     {daysInMonth.map(date => {
-                        const status = getDayStatus(date);
+                        const holidayInfo = getDayStatus(date);
+                        const status = typeof holidayInfo === 'string' ? holidayInfo : holidayInfo.status;
+                        const holidayName = typeof holidayInfo === 'string' ? '' : holidayInfo.holidayName;
                         const colorClass = getStatusColor(status);
                         
-                        let overlayText = null;
+                        const isToday = isSameDay(date, startOfDay(new Date()));
+                        const isPast = isAfter(startOfDay(new Date()), startOfDay(date));
+                        
+                        let overlayText: string | null = null;
                         let customStyle: React.CSSProperties = {};
 
                         if (status === 'present' || status === 'holiday-present') {
@@ -301,11 +304,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 const baseColor = status === 'holiday-present' ? '#7c3aed' : '#10b981'; // violet-600 or emerald-500
                                 customStyle = {
                                     background: `linear-gradient(135deg, ${baseColor} 50%, #ef4444 50%)`, // Split with red (#ef4444)
-                                    borderColor: 'transparent' // Hide the border so it doesn't wrap green around the red half
+                                    borderColor: 'transparent' // Hide the border
                                 };
                             }
-                        } else if (status === 'company-holiday' || status === 'floating-holiday') {
-                            overlayText = 'H';
+                        } else if (status === 'company-holiday' || status === 'floating-holiday' || status === 'sunday') {
+                            overlayText = status === 'sunday' ? null : 'H';
                         } else if (status === 'leave') {
                             const request = leaveRequests?.find(req => {
                                 if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
@@ -314,11 +317,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 return date >= start && date <= end;
                             });
                             if (request) {
-                                // If it's a half-day leave, show as 0.5P with the half-day gradient
                                 if (request.dayOption === 'half') {
                                     overlayText = '0.5P';
                                     customStyle = {
-                                        background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green (#10b981) / Half Blue (#2563eb)
+                                        background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green / Half Blue
                                         borderColor: 'transparent'
                                     };
                                 } else {
@@ -341,7 +343,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         }
 
                         return (
-                            <div key={date.toISOString()} style={customStyle} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`}>
+                            <div key={date.toISOString()} style={customStyle} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50 group relative cursor-help`}>
                                 <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[2px]' : 'text-xs'}`}>
                                     {format(date, 'd')}
                                 </span>
@@ -349,6 +351,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     <span className={`text-[9px] font-black leading-none text-white drop-shadow-md`}>
                                         {overlayText}
                                     </span>
+                                )}
+                                {holidayName && (
+                                    <div className="absolute bottom-[-35px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-lg">
+                                        {holidayName}
+                                    </div>
                                 )}
                             </div>
                         );
