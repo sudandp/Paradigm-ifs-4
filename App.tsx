@@ -671,25 +671,27 @@ const App: React.FC = () => {
         return;
       }
 
-      // Handle Token Updates for Persistence
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        if (session) {
-          Preferences.set({ 
-            key: 'supabase.auth.rememberMe', 
-            value: session.refresh_token 
-          }).catch(err => console.error('Error synchronizing auth token:', err));
+      // Always persist the latest refresh token so it survives app restarts.
+      // TOKEN_REFRESHED fires automatically when Supabase silently renews the access token.
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
+        Preferences.set({ 
+          key: 'supabase.auth.rememberMe', 
+          value: session.refresh_token 
+        }).catch(err => console.error('Error synchronizing auth token:', err));
           
-          if (session.user.email) {
-            Preferences.set({ key: 'rememberedEmail', value: session.user.email }).catch(e => console.warn('[App] Prefs auth save failed:', e));
-          }
+        if (session.user.email) {
+          Preferences.set({ key: 'rememberedEmail', value: session.user.email }).catch(e => console.warn('[App] Prefs auth save failed:', e));
         }
       }
 
       // Update global user state based on the session
       if (session?.user) {
-        // Only fetch profile if user isn't set OR if it's a critical auth event
         const currentUser = useAuthStore.getState().user;
-        if (!currentUser || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+
+        // TOKEN_REFRESHED: Supabase silently renewed the token. If we already have a user
+        // in memory, there is nothing to do — the user is still logged in.
+        // Only re-fetch the profile on an actual new SIGNED_IN event or if no user is in state.
+        if (!currentUser || event === 'SIGNED_IN') {
           setTimeout(async () => {
             try {
               const appUser = await withTimeout(
@@ -703,7 +705,7 @@ const App: React.FC = () => {
 
               if (isMounted && appUser) {
                 setUser(appUser);
-                // Greeting logic
+                // Greeting logic — only once per session
                 const greetKey = `greetingSent_${appUser.id}`;
                 if (!localStorage.getItem(greetKey)) {
                   apiService.createNotification({
@@ -714,8 +716,7 @@ const App: React.FC = () => {
                   localStorage.setItem(greetKey, '1');
                 }
 
-                // Initialize push notifications on initial session load
-              pushNotificationService.init();
+                pushNotificationService.init();
               }
             } catch (err) {
               console.error('Failed to fetch user profile after auth change:', err);
@@ -723,13 +724,14 @@ const App: React.FC = () => {
           }, 0);
         }
       } else if (event === 'SIGNED_OUT') {
-        // DEFINITIVE LOGOUT: Clear local state
+        // The user explicitly signed out of THIS app (scope:'local').
+        // Clear local state but do NOT attempt session restore — the user chose to leave.
         if (isMounted) {
           setUser(null);
           resetAttendance();
           useOnboardingStore.getState().reset();
           Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(e => console.warn('[App] Prefs remove failed:', e));
-          // pushNotificationService.logout(); // Implement if needed, though tokens are per-device
+          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
         }
       }
     });
@@ -739,8 +741,7 @@ const App: React.FC = () => {
     const appStateSubscription = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
         console.log('[AppState] App returned to foreground. Verifying session...');
-        const { data: { session } } = await supabase.auth.getSession();
-        
+
         // Refresh notifications and badge count when app returns to foreground
         const currentUser = useAuthStore.getState().user;
         if (currentUser) {
@@ -750,12 +751,34 @@ const App: React.FC = () => {
           });
         }
 
+        // Silently verify and restore the session WITHOUT forcing the user back to login.
+        // supabase.auth.getSession() returns the in-memory session; if the access token
+        // has expired, Supabase will automatically try to refresh it via autoRefreshToken.
+        // If it cannot (e.g. no network), we fall back to our persisted refreshToken.
+        const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          // If session is lost in background, we might need to restore it
           const { value: refreshToken } = await Preferences.get({ key: 'supabase.auth.rememberMe' });
           if (refreshToken) {
-            console.log('[AppState] Attempting to restore lost session...');
-            await supabase.auth.refreshSession({ refresh_token: refreshToken }).catch(e => console.warn('[App] Session refresh failed:', e));
+            console.log('[AppState] Silently restoring session from saved token...');
+            const { data: refreshData, error: refreshErr } = await supabase.auth
+              .refreshSession({ refresh_token: refreshToken })
+              .catch(e => ({ data: { session: null }, error: e }));
+            
+            if (refreshErr) {
+              // Token is definitively invalid (e.g. revoked server-side). Only THEN do we force logout.
+              const isDefinitiveFailure = refreshErr.message?.includes('invalid') || refreshErr.message?.includes('not found');
+              if (isDefinitiveFailure) {
+                console.warn('[AppState] Saved token is invalid. Forcing logout.');
+                useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
+              }
+              // If it was a network error, we keep the user in the app and retry next time.
+            } else if (refreshData.session) {
+              console.log('[AppState] Session silently restored.');
+            }
+          } else if (currentUser) {
+            // No token and no session — user state is stale. Clear it.
+            console.warn('[AppState] No session or refresh token found. Clearing stale user state.');
+            useAuthStore.getState().forceLogout('Your session has expired. Please log in again.');
           }
         }
       }

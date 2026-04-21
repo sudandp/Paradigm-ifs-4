@@ -129,6 +129,33 @@ const signInWithGoogle = async () => {
             return { error: { message: 'Google Sign-In is not configured for this app. Please contact support.' } };
         }
 
+        // STEP 1: Try silent sign-in using a previously authorized account.
+        // This avoids forcing the user to pick an account every time they open the app.
+        // filterByAuthorizedAccounts: true → silently use the last signed-in account.
+        try {
+            console.log("[NativeAuth] Attempting silent sign-in with previously authorized account...");
+            const silentRes = await SocialLogin.login({
+                provider: 'google',
+                options: {
+                    filterByAuthorizedAccounts: true,
+                    style: 'bottom'
+                }
+            });
+
+            if (silentRes.result?.responseType === 'online' && silentRes.result?.idToken) {
+                console.log("[NativeAuth] Silent sign-in succeeded.");
+                return await supabase.auth.signInWithIdToken({
+                    provider: 'google',
+                    token: silentRes.result.idToken,
+                });
+            }
+        } catch (silentErr: any) {
+            // Silent sign-in fails when no previously authorized account exists — this is expected
+            // on first login. Fall through to the interactive flow.
+            console.log("[NativeAuth] Silent sign-in not available, falling back to interactive flow.", silentErr?.message);
+        }
+
+        // STEP 2: Interactive sign-in — shows account picker only when silent fails.
         try {
             const res = await SocialLogin.login({
                 provider: 'google',
@@ -138,8 +165,7 @@ const signInWithGoogle = async () => {
                 }
             });
             
-            // Note: res.result.idToken contains the ID token from Google
-            if (res.result && res.result.responseType === 'online' && res.result.idToken) {
+            if (res.result?.responseType === 'online' && res.result?.idToken) {
                 return await supabase.auth.signInWithIdToken({
                     provider: 'google',
                     token: res.result.idToken,
@@ -155,7 +181,6 @@ const signInWithGoogle = async () => {
                return { error: { message: 'Google Sign-In was canceled.' } };
             }
             
-            // Return the specific error message to display on screen for debugging
             return { 
                 error: { 
                     message: `Native Auth Error: ${errorMessage}. If the issue persists, ensure your SHA-1 fingerprint is registered in the Google Cloud Console for package 'com.paradigm.ifs' and Web Client ID is in Supabase Dashboard.` 
@@ -181,19 +206,23 @@ const signInWithGoogle = async () => {
         }
     }
 
+    // Do NOT pass prompt:'select_account' — that forces the Google account picker
+    // on every login, even when the user already has a valid token. Omitting it
+    // lets Google silently reuse the existing session. The user will only see the
+    // account picker on their very first login or after a manual sign-out.
     return await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
             redirectTo: redirectUrl,
-            queryParams: {
-                prompt: 'select_account',
-            },
         }
     });
 };
 
 const signOut = async (): Promise<void> => {
-    const { error } = await supabase.auth.signOut();
+    // Use scope:'local' to sign out ONLY from this app's session.
+    // This does NOT invalidate the Google account or other devices/browsers.
+    // The user can re-open the app on a different device and still be signed in there.
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
         console.error("Error signing out:", error.message);
     }

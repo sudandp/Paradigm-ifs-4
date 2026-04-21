@@ -192,9 +192,10 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         );
     }
     
-    // While checking device status...
+    // While checking device status, we proceed to render children to avoid a double-splash effect.
+    // The component will re-render and block access if the check finds an issue.
     if (user && deviceStatus === 'checking' && user.role !== 'developer') {
-         return <LoadingScreen message="Establishing secure uplink..." />;
+         // Silently wait for the check to complete
     }
 
     // Otherwise, render children normally

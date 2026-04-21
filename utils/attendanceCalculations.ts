@@ -282,6 +282,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   totalHours: number;
   breakHours: number;
   workingHours: number;
+  dailyPunchCount: number;
 } {
   if (events.length === 0) {
     return {
@@ -293,6 +294,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
       totalHours: 0,
       breakHours: 0,
       workingHours: 0,
+      dailyPunchCount: 0,
     };
   }
 
@@ -321,6 +323,8 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   
   const result = calculateWorkingHours(relevantEvents, processingDate);
   
+  const dailyPunchCount = relevantEvents.filter(e => e.type === 'punch-in' && (!e.workType || e.workType === 'office')).length;
+
   return {
     checkIn: firstCheckIn?.timestamp || null,
     checkOut: lastCheckOut?.timestamp || null,
@@ -330,8 +334,10 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
     totalHours: result.totalHours,
     breakHours: result.breakHours,
     workingHours: result.workingHours,
+    dailyPunchCount,
   };
 }
+
 
 /**
  * Determine the staff category based on user's role and assigned site

@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
 import { processDailyEvents } from '../utils/attendanceCalculations';
+import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification, scheduleStepBreakReminders, cancelStepBreakReminders } from '../utils/permissionUtils';
@@ -221,15 +222,9 @@ export const useAuthStore = create<AuthState>()(
         loginWithEmail: async (email, password, rememberMe) => {
             set({ error: null, loading: true });
 
-            // Ensure a clean state before attempting login. This helps if there's a stale session
-            // lingering that might confuse the client or the user.
-            try {
-                // Clear all persistent tokens to ensure a completely fresh start
-                await Preferences.remove({ key: 'supabase.auth.rememberMe' });
-                await authService.signOut();
-            } catch (e) {
-                // Ignore signout errors, we just want to try to clear state
-            }
+            // NOTE: We intentionally do NOT call signOut() here. Doing so before each login
+            // attempt was invalidating valid sessions on other devices and causing unnecessary
+            // re-auth loops. Supabase's signInWithPassword handles session replacement natively.
 
             try {
                 // Determine effective timeout: infinite/long for mobile, 20s for web
@@ -466,10 +461,21 @@ export const useAuthStore = create<AuthState>()(
                 const today = new Date();
                 const endOfDayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
 
-                // For site staff with shift management, look back further to catch
-                // active night-shift sessions that cross midnight (e.g., 9 PM → 7 AM).
-                // 16 hours covers any reasonable shift start from the previous day.
-                const isSiteStaffRole = !['admin', 'hr', 'finance', 'developer', 'field_staff', 'field_officer', 'operation_manager'].includes(user.role);
+                // Dynamically determine staff category from admin-configured role mapping
+                // (Admin UI → Attendance Rules → Staff Selections).
+                // Site staff roles need a 16-hour lookback to catch night-shift sessions
+                // that cross midnight. Office/Field staff always start from today midnight.
+                const { attendance: attendanceSettings } = useSettingsStore.getState();
+                const roleMapping = attendanceSettings.missedCheckoutConfig?.roleMapping || {
+                    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
+                    field: ['field_staff', 'field_officer', 'operation_manager', 'technical_reliever'],
+                    site: ['site_manager', 'security_guard', 'supervisor']
+                };
+                const officeRoles = roleMapping.office || [];
+                const fieldRoles = roleMapping.field || [];
+                // Site staff = roles explicitly in site mapping AND not in office/field
+                const isSiteStaffRole = (roleMapping.site || []).includes(user.role) &&
+                    !officeRoles.includes(user.role) && !fieldRoles.includes(user.role);
                 const siteShiftLookbackMs = isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0;
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
@@ -503,7 +509,7 @@ export const useAuthStore = create<AuthState>()(
                     return;
                 }
 
-                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours } = processDailyEvents(events, new Date());
+                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours, dailyPunchCount: processedDailyPunchCount } = processDailyEvents(events, new Date());
                 const lastEvent = events[events.length - 1];
                 
                 // --- INDEPENDENT FLOW LOGIC ---
@@ -527,8 +533,9 @@ export const useAuthStore = create<AuthState>()(
                 const lastBreakEvent = breakEvents.length > 0 ? breakEvents[breakEvents.length - 1] : null;
                 const isOnBreak = lastBreakEvent ? (lastBreakEvent.type === 'break-in') : false;
 
-                // Count daily primary punches
-                const dailyPunchCount = events.filter(e => e.type === 'punch-in' && (!e.workType || e.workType === 'office')).length;
+                // Count daily primary punches using the logic from processDailyEvents
+                // which correctly ignores previous day's completed shifts.
+                const dailyPunchCount = processedDailyPunchCount;
 
                 const extraPunchCyclesUsed = Math.max(0, dailyPunchCount - 1);
                 const isPunchUnlocked = approvedUnlockCount > extraPunchCyclesUsed;
