@@ -320,31 +320,44 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
             const toastTitle = newNotif.title || newNotif.metadata?.title || 'New Alert';
             const isEmergency = newNotif.type === 'emergency' || newNotif.type === 'emergency_broadcast' || newNotif.severity === 'High';
             
+            // Check for redundant device approval notifications to suppress toasts
+            const isDeviceApprovalRedundant = 
+              (newNotif.type === 'device_approval' || newNotif.type === 'approval_request') && 
+              (newNotif.message?.toLowerCase().includes('submitted for approval') || 
+               newNotif.message?.toLowerCase().includes('requested approval to add a new web device'));
 
-
-            toast(
-              (t) => (
-                <div className="flex flex-col gap-1">
-                  <div className="font-bold text-sm flex items-center gap-2">
-                    {isEmergency && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
-                    {toastTitle}
+            if (!isDeviceApprovalRedundant) {
+              toast(
+                (t) => (
+                  <div className="flex flex-col gap-1 relative pr-6">
+                    <div className="font-bold text-sm flex items-center gap-2">
+                      {isEmergency && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />}
+                      {toastTitle}
+                    </div>
+                    <div className="text-xs opacity-90 line-clamp-2">{newNotif.message}</div>
+                    <button 
+                      onClick={() => toast.dismiss(t.id)}
+                      className="absolute -top-1 -right-4 p-1 opacity-50 hover:opacity-100 transition-opacity"
+                      aria-label="Close"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
                   </div>
-                  <div className="text-xs opacity-90 line-clamp-2">{newNotif.message}</div>
-                </div>
-              ),
-              {
-                duration: isEmergency ? 10000 : 5000,
-                position: 'top-right',
-                style: {
-                  background: isEmergency ? '#7f1d1d' : '#1e293b',
-                  color: '#fff',
-                  border: isEmergency ? '1px solid #dc2626' : '1px solid #334155',
-                  borderRadius: '12px',
-                  padding: '12px'
-                },
-                icon: isEmergency ? '🚨' : '🔔'
-              }
-            );
+                ),
+                {
+                  duration: isEmergency ? 10000 : 5000,
+                  position: 'top-right',
+                  style: {
+                    background: isEmergency ? '#7f1d1d' : '#1e293b',
+                    color: '#fff',
+                    border: isEmergency ? '1px solid #dc2626' : '1px solid #334155',
+                    borderRadius: '12px',
+                    padding: '12px'
+                  },
+                  icon: isEmergency ? '🚨' : '🔔'
+                }
+              );
+            }
           }
 
           if (Capacitor.isNativePlatform()) {

@@ -2082,18 +2082,45 @@ export const api = {
         await offlineDb.setCache(cacheKey, [...cached, offlineEvent]);
         return;
     }
+    // DEDUPLICATION GUARD: Prevent double-write when the network is slow.
+    //
+    // `withTimeout` uses Promise.race(). If the DB insert takes longer than
+    // the timeout, the timeout rejects first, but the Supabase insert is still
+    // executing in the background and WILL commit. If we then queue it in the
+    // outbox, the sync service will insert it a second time → duplicate rows.
+    //
+    // Fix: attach a `.then()` directly to the raw Supabase promise BEFORE the
+    // race starts. This callback fires as soon as the server responds (success
+    // or DB-level error), independent of the timeout. We can then check this
+    // flag in the catch to distinguish "timed out but already inserted" from
+    // "genuinely failed".
+    let insertConfirmed = false;
+    const insertPromise = (supabase
+      .from('attendance_events')
+      .insert(toSnakeCase(event)) as any)
+      .then((result: any) => {
+        // Only mark confirmed if Supabase itself did not return an error
+        if (!result.error) insertConfirmed = true;
+        return result;
+      });
+
     try {
-      const { error } = (await withTimeout(
-        supabase
-          .from('attendance_events')
-          .insert(toSnakeCase(event)) as any,
-        5000, // Reduced from 15s for faster offline fallback
+      const result = (await withTimeout(
+        insertPromise,
+        8000,
         'Attendance submission timed out'
       )) as any;
-      if (error) throw error;
+      if (result.error) throw result.error;
+      // Success — no fallback needed.
     } catch (err: any) {
+      if (insertConfirmed) {
+        // Server confirmed the insert but the response arrived after the timeout.
+        // The row is already in the database — do NOT add to outbox.
+        console.warn('[Attendance] Insert confirmed after timeout. Skipping outbox to prevent duplicate entry.');
+        return;
+      }
       console.warn('Failed to submit attendance to cloud, saving to outbox:', err.message);
-      // Fallback to outbox if cloud insert fails or times out
+      // Only queue in outbox if the insert genuinely failed (not just slow).
       const offlineId = `att_offline_${Date.now()}`;
       const offlineEvent = { ...event, id: offlineId } as AttendanceEvent;
       await offlineDb.addToOutbox({ table_name: 'attendance_events', action: 'INSERT', payload: event });

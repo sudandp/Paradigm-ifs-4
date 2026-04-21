@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Avatars } from './Avatars';
 import { supabase } from '../../services/supabase';
@@ -12,6 +12,7 @@ interface ProfilePlaceholderProps {
 
 export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ className, photoUrl, seed }) => {
     const { user } = useAuthStore();
+    const [imgError, setImgError] = useState(false);
 
     const resolvedPhotoUrl = useMemo(() => {
         if (!photoUrl) return null;
@@ -41,32 +42,19 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
         }
     }, [photoUrl]);
 
-    if (resolvedPhotoUrl) {
+    // Show the user's photo if we have one and it loaded successfully
+    if (resolvedPhotoUrl && !imgError) {
         return (
             <img 
                 src={resolvedPhotoUrl} 
                 alt="Profile" 
                 className={`object-cover ${className || ''}`} 
-                onError={(e) => {
-                    // Swap to the default avatar on broken image
-                    e.currentTarget.style.display = 'none';
-                    const svgContainer = document.createElement('div');
-                    svgContainer.className = e.currentTarget.className;
-                    e.currentTarget.parentNode?.insertBefore(svgContainer, e.currentTarget);
-                }}
+                onError={() => setImgError(true)}
             />
         );
     }
 
-    const effectiveSeed = seed || user?.id;
-
-    if (!effectiveSeed) {
-        const FallbackAvatar = Avatars[0];
-        return <FallbackAvatar className={`text-muted/60 ${className || ''}`} />;
-    }
-
-    const avatarIndex = effectiveSeed.charCodeAt(effectiveSeed.length - 1) % Avatars.length;
-    const SelectedAvatar = Avatars[avatarIndex];
-
-    return <SelectedAvatar className={className || ''} />;
+    // No photo (or broken photo): always show the Paradigm default avatar
+    const DefaultAvatar = Avatars[0];
+    return <DefaultAvatar className={className || ''} />;
 };
