@@ -119,6 +119,8 @@ export interface Entity {
   logoUrl?: string;
   organizationId?: string;
   location?: string;
+  latitude?: string;
+  longitude?: string;
   registeredAddress?: string;
   registrationType?: RegistrationType;
   registrationNumber?: string;

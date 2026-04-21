@@ -33,6 +33,8 @@ const entitySchema = yup.object({
   name: yup.string().required('Society name is required'),
   organizationId: yup.string().optional(),
   location: yup.string().optional(),
+  latitude: yup.string().optional(),
+  longitude: yup.string().optional(),
   registeredAddress: yup.string().optional(),
   registrationType: yup.string().oneOf(['ROC', 'ROF', 'Society', 'Trust', '']).optional(),
   registrationNumber: yup.string().optional(),
@@ -231,7 +233,7 @@ const entitySchema = yup.object({
   companyId: yup.string().optional(),
 }).defined();
 
-type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Uniform' | 'Verification';
+type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Verification';
 
 const VERIFICATION_CATEGORIES = [
   { 
@@ -406,11 +408,6 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
     search: ''
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
-  const [masterGents, setMasterGents] = useState<MasterGentsUniforms | null>(null);
-  const [masterLadies, setMasterLadies] = useState<MasterLadiesUniforms | null>(null);
-  const [uniformGender, setUniformGender] = useState<'Gents' | 'Ladies'>('Gents');
-  const [selectedUniformDept, setSelectedUniformDept] = useState<number>(0);
-  const [selectedUniformDesignation, setSelectedUniformDesignation] = useState<number>(0);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     registration: false,
     statutory: false
@@ -474,16 +471,6 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   const { fields: emailFields, append: appendEmail, remove: removeEmail } = useFieldArray({
     control,
     name: "emails"
-  });
-
-  const { fields: gentsDepts, append: appendGentsDept, remove: removeGentsDept } = useFieldArray({
-    control,
-    name: "gentsUniformConfig.departments"
-  });
-
-  const { fields: ladiesDepts, append: appendLadiesDept, remove: removeLadiesDept } = useFieldArray({
-    control,
-    name: "ladiesUniformConfig.departments"
   });
 
   const handleRemoveAgreement = async (index: number) => {
@@ -562,18 +549,12 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   useEffect(() => {
     if (isOpen) {
         setIsLoading(true);
-        // Fetch all designations and uniform masters
-        Promise.all([
-            api.getSiteStaffDesignations(),
-            api.getMasterGentsUniforms(),
-            api.getMasterLadiesUniforms()
-        ]).then(([designations, gents, ladies]) => {
+        // Fetch only required designations
+        api.getSiteStaffDesignations().then((designations) => {
             setAllDesignations(designations);
-            setMasterGents(gents);
-            setMasterLadies(ladies);
         }).catch(err => {
             console.error('Failed to fetch required data:', err);
-            setToast({ message: 'Failed to load master uniform data.', type: 'error' });
+            setToast({ message: 'Failed to load designations.', type: 'error' });
         }).finally(() => setIsLoading(false));
 
         if (initialData) {
@@ -801,7 +782,6 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 <TabButton tabName="Compliance" />
                 <TabButton tabName="Holidays" />
                 <TabButton tabName="Assets" />
-                <TabButton tabName="Uniform" />
                 <TabButton tabName="Verification" />
             </nav>
           </div>
@@ -819,8 +799,10 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 ))}
                             </Select>
                         )}
-                        <Input label="Society Name (As Per Document)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
+                        <Input label="Billing Name (As Per Documents)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
                         <Input label="Location / City" id="location" registration={register('location')} error={errors.location?.message} />
+                        <Input label="Latitude" id="latitude" registration={register('latitude')} error={errors.latitude?.message} placeholder="e.g. 12.9716" />
+                        <Input label="Longitude" id="longitude" registration={register('longitude')} error={errors.longitude?.message} placeholder="e.g. 77.5946" />
                         <Controller name="siteTakeoverDate" control={control} render={({ field }) => (
                             <Input type="date" label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} />
                         )} />
@@ -1645,237 +1627,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     </div>
                 </div>
             )}
-            {activeTab === 'Uniform' && (
-                <div className="space-y-6 animate-fade-in max-h-[700px] overflow-y-auto pr-2 custom-scrollbar p-1">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-page/30 p-4 rounded-2xl border border-border">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-accent/10 rounded-lg">
-                                <Shirt className="h-5 w-5 text-accent" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-primary-text">Uniform Configuration</h3>
-                                <p className="text-[10px] text-muted font-medium">Define site-specific sizing requirements and deduction costs.</p>
-                            </div>
-                        </div>
-                        
-                        <div className="flex p-1 bg-white/50 dark:bg-card/50 rounded-xl border border-border transition-all">
-                            {(['Gents', 'Ladies'] as const).map(gender => (
-                                <button
-                                    key={gender}
-                                    type="button"
-                                    onClick={() => {
-                                        setUniformGender(gender);
-                                        setSelectedUniformDept(0);
-                                        setSelectedUniformDesignation(0);
-                                    }}
-                                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${uniformGender === gender ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-primary-text'}`}
-                                >
-                                    {gender}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
 
-                    {!masterGents || !masterLadies ? (
-                        <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <Loader2 className="h-8 w-8 text-accent animate-spin" />
-                            <p className="text-sm text-muted font-medium animate-pulse">Loading uniform master data...</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                            {/* Left Panel: Departments & Designations */}
-                            <div className="lg:col-span-1 space-y-4">
-                                <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col h-full min-h-[400px]">
-                                    <div className="flex items-center justify-between mb-4 px-1">
-                                        <h4 className="text-[10px] font-bold text-muted uppercase tracking-widest">Hierarchy</h4>
-                                        <Button 
-                                            type="button" 
-                                            variant="secondary" 
-                                            size="sm" 
-                                            className="h-7 !text-[10px] px-2"
-                                            onClick={() => {
-                                                const append = uniformGender === 'Gents' ? appendGentsDept : appendLadiesDept;
-                                                append({ id: crypto.randomUUID(), department: '', designations: [] });
-                                            }}
-                                        >
-                                            <Plus className="h-3 w-3 mr-1" /> Dept
-                                        </Button>
-                                    </div>
-                                    
-                                    <div className="space-y-2 overflow-y-auto pr-1 flex-grow custom-scrollbar max-h-[500px]">
-                                        {(uniformGender === 'Gents' ? gentsDepts : ladiesDepts).map((dept, dIdx) => (
-                                            <div 
-                                                key={dept.id} 
-                                                className={`group border rounded-xl overflow-hidden transition-all ${selectedUniformDept === dIdx ? 'border-accent shadow-sm bg-accent/5' : 'border-border hover:border-accent/30'}`}
-                                            >
-                                                <div 
-                                                    className="p-3 flex items-center justify-between cursor-pointer"
-                                                    onClick={() => setSelectedUniformDept(dIdx)}
-                                                >
-                                                    <div className="flex-grow">
-                                                        <Controller
-                                                            name={`${uniformGender.toLowerCase()}UniformConfig.departments.${dIdx}.department` as any}
-                                                            control={control}
-                                                            render={({ field }) => (
-                                                                <input 
-                                                                    {...(field as any)}
-                                                                    placeholder="Dept Name"
-                                                                    className="bg-transparent text-xs font-bold text-primary-text outline-none w-full"
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                />
-                                                            )}
-                                                        />
-                                                    </div>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const remove = uniformGender === 'Gents' ? removeGentsDept : removeLadiesDept;
-                                                            remove(dIdx);
-                                                            if (selectedUniformDept === dIdx) setSelectedUniformDept(0);
-                                                        }}
-                                                        className="text-destructive p-1 hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </button>
-                                                </div>
-                                                
-                                                {selectedUniformDept === dIdx && (
-                                                    <div className="p-2 pt-0 space-y-1">
-                                                        {(dept as any).designations?.map((des: any, desIdx: number) => (
-                                                            <div 
-                                                                key={des.id || desIdx}
-                                                                onClick={() => setSelectedUniformDesignation(desIdx)}
-                                                                className={`p-2 rounded-lg text-[11px] font-medium cursor-pointer transition-colors flex justify-between items-center ${selectedUniformDesignation === desIdx ? 'bg-accent/10 text-accent ring-1 ring-accent/20' : 'text-muted-foreground hover:bg-page/50'}`}
-                                                            >
-                                                                <span className="truncate pr-2">{des.designation || 'New Designation'}</span>
-                                                                <button 
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const currentDepts = watch(`${uniformGender.toLowerCase()}UniformConfig.departments` as any);
-                                                                        currentDepts[dIdx].designations.splice(desIdx, 1);
-                                                                        setValue(`${uniformGender.toLowerCase()}UniformConfig.departments` as any, [...currentDepts]);
-                                                                        if (selectedUniformDesignation === desIdx) setSelectedUniformDesignation(0);
-                                                                    }}
-                                                                    className="p-1 hover:bg-destructive/10 text-destructive rounded"
-                                                                >
-                                                                    <X className="h-2.5 w-2.5" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        <button 
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const currentDepts = watch(`${uniformGender.toLowerCase()}UniformConfig.departments` as any);
-                                                                currentDepts[dIdx].designations = currentDepts[dIdx].designations || [];
-                                                                currentDepts[dIdx].designations.push({ 
-                                                                    id: crypto.randomUUID(), 
-                                                                    designation: '', 
-                                                                    pantsQuantities: {}, 
-                                                                    shirtsQuantities: {},
-                                                                    pantsCosts: {},
-                                                                    shirtsCosts: {}
-                                                                });
-                                                                setValue(`${uniformGender.toLowerCase()}UniformConfig.departments` as any, [...currentDepts]);
-                                                                setSelectedUniformDesignation(currentDepts[dIdx].designations.length - 1);
-                                                            }}
-                                                            className="w-full py-1.5 border border-dashed border-accent/20 rounded-lg text-[9px] font-bold text-accent/70 hover:text-accent hover:bg-accent/5 transition-all text-center uppercase tracking-widest"
-                                                        >
-                                                            + Designation
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                
-                                <div className="bg-page/50 border border-border rounded-xl p-4 flex gap-3">
-                                    <Info className="h-4 w-4 text-accent flex-shrink-0" />
-                                    <p className="text-[10px] text-muted font-medium">Costs defined here will be used for automated employee deductions upon uniform issuance.</p>
-                                </div>
-                            </div>
-
-                            {/* Right Panel: Designation Details & Scale Tables */}
-                            <div className="lg:col-span-3 space-y-6">
-                                {((uniformGender === 'Gents' ? gentsDepts : ladiesDepts)[selectedUniformDept] as any)?.designations?.[selectedUniformDesignation] ? (
-                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                                            <div className="flex items-center gap-4 mb-8">
-                                                <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                                                    <ShieldCheck className="h-5 w-5 text-accent" />
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <label className="text-[10px] font-bold text-muted uppercase tracking-widest block mb-1">Designation Name</label>
-                                                    <Controller
-                                                        name={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}.designation` as any}
-                                                        control={control}
-                                                        render={({ field }) => (
-                                                            <input 
-                                                                {...(field as any)}
-                                                                placeholder="e.g. Supervisor"
-                                                                className="bg-transparent text-xl font-black text-primary-text outline-none w-full border-b border-transparent focus:border-accent transition-all pb-1"
-                                                            />
-                                                        )}
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 gap-8 mt-4">
-                                                {/* Pants Table */}
-                                                <UniformSizeTable 
-                                                    title={`${uniformGender} Pants Scale`}
-                                                    sizes={uniformGender === 'Gents' ? masterGents!.pants : masterLadies!.pants}
-                                                    headers={[
-                                                        { key: 'length', label: 'Length' },
-                                                        { key: 'waist', label: 'Waist' },
-                                                        { key: 'hip', label: 'Hip' },
-                                                        ...(uniformGender === 'Gents' ? [{ key: 'tilesLoose', label: 'T.Loose' }] : []),
-                                                        { key: 'fit', label: 'Fit' }
-                                                    ]}
-                                                    control={control}
-                                                    nestingPath={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}`}
-                                                    quantityField="pantsQuantities"
-                                                    costField="pantsCosts"
-                                                />
-
-                                                {/* Shirts Table */}
-                                                <UniformSizeTable 
-                                                    title={`${uniformGender} Shirts Scale`}
-                                                    sizes={uniformGender === 'Gents' ? masterGents!.shirts : masterLadies!.shirts}
-                                                    headers={[
-                                                        { key: 'length', label: 'Length' },
-                                                        { key: 'sleeves', label: 'Sleeves' },
-                                                        { key: 'shoulder', label: 'Shoulder' },
-                                                        ...(uniformGender === 'Gents' ? [{ key: 'chest', label: 'Chest' }] : [{ key: 'bust', label: 'Bust' }]),
-                                                        { key: 'fit', label: 'Fit' }
-                                                    ]}
-                                                    control={control}
-                                                    nestingPath={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}`}
-                                                    quantityField="shirtsQuantities"
-                                                    costField="shirtsCosts"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-page/20 border-2 border-dashed border-border rounded-2xl h-[400px] flex flex-col items-center justify-center gap-4 text-center p-8">
-                                        <div className="p-4 bg-muted/5 rounded-full">
-                                            <Search className="h-12 w-12 text-muted/30" />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-lg font-bold text-primary-text/60">Select a Designation</h4>
-                                            <p className="text-sm text-muted max-w-xs mt-2">Choose a department and designation from the left panel to configure its specific size scales and costs.</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
 
             {activeTab === 'Verification' && (
                 <div className="space-y-8 animate-fade-in max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
