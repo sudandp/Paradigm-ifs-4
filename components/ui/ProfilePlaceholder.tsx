@@ -47,7 +47,13 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
                 src={resolvedPhotoUrl} 
                 alt="Profile" 
                 className={`object-cover ${className || ''}`} 
-                onError={(e) => (e.currentTarget.style.display = 'none')} 
+                onError={(e) => {
+                    // Swap to the default avatar on broken image
+                    e.currentTarget.style.display = 'none';
+                    const svgContainer = document.createElement('div');
+                    svgContainer.className = e.currentTarget.className;
+                    e.currentTarget.parentNode?.insertBefore(svgContainer, e.currentTarget);
+                }}
             />
         );
     }

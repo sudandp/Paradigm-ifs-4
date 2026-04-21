@@ -168,7 +168,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
   const inputId = 'avatar-upload';
 
   return (
-    <div className="flex flex-col items-center space-y-2">
+    <div className="flex flex-col items-center">
       {/* Hidden camera input for native platforms — opens native camera directly */}
       <input
         ref={cameraInputRef}
@@ -224,7 +224,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
       </div>
       <button id="avatar-hidden-capture-btn" className="hidden" onClick={handleCaptureClick} type="button"></button>
       {!hideControls && (
-        <div className="flex items-center space-x-2 md:hidden">
+        <div className="flex items-center space-x-2 md:hidden mt-4">
           <label htmlFor={inputId} className={`w-32 h-10 cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <Edit className="w-4 h-4 mr-2" />
             {file ? 'Change' : 'Upload'}

@@ -471,8 +471,11 @@ const ProfilePage: React.FC = () => {
             <div className="p-4 space-y-8 md:bg-transparent bg-[#041b0f] min-h-screen overflow-x-hidden relative">
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-                {/* Editorial Watermark Background */}
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 opacity-[0.03] text-[120px] font-black text-white pointer-events-none select-none uppercase tracking-tighter leading-none z-0 overflow-hidden w-full text-center whitespace-nowrap">
+                {/* Editorial Watermark Background (Role Title) */}
+                <div 
+                    className="absolute top-24 left-1/2 -translate-x-1/2 opacity-[0.08] text-[110px] font-black text-transparent pointer-events-none select-none uppercase tracking-tighter leading-none z-0 overflow-hidden w-full text-center whitespace-nowrap"
+                    style={{ WebkitTextStroke: '2px rgba(255,255,255,0.1)' }}
+                >
                     {user.role.replace(/_/g, ' ')}
                 </div>
 
@@ -500,7 +503,7 @@ const ProfilePage: React.FC = () => {
                                     className="opacity-70"
                                 />
                             </svg>
-                            <div className="relative z-10 w-28 h-28 rounded-2xl overflow-hidden flex items-center justify-center">
+                            <div className="relative z-10 w-28 h-28 flex items-center justify-center">
                                 <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} hideControls={true} />
                             </div>
                         </div>

@@ -59,7 +59,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
             }`}
         >
             <div className="px-4">
-                <div className={`flex items-center h-14 ${isMobile ? 'justify-center gap-3' : ''}`}>
+                <div className={`flex items-center h-14 ${isMobile ? 'justify-center gap-3' : 'justify-between'}`}>
                     <div className={`${isMobile ? 'flex-none' : 'flex-1'} flex justify-center md:justify-start`}>
                             {isMobile && (
                                 <div className="flex items-center justify-center bg-transparent py-2 border-0">
@@ -70,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
 
                         <div className="flex-none flex items-center justify-center">
                             <div className="flex items-center">
-                                <NotificationBell />
+                                <NotificationBell theme={isMobile ? 'dark' : 'light'} />
                                 {!isMobile && user && (
                                     <div className="relative" ref={userMenuRef}>
                                         <button
@@ -79,12 +79,14 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                             aria-expanded={isUserMenuOpen}
                                             aria-haspopup="true"
                                         >
-                                            <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className="h-8 w-8 rounded-lg" />
-                                            <div className="text-left hidden sm:block">
-                                                <span className={`text-sm font-semibold ${isMobile ? 'text-white' : 'text-primary-text'}`}>{user.name}</span>
-                                                <span className={`text-xs block ${isMobile ? 'text-white/70' : 'text-muted'}`}>{getRoleName(user.role)}</span>
+                                            <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden shadow-sm">
+                                                <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} />
                                             </div>
-                                            <ChevronDown className={`h-4 w-4 ${isMobile ? 'text-white/70' : 'text-muted'}`} />
+                                            <div className="text-left hidden sm:block overflow-hidden ml-1">
+                                                <span className={`text-sm font-semibold truncate block whitespace-nowrap ${isMobile ? 'text-white' : 'text-gray-900 leading-tight'}`}>{user.name}</span>
+                                                <span className={`text-[10px] truncate block whitespace-nowrap uppercase tracking-wider ${isMobile ? 'text-white/70' : 'text-gray-500 leading-none mt-0.5'}`}>{getRoleName(user.role)}</span>
+                                            </div>
+                                            <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 ${isMobile ? 'text-white/70' : 'text-gray-400'}`} />
                                         </button>
 
                                         {isUserMenuOpen && (

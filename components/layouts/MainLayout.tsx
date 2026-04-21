@@ -307,12 +307,12 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                         <CategoryIcon className={`h-4 w-4 transition-colors ${
                                             isExpanded || isCategoryActive 
                                                 ? 'text-white' 
-                                                : 'text-gray-400 group-hover:text-gray-500'
+                                                : 'text-gray-500 group-hover:text-gray-700'
                                         }`} />
                                         <span className={`text-sm font-semibold capitalize tracking-tight transition-colors ${
                                             isExpanded || isCategoryActive 
                                                 ? 'text-white' 
-                                                : 'text-gray-400 group-hover:text-gray-600'
+                                                : 'text-gray-700 group-hover:text-gray-900'
                                         }`}>
                                             {category}
                                         </span>
@@ -346,7 +346,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                         `group flex items-center pr-3 py-1.5 mx-1 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
                                                             ? isActive
                                                                 ? 'bg-[#006b3f] text-white font-semibold shadow-sm'
-                                                                : 'text-gray-600 hover:bg-[#006b3f]/10 hover:text-[#006b3f]'
+                                                                : 'text-gray-700 hover:bg-[#006b3f]/10 hover:text-[#006b3f]'
                                                             : isActive
                                                                 ? 'bg-white/10 text-white font-semibold'
                                                                 : 'text-white/70 hover:bg-white/5 hover:text-white'
@@ -358,7 +358,7 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                                         <>
                                                             <link.icon
                                                                 className={`h-4 w-4 flex-shrink-0 transition-all duration-150 mr-2.5 ${mode === 'light'
-                                                                    ? isActive ? 'text-white' : 'text-gray-400/80 group-hover:text-gray-600'
+                                                                    ? isActive ? 'text-white' : 'text-gray-500 group-hover:text-[#006b3f]'
                                                                     : isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'
                                                                 }`}
                                                             />

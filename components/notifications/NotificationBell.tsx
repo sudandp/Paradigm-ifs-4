@@ -60,22 +60,29 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
     );
 };
 
-const NotificationBell: React.FC<{ className?: string }> = ({ className = '' }) => {
+const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' }> = ({ className = '', theme = 'light' }) => {
     const { totalUnreadCount, togglePanel, isPanelOpen } = useNotificationStore();
+
+    const isDark = theme === 'dark';
 
     return (
         <div className={`relative ${className}`}>
             <button
                 onClick={togglePanel}
+                aria-label={`Notifications${totalUnreadCount > 0 ? `, ${totalUnreadCount} unread` : ''}`}
                 className={`group relative p-2 rounded-xl transition-all duration-300 flex items-center justify-center ${
-                    isPanelOpen 
-                    ? 'bg-emerald-500/10 text-emerald-500' 
-                    : 'bg-transparent text-emerald-500/80 hover:bg-emerald-500/5 hover:text-emerald-500'
+                    isPanelOpen
+                        ? isDark
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-gray-100 text-gray-700'
+                        : isDark
+                            ? 'bg-transparent text-emerald-400/80 hover:bg-emerald-500/5 hover:text-emerald-400'
+                            : 'bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-700'
                 }`}
             >
                 <Bell 
-                    strokeWidth={2.5}
-                    className={`h-6 w-6 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
+                    strokeWidth={2}
+                    className={`h-5 w-5 transition-transform duration-300 ${isPanelOpen ? 'scale-110' : 'group-hover:rotate-12'}`} 
                 />
                 <AnimatePresence>
                     {totalUnreadCount > 0 && (
@@ -87,17 +94,19 @@ const NotificationBell: React.FC<{ className?: string }> = ({ className = '' }) 
                                 transition: { type: "spring", stiffness: 500, damping: 25 }
                             }}
                             exit={{ scale: 0, opacity: 0 }}
-                            className="absolute -top-1 -right-1 flex z-20"
+                            className="absolute -top-0.5 -right-0.5 flex z-20"
                         >
                             <motion.span 
-                                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.2, 0.5] }}
+                                animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0.25, 0.6] }}
                                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                 className="absolute inline-flex h-full w-full rounded-full bg-rose-400"
                             />
-                            <span className={`relative inline-flex items-center justify-center rounded-full bg-rose-600 text-white font-black leading-none shadow-lg border-2 border-[#041b0f] ${
+                            <span className={`relative inline-flex items-center justify-center rounded-full bg-rose-600 text-white font-bold leading-none shadow-md border-2 ${
+                                isDark ? 'border-[#041b0f]' : 'border-white'
+                            } ${
                                 totalUnreadCount > 9 
-                                ? 'px-1.5 h-5 min-w-[20px] text-[10px]' 
-                                : 'w-5 h-5 text-[11px]'
+                                ? 'px-1 h-4 min-w-[18px] text-[9px]' 
+                                : 'w-4 h-4 text-[9px]'
                             }`}>
                                 {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
                             </span>

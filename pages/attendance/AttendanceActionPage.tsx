@@ -49,8 +49,8 @@ const AttendanceActionPage: React.FC = () => {
     let iconColor = isCheckIn ? 'text-emerald-600' : 'text-red-600';
     
     if (isBreakIn) {
-        iconBgColor = 'bg-blue-100';
-        iconColor = 'text-blue-600';
+        iconBgColor = 'bg-emerald-100/20';
+        iconColor = 'text-emerald-400';
     } else if (isBreakOut) {
         iconBgColor = 'bg-amber-100';
         iconColor = 'text-amber-600';
@@ -116,7 +116,7 @@ const AttendanceActionPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        <div className="fixed inset-0 flex flex-col items-center justify-center p-4 z-20">
             {/* Background elements for depth */}
             <div className="fixed inset-0 bg-[#041b0f] z-0" />
             <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full z-0" />
@@ -141,7 +141,7 @@ const AttendanceActionPage: React.FC = () => {
                                 <motion.div 
                                     animate={{ scale: [1, 1.1, 1] }}
                                     transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                                    className={`absolute inset-0 blur-2xl rounded-full ${isBreakIn ? 'bg-blue-500/40' : 'bg-emerald-500/40'}`} 
+                                    className="absolute inset-0 blur-2xl rounded-full bg-emerald-500/40" 
                                 />
                                 <div className={`relative p-6 rounded-3xl ${iconBgColor} border border-white/10 shadow-inner`}>
                                     {isBreakIn ? (
@@ -161,11 +161,11 @@ const AttendanceActionPage: React.FC = () => {
                         </p>
 
                         {isBreakIn && (
-                            <div className="mb-10 p-5 bg-black/30 backdrop-blur-md rounded-3xl border border-white/5 relative group">
-                                <label className="text-[10px] font-black text-blue-400 mb-4 block text-left uppercase tracking-widest opacity-80">
+                            <div className="mb-10 p-5 bg-black/30 backdrop-blur-md rounded-3xl border border-emerald-500/20 relative group shadow-lg shadow-emerald-500/5">
+                                <label className="text-[10px] font-black text-emerald-400 mb-4 block text-left uppercase tracking-widest opacity-80">
                                     Reminder Interval
                                 </label>
-                                <div className="grid grid-cols-4 gap-2 relative bg-white/5 p-1.5 rounded-2xl border border-white/5">
+                                <div className="grid grid-cols-4 gap-2 relative bg-white/5 p-1.5 rounded-2xl border border-emerald-500/10">
                                     {[15, 30, 45, 60].map((mins) => (
                                         <button
                                             key={mins}
@@ -178,7 +178,7 @@ const AttendanceActionPage: React.FC = () => {
                                             {breakInterval === mins && (
                                                 <motion.div
                                                     layoutId="activeInterval"
-                                                    className="absolute inset-0 bg-blue-600 rounded-lg shadow-lg shadow-blue-600/30 z-10"
+                                                    className="absolute inset-0 bg-emerald-600 rounded-lg shadow-lg shadow-emerald-600/30 z-10"
                                                     transition={{ type: "spring", bounce: 0, duration: 0.2 }}
                                                 />
                                             )}
@@ -186,9 +186,9 @@ const AttendanceActionPage: React.FC = () => {
                                     ))}
                                 </div>
                                 <div className="flex items-start gap-2 mt-4">
-                                    <Clock className="w-3 h-3 text-blue-400 mt-0.5 shrink-0" />
-                                    <p className="text-[10px] text-blue-300/70 text-left leading-relaxed font-medium">
-                                        You will receive a notification every <span className="text-white font-bold underline decoration-blue-500/50">{breakInterval} minutes</span> to acknowledge your break status.
+                                    <Clock className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+                                    <p className="text-[10px] text-emerald-300/70 text-left leading-relaxed font-medium">
+                                        You will receive a notification every <span className="text-white font-bold underline decoration-emerald-500/50">{breakInterval} minutes</span> to acknowledge your break status.
                                     </p>
                                 </div>
                             </div>
@@ -199,7 +199,7 @@ const AttendanceActionPage: React.FC = () => {
                                 onClick={handleConfirm}
                                 variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
                                 className={`w-full !rounded-2xl !py-4 !text-base font-black tracking-widest uppercase italic shadow-2xl transition-all active:scale-[0.98] ${
-                                    isBreakIn ? '!bg-blue-600 !border-blue-700 hover:!bg-blue-700 shadow-blue-900/40' : 
+                                    isBreakIn ? '!bg-emerald-600 !border-emerald-700 hover:!bg-emerald-700 shadow-emerald-900/40' : 
                                     isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
                                     actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' : 
                                     (isCheckIn ? '!bg-emerald-600 !border-emerald-700 shadow-emerald-900/40' : '')

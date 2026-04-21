@@ -11,7 +11,7 @@ html {
 
 @media (min-width: 1024px) {
     html {
-        font-size: 11px;
+        font-size: 13px;
     }
     body {
         min-height: 100vh;
@@ -35,7 +35,7 @@ html {
     --color-accent-dark: #005632;
     --color-page: #f9fafb;
     --color-card: #ffffff;
-    --color-muted: #6b7280;
+    --color-muted: #4b5563;
     --color-primary-text: #0f172a;
     --color-border: #e6eef3;
     --color-accent-light: rgba(0, 107, 63, 0.1);
