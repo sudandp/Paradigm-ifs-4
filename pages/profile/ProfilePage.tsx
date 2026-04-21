@@ -627,17 +627,31 @@ const ProfilePage: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="relative flex items-center justify-center">
-                                    {/* Orbital Background Rings - Moved inside center container */}
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.06] z-0">
+                                    {/* ── Dynamic Wave Ripples ── */}
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                                        {[0, 1, 2].map((i) => (
+                                            <motion.div
+                                                key={i}
+                                                initial={{ scale: 1, opacity: 0.5 }}
+                                                animate={{ 
+                                                    scale: [1, 1.8], 
+                                                    opacity: [0.3, 0] 
+                                                }}
+                                                transition={{ 
+                                                    duration: 3, 
+                                                    repeat: Infinity, 
+                                                    delay: i * 1,
+                                                    ease: "easeOut"
+                                                }}
+                                                className={`absolute w-40 h-40 rounded-full border-[2px] ${effectivelyCheckedIn ? 'border-rose-500/40' : 'border-emerald-400/40'}`}
+                                            />
+                                        ))}
+                                        
+                                        {/* Core Breathing Aura */}
                                         <motion.div 
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-                                            className="w-56 h-56 border border-dashed border-emerald-500 rounded-full" 
-                                        />
-                                        <motion.div 
-                                            animate={{ rotate: -360 }}
-                                            transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-                                            className="absolute w-72 h-72 border border-dashed border-emerald-300 rounded-full" 
+                                            animate={{ scale: [1, 1.15, 1], opacity: [0.08, 0.15, 0.08] }}
+                                            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                                            className={`absolute w-56 h-56 rounded-full blur-2xl ${effectivelyCheckedIn ? 'bg-rose-500' : 'bg-emerald-400'}`} 
                                         />
                                     </div>
                                     <motion.button
