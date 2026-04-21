@@ -1,3 +1,101 @@
+import { UploadedFile } from './common';
+import { Asset } from './asset';
+
+// Types for Gents Uniform Chart
+export interface GentsPantsSize {
+  id: string;
+  size: string;
+  length: number;
+  waist: number;
+  hip: number;
+  tilesLoose: number;
+  bottomWaist: number;
+  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
+}
+
+export interface GentsShirtSize {
+  id: string;
+  size: string;
+  length: number;
+  sleeves: number;
+  sleevesLoose: number;
+  chest: number;
+  halfChestLoose: number;
+  shoulder: number;
+  collar: number;
+  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
+}
+
+export interface MasterGentsUniforms {
+  pants: GentsPantsSize[];
+  shirts: GentsShirtSize[];
+}
+
+export interface UniformDesignationConfig {
+  id: string;
+  designation: string;
+  pantsQuantities: Record<string, number | null>; // key is GentsPantsSize id
+  shirtsQuantities: Record<string, number | null>; // key is GentsShirtSize id
+  pantsCosts?: Record<string, number | null>; // key is GentsPantsSize id
+  shirtsCosts?: Record<string, number | null>; // key is GentsShirtSize id
+}
+
+export interface UniformDepartmentConfig {
+  id: string;
+  department: string;
+  designations: UniformDesignationConfig[];
+}
+
+export interface SiteGentsUniformConfig {
+  organizationId: string;
+  departments: UniformDepartmentConfig[];
+}
+
+// Types for Ladies Uniform Chart
+export interface LadiesPantsSize {
+  id: string;
+  size: string;
+  length: number;
+  waist: number;
+  hip: number;
+  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
+}
+
+export interface LadiesShirtSize {
+  id: string;
+  size: string;
+  length: number;
+  sleeves: number;
+  bust: number;
+  shoulder: number;
+  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
+}
+
+export interface MasterLadiesUniforms {
+  pants: LadiesPantsSize[];
+  shirts: LadiesShirtSize[];
+}
+
+export interface LadiesUniformDesignationConfig {
+  id: string;
+  designation: string;
+  pantsQuantities: Record<string, number | null>; // key is LadiesPantsSize id
+  shirtsQuantities: Record<string, number | null>; // key is LadiesShirtSize id
+  pantsCosts?: Record<string, number | null>; // key is LadiesPantsSize id
+  shirtsCosts?: Record<string, number | null>; // key is LadiesShirtSize id
+}
+
+export interface LadiesUniformDepartmentConfig {
+  id: string;
+  department: string;
+  designations: LadiesUniformDesignationConfig[];
+}
+
+export interface SiteLadiesUniformConfig {
+  organizationId: string;
+  departments: LadiesUniformDepartmentConfig[];
+}
+
 export interface Organization {
   id: string;
   shortName: string;
@@ -51,6 +149,15 @@ export interface Entity {
   tanDocUrl?: string;
   udyogNumber?: string;
   udyogDocUrl?: string;
+  gstDocUrl?: string;
+  panDocUrl?: string;
+  msmeDocUrl?: string;
+  labourRegistrationDocUrl?: string;
+  shopEstablishmentDocUrl?: string;
+  rtecDocUrl?: string;
+  ptecDocUrl?: string;
+  ptpEnrolmentDocUrl?: string;
+  ptpRegistrationDocUrl?: string;
 
   // Advanced Fields (Phase 1 Redesign)
   siteTakeoverDate?: string | null;
@@ -69,8 +176,8 @@ export interface Entity {
     toDate?: string;
     renewalTriggerDays?: number;
     minWageTriggerDays?: number;
-    wordCopyUrl?: string;
-    signedCopyUrl?: string;
+    wordCopyUrls?: string[];
+    signedCopyUrls?: string[];
     agreementDate?: string;
     addendum1Date?: string;
     addendum2Date?: string;
@@ -85,6 +192,9 @@ export interface Entity {
     minWageRevisionDocumentUrl?: string;
     minWageRevisionValidityFrom?: string;
     minWageRevisionValidityTo?: string;
+    epfoSubCodes?: string;
+    esicSubCodes?: string;
+    shopAndEstablishmentValidity?: string;
   };
   holidayConfig?: {
     holidayType?: 'company_10' | 'company_12' | 'custom_10' | 'custom_12' | '';
@@ -109,10 +219,22 @@ export interface Entity {
       imageUrl?: string; 
       dcCopyRef?: string;
     }[];
-    dcCopy1Url?: string;
-    dcCopy2Url?: string;
+    dcCopy1Urls?: string[];
+    dcCopy2Urls?: string[];
     sims?: { count: number; details: { number: string; phone: string; }[]; };
-    equipment?: { name: string; brand: string; model: string; serial: string; accessories: string; condition: 'New' | 'Old'; issueDate: string; }[];
+    equipment?: { 
+      name: string; 
+      brand: string; 
+      model: string; 
+      serial: string; 
+      accessories: string; 
+      condition: 'New' | 'Old'; 
+      issueDate: string;
+      procurementType?: 'Rent' | 'Hire Purchase' | 'Complimentary';
+      purchasePeriod?: string;
+      complimentaryType?: 'Dedicated' | 'Periodic';
+      periodicFrequency?: string;
+    }[];
   };
   intermittentEquipment?: {
     name: string;
@@ -127,12 +249,16 @@ export interface Entity {
     uniformDeductions: boolean;
     deductionCategory?: string;
   };
+  gentsUniformConfig?: SiteGentsUniformConfig;
+  ladiesUniformConfig?: SiteLadiesUniformConfig;
   verificationData?: {
     categories: {
       name: string;
       employmentPlusPolice: string[];
       policeOnly: string[];
     }[];
+    crcCheck1?: { status: string; date: string; docUrls: string[] };
+    crcCheck2?: { status: string; date: string; docUrls: string[] };
   };
   complianceDocuments?: ComplianceDocument[];
 }
@@ -225,6 +351,7 @@ export interface Company {
   gstDocUrl?: string | null;
   panNumber?: string | null;
   panDocUrl?: string | null;
+ 
 
   // Independence identification fields
   cinNumber?: string;
@@ -235,6 +362,13 @@ export interface Company {
   tanDocUrl?: string;
   udyogNumber?: string;
   udyogDocUrl?: string;
+  msmeDocUrl?: string;
+  labourRegistrationDocUrl?: string;
+  shopEstablishmentDocUrl?: string;
+  rtecDocUrl?: string;
+  ptecDocUrl?: string;
+  ptpEnrolmentDocUrl?: string;
+  ptpRegistrationDocUrl?: string;
   
   // Nested JSONB Structures
   emails?: CompanyEmail[];
@@ -361,33 +495,33 @@ export interface SiteConfiguration {
     form6ValidityFrom?: string | null;
     form6ValidityTo?: string | null;
     form6Document?: UploadedFile | null;
-
+    
     minWageRevisionApplicable: boolean;
     minWageRevisionTaskCreation?: boolean;
     minWageRevisionValidityFrom?: string | null;
     minWageRevisionValidityTo?: string | null;
     minWageRevisionDocument?: UploadedFile | null;
-
+    
     holidays?: {
       numberOfDays?: number | null;
       list?: HolidayListItem[];
       salaryPayment?: 'Full Payment' | 'Duty Payment' | 'Nil Payment' | '';
       billing?: 'Full Payment' | 'Duty Payment' | 'Nil Payment' | '';
     };
-
+    
     costingSheetLink?: string | null;
-
+    
     tools?: {
       dcCopy1?: UploadedFile | null;
       dcCopy2?: UploadedFile | null;
       list?: ToolListItem[];
     };
-
+    
     sims?: {
       issuedCount?: number | null;
       details?: SimDetail[];
     };
-
+    
     equipment?: {
       issued?: IssuedEquipment[];
       intermittent?: {
@@ -397,7 +531,7 @@ export interface SiteConfiguration {
         durationDays?: number | null;
       };
     };
-
+    
     billingCycleFrom?: string | null;
     uniformDeductions: boolean;
   };
@@ -418,6 +552,3 @@ export interface Agreement {
   addendum1Date?: string;
   addendum2Date?: string;
 }
-
-
-// Types for Attendance

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller, useFieldArray, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company, SiteStaffDesignation } from '../../types';
+import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company, SiteStaffDesignation, MasterGentsUniforms, MasterLadiesUniforms } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
@@ -11,7 +11,8 @@ import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import { api } from '../../services/api';
 import Checkbox from '../ui/Checkbox';
-import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, Search, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, Search, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp, Shirt } from 'lucide-react';
+import UniformSizeTable from './uniforms/UniformSizeTable';
 import Toast from '../ui/Toast';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -54,6 +55,17 @@ const entitySchema = yup.object({
   eShramDocUrl: yup.string().optional(),
   shopAndEstablishmentCode: yup.string().optional(),
   
+  // Registration & Statutory Docs
+  gstDocUrl: yup.string().optional(),
+  panDocUrl: yup.string().optional(),
+  msmeDocUrl: yup.string().optional(),
+  labourRegistrationDocUrl: yup.string().optional(),
+  shopEstablishmentDocUrl: yup.string().optional(),
+  rtecDocUrl: yup.string().optional(),
+  ptecDocUrl: yup.string().optional(),
+  ptpEnrolmentDocUrl: yup.string().optional(),
+  ptpRegistrationDocUrl: yup.string().optional(),
+  
   // Advanced Fields
   siteTakeoverDate: yup.string().optional().nullable(),
   billingName: yup.string().optional().nullable(),
@@ -86,8 +98,8 @@ const entitySchema = yup.object({
       agreementDate: yup.string().optional().nullable(),
       addendum1Date: yup.string().optional().nullable(),
       addendum2Date: yup.string().optional().nullable(),
-      wordCopyUrl: yup.string().optional().nullable(),
-      signedCopyUrl: yup.string().optional().nullable(),
+      wordCopyUrls: yup.array().of(yup.string()).optional(),
+      signedCopyUrls: yup.array().of(yup.string()).optional(),
     })
   ).optional(),
   
@@ -101,6 +113,9 @@ const entitySchema = yup.object({
     minWageRevisionDocumentUrl: yup.string().nullable().optional(),
     minWageRevisionValidityFrom: yup.string().nullable().optional(),
     minWageRevisionValidityTo: yup.string().nullable().optional(),
+    epfoSubCodes: yup.string().optional(),
+    esicSubCodes: yup.string().optional(),
+    shopAndEstablishmentValidity: yup.string().optional(),
   }).optional(),
   
   holidayConfig: yup.object({
@@ -133,8 +148,8 @@ const entitySchema = yup.object({
       quantity: yup.number().nullable().optional(), 
       issueDate: yup.string().required() 
     })).optional(),
-    dcCopy1Url: yup.string().nullable().optional(),
-    dcCopy2Url: yup.string().nullable().optional(),
+    dcCopy1Urls: yup.array().of(yup.string()).optional(),
+    dcCopy2Urls: yup.array().of(yup.string()).optional(),
     sims: yup.object({
         count: yup.number().nullable().optional(),
         details: yup.array().of(yup.object({ number: yup.string().required(), phone: yup.string().required() })).optional(),
@@ -146,7 +161,11 @@ const entitySchema = yup.object({
         serial: yup.string().optional(),
         accessories: yup.string().optional(),
         condition: yup.string().oneOf(['New', 'Old']).optional(),
-        issueDate: yup.string().required()
+        issueDate: yup.string().required(),
+        procurementType: yup.string().oneOf(['Rent', 'Hire Purchase', 'Complimentary']).optional(),
+        purchasePeriod: yup.string().optional(),
+        complimentaryType: yup.string().oneOf(['Dedicated', 'Periodic']).optional(),
+        periodicFrequency: yup.string().optional(),
     })).optional(),
   }).optional(),
   
@@ -170,7 +189,20 @@ const entitySchema = yup.object({
         policeOnly: yup.array().of(yup.string().required()).defined(),
       })
     ).optional(),
+    crcCheck1: yup.object({
+      status: yup.string().optional(),
+      date: yup.string().optional(),
+      docUrls: yup.array().of(yup.string()).optional()
+    }).optional(),
+    crcCheck2: yup.object({
+      status: yup.string().optional(),
+      date: yup.string().optional(),
+      docUrls: yup.array().of(yup.string()).optional()
+    }).optional()
   }).optional(),
+  
+  gentsUniformConfig: yup.object().optional(),
+  ladiesUniformConfig: yup.object().optional(),
   
   insuranceIds: yup.array().of(yup.string().required()).optional(),
   policyIds: yup.array().of(yup.string().required()).optional(),
@@ -191,7 +223,7 @@ const entitySchema = yup.object({
   companyId: yup.string().optional(),
 }).defined();
 
-type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Billing' | 'Verification' | 'Policies/Insurance';
+type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Uniform' | 'Verification';
 
 const VERIFICATION_CATEGORIES = [
   { 
@@ -366,6 +398,11 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
     search: ''
   });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [masterGents, setMasterGents] = useState<MasterGentsUniforms | null>(null);
+  const [masterLadies, setMasterLadies] = useState<MasterLadiesUniforms | null>(null);
+  const [uniformGender, setUniformGender] = useState<'Gents' | 'Ladies'>('Gents');
+  const [selectedUniformDept, setSelectedUniformDept] = useState<number>(0);
+  const [selectedUniformDesignation, setSelectedUniformDesignation] = useState<number>(0);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     registration: false,
     statutory: false
@@ -407,7 +444,9 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
           employmentPlusPolice: [...cat.empPlusPol],
           policeOnly: [...cat.polOnly]
         }))
-      }
+      },
+      gentsUniformConfig: { organizationId: initialData?.id || '', departments: [] },
+      ladiesUniformConfig: { organizationId: initialData?.id || '', departments: [] }
     }
 });
 
@@ -420,6 +459,52 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
     control,
     name: "emails"
   });
+
+  const { fields: gentsDepts, append: appendGentsDept, remove: removeGentsDept } = useFieldArray({
+    control,
+    name: "gentsUniformConfig.departments"
+  });
+
+  const { fields: ladiesDepts, append: appendLadiesDept, remove: removeLadiesDept } = useFieldArray({
+    control,
+    name: "ladiesUniformConfig.departments"
+  });
+
+  const handleRemoveAgreement = async (index: number) => {
+    // Get values directly from the form state to ensure we have the most recent URLs
+    const agreements = watch('agreements');
+    const agreement = agreements?.[index];
+    
+    if (!agreement) {
+        removeAgreement(index);
+        return;
+    }
+
+    const wordCopyUrls = agreement.wordCopyUrls || [];
+    const signedCopyUrls = agreement.signedCopyUrls || [];
+    const hasFiles = wordCopyUrls.length > 0 || signedCopyUrls.length > 0;
+
+    if (hasFiles) {
+      const confirmed = window.confirm("This agreement has documents uploaded. Are you sure you want to delete this agreement permanently, including the files from the cloud server?");
+      if (!confirmed) return;
+
+      try {
+        await Promise.all([
+            ...wordCopyUrls.map(url => api.deleteFileFromStorage(url)),
+            ...signedCopyUrls.map(url => api.deleteFileFromStorage(url))
+        ]);
+        setToast({ message: "Agreement and associated documents removed successfully", type: 'success' });
+      } catch (err) {
+        console.error("Cleanup of agreement storage failed:", err);
+        setToast({ message: "Agreement removed, but some files might still be on server", type: 'warning' });
+      }
+    } else {
+      const confirmed = window.confirm("Are you sure you want to remove this agreement card?");
+      if (!confirmed) return;
+    }
+
+    removeAgreement(index);
+  };
 
   const { fields: insuranceFields, append: appendInsurance, remove: removeInsurance } = useFieldArray({
     control,
@@ -461,11 +546,19 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   useEffect(() => {
     if (isOpen) {
         setIsLoading(true);
-        // Fetch all designations for verification mapping
-        api.getSiteStaffDesignations()
-            .then(setAllDesignations)
-            .catch(err => console.error('Failed to fetch designations:', err))
-            .finally(() => setIsLoading(false));
+        // Fetch all designations and uniform masters
+        Promise.all([
+            api.getSiteStaffDesignations(),
+            api.getMasterGentsUniforms(),
+            api.getMasterLadiesUniforms()
+        ]).then(([designations, gents, ladies]) => {
+            setAllDesignations(designations);
+            setMasterGents(gents);
+            setMasterLadies(ladies);
+        }).catch(err => {
+            console.error('Failed to fetch required data:', err);
+            setToast({ message: 'Failed to load master uniform data.', type: 'error' });
+        }).finally(() => setIsLoading(false));
 
         if (initialData) {
             const data = { ...initialData };
@@ -478,7 +571,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 delete (data as any).agreementDetails;
             }
             reset(data);
-            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance']));
+            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification']));
         } else {
             reset({ 
                 id: `new_${Date.now()}`, 
@@ -542,12 +635,11 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
         return !!currentErrors.holidayConfig;
       case 'Assets':
         return !!currentErrors.assetTracking;
-      case 'Billing':
-        return !!currentErrors.billingControls;
+      case 'Uniform':
+        return false; // No validation for uniform yet
       case 'Verification':
         return !!currentErrors.verificationData;
-      case 'Policies/Insurance':
-        return !!(currentErrors.policies || currentErrors.insurances || currentErrors.policyIds || currentErrors.insuranceIds);
+
       default:
         return false;
     }
@@ -574,7 +666,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
         message: "Missing mandatory fields to create a profile. Please fill them, or use 'Save Draft' to continue later.", 
         type: 'error' 
     });
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
     for (const tab of tabOrder) {
       if (getTabErrors(tab, errors)) {
         setActiveTab(tab);
@@ -584,7 +676,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleNext = async () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
     const currentIndex = tabOrder.indexOf(activeTab);
     
     // Mark current tab as completed
@@ -600,7 +692,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleBack = () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Billing', 'Verification', 'Policies/Insurance'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
@@ -639,9 +731,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             </div>
             <div className="flex items-center gap-3">
                <Button type="button" onClick={onClose} variant="secondary" className="px-6">Cancel</Button>
-               {!isEditing && (
-                   <Button type="button" onClick={onSaveDraft} variant="outline" className="px-6 border-accent text-accent hover:bg-accent/5">Save Draft</Button>
-               )}
+               <Button type="button" onClick={onSaveDraft} variant="outline" className="px-6 border-accent text-accent hover:bg-accent/5">Save Draft</Button>
                <Button 
                     type="submit" 
                     variant="primary" 
@@ -660,9 +750,8 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 <TabButton tabName="Compliance" />
                 <TabButton tabName="Holidays" />
                 <TabButton tabName="Assets" />
-                <TabButton tabName="Billing" />
+                <TabButton tabName="Uniform" />
                 <TabButton tabName="Verification" />
-                <TabButton tabName="Policies/Insurance" />
             </nav>
           </div>
           
@@ -688,8 +777,38 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     <Input label="Registered Address" id="registeredAddress" registration={register('registeredAddress')} error={errors.registeredAddress?.message} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input label="GST Number" id="gstNumber" registration={register('gstNumber')} error={errors.gstNumber?.message} placeholder="22AAAAA0000A1Z5" />
-                        <Input label="PAN Number" id="panNumber" registration={register('panNumber')} error={errors.panNumber?.message} placeholder="ABCDE1234F" />
+                        <Controller
+                            name="gstNumber"
+                            control={control}
+                            render={({ field }) => (
+                                <Input 
+                                    {...field}
+                                    label="GST Number" 
+                                    id="gstNumber" 
+                                    pattern="99AAAAA9999A*Z*"
+                                    forceUppercase
+                                    description="Format: 22 AAAAA 0000 A 1Z5"
+                                    error={errors.gstNumber?.message} 
+                                    placeholder="22AAAAA0000A1Z5" 
+                                />
+                            )}
+                        />
+                        <Controller
+                            name="panNumber"
+                            control={control}
+                            render={({ field }) => (
+                                <Input 
+                                    {...field}
+                                    label="PAN Number" 
+                                    id="panNumber" 
+                                    pattern="AAAAA9999A"
+                                    forceUppercase
+                                    description="Format: ABCDE 1234 F"
+                                    error={errors.panNumber?.message} 
+                                    placeholder="ABCDE1234F" 
+                                />
+                            )}
+                        />
                     </div>
 
                     <div className="border border-border/50 rounded-2xl bg-page/40 shadow-sm overflow-hidden">
@@ -716,7 +835,20 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <Input label="Registration Number" id="registrationNumber" registration={register('registrationNumber')} error={errors.registrationNumber?.message} />
 
                                 <div className="space-y-4">
-                                    <Input label="CIN Number" id="cinNumber" registration={register('cinNumber')} error={errors.cinNumber?.message} />
+                                    <Controller
+                                        name="cinNumber"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Input 
+                                                {...field}
+                                                label="CIN Number" 
+                                                id="cinNumber" 
+                                                forceUppercase
+                                                description="Format: U12345 AA 1234 AAA 123456"
+                                                error={errors.cinNumber?.message} 
+                                            />
+                                        )}
+                                    />
                                     <Controller name="cinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="CIN Document" 
@@ -726,7 +858,20 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="DIN Number" id="dinNumber" registration={register('dinNumber')} error={errors.dinNumber?.message} />
+                                    <Controller
+                                        name="dinNumber"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Input 
+                                                {...field}
+                                                label="DIN Number" 
+                                                id="dinNumber" 
+                                                pattern="99999999"
+                                                description="Format: 8 Digits"
+                                                error={errors.dinNumber?.message} 
+                                            />
+                                        )}
+                                    />
                                     <Controller name="dinDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="DIN Document" 
@@ -736,7 +881,21 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="TAN Number" id="tanNumber" registration={register('tanNumber')} error={errors.tanNumber?.message} />
+                                    <Controller
+                                        name="tanNumber"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Input 
+                                                {...field}
+                                                label="TAN Number" 
+                                                id="tanNumber" 
+                                                pattern="AAAA99999A"
+                                                forceUppercase
+                                                description="Format: AAAA 99999 A"
+                                                error={errors.tanNumber?.message} 
+                                            />
+                                        )}
+                                    />
                                     <Controller name="tanDocUrl" control={control} render={({ field }) => (
                                         <UploadDocument 
                                             label="TAN Document" 
@@ -746,15 +905,55 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="Udyog Number" id="udyogNumber" registration={register('udyogNumber')} error={errors.udyogNumber?.message} />
-                                    <Controller name="udyogDocUrl" control={control} render={({ field }) => (
-                                        <UploadDocument 
-                                            label="Udyog Document" 
-                                            file={(pendingFiles['udyogDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
-                                            onFileChange={(f) => { handleFileUpload('udyogDoc', f); if (!f) field.onChange(''); }}
-                                        />
-                                    )} />
-                                </div>
+                                     <Controller
+                                         name="udyogNumber"
+                                         control={control}
+                                         render={({ field }) => (
+                                             <Input 
+                                                 {...field}
+                                                 label="Udyog Number" 
+                                                 id="udyogNumber" 
+                                                 forceUppercase
+                                                 description="Format: UDYAM-AA-99-9999999"
+                                                 error={errors.udyogNumber?.message} 
+                                             />
+                                         )}
+                                     />
+                                     <Controller name="udyogDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="Udyog Document" 
+                                             file={(pendingFiles['udyogDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('udyogDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="gstDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="GST Certificate" 
+                                             file={(pendingFiles['gstDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('gstDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="panDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="PAN Card / Certificate" 
+                                             file={(pendingFiles['panDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('panDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="msmeDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="MSME Certificate" 
+                                             file={(pendingFiles['msmeDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('msmeDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
                             </div>
                         )}
                     </div>
@@ -792,15 +991,69 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                     )} />
                                 </div>
                                 <div className="space-y-4">
-                                    <Input label="E-Shram Number" id="shram" registration={register('eShramNumber')} error={errors.eShramNumber?.message} />
-                                    <Controller name={"eShramDocUrl" as any} control={control} render={({ field }) => (
-                                        <UploadDocument 
-                                            label="E-Shram Document" 
-                                            file={(pendingFiles['shramDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
-                                            onFileChange={(f) => { handleFileUpload('shramDoc', f); if (!f) field.onChange(''); }}
-                                        />
-                                    )} />
-                                </div>
+                                     <Input label="E-Shram Number" id="shram" registration={register('eShramNumber')} error={errors.eShramNumber?.message} />
+                                     <Controller name={"eShramDocUrl" as any} control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="E-Shram Document" 
+                                             file={(pendingFiles['shramDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('shramDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="labourRegistrationDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="Labour Registration Certificate" 
+                                             file={(pendingFiles['labourDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('labourDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="shopEstablishmentDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="Shop & Establishment Document" 
+                                             file={(pendingFiles['shopDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('shopDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="rtecDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="RTEC Certificate" 
+                                             file={(pendingFiles['rtecDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('rtecDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="ptecDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="PTEC Certificate" 
+                                             file={(pendingFiles['ptecDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('ptecDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="ptpEnrolmentDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="Profession Tax Payer Enrolment Certificate" 
+                                             file={(pendingFiles['ptpEnrolmentDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('ptpEnrolmentDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
+                                 <div className="space-y-4">
+                                     <Controller name="ptpRegistrationDocUrl" control={control} render={({ field }) => (
+                                         <UploadDocument 
+                                             label="Profession Tax Payer Registration Certificate" 
+                                             file={(pendingFiles['ptpRegDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                             onFileChange={(f) => { handleFileUpload('ptpRegDoc', f); if (!f) field.onChange(''); }}
+                                         />
+                                     )} />
+                                 </div>
                             </div>
                         )}
                     </div>
@@ -875,7 +1128,9 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             <option value="Industrial">Industrial</option>
                             <option value="Retail">Retail</option>
                         </Select>
-                        <Input label="Number of Units (Apartments/Villas)" id="unitCount" type="number" registration={register('siteManagement.unitCount')} error={errors.siteManagement?.unitCount?.message} />
+                        {['Apartment', 'Villa'].includes(watch('siteManagement.projectType') || '') && (
+                            <Input label="Units / Flats" id="unitCount" type="number" registration={register('siteManagement.unitCount')} error={errors.siteManagement?.unitCount?.message} />
+                        )}
                     </div>
                 </div>
             )}
@@ -893,15 +1148,14 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
 
                     {agreementFields.map((field, index) => (
                         <div key={field.id} className="relative bg-accent/5 border border-accent/20 p-6 rounded-2xl group animate-fade-in space-y-6">
-                            {agreementFields.length > 1 && (
-                                <button 
-                                    type="button" 
-                                    onClick={() => removeAgreement(index)}
-                                    className="absolute -top-3 -right-3 p-1.5 bg-destructive text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:scale-110 z-10"
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
-                            )}
+                            <button 
+                                type="button" 
+                                onClick={() => handleRemoveAgreement(index)}
+                                className="absolute top-4 right-4 p-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-xl transition-all hover:scale-110 z-40 group/del"
+                                title="Remove Agreement"
+                            >
+                                <Trash2 className="h-5 w-5 group-hover/del:animate-pulse" />
+                            </button>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <Controller name={`agreements.${index}.fromDate`} control={control} render={({ field: f }) => (
@@ -916,20 +1170,34 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-accent/10">
-                                <UploadDocument 
-                                    label="Agreement Word Copy (Soft Copy)" 
-                                    file={(pendingFiles[`agreements.${index}.wordCopy`] as UploadedFile) || getUploadedFileFromUrl(watch(`agreements.${index}.wordCopyUrl` as any) as string)} 
-                                    onFileChange={(f) => {
-                                        handleFileUpload(`agreements.${index}.wordCopy`, f);
-                                    }} 
-                                />
-                                <UploadDocument 
-                                    label="Signed Agreement Copy (Scan)" 
-                                    file={(pendingFiles[`agreements.${index}.signedCopy`] as UploadedFile) || getUploadedFileFromUrl(watch(`agreements.${index}.signedCopyUrl` as any) as string)} 
-                                    onFileChange={(f) => {
-                                        handleFileUpload(`agreements.${index}.signedCopy`, f);
-                                    }} 
-                                />
+                                <Controller name={`agreements.${index}.wordCopyUrls`} control={control} render={({ field: f }) => {
+                                    const pending = pendingFiles[`agreements.${index}.wordCopy`] as UploadedFile[];
+                                    const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                    return (
+                                        <MultiUploadDocument 
+                                            label="Agreement Word Copies (Soft Copies)" 
+                                            files={Array.isArray(pending) ? pending : existing}
+                                            onFilesChange={(files) => {
+                                                handleFileUpload(`agreements.${index}.wordCopy`, files);
+                                                f.onChange(files.map(file => file.url).filter(Boolean));
+                                            }}
+                                        />
+                                    );
+                                }} />
+                                <Controller name={`agreements.${index}.signedCopyUrls`} control={control} render={({ field: f }) => {
+                                    const pending = pendingFiles[`agreements.${index}.signedCopy`] as UploadedFile[];
+                                    const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                    return (
+                                        <MultiUploadDocument 
+                                            label="Signed Agreement Copies (Scans)" 
+                                            files={Array.isArray(pending) ? pending : existing}
+                                            onFilesChange={(files) => {
+                                                handleFileUpload(`agreements.${index}.signedCopy`, files);
+                                                f.onChange(files.map(file => file.url).filter(Boolean));
+                                            }}
+                                        />
+                                    );
+                                }} />
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-accent/10">
@@ -1030,122 +1298,14 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                         <Input label="E-Shram Number" id="eShramNumber" registration={register('eShramNumber')} error={errors.eShramNumber?.message} />
                         <Input label="Shop & Establishment Code" id="shopAndEstablishmentCode" registration={register('shopAndEstablishmentCode')} error={errors.shopAndEstablishmentCode?.message} />
+                        <Input label="EPFO Sub Codes" id="epfoSubCodes" registration={register('complianceDetails.epfoSubCodes')} error={errors.complianceDetails?.epfoSubCodes?.message} />
+                        <Input label="ESIC Sub Codes" id="esicSubCodes" registration={register('complianceDetails.esicSubCodes')} error={errors.complianceDetails?.esicSubCodes?.message} />
+                        <Controller name="complianceDetails.shopAndEstablishmentValidity" control={control} render={({ field }) => (
+                            <Input type="date" label="Shop & Establishment Validity" id="shopValidity" value={field.value} onChange={field.onChange} error={errors.complianceDetails?.shopAndEstablishmentValidity?.message} />
+                        )} />
                     </div>
 
-                    <div className="pt-8 border-t border-border mt-8">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h4 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                                    <FileText className="h-5 w-5 text-emerald-500" />
-                                    Compliance Documents & Notifications
-                                </h4>
-                                <p className="text-sm text-muted">Upload and track government notifications, circulars, and wage revisions.</p>
-                            </div>
-                            <Button 
-                                type="button" 
-                                variant="secondary" 
-                                size="sm" 
-                                className="!rounded-full shadow-sm font-bold"
-                                onClick={() => appendDoc({ id: `doc_${Date.now()}`, type: 'Minimum Wages Notifications', documentUrls: [], effectiveDate: '', announcedDate: '', expiryDate: '', editorLog: '' })}
-                            >
-                                <Plus className="h-4 w-4 mr-1" /> Add Document
-                            </Button>
-                        </div>
 
-                        {/* Filters Bar */}
-                        <div className="p-4 border border-border rounded-2xl bg-page/40 flex flex-wrap items-end gap-4 shadow-sm mb-6">
-                            <div className="flex-1 min-w-[200px]">
-                                <Select label="Filter by Type" id="filter_type" value={docFilters.type} onChange={(e: any) => setDocFilters(prev => ({ ...prev, type: e.target.value }))}>
-                                    <option value="">All Types</option>
-                                    <option value="Minimum Wages Notifications">Minimum Wages Notifications</option>
-                                    <option value="PT Circulars & Notifications">PT Circulars & Notifications</option>
-                                    <option value="PF Circulars & Notifications">PF Circulars & Notifications</option>
-                                    <option value="ESI Circulars & Notifications">ESI Circulars & Notifications</option>
-                                    <option value="Other Government Notification">Other Government Notification</option>
-                                </Select>
-                            </div>
-                            <div className="w-44">
-                                <Input label="Eff. Date" id="filter_eff" type="date" value={docFilters.effectiveDate} onChange={(e: any) => setDocFilters(prev => ({ ...prev, effectiveDate: e.target.value }))} />
-                            </div>
-                            <div className="w-44">
-                                <Input label="Ann. Date" id="filter_ann" type="date" value={docFilters.announcedDate} onChange={(e: any) => setDocFilters(prev => ({ ...prev, announcedDate: e.target.value }))} />
-                            </div>
-                            <div className="flex-1 min-w-[200px]">
-                                <Input label="Search Editor Log" id="filter_search" placeholder="Search history/notes..." value={docFilters.search} onChange={(e: any) => setDocFilters(prev => ({ ...prev, search: e.target.value }))} icon={<Search className="w-4 h-4" />} />
-                            </div>
-                            {(docFilters.type || docFilters.effectiveDate || docFilters.announcedDate || docFilters.search) && (
-                                <Button type="button" variant="secondary" onClick={() => setDocFilters({ type: '', effectiveDate: '', announcedDate: '', search: '' })} className="h-10">Clear</Button>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-6">
-                            {docFields.map((field, index) => ({ field, index }))
-                                .filter(({ index }) => {
-                                    const docValues = watch(`complianceDocuments.${index}`);
-                                    const matchesType = !docFilters.type || docValues?.type === docFilters.type;
-                                    const matchesEff = !docFilters.effectiveDate || docValues?.effectiveDate === docFilters.effectiveDate;
-                                    const matchesAnn = !docFilters.announcedDate || docValues?.announcedDate === docFilters.announcedDate;
-                                    const matchesSearch = !docFilters.search || docValues?.editorLog?.toLowerCase().includes(docFilters.search.toLowerCase());
-                                    return matchesType && matchesEff && matchesAnn && matchesSearch;
-                                })
-                                .sort((a, b) => {
-                                    const valA = watch(`complianceDocuments.${a.index}`);
-                                    const valB = watch(`complianceDocuments.${b.index}`);
-                                    const dateA = new Date(valA?.effectiveDate || valA?.announcedDate || 0).getTime();
-                                    const dateB = new Date(valB?.effectiveDate || valB?.announcedDate || 0).getTime();
-                                    return dateB - dateA;
-                                })
-                                .map(({ field, index }) => (
-                                    <div key={field.id} className="p-6 border border-border rounded-2xl bg-card shadow-sm relative animate-in fade-in scale-in-95 group">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="md:col-span-2">
-                                                <Select label="Document Type" id={`docs.${index}.type`} registration={register(`complianceDocuments.${index}.type`)}>
-                                                    <option value="Minimum Wages Notifications">Minimum Wages Notifications</option>
-                                                    <option value="PT Circulars & Notifications">PT Circulars & Notifications</option>
-                                                    <option value="PF Circulars & Notifications">PF Circulars & Notifications</option>
-                                                    <option value="ESI Circulars & Notifications">ESI Circulars & Notifications</option>
-                                                    <option value="Other Government Notification">Other Government Notification</option>
-                                                </Select>
-                                            </div>
-                                            
-                                            <Controller name={`complianceDocuments.${index}.effectiveDate`} control={control} render={({ field: f }) => <Input type="date" label="Effective Date" id={`docs.${index}.effective`} value={f.value} onChange={f.onChange} />} />
-                                            <Controller name={`complianceDocuments.${index}.announcedDate`} control={control} render={({ field: f }) => <Input type="date" label="Announced / Circulated Date" id={`docs.${index}.announced`} value={f.value} onChange={f.onChange} />} />
-                                            <Controller name={`complianceDocuments.${index}.expiryDate`} control={control} render={({ field: f }) => <Input type="date" label="Valid Till" id={`docs.${index}.expiry`} value={f.value} onChange={f.onChange} />} />
-                                            
-                                            <Input label="Editor Log (Background Cron)" id={`docs.${index}.log`} registration={register(`complianceDocuments.${index}.editorLog`)} placeholder="Internal notes or cron reference..." />
-
-                                            <div className="md:col-span-2 mt-2">
-                                                <Controller name={`complianceDocuments.${index}.documentUrls`} control={control} render={({ field: f }) => {
-                                                    const docVal = watch(`complianceDocuments.${index}`);
-                                                    const businessId = docVal?.id || field.id;
-                                                    const pendingList = pendingFiles[`doc_${businessId}`] as UploadedFile[];
-                                                    const existingUrls = f.value || [];
-                                                    
-                                                    const displayFiles: UploadedFile[] = [
-                                                        ...existingUrls.map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
-                                                        ...(Array.isArray(pendingList) ? pendingList : [])
-                                                    ];
-
-                                                    return (
-                                                        <MultiUploadDocument 
-                                                            label="Upload Document Capture" 
-                                                            files={displayFiles}
-                                                            onFilesChange={(newFileList) => {
-                                                                handleFileUpload(`doc_${businessId}`, newFileList);
-                                                                f.onChange(newFileList.map(nf => nf.url).filter(Boolean));
-                                                            }}
-                                                        />
-                                                    );
-                                                }} />
-                                            </div>
-                                        </div>
-                                        <button type="button" onClick={() => removeDoc(index)} className="absolute top-4 right-4 p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                        </div>
-                    </div>
                 </div>
             )}
 
@@ -1329,16 +1489,34 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-accent/5 p-4 rounded-xl border border-accent/20">
-                             <UploadDocument 
-                                label="DC Copy 1" 
-                                file={(pendingFiles['assetTracking.dcCopy1'] as UploadedFile) || getUploadedFileFromUrl(watch('assetTracking.dcCopy1Url'))} 
-                                onFileChange={(file) => handleFileUpload('assetTracking.dcCopy1', file)}
-                            />
-                            <UploadDocument 
-                                label="DC Copy 2" 
-                                file={(pendingFiles['assetTracking.dcCopy2'] as UploadedFile) || getUploadedFileFromUrl(watch('assetTracking.dcCopy2Url'))} 
-                                onFileChange={(file) => handleFileUpload('assetTracking.dcCopy2', file)}
-                            />
+                             <Controller name="assetTracking.dcCopy1Urls" control={control} render={({ field: f }) => {
+                                const pending = pendingFiles['assetTracking.dcCopy1'] as UploadedFile[];
+                                const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                return (
+                                    <MultiUploadDocument 
+                                        label="DC Copy 1 (Capture)" 
+                                        files={Array.isArray(pending) ? pending : existing}
+                                        onFilesChange={(files) => {
+                                            handleFileUpload('assetTracking.dcCopy1', files);
+                                            f.onChange(files.map(file => file.url).filter(Boolean));
+                                        }}
+                                    />
+                                );
+                            }} />
+                            <Controller name="assetTracking.dcCopy2Urls" control={control} render={({ field: f }) => {
+                                const pending = pendingFiles['assetTracking.dcCopy2'] as UploadedFile[];
+                                const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                return (
+                                    <MultiUploadDocument 
+                                        label="DC Copy 2 (Capture)" 
+                                        files={Array.isArray(pending) ? pending : existing}
+                                        onFilesChange={(files) => {
+                                            handleFileUpload('assetTracking.dcCopy2', files);
+                                            f.onChange(files.map(file => file.url).filter(Boolean));
+                                        }}
+                                    />
+                                );
+                            }} />
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 max-h-[300px] overflow-y-auto pr-2">
@@ -1384,6 +1562,28 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                         <Controller name={`assetTracking.equipment.${index}.issueDate`} control={control} render={({ field: dateField }) => (
                                             <Input type="date" label="Issue Date" id={`equipDate-${index}`} value={dateField.value} onChange={dateField.onChange} />
                                         )} />
+                                        <Select label="Procurement Type" id={`equipProc-${index}`} registration={register(`assetTracking.equipment.${index}.procurementType` as const)}>
+                                            <option value="">Select Type</option>
+                                            <option value="Rent">Rent</option>
+                                            <option value="Hire Purchase">Hire Purchase</option>
+                                            <option value="Complimentary">Complimentary</option>
+                                        </Select>
+
+                                        {watch(`assetTracking.equipment.${index}.procurementType`) === 'Hire Purchase' && (
+                                            <Input label="Purchase Period" id={`equipPeriod-${index}`} registration={register(`assetTracking.equipment.${index}.purchasePeriod` as const)} placeholder="e.g. 24 Months" />
+                                        )}
+
+                                        {watch(`assetTracking.equipment.${index}.procurementType`) === 'Complimentary' && (
+                                            <>
+                                                <Select label="Complimentary Type" id={`equipComp-${index}`} registration={register(`assetTracking.equipment.${index}.complimentaryType` as const)}>
+                                                    <option value="Dedicated">Dedicated</option>
+                                                    <option value="Periodic">Periodic</option>
+                                                </Select>
+                                                {watch(`assetTracking.equipment.${index}.complimentaryType`) === 'Periodic' && (
+                                                    <Input label="Frequency" id={`equipFreq-${index}`} registration={register(`assetTracking.equipment.${index}.periodicFrequency` as const)} placeholder="e.g. Quarterly" />
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                     <Button type="button" variant="icon" onClick={() => removeEquipment(index)} className="absolute -top-2 -right-2 bg-white dark:bg-card border shadow-sm text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Trash2 className="h-4 w-4" />
@@ -1394,45 +1594,235 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     </div>
                 </div>
             )}
-
-            {activeTab === 'Billing' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-accent/5 border border-accent/20 rounded-xl">
-                        <Controller name="billingControls.billingCycleStart" control={control} render={({ field }) => (
-                            <Input type="date" label="Billing Cycle Start Date" id="billingCycle" value={field.value} onChange={field.onChange} />
-                        )} />
-                        <Controller name="billingControls.salaryDate" control={control} render={({ field }) => (
-                            <Input type="date" label="Salary Date" id="salaryDate" value={field.value} onChange={field.onChange} />
-                        )} />
-                    </div>
-                    
-                    <div className="bg-accent/5 border border-accent/20 p-4 rounded-xl space-y-4">
-                        <Controller name="billingControls.uniformDeductions" control={control} render={({ field: { value, onChange } }) => (
-                            <Checkbox 
-                                id="uniformDeductions" 
-                                label="Enable Uniform Deductions" 
-                                checked={value} 
-                                onChange={onChange}
-                                labelClassName="font-bold text-primary-text"
-                            />
-                        )} />
-                        
-                        {watch('billingControls.uniformDeductions') && (
-                            <div className="animate-fade-in pl-7 border-l-2 border-accent/20 ml-2">
-                                <Input label="Deduction Category/Logic" id="deductionCat" registration={register('billingControls.deductionCategory')} placeholder="e.g. Fixed 500, % of Basic" />
+            {activeTab === 'Uniform' && (
+                <div className="space-y-6 animate-fade-in max-h-[700px] overflow-y-auto pr-2 custom-scrollbar p-1">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-page/30 p-4 rounded-2xl border border-border">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-accent/10 rounded-lg">
+                                <Shirt className="h-5 w-5 text-accent" />
                             </div>
-                        )}
-                    </div>
-
-                    <div className="bg-accent/5 border border-accent/20 p-4 rounded-xl flex gap-3">
-                        <CheckCircle className="h-5 w-5 text-accent mt-0.5" />
-                        <div>
-                            <h4 className="text-sm font-bold text-primary-text">Financial Linkage</h4>
-                            <p className="text-xs text-muted mt-1 font-medium">
-                                Costing sheet versioning and mapping is handled via Finance module linkage.
-                            </p>
+                            <div>
+                                <h3 className="text-sm font-bold text-primary-text">Uniform Configuration</h3>
+                                <p className="text-[10px] text-muted font-medium">Define site-specific sizing requirements and deduction costs.</p>
+                            </div>
+                        </div>
+                        
+                        <div className="flex p-1 bg-white/50 dark:bg-card/50 rounded-xl border border-border transition-all">
+                            {(['Gents', 'Ladies'] as const).map(gender => (
+                                <button
+                                    key={gender}
+                                    type="button"
+                                    onClick={() => {
+                                        setUniformGender(gender);
+                                        setSelectedUniformDept(0);
+                                        setSelectedUniformDesignation(0);
+                                    }}
+                                    className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${uniformGender === gender ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-primary-text'}`}
+                                >
+                                    {gender}
+                                </button>
+                            ))}
                         </div>
                     </div>
+
+                    {!masterGents || !masterLadies ? (
+                        <div className="flex flex-col items-center justify-center py-12 gap-3">
+                            <Loader2 className="h-8 w-8 text-accent animate-spin" />
+                            <p className="text-sm text-muted font-medium animate-pulse">Loading uniform master data...</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                            {/* Left Panel: Departments & Designations */}
+                            <div className="lg:col-span-1 space-y-4">
+                                <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col h-full min-h-[400px]">
+                                    <div className="flex items-center justify-between mb-4 px-1">
+                                        <h4 className="text-[10px] font-bold text-muted uppercase tracking-widest">Hierarchy</h4>
+                                        <Button 
+                                            type="button" 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            className="h-7 !text-[10px] px-2"
+                                            onClick={() => {
+                                                const append = uniformGender === 'Gents' ? appendGentsDept : appendLadiesDept;
+                                                append({ id: crypto.randomUUID(), department: '', designations: [] });
+                                            }}
+                                        >
+                                            <Plus className="h-3 w-3 mr-1" /> Dept
+                                        </Button>
+                                    </div>
+                                    
+                                    <div className="space-y-2 overflow-y-auto pr-1 flex-grow custom-scrollbar max-h-[500px]">
+                                        {(uniformGender === 'Gents' ? gentsDepts : ladiesDepts).map((dept, dIdx) => (
+                                            <div 
+                                                key={dept.id} 
+                                                className={`group border rounded-xl overflow-hidden transition-all ${selectedUniformDept === dIdx ? 'border-accent shadow-sm bg-accent/5' : 'border-border hover:border-accent/30'}`}
+                                            >
+                                                <div 
+                                                    className="p-3 flex items-center justify-between cursor-pointer"
+                                                    onClick={() => setSelectedUniformDept(dIdx)}
+                                                >
+                                                    <div className="flex-grow">
+                                                        <Controller
+                                                            name={`${uniformGender.toLowerCase()}UniformConfig.departments.${dIdx}.department` as any}
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <input 
+                                                                    {...(field as any)}
+                                                                    placeholder="Dept Name"
+                                                                    className="bg-transparent text-xs font-bold text-primary-text outline-none w-full"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                            )}
+                                                        />
+                                                    </div>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const remove = uniformGender === 'Gents' ? removeGentsDept : removeLadiesDept;
+                                                            remove(dIdx);
+                                                            if (selectedUniformDept === dIdx) setSelectedUniformDept(0);
+                                                        }}
+                                                        className="text-destructive p-1 hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                                
+                                                {selectedUniformDept === dIdx && (
+                                                    <div className="p-2 pt-0 space-y-1">
+                                                        {(dept as any).designations?.map((des: any, desIdx: number) => (
+                                                            <div 
+                                                                key={des.id || desIdx}
+                                                                onClick={() => setSelectedUniformDesignation(desIdx)}
+                                                                className={`p-2 rounded-lg text-[11px] font-medium cursor-pointer transition-colors flex justify-between items-center ${selectedUniformDesignation === desIdx ? 'bg-accent/10 text-accent ring-1 ring-accent/20' : 'text-muted-foreground hover:bg-page/50'}`}
+                                                            >
+                                                                <span className="truncate pr-2">{des.designation || 'New Designation'}</span>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const currentDepts = watch(`${uniformGender.toLowerCase()}UniformConfig.departments` as any);
+                                                                        currentDepts[dIdx].designations.splice(desIdx, 1);
+                                                                        setValue(`${uniformGender.toLowerCase()}UniformConfig.departments` as any, [...currentDepts]);
+                                                                        if (selectedUniformDesignation === desIdx) setSelectedUniformDesignation(0);
+                                                                    }}
+                                                                    className="p-1 hover:bg-destructive/10 text-destructive rounded"
+                                                                >
+                                                                    <X className="h-2.5 w-2.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <button 
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const currentDepts = watch(`${uniformGender.toLowerCase()}UniformConfig.departments` as any);
+                                                                currentDepts[dIdx].designations = currentDepts[dIdx].designations || [];
+                                                                currentDepts[dIdx].designations.push({ 
+                                                                    id: crypto.randomUUID(), 
+                                                                    designation: '', 
+                                                                    pantsQuantities: {}, 
+                                                                    shirtsQuantities: {},
+                                                                    pantsCosts: {},
+                                                                    shirtsCosts: {}
+                                                                });
+                                                                setValue(`${uniformGender.toLowerCase()}UniformConfig.departments` as any, [...currentDepts]);
+                                                                setSelectedUniformDesignation(currentDepts[dIdx].designations.length - 1);
+                                                            }}
+                                                            className="w-full py-1.5 border border-dashed border-accent/20 rounded-lg text-[9px] font-bold text-accent/70 hover:text-accent hover:bg-accent/5 transition-all text-center uppercase tracking-widest"
+                                                        >
+                                                            + Designation
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-page/50 border border-border rounded-xl p-4 flex gap-3">
+                                    <Info className="h-4 w-4 text-accent flex-shrink-0" />
+                                    <p className="text-[10px] text-muted font-medium">Costs defined here will be used for automated employee deductions upon uniform issuance.</p>
+                                </div>
+                            </div>
+
+                            {/* Right Panel: Designation Details & Scale Tables */}
+                            <div className="lg:col-span-3 space-y-6">
+                                {((uniformGender === 'Gents' ? gentsDepts : ladiesDepts)[selectedUniformDept] as any)?.designations?.[selectedUniformDesignation] ? (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                                            <div className="flex items-center gap-4 mb-8">
+                                                <div className="h-10 w-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                                                    <ShieldCheck className="h-5 w-5 text-accent" />
+                                                </div>
+                                                <div className="flex-grow">
+                                                    <label className="text-[10px] font-bold text-muted uppercase tracking-widest block mb-1">Designation Name</label>
+                                                    <Controller
+                                                        name={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}.designation` as any}
+                                                        control={control}
+                                                        render={({ field }) => (
+                                                            <input 
+                                                                {...(field as any)}
+                                                                placeholder="e.g. Supervisor"
+                                                                className="bg-transparent text-xl font-black text-primary-text outline-none w-full border-b border-transparent focus:border-accent transition-all pb-1"
+                                                            />
+                                                        )}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-8 mt-4">
+                                                {/* Pants Table */}
+                                                <UniformSizeTable 
+                                                    title={`${uniformGender} Pants Scale`}
+                                                    sizes={uniformGender === 'Gents' ? masterGents!.pants : masterLadies!.pants}
+                                                    headers={[
+                                                        { key: 'length', label: 'Length' },
+                                                        { key: 'waist', label: 'Waist' },
+                                                        { key: 'hip', label: 'Hip' },
+                                                        ...(uniformGender === 'Gents' ? [{ key: 'tilesLoose', label: 'T.Loose' }] : []),
+                                                        { key: 'fit', label: 'Fit' }
+                                                    ]}
+                                                    control={control}
+                                                    nestingPath={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}`}
+                                                    quantityField="pantsQuantities"
+                                                    costField="pantsCosts"
+                                                />
+
+                                                {/* Shirts Table */}
+                                                <UniformSizeTable 
+                                                    title={`${uniformGender} Shirts Scale`}
+                                                    sizes={uniformGender === 'Gents' ? masterGents!.shirts : masterLadies!.shirts}
+                                                    headers={[
+                                                        { key: 'length', label: 'Length' },
+                                                        { key: 'sleeves', label: 'Sleeves' },
+                                                        { key: 'shoulder', label: 'Shoulder' },
+                                                        ...(uniformGender === 'Gents' ? [{ key: 'chest', label: 'Chest' }] : [{ key: 'bust', label: 'Bust' }]),
+                                                        { key: 'fit', label: 'Fit' }
+                                                    ]}
+                                                    control={control}
+                                                    nestingPath={`${uniformGender.toLowerCase()}UniformConfig.departments.${selectedUniformDept}.designations.${selectedUniformDesignation}`}
+                                                    quantityField="shirtsQuantities"
+                                                    costField="shirtsCosts"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-page/20 border-2 border-dashed border-border rounded-2xl h-[400px] flex flex-col items-center justify-center gap-4 text-center p-8">
+                                        <div className="p-4 bg-muted/5 rounded-full">
+                                            <Search className="h-12 w-12 text-muted/30" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-lg font-bold text-primary-text/60">Select a Designation</h4>
+                                            <p className="text-sm text-muted max-w-xs mt-2">Choose a department and designation from the left panel to configure its specific size scales and costs.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1552,193 +1942,82 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
 
-            {activeTab === 'Policies/Insurance' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-slide-up">
-                    {/* Insurances Section */}
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between px-1">
-                            <h4 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                                <ShieldCheck className="h-5 w-5 text-accent" />
-                                Insurances
-                            </h4>
-                            <Button 
-                                type="button" 
-                                size="sm" 
-                                onClick={() => appendInsurance({ id: `ins_${Date.now()}`, provider: '', type: 'GMC', policyNumber: '', validTill: null, documentUrls: [] })} 
-                                className="!rounded-full text-xs font-bold shadow-sm"
-                                variant="secondary"
-                            >
-                                <Plus className="h-4 w-4 mr-1" /> New Entry
-                            </Button>
+                    {/* CRC Checks Section */}
+                    <div className="pt-10 border-t border-border/50">
+                        <div className="flex items-center gap-2 mb-6">
+                            <ShieldAlert className="h-5 w-5 text-accent" />
+                            <h3 className="text-sm font-bold text-primary-text uppercase tracking-widest">Site-Level CRC Checks</h3>
                         </div>
                         
-                        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar p-1">
-                            {insuranceFields.map((field, index) => (
-                                <div key={field.id} className="p-5 rounded-2xl border border-border bg-card shadow-sm hover:shadow-md transition-all relative group">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removeInsurance(index)} 
-                                        className="absolute top-4 right-4 p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                    
-                                    <div className="grid grid-cols-2 gap-4 mb-5">
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Input label="Insurance Provider" id={`ins_provider_${field.id}`} registration={register(`insurances.${index}.provider`)} error={errors.insurances?.[index]?.provider?.message} placeholder="e.g. Star Health" />
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Select label="Insurance Type" id={`ins_type_${field.id}`} registration={register(`insurances.${index}.type`)} error={errors.insurances?.[index]?.type?.message}>
-                                                <option value="GMC">GMC (Group Medical)</option>
-                                                <option value="GPA">GPA (Personal Accident)</option>
-                                                <option value="WC">WC (Workmen Comp)</option>
-                                                <option value="Other">Other</option>
-                                            </Select>
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Input label="Policy Number" id={`ins_no_${field.id}`} registration={register(`insurances.${index}.policyNumber`)} placeholder="POL-123456" />
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Controller
-                                                name={`insurances.${index}.validTill`}
-                                                control={control}
-                                                render={({ field: dateField }) => (
-                                                    <Input type="date" label="Valid Till" id={`ins_valid_${field.id}`} value={dateField.value} onChange={dateField.onChange} />
-                                                )}
-                                            />
-                                        </div>
-                                    </div>
-                                    
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* CRC Check 1 */}
+                            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-primary-text">CRC Check 1</h4>
                                     <Controller
-                                        name={`insurances.${index}.documentUrls`}
+                                        name="verificationData.crcCheck1.status"
                                         control={control}
-                                        render={({ field: f }) => {
-                                            const insVal = watch(`insurances.${index}`);
-                                            const businessId = insVal?.id || field.id;
-                                            const urls = f.value || [];
-                                            const pending = pendingFiles[`ins_${businessId}`] as UploadedFile[];
-                                            
-                                            const displayFiles: UploadedFile[] = [
-                                                ...(urls as string[]).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
-                                                ...(Array.isArray(pending) ? pending : [])
-                                            ];
-
-                                            return (
-                                                <MultiUploadDocument
-                                                    label="Insurance Policy Documents"
-                                                    files={displayFiles}
-                                                    onFilesChange={(newFiles: UploadedFile[]) => {
-                                                        handleFileUpload(`ins_${businessId}`, newFiles);
-                                                        f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
-                                                    }}
-                                                />
-                                            );
-                                        }}
+                                        render={({ field }) => (
+                                            <Select {...field} className="!w-32 !py-1 text-[10px]">
+                                                <option value="">Status...</option>
+                                                <option value="Pending">Pending</option>
+                                                <option value="Completed">Completed</option>
+                                                <option value="Ongoing">Ongoing</option>
+                                            </Select>
+                                        )}
                                     />
                                 </div>
-                            ))}
-                            
-                            {insuranceFields.length === 0 && (
-                                <div className="p-16 text-center border-2 border-dashed border-border/40 rounded-3xl bg-page/30 flex flex-col items-center justify-center">
-                                    <div className="p-4 bg-muted/5 rounded-full mb-4">
-                                        <ShieldAlert className="h-12 w-12 text-muted/30" />
-                                    </div>
-                                    <p className="text-sm font-medium text-muted mb-1 uppercase tracking-wider">No insurance records</p>
-                                    <p className="text-xs text-muted/60 italic">Add a new record for this site to get started.</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                                <Controller
+                                    name="verificationData.crcCheck1.date"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Input type="date" label="Check Date" id="crc1Date" value={field.value} onChange={field.onChange} />
+                                    )}
+                                />
+                                <MultiUploadDocument 
+                                    label="CRC 1 Documents"
+                                    files={(pendingFiles['verificationData.crcCheck1.docUrls'] as UploadedFile[]) || (watch('verificationData.crcCheck1.docUrls') || []).map(url => getUploadedFileFromUrl(url))}
+                                    onFilesChange={(files) => handleFileUpload('verificationData.crcCheck1.docUrls', files)}
+                                />
+                            </div>
 
-                    {/* Internal Policies Section */}
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between px-1">
-                            <h4 className="text-lg font-bold text-primary-text flex items-center gap-2">
-                                <FileText className="h-5 w-5 text-accent" />
-                                Internal Policies
-                            </h4>
-                            <Button 
-                                type="button" 
-                                size="sm" 
-                                onClick={() => appendPolicy({ id: `pol_${Date.now()}`, name: '', level: 'Site', documentUrls: [] })} 
-                                className="!rounded-full text-xs font-bold shadow-sm"
-                                variant="secondary"
-                            >
-                                <Plus className="h-4 w-4 mr-1" /> New Entry
-                            </Button>
-                        </div>
-
-                        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar p-1">
-                            {policyFields.map((field, index) => (
-                                <div key={field.id} className="p-5 rounded-2xl border border-border bg-card shadow-sm hover:shadow-md transition-all relative group">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removePolicy(index)} 
-                                        className="absolute top-4 right-4 p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-full dark:hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                    
-                                    <div className="grid grid-cols-2 gap-4 mb-5">
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Input label="Policy Name" id={`pol_name_${field.id}`} registration={register(`policies.${index}.name`)} error={errors.policies?.[index]?.name?.message} placeholder="e.g. Leave Policy" />
-                                        </div>
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <Select label="Deployment Level" id={`pol_level_${field.id}`} registration={register(`policies.${index}.level`)} error={errors.policies?.[index]?.level?.message}>
-                                                <option value="BO">Back Office Only</option>
-                                                <option value="Site">Site Only</option>
-                                                <option value="Both">Both Back Office & Site</option>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    
+                            {/* CRC Check 2 */}
+                            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-primary-text">CRC Check 2</h4>
                                     <Controller
-                                        name={`policies.${index}.documentUrls`}
+                                        name="verificationData.crcCheck2.status"
                                         control={control}
-                                        render={({ field: f }) => {
-                                            const polVal = watch(`policies.${index}`);
-                                            const businessId = polVal?.id || field.id;
-                                            const urls = f.value || [];
-                                            const pending = pendingFiles[`pol_${businessId}`] as UploadedFile[];
-                                            
-                                            const displayFiles: UploadedFile[] = [
-                                                ...(urls as string[]).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[],
-                                                ...(Array.isArray(pending) ? pending : [])
-                                            ];
-
-                                            return (
-                                                <MultiUploadDocument
-                                                    label="Policy Documents"
-                                                    files={displayFiles}
-                                                    onFilesChange={(newFiles: UploadedFile[]) => {
-                                                        handleFileUpload(`pol_${businessId}`, newFiles);
-                                                        f.onChange(newFiles.map(uf => uf.url).filter((u): u is string => !!u));
-                                                    }}
-                                                />
-                                            );
-                                        }}
+                                        render={({ field }) => (
+                                            <Select {...field} className="!w-32 !py-1 text-[10px]">
+                                                <option value="">Status...</option>
+                                                <option value="Pending">Pending</option>
+                                                <option value="Completed">Completed</option>
+                                                <option value="Ongoing">Ongoing</option>
+                                            </Select>
+                                        )}
                                     />
                                 </div>
-                            ))}
-                            
-                            {policyFields.length === 0 && (
-                                <div className="p-16 text-center border-2 border-dashed border-border/40 rounded-3xl bg-page/30 flex flex-col items-center justify-center">
-                                    <div className="p-4 bg-muted/5 rounded-full mb-4">
-                                        <FileWarning className="h-12 w-12 text-muted/30" />
-                                    </div>
-                                    <p className="text-sm font-medium text-muted mb-1 uppercase tracking-wider">No internal policies</p>
-                                    <p className="text-xs text-muted/60 italic">Upload organizational policies for this site.</p>
-                                </div>
-                            )}
+                                <Controller
+                                    name="verificationData.crcCheck2.date"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Input type="date" label="Check Date" id="crc2Date" value={field.value} onChange={field.onChange} />
+                                    )}
+                                />
+                                <MultiUploadDocument 
+                                    label="CRC 2 Documents"
+                                    files={(pendingFiles['verificationData.crcCheck2.docUrls'] as UploadedFile[]) || (watch('verificationData.crcCheck2.docUrls') || []).map(url => getUploadedFileFromUrl(url))}
+                                    onFilesChange={(files) => handleFileUpload('verificationData.crcCheck2.docUrls', files)}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
           </div>
-          
+
           <div className="flex justify-between items-center pt-8 border-t border-border mt-8">
             <Button
               type="button"
@@ -1750,7 +2029,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
             
-            {activeTab !== 'Policies/Insurance' ? (
+            {activeTab !== 'Verification' ? (
                 <Button
                   type="button"
                   variant="primary"

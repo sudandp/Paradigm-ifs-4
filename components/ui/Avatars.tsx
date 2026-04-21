@@ -1,7 +1,7 @@
 import React from 'react';
 
 const DefaultAvatar: React.FC<{ className?: string }> = ({ className }) => (
-    <div className={`w-full h-full flex items-center justify-center overflow-hidden ${className || ''}`}
+    <div className={`flex items-center justify-center overflow-hidden ${className || 'w-full h-full'}`}
         style={{ background: 'radial-gradient(circle at center, rgba(16,185,129,0.15) 0%, rgba(4,27,15,0.5) 100%)' }}
     >
         <img

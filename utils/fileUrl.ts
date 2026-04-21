@@ -10,7 +10,10 @@ import { Capacitor } from '@capacitor/core';
  * is used directly instead.
  */
 
-const SUPABASE_STORAGE_PREFIX = 'https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public/';
+const PROJECT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://fmyafuhxlorbafbacywa.supabase.co';
+const STORAGE_ENDPOINT = '/storage/v1/object/public';
+// Prefix without trailing slash for more flexible matching
+const SUPABASE_STORAGE_PREFIX = `${PROJECT_URL.replace(/\/$/, '')}${STORAGE_ENDPOINT}`;
 
 /**
  * Convert a raw Supabase storage URL to our proxy URL.
@@ -22,24 +25,36 @@ const SUPABASE_STORAGE_PREFIX = 'https://fmyafuhxlorbafbacywa.supabase.co/storag
  * If the URL is not a Supabase URL, it is returned as-is.
  */
 export function getProxyUrl(supabaseUrl: string): string {
-  if (!supabaseUrl) return supabaseUrl;
+  if (!supabaseUrl || typeof supabaseUrl !== 'string') return supabaseUrl;
+  
+  // Clean the input URL - remove any double slashes after the protocol
+  const sanitizedUrl = supabaseUrl.replace(/([^:]\/)\/+/g, '$1');
   
   // On native platforms, skip proxy — no Express server available on device.
   // The WebView can load Supabase public URLs directly over the internet.
-  const isNative = Capacitor.isNativePlatform() || navigator.userAgent.includes('ParadigmApp');
+  const isNative = Capacitor.isNativePlatform() || 
+                  (typeof navigator !== 'undefined' && navigator.userAgent.includes('ParadigmApp'));
   
-  if (supabaseUrl.startsWith(SUPABASE_STORAGE_PREFIX)) {
+  if (sanitizedUrl.startsWith(SUPABASE_STORAGE_PREFIX)) {
     if (isNative) {
       // Return the raw public URL — the native WebView loads it directly
-      return supabaseUrl;
+      return sanitizedUrl;
     }
-    const storagePath = supabaseUrl.replace(SUPABASE_STORAGE_PREFIX, '');
+    
+    // Extract storage path: prefix might end with or without a slash
+    // If prefix is .../public and URL is .../public/logo/1.png -> path is /logo/1.png -> clean to logo/1.png
+    let storagePath = sanitizedUrl.substring(SUPABASE_STORAGE_PREFIX.length);
+    if (storagePath.startsWith('/')) {
+      storagePath = storagePath.substring(1);
+    }
+    
     return `/api/view-file/${storagePath}`;
   }
   
   // Not a Supabase URL — return as-is (e.g. blob: URLs during upload)
   return supabaseUrl;
 }
+
 
 /**
  * Extract a clean, human-readable filename from a storage URL or path.

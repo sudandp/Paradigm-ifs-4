@@ -312,107 +312,7 @@ export interface SiteStaff {
   designation: string;
 }
 
-// Asset Management Types
-
-export type AssetCondition = 'New' | 'Used' | '';
-
-export type DamageStatus = 'With Damages' | 'Without Damages' | '';
-
-export interface PhoneAsset {
-  id: string;
-  type: 'Phone';
-  brand: string | null;
-  condition: AssetCondition | null;
-  chargerStatus: 'With Charger' | 'Without Charger' | '' | null;
-  displayStatus: DamageStatus | null;
-  bodyStatus: DamageStatus | null;
-  imei: string | null;
-  color: string | null;
-  picture?: UploadedFile | null;
-}
-
-export interface SimAsset {
-  id: string;
-  type: 'Sim';
-  number: string | null;
-}
-
-export interface ComputerAsset {
-  id: string;
-  type: 'Computer';
-  computerType: 'Laptop' | 'Desktop' | 'Tab' | '' | null;
-  brand: string | null;
-  condition: AssetCondition | null;
-  bagStatus: 'With Bag' | 'Without Bag' | '' | null;
-  mouseStatus: 'With Mouse' | 'Without Mouse' | '' | null;
-  chargerStatus: 'With Charger' | 'Without Charger' | '' | null;
-  displayStatus: DamageStatus | null;
-  bodyStatus: DamageStatus | null;
-  serialNumber: string | null;
-  windowsKey: string | null;
-  officeStatus: 'With Office' | 'Without Office' | '' | null;
-  antivirusStatus: 'With Antivirus' | 'Without Antivirus' | '' | null;
-  picture?: UploadedFile | null;
-}
-
-export interface IdCardAsset {
-  id: string;
-  type: 'IdCard';
-  issueDate: string | null;
-}
-
-export interface PetrocardAsset {
-  id: string;
-  type: 'Petrocard';
-  number: string | null;
-}
-
-export interface VehicleAsset {
-  id: string;
-  type: 'Vehicle';
-  vehicleType: 'Bicycle' | 'Two Wheeler' | 'Three Wheeler' | 'Four Wheeler' | '' | null;
-  brand: string | null;
-  dlNumber: string | null;
-  dlFrontPic?: UploadedFile | null;
-  dlBackPic?: UploadedFile | null;
-  condition: AssetCondition | null;
-  kmsAtIssue: number | null;
-  vehicleNumber: string | null;
-  chassisNumber: string | null;
-  insuranceValidity: string | null;
-  pollutionCertValidity: string | null;
-  finesStatus: 'Existing' | 'Nil' | '' | null;
-  picture?: UploadedFile | null;
-}
-
-export interface ToolAssetItem {
-  id: string;
-  name: string | null;
-  description: string | null;
-  quantity: number | null;
-}
-
-export interface ToolsAsset {
-  id: string;
-  type: 'Tools';
-  toolList: ToolAssetItem[] | null;
-  picture?: UploadedFile | null;
-}
-
-export interface OtherAsset {
-  id: string;
-  type: 'Other';
-  name: string | null;
-  brand: string | null;
-  model: string | null;
-  serialNumber: string | null;
-  condition: AssetCondition | null;
-  issueCondition: string | null;
-  accessories: string | null;
-  picture?: UploadedFile | null;
-}
-
-export type Asset = PhoneAsset | SimAsset | ComputerAsset | IdCardAsset | PetrocardAsset | VehicleAsset | ToolsAsset | OtherAsset;
+export * from './asset';
 
 // Types for Master Tools List
 
@@ -425,100 +325,6 @@ export type MasterToolsList = {
   [category: string]: MasterTool[];
 };
 
-// Types for Gents Uniform Chart
-
-export interface GentsPantsSize {
-  id: string;
-  size: string;
-  length: number;
-  waist: number;
-  hip: number;
-  tilesLoose: number;
-  bottomWaist: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
-}
-
-export interface GentsShirtSize {
-  id: string;
-  size: string;
-  length: number;
-  sleeves: number;
-  sleevesLoose: number;
-  chest: number;
-  halfChestLoose: number;
-  shoulder: number;
-  collar: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Plump Fit';
-}
-
-export interface MasterGentsUniforms {
-  pants: GentsPantsSize[];
-  shirts: GentsShirtSize[];
-}
-
-export interface UniformDesignationConfig {
-  id: string;
-  designation: string;
-  pantsQuantities: Record<string, number | null>; // key is GentsPantsSize id
-  shirtsQuantities: Record<string, number | null>; // key is GentsShirtSize id
-}
-
-export interface UniformDepartmentConfig {
-  id: string;
-  department: string;
-  designations: UniformDesignationConfig[];
-}
-
-export interface SiteGentsUniformConfig {
-  organizationId: string;
-  departments: UniformDepartmentConfig[];
-}
-
-// Types for Ladies Uniform Chart
-
-export interface LadiesPantsSize {
-  id: string;
-  size: string;
-  length: number;
-  waist: number;
-  hip: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
-}
-
-export interface LadiesShirtSize {
-  id: string;
-  size: string;
-  length: number;
-  sleeves: number;
-  bust: number;
-  shoulder: number;
-  fit: 'Slim Fit' | 'Regular Fit' | 'Comfort Fit';
-}
-
-export interface MasterLadiesUniforms {
-  pants: LadiesPantsSize[];
-  shirts: LadiesShirtSize[];
-}
-
-export interface LadiesUniformDesignationConfig {
-  id: string;
-  designation: string;
-  pantsQuantities: Record<string, number | null>; // key is LadiesPantsSize id
-  shirtsQuantities: Record<string, number | null>; // key is LadiesShirtSize id
-}
-
-export interface LadiesUniformDepartmentConfig {
-  id: string;
-  department: string;
-  designations: LadiesUniformDesignationConfig[];
-}
-
-export interface SiteLadiesUniformConfig {
-  organizationId: string;
-  departments: LadiesUniformDepartmentConfig[];
-}
-
-// Types for Uniform Details
 
 export interface UniformItem {
   id: string;
@@ -621,16 +427,20 @@ export interface UniformRequestItem {
   fit: string;
   category: 'Pants' | 'Shirts';
   quantity: number;
+  cost?: number;
 }
 
 export interface UniformRequest {
   id: string;
   siteId: string;
   siteName: string;
+  department?: string;
+  designation?: string;
   gender: 'Gents' | 'Ladies';
   requestedDate: string;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Issued';
   items: UniformRequestItem[];
+  totalCost?: number;
   source?: 'Bulk' | 'Enrollment' | 'Individual';
   requestedById?: string;
   requestedByName?: string;
@@ -849,29 +659,29 @@ export interface SiteInvoiceRecord {
   opsIncharge: string;
   hrIncharge: string;
   invoiceIncharge: string;
-
+  
   // Attendance Status of Managers
   managerTentativeDate: string;
   managerReceivedDate: string;
-
+  
   // Attendance Status of HR
   hrTentativeDate: string;
   hrReceivedDate: string;
   attendanceReceivedTime: string;
-
+  
   // Invoice Status
   invoiceSharingTentativeDate: string;
   invoicePreparedDate: string;
   invoiceSentDate: string;
   invoiceSentTime: string;
   invoiceSentMethodRemarks: string;
-
+  
   createdBy?: string;
   createdByName?: string;
   createdByRole?: string;
   createdAt?: string;
   updatedAt?: string;
-
+  
   // soft delete
   deletedAt?: string;
   deletedBy?: string;

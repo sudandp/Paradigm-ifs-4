@@ -111,29 +111,55 @@ app.use('/api/view-file', async (req: Request, res: Response) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-        // Ensure path segments are properly encoded to safely handle spaces and special chars
-        const encodedPath = storagePath.split('/').map(encodeURIComponent).join('/');
+        // Ensure we have the raw decoded path from the request
+        const decodedPath = decodeURIComponent(storagePath);
 
-        const { data, error } = await supabase.storage
-            .from(bucket)
-            .download(encodedPath);
+        // Step 1: Try direct match with the original path
+        let { data, error } = await supabase.storage.from(bucket).download(decodedPath);
+
+        // Step 2: Smart Fallback - If not found, try case-insensitive match for the filename
+        // This handles cases where database references might have different casing than storage
+        if (error && (error.message.includes('not found') || error.message.includes('Invalid key') || (error as any).status === 404)) {
+            console.log(`[Server] Direct match failed for ${decodedPath}, attempting smart fallback...`);
+            
+            const pathParts = decodedPath.split('/');
+            const filename = pathParts.pop();
+            const parentFolder = pathParts.join('/');
+
+            if (filename) {
+                const { data: files, error: listError } = await supabase.storage.from(bucket).list(parentFolder || undefined);
+                
+                if (!listError && files) {
+                    const caseInsensitiveMatch = files.find(f => f.name.toLowerCase() === filename.toLowerCase());
+                    if (caseInsensitiveMatch) {
+                        const fallbackPath = parentFolder ? `${parentFolder}/${caseInsensitiveMatch.name}` : caseInsensitiveMatch.name;
+                        console.log(`[Server] Smart Fallback: Found case-insensitive match -> ${fallbackPath}`);
+                        const fallbackResult = await supabase.storage.from(bucket).download(fallbackPath);
+                        data = fallbackResult.data;
+                        error = fallbackResult.error;
+                    }
+                }
+            }
+        }
 
         clearTimeout(timeoutId);
 
         if (error) {
-            console.error(`[Server] Supabase proxy failed: ${error.message} for ${bucket}/${storagePath}`);
-            return res.status(400).json({ error: error.message });
+            console.error(`[Server] Supabase proxy COMPLETELY failed: ${error.message} for [${bucket}] ${storagePath}`);
+            return res.status(404).json({ error: `File not found in storage: ${storagePath}` });
         }
 
         if (!data) {
-            return res.status(404).json({ error: 'File not found' });
+            console.error(`[Server] Supabase proxy returned empty data for [${bucket}] ${storagePath}`);
+            return res.status(404).json({ error: 'File data is empty' });
         }
+
 
         const buffer = await data.arrayBuffer();
         const filename = storagePath.split('/').pop() || 'file';
         const contentType = data.type || getMimeType(filename);
 
-        console.log(`[Server] Proxy success: ${bucket}/${storagePath} (${buffer.byteLength} bytes, ${contentType})`);
+        console.log(`[Server] Proxy SUCCESS: [${bucket}] ${storagePath} (${buffer.byteLength} bytes, ${contentType})`);
 
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${filename}"`);

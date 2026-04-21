@@ -148,8 +148,34 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         }
     }, [handleFileSelect]);
 
-    const handleRemove = () => {
-        if(file && file.preview && !file.preview.startsWith('data:')) URL.revokeObjectURL(file.preview);
+    const handleRemove = async () => {
+        if (!file) return;
+
+        // If it's an existing file on the server (has no .file property or has a URL/preview starting with http or /api/view-file)
+        const isExistingFile = !(file as any).file && (file.preview?.startsWith('http') || file.preview?.includes('/api/view-file/'));
+
+        if (isExistingFile) {
+            const confirmed = window.confirm("Are you sure you want to delete this file permanently from the server?");
+            if (!confirmed) return;
+
+            try {
+                setIsLoading(true);
+                const fileUrl = file.preview || '';
+                await api.deleteFileFromStorage(fileUrl);
+                if (setToast) setToast({ message: "File deleted from server successfully", type: 'success' });
+            } catch (err) {
+                console.error("Failed to delete file:", err);
+                if (setToast) setToast({ message: "Failed to delete file from server", type: 'error' });
+                setIsLoading(false);
+                return;
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        if(file.preview && !file.preview.startsWith('data:') && !file.preview.startsWith('http') && !file.preview.includes('/api/view-file/')) {
+            URL.revokeObjectURL(file.preview);
+        }
         onFileChange(null);
         setUploadError('');
     };

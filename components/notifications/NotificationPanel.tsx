@@ -577,7 +577,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                                     </div>
                                                                     
                                                                     <div className="flex items-center gap-2 mb-2">
-                                                                        <div className={`overflow-hidden rounded-lg ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
                                                                             <ProfilePlaceholder 
                                                                                 className="w-8 h-8"
                                                                                 photoUrl={metadata.employeePhoto}
@@ -708,7 +708,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                     >
                                                         <div className="flex items-center gap-3">
                                                             <ProfilePlaceholder 
-                                                                className="w-8 h-8 rounded-lg"
+                                                                className="w-8 h-8 rounded-lg flex-shrink-0"
                                                                 photoUrl={metadata.employeePhoto}
                                                                 seed={metadata.employeeId}
                                                             />

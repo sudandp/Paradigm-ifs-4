@@ -309,7 +309,16 @@ const EntityManagement: React.FC = () => {
                             udyogDoc: 'udyogDocUrl',
                             epfoDoc: 'epfoDocUrl',
                             esicDoc: 'esicDocUrl',
-                            shramDoc: 'eShramDocUrl'
+                            shramDoc: 'eShramDocUrl',
+                            gstDoc: 'gstDocUrl',
+                            panDoc: 'panDocUrl',
+                            msmeDoc: 'msmeDocUrl',
+                            labourDoc: 'labourRegistrationDocUrl',
+                            shopDoc: 'shopEstablishmentDocUrl',
+                            rtecDoc: 'rtecDocUrl',
+                            ptecDoc: 'ptecDocUrl',
+                            ptpEnrolmentDoc: 'ptpEnrolmentDocUrl',
+                            ptpRegDoc: 'ptpRegistrationDocUrl'
                         };
                         (updatedClientData as any)[mapping[path]] = uploadResult.url;
                     } else if (path === 'logo') {
@@ -455,6 +464,13 @@ const EntityManagement: React.FC = () => {
                         udyogDoc: { field: 'udyogDocUrl' },
                         gstDoc: { field: 'gstDocUrl' },
                         panDoc: { field: 'panDocUrl' },
+                        msmeDoc: { field: 'msmeDocUrl' },
+                        labourDoc: { field: 'labourRegistrationDocUrl' },
+                        shopDoc: { field: 'shopEstablishmentDocUrl' },
+                        rtecDoc: { field: 'rtecDocUrl' },
+                        ptecDoc: { field: 'ptecDocUrl' },
+                        ptpEnrolmentDoc: { field: 'ptpEnrolmentDocUrl' },
+                        ptpRegDoc: { field: 'ptpRegistrationDocUrl' },
                         epfoDoc: { field: 'epfoDocUrl', nested: 'complianceCodes' },
                         esicDoc: { field: 'esicDocUrl', nested: 'complianceCodes' },
                         shramDoc: { field: 'eShramDocUrl', nested: 'complianceCodes' },

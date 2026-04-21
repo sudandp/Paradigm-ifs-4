@@ -1084,7 +1084,8 @@ export const api = {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id || 'anonymous_user';
     const timestamp = Date.now();
-    const filePath = `documents/${userId}/${timestamp}/${file.name}`;
+    const sanitizedFileName = file.name.replace(/\s+/g, '_').toLowerCase();
+    const filePath = `documents/${userId}/${timestamp}/${sanitizedFileName}`;
     
     // Ensure the destination bucket exists
     await api.ensureBucket(bucket);
@@ -1109,6 +1110,40 @@ export const api = {
       console.error('Failed to insert user_documents record:', e);
     }
     return { url: data.publicUrl, path: filePath };
+  },
+
+  deleteFileFromStorage: async (url: string): Promise<void> => {
+    if (!url || typeof url !== 'string') return;
+    try {
+        let bucket = '';
+        let path = '';
+
+        if (url.includes('/storage/v1/object/public/')) {
+            const afterPublic = url.split('/public/')[1];
+            const parts = afterPublic.split('/');
+            bucket = parts[0];
+            path = parts.slice(1).join('/');
+        } else if (url.includes('/api/view-file/')) {
+            // Handle proxied URLs
+            const afterProxy = url.split('/api/view-file/')[1];
+            const parts = afterProxy.split('/');
+            bucket = parts[0];
+            path = parts.slice(1).join('/');
+        }
+
+        if (bucket && path) {
+            console.log(`[API] Deleting file from storage: bucket=${bucket}, path=${path}`);
+            const decodedPath = decodeURIComponent(path);
+            const { error } = await supabase.storage.from(bucket).remove([decodedPath]);
+            if (error) throw error;
+
+            // Also remove from user_documents table if it exists there
+            await supabase.from('user_documents').delete().eq('path', decodedPath);
+        }
+    } catch (e) {
+        console.error('[API] Failed to delete file from storage:', e);
+        throw e;
+    }
   },
 
   bulkUpdateUserLeaves: async (updates: any[]): Promise<void> => {
@@ -1581,7 +1616,8 @@ export const api = {
         await deleteOldAvatar(oldPhotoUrl);
         const blob = await dataUrlToBlob(dbUpdates.photo_url);
         const fileExt = dbUpdates.photo_url.split(';')[0].split('/')[1] || 'jpg';
-        const filePath = `${userId}/${Date.now()}.${fileExt}`;
+        const sanitizedFileName = (dbUpdates.photo_url.split(';')[0].split('/')[1] || 'jpg').toLowerCase();
+        const filePath = `${userId}/${Date.now()}.${sanitizedFileName}`;
         
         console.log(`[API] Uploading new avatar: ${filePath}`);
         const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(filePath, blob, { upsert: true });

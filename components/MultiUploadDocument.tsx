@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
@@ -68,9 +69,25 @@ const MultiUploadDocument: React.FC<MultiUploadDocumentProps> = ({
         onFilesChange(newFiles);
     }, [files, onFilesChange, allowedTypes, maxFiles]);
 
-    const handleRemove = (index: number) => {
+    const handleRemove = async (index: number) => {
+        const removedFile = files[index];
+        const isExistingFile = !(removedFile as any).file && ((removedFile as any).url || removedFile.preview?.startsWith('http') || removedFile.preview?.includes('/api/view-file/'));
+
+        if (isExistingFile) {
+            const confirmed = window.confirm("Are you sure you want to delete this file permanently from the server?");
+            if (!confirmed) return;
+
+            try {
+                const fileUrl = (removedFile as any).url || removedFile.preview || '';
+                await api.deleteFileFromStorage(fileUrl);
+            } catch (err) {
+                console.error("Failed to delete file:", err);
+                window.alert("Failed to delete file from server.");
+                return;
+            }
+        }
+
         const newFiles = [...files];
-        const removedFile = newFiles[index];
         if (removedFile.preview && removedFile.preview.startsWith('blob:')) {
             URL.revokeObjectURL(removedFile.preview);
         }

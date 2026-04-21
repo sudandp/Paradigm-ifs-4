@@ -1,62 +1,62 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Mapping of bucket names to their Supabase project URL prefix
-const SUPABASE_STORAGE_BASE = 'https://fmyafuhxlorbafbacywa.supabase.co/storage/v1/object/public';
+import { createClient } from '@supabase/supabase-js';
 
-// MIME type lookup by extension
-const MIME_TYPES: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xls': 'application/vnd.ms-excel',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-};
-
-function getMimeType(filename: string): string {
-  const ext = '.' + filename.split('.').pop()?.toLowerCase();
-  return MIME_TYPES[ext] || 'application/octet-stream';
-}
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Extract the full path from the query parameter or URL
-    // The vercel.json rewrite will map /api/view-file/:path* to /api/view-file?path=:path*
     const pathSegments = req.query.path;
+    let filePath = '';
     
     if (!pathSegments || (Array.isArray(pathSegments) && pathSegments.length === 0)) {
-       // Fallback: check if the path is in the URL despite the rewrite
        const url = req.url || '';
        const match = url.match(/\/api\/view-file\/(.*)/);
-       if (!match || !match[1]) {
-         return res.status(400).json({ error: 'No file path provided' });
-       }
-       var filePath = match[1].split('?')[0];
+       if (!match || !match[1]) return res.status(400).json({ error: 'No file path provided' });
+       filePath = match[1].split('?')[0];
     } else {
-       var filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
+       filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     }
 
-    // Ensure the filepath is correctly URL encoded to handle spaces and special characters
-    const encodedFilePath = filePath.split('/').map(encodeURIComponent).join('/');
-    const supabaseUrl = `${SUPABASE_STORAGE_BASE}/${encodedFilePath}`;
+    // Fix: Decode first to ensure we don't double encode
+    const decodedFullPath = decodeURIComponent(filePath);
+    const parts = decodedFullPath.split('/');
+    const bucket = parts[0];
+    const storagePath = parts.slice(1).join('/');
 
-    // Fetch the file from Supabase
-    const response = await fetch(supabaseUrl);
+    if (!bucket || !storagePath) return res.status(400).json({ error: 'Invalid file path format' });
 
-    if (!response.ok) {
-      return res.status(response.status).json({ 
-        error: `File not found or inaccessible (${response.status})` 
-      });
+    // Step 1: Try direct match
+    let { data, error } = await supabase.storage.from(bucket).download(storagePath);
+
+    // Step 2: Smart Fallback for case-sensitivity
+    if (error && (error.message.includes('not found') || error.message.includes('Invalid key'))) {
+      const pathParts = storagePath.split('/');
+      const filename = pathParts.pop();
+      const parentFolder = pathParts.join('/');
+
+      if (filename) {
+        const { data: files } = await supabase.storage.from(bucket).list(parentFolder || undefined);
+        const matchingFile = files?.find(f => f.name.toLowerCase() === filename.toLowerCase());
+        if (matchingFile) {
+          const fallbackPath = parentFolder ? `${parentFolder}/${matchingFile.name}` : matchingFile.name;
+          const fallbackResult = await supabase.storage.from(bucket).download(fallbackPath);
+          data = fallbackResult.data;
+          error = fallbackResult.error;
+        }
+      }
     }
 
-    const buffer = await response.arrayBuffer();
-    const filename = filePath.split('/').pop() || 'document';
-    const contentType = getMimeType(filename);
+    if (error || !data) {
+      return res.status(404).json({ error: error?.message || 'File not found' });
+    }
+
+    const buffer = await data.arrayBuffer();
+    const filename = storagePath.split('/').pop() || 'document';
+    const contentType = data.type || getMimeType(filename);
+
 
     // Set headers for inline viewing (not forced download)
     res.setHeader('Content-Type', contentType);

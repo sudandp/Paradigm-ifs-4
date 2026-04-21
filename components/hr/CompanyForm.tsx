@@ -54,6 +54,13 @@ const companySchema = yup.object({
   tanDocUrl: yup.string().optional().nullable(),
   udyogNumber: yup.string().optional(),
   udyogDocUrl: yup.string().optional().nullable(),
+  msmeDocUrl: yup.string().optional().nullable(),
+  labourRegistrationDocUrl: yup.string().optional().nullable(),
+  shopEstablishmentDocUrl: yup.string().optional().nullable(),
+  rtecDocUrl: yup.string().optional().nullable(),
+  ptecDocUrl: yup.string().optional().nullable(),
+  ptpEnrolmentDocUrl: yup.string().optional().nullable(),
+  ptpRegistrationDocUrl: yup.string().optional().nullable(),
   
   // Arrays & Nested
   emails: yup.array().of(
@@ -404,6 +411,15 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                         />
                                     )} />
                                 </div>
+                                <div className="space-y-4">
+                                    <Controller name="msmeDocUrl" control={control} render={({ field }) => (
+                                        <UploadDocument 
+                                            label="MSME Certificate" 
+                                            file={(pendingFiles['msmeDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                            onFileChange={(f) => { setFile('msmeDoc', f); if (!f) field.onChange(''); }}
+                                        />
+                                    )} />
+                                </div>
                             </div>
                         )}
 
@@ -446,6 +462,60 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                                                 label="E-Shram Document" 
                                                 file={(pendingFiles['shramDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
                                                 onFileChange={(f) => { setFile('shramDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="labourRegistrationDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="Labour Registration Certificate" 
+                                                file={(pendingFiles['labourDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('labourDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="shopEstablishmentDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="Shop & Establishment Document" 
+                                                file={(pendingFiles['shopDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('shopDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="rtecDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="RTEC Certificate" 
+                                                file={(pendingFiles['rtecDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('rtecDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="ptecDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="PTEC Certificate" 
+                                                file={(pendingFiles['ptecDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('ptecDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="ptpEnrolmentDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="Profession Tax Payer Enrolment Certificate" 
+                                                file={(pendingFiles['ptpEnrolmentDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('ptpEnrolmentDoc', f); if (!f) field.onChange(''); }}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <Controller name="ptpRegistrationDocUrl" control={control} render={({ field }) => (
+                                            <UploadDocument 
+                                                label="Profession Tax Payer Registration Certificate" 
+                                                file={(pendingFiles['ptpRegDoc'] as UploadedFile) || (field.value ? getUploadedFileFromUrl(field.value) : null)}
+                                                onFileChange={(f) => { setFile('ptpRegDoc', f); if (!f) field.onChange(''); }}
                                             />
                                         )} />
                                     </div>
