@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { LogIn, LogOut, Clock, CheckCircle } from 'lucide-react';
+import { LogIn, LogOut, Clock, CheckCircle, Coffee, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
 import { api } from '../../services/api';
 
@@ -16,6 +17,7 @@ const AttendanceActionPage: React.FC = () => {
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
+    const [breakInterval, setBreakInterval] = useState<number>(15);
 
     React.useEffect(() => {
         const init = async () => {
@@ -79,7 +81,7 @@ const AttendanceActionPage: React.FC = () => {
             if (actionParam) forcedType = actionParam;
 
             // Direct check-in OR direct check-out (if geofencing is disabled)
-            const { success, message } = await toggleCheckInStatus(undefined, null, workType, undefined, forcedType);
+            const { success, message } = await toggleCheckInStatus(undefined, null, workType, undefined, forcedType, forcedType === 'break-in' ? breakInterval : undefined);
             setToast({ message, type: success ? 'success' : 'error' });
             
             if (success) {
@@ -114,40 +116,109 @@ const AttendanceActionPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative">
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+            {/* Background elements for depth */}
+            <div className="fixed inset-0 bg-[#041b0f] z-0" />
+            <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full z-0" />
+            <div className="fixed bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full z-0" />
+
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            <div className={`w-full max-w-md bg-card rounded-2xl shadow-card p-8 text-center relative z-10 ${isReportModalOpen ? 'hidden' : 'block'}`}>
-                <div className="flex justify-center mb-6">
-                    <div className={`p-4 rounded-full ${iconBgColor}`}>
-                        <Icon className={`h-10 w-10 ${iconColor}`} />
-                    </div>
-                </div>
-
-                <h1 className="text-2xl font-bold text-primary-text mb-2">{action}</h1>
-                <p className="text-muted mb-8">
-                    Are you sure you want to {action.toLowerCase()}?
-                </p>
-
-                <div className="flex flex-col gap-3">
-                    <Button
-                        onClick={handleConfirm}
-                        variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
-                        className={`w-full !py-3 !text-lg shadow-lg ${actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 hover:!bg-indigo-700' : ''}`}
-                        isLoading={isSubmitting}
+            <AnimatePresence mode="wait">
+                {!isReportModalOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
+                        transition={{ type: "spring", damping: 25, stiffness: 350 }}
+                        className="w-full max-w-md bg-white/10 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 shadow-2xl p-10 text-center relative z-10"
                     >
-                        Yes, {action}
-                    </Button>
-                    <Button
-                        onClick={handleCancel}
-                        variant="secondary"
-                        className="w-full !py-3"
-                        disabled={isSubmitting}
-                    >
-                        Cancel
-                    </Button>
-                </div>
-            </div>
+                        {/* Decorative top pulse */}
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 w-12 h-1 bg-white/20 rounded-full" />
+
+                        <div className="flex justify-center mb-8">
+                            <div className="relative">
+                                <motion.div 
+                                    animate={{ scale: [1, 1.1, 1] }}
+                                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                                    className={`absolute inset-0 blur-2xl rounded-full ${isBreakIn ? 'bg-blue-500/40' : 'bg-emerald-500/40'}`} 
+                                />
+                                <div className={`relative p-6 rounded-3xl ${iconBgColor} border border-white/10 shadow-inner`}>
+                                    {isBreakIn ? (
+                                        <Coffee className={`h-12 w-12 ${iconColor} drop-shadow-md`} />
+                                    ) : (
+                                        <Icon className={`h-12 w-12 ${iconColor} drop-shadow-md`} />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <h1 className="text-3xl font-black text-white mb-2 tracking-tight uppercase italic drop-shadow-sm">
+                            {action}
+                        </h1>
+                        <p className="text-slate-300 mb-10 font-medium text-sm">
+                            Are you sure you want to {action.toLowerCase()}?
+                        </p>
+
+                        {isBreakIn && (
+                            <div className="mb-10 p-5 bg-black/30 backdrop-blur-md rounded-3xl border border-white/5 relative group">
+                                <label className="text-[10px] font-black text-blue-400 mb-4 block text-left uppercase tracking-widest opacity-80">
+                                    Reminder Interval
+                                </label>
+                                <div className="grid grid-cols-4 gap-2 relative bg-white/5 p-1.5 rounded-2xl border border-white/5">
+                                    {[15, 30, 45, 60].map((mins) => (
+                                        <button
+                                            key={mins}
+                                            onClick={() => setBreakInterval(mins)}
+                                            className="relative py-2.5 px-1 rounded-xl text-xs font-black transition-all z-10 select-none group"
+                                        >
+                                            <span className={`relative z-20 ${breakInterval === mins ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                {mins}m
+                                            </span>
+                                            {breakInterval === mins && (
+                                                <motion.div
+                                                    layoutId="activeInterval"
+                                                    className="absolute inset-0 bg-blue-600 rounded-lg shadow-lg shadow-blue-600/30 z-10"
+                                                    transition={{ type: "spring", bounce: 0, duration: 0.2 }}
+                                                />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex items-start gap-2 mt-4">
+                                    <Clock className="w-3 h-3 text-blue-400 mt-0.5 shrink-0" />
+                                    <p className="text-[10px] text-blue-300/70 text-left leading-relaxed font-medium">
+                                        You will receive a notification every <span className="text-white font-bold underline decoration-blue-500/50">{breakInterval} minutes</span> to acknowledge your break status.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex flex-col gap-4">
+                            <Button
+                                onClick={handleConfirm}
+                                variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
+                                className={`w-full !rounded-2xl !py-4 !text-base font-black tracking-widest uppercase italic shadow-2xl transition-all active:scale-[0.98] ${
+                                    isBreakIn ? '!bg-blue-600 !border-blue-700 hover:!bg-blue-700 shadow-blue-900/40' : 
+                                    isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
+                                    actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' : 
+                                    (isCheckIn ? '!bg-emerald-600 !border-emerald-700 shadow-emerald-900/40' : '')
+                                }`}
+                                isLoading={isSubmitting}
+                            >
+                                Confirm {action}
+                            </Button>
+                            <button
+                                onClick={handleCancel}
+                                disabled={isSubmitting}
+                                className="w-full py-4 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors cursor-pointer"
+                            >
+                                Cancel Action
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <SmartFieldReportModal 
                 isOpen={isReportModalOpen}

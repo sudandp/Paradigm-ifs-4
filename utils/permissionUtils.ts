@@ -10,6 +10,7 @@ import { pushNotificationService } from '../services/pushNotificationService';
 const NOTIFICATION_IDS = {
     SHIFT_END: 1001,
     BREAK_END: 1002,
+    RECURRING_BREAK: 2000, // Base ID for recurring break reminders
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -331,7 +332,29 @@ export const requestNotificationPermissions = async () => {
     
     try {
         const result = await LocalNotifications.requestPermissions();
-        if (result.display !== 'granted') {
+        if (result.display === 'granted') {
+            // Register action types for break reminders
+            await LocalNotifications.registerActionTypes({
+                types: [
+                    {
+                        id: 'BREAK_REMINDER_ACTIONS',
+                        actions: [
+                            {
+                                id: 'CONTINUE_BREAK',
+                                title: 'Still on Break ☕',
+                                foreground: true,
+                            },
+                            {
+                                id: 'RESUME_WORK',
+                                title: 'Resume Work (Break Out) 🏁',
+                                foreground: true,
+                                destructive: true,
+                            }
+                        ]
+                    }
+                ]
+            });
+        } else {
             console.warn('Local notification permissions not granted');
         }
     } catch (error) {
@@ -460,7 +483,8 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
                     body: 'Your break time is up. Please punch back in!',
                     id: NOTIFICATION_IDS.BREAK_END,
                     schedule: { at: endTime },
-                    sound: 'beep.wav',
+                    // Android: reference the filename WITHOUT extension from res/raw/
+                    sound: 'beep',
                     smallIcon: 'ic_stat_icon_config_sample',
                     actionTypeId: '',
                     extra: null
@@ -470,6 +494,68 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
         console.log(`Scheduled break end reminder for ${endTime.toLocaleTimeString()}`);
     } catch (error) {
         console.error('Failed to schedule break end reminder:', error);
+    }
+};
+
+/**
+ * Schedule a series of recurring break reminders.
+ */
+export const scheduleStepBreakReminders = async (startTime: Date, intervalMinutes: number = 15) => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+        // Cancel any existing recurring reminders first
+        await cancelStepBreakReminders();
+
+        const notifications = [];
+        // Schedule up to 8 reminders (e.g., 2 hours if interval is 15m)
+        // This provides enough coverage without overwhelming the system
+        for (let i = 1; i <= 8; i++) {
+            const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
+            
+            // Skip if trigger time is in the past
+            if (triggerTime <= new Date()) continue;
+
+            notifications.push({
+                title: 'Break Update ☕',
+                body: `You have been on break for ${i * intervalMinutes} minutes. Are you still on break?`,
+                id: NOTIFICATION_IDS.RECURRING_BREAK + i,
+                schedule: { at: triggerTime },
+                // Android: sound must reference filename WITHOUT extension from res/raw/
+                sound: 'beep',
+                channelId: 'break_reminders',
+                actionTypeId: 'BREAK_REMINDER_ACTIONS',
+                smallIcon: 'ic_stat_icon_config_sample',
+            });
+        }
+
+        if (notifications.length > 0) {
+            await LocalNotifications.schedule({ notifications });
+            console.log(`Scheduled ${notifications.length} recurring break reminders every ${intervalMinutes}m`);
+        }
+    } catch (error) {
+        console.error('Failed to schedule step break reminders:', error);
+    }
+};
+
+/**
+ * Cancel all recurring break reminders.
+ */
+export const cancelStepBreakReminders = async () => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+        const pending = await LocalNotifications.getPending();
+        const idsToCancel = pending.notifications
+            .filter(n => n.id >= NOTIFICATION_IDS.RECURRING_BREAK && n.id < NOTIFICATION_IDS.RECURRING_BREAK + 20)
+            .map(n => ({ id: n.id }));
+
+        if (idsToCancel.length > 0) {
+            await LocalNotifications.cancel({ notifications: idsToCancel });
+            console.log(`Cancelled ${idsToCancel.length} recurring break reminders`);
+        }
+    } catch (error) {
+        console.warn('Error cancelling recurring reminders:', error);
     }
 };
  

@@ -151,11 +151,22 @@ async function initNative() {
     {
       id: 'reminders',
       name: 'Reminders',
-      description: 'Shift reminders, break alerts, and scheduled notifications',
+      description: 'Shift reminders, general alerts, and scheduled notifications',
       importance: 2 as Channel['importance'],
       visibility: 1,
       vibration: false,
       lights: false,
+    },
+    {
+      id: 'break_reminders',
+      name: 'Break Status Reminders',
+      description: 'Periodic alerts during breaks to prevent loss of pay. User can customize sound in settings.',
+      importance: 5 as Channel['importance'], // MAX importance for "Standard System Alert" + Peek
+      visibility: 1,
+      // Android: filename must be WITHOUT extension, referencing res/raw/beep.wav
+      sound: 'beep',
+      vibration: true,
+      lights: true,
     },
   ];
 

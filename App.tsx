@@ -30,6 +30,8 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { Toaster } from 'react-hot-toast';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { useScreenOrientation } from './hooks/useScreenOrientation';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { cancelStepBreakReminders } from './utils/permissionUtils';
 
 
 import { AlertTriangle } from 'lucide-react';
@@ -387,6 +389,46 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('push-deeplink', handlePushDeeplink);
       if (appUrlListener) appUrlListener.then((h: any) => h.remove());
+    };
+  }, [navigate]);
+
+  // Handle Local Notification Actions (e.g., Break Reminders)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const actionListener = LocalNotifications.addListener('localNotificationActionPerformed', async (action) => {
+      console.log('[App] Local notification action:', action);
+      
+      if (action.actionId === 'RESUME_WORK') {
+        console.log('[App] Resume Work action triggered via break reminder');
+        try {
+          // Programmatically trigger break-out
+          const { toggleCheckInStatus } = useAuthStore.getState();
+          const { success, message } = await toggleCheckInStatus(
+            'Resumed work via notification reminder',
+            null,
+            'office',
+            undefined,
+            'break-out'
+          );
+          
+          if (success) {
+            console.log('[App] Break-out successful via notification action');
+            // Navigate to home if needed, or just refresh state
+            navigate('/profile', { replace: true });
+          } else {
+            console.warn('[App] Break-out failed via notification action:', message);
+          }
+        } catch (err) {
+          console.error('[App] Error during break-out via notification action:', err);
+        }
+      } else if (action.actionId === 'CONTINUE_BREAK') {
+        console.log('[App] Continue Break acknowledged. No action needed as future reminders are already scheduled.');
+      }
+    });
+
+    return () => {
+      actionListener.then(h => h.remove());
     };
   }, [navigate]);
 

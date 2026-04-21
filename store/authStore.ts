@@ -17,7 +17,7 @@ import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../
 import { processDailyEvents } from '../utils/attendanceCalculations';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification } from '../utils/permissionUtils';
+import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification, scheduleStepBreakReminders, cancelStepBreakReminders } from '../utils/permissionUtils';
 
 // Centralized friendly error message handler for Supabase
 // Centralized friendly error message handler for Supabase
@@ -102,7 +102,7 @@ interface AuthState {
     resetAttendance: () => void;
     updateUserProfile: (updates: Partial<User>) => void;
     checkAttendanceStatus: () => Promise<void>;
-    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string) => Promise<{ success: boolean; message: string }>;
+    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number) => Promise<{ success: boolean; message: string }>;
     subscribeToAttendance: () => (() => void) | void;
     error: string | null;
     setError: (error: string | null) => void;
@@ -112,6 +112,7 @@ interface AuthState {
     setLoginAnimationPending: (pending: boolean) => void;
     geofencingSettings: { enabled: boolean; maxViolationsPerMonth: number } | null;
     breakLimit: number;
+    breakReminderInterval: number; // user-selected reminder interval in minutes (web + native)
     fetchGeofencingSettings: () => Promise<void>;
     dailyPunchCount: number;
     /** Number of approved unlock requests today. Each approval enables one extra punch cycle. */
@@ -154,6 +155,7 @@ export const useAuthStore = create<AuthState>()(
         loading: false,
         geofencingSettings: null,
         breakLimit: 60,
+        breakReminderInterval: 15,
         dailyPunchCount: 0,
         approvedUnlockCount: 0,
         dailyUnlockRequestCount: 0,
@@ -562,7 +564,7 @@ export const useAuthStore = create<AuthState>()(
             }
         },
 
-        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string) => {
+        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number) => {
             const { user, isCheckedIn, geofencingSettings, dailyPunchCount } = get();
             if (!user) return { success: false, message: 'User not found' };
             
@@ -745,12 +747,17 @@ export const useAuthStore = create<AuthState>()(
                         // Also ensure break reminder is cancelled just in case
                         cancelNotification('BREAK_END');
                     } else if (newType === 'break-in') {
-                        // Schedule Break End Reminder
-                        // Utilizes the store's breakLimit (e.g. 60 mins)
+                        // Persist user-selected interval so the web foreground monitor can read it
+                        set({ breakReminderInterval: breakInterval || 15 });
+                        // Schedule Break End Reminder (native)
                         scheduleBreakEndReminder(new Date(), get().breakLimit);
+                        // Schedule recurring step reminders (native)
+                        scheduleStepBreakReminders(new Date(), breakInterval || 15);
                     } else if (newType === 'break-out') {
                         // Cancel break reminder
                         cancelNotification('BREAK_END');
+                        // Cancel NEW recurring step reminders
+                        cancelStepBreakReminders();
                     }
 
                     const actionLabel = getActionTextForType(newType, workType);
