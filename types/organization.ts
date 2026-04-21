@@ -254,8 +254,14 @@ export interface Entity {
   verificationData?: {
     categories: {
       name: string;
-      employmentPlusPolice: string[];
-      policeOnly: string[];
+      roles: {
+        roleName: string;
+        verifications: {
+          employee: boolean;
+          police: boolean;
+          crc: boolean;
+        };
+      }[];
     }[];
     crcCheck1?: { status: string; date: string; docUrls: string[] };
     crcCheck2?: { status: string; date: string; docUrls: string[] };

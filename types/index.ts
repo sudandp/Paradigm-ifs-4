@@ -768,7 +768,7 @@ export interface EmployeeScore {
 
 export type CostingStatus = 'Draft' | 'Approved';
 
-export type BillingCycle = 'Monthly' | 'Weekly';
+export type BillingCycle = 'Per Month' | 'Per Day' | 'Per Hour';
 
 export type BillingModel = 'Per Month' | 'Per Day' | 'Per Hour' | 'Lumpsum';
 
@@ -841,11 +841,12 @@ export interface SiteCostingMaster {
   clientName?: string;
   effectiveFrom: string;
   effectiveTo: string;
-  billingCycle: BillingCycle;
+  billingModel: BillingCycle;
   adminChargePercent: number;
   adminChargeApplicable?: boolean;
   status: CostingStatus;
   versionNo: number;
+  billingCycleDay?: number;
   resources: CostingResource[];
   additionalCharges: AdditionalCharge[];
   createdAt?: string;

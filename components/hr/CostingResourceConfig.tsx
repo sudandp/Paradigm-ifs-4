@@ -50,7 +50,8 @@ const EMPTY_CONFIG: SiteCostingMaster = {
   clientName: '',
   effectiveFrom: new Date().toISOString().split('T')[0],
   effectiveTo: '',
-  billingCycle: 'Monthly',
+  billingModel: 'Per Month',
+  billingCycleDay: 1,
   adminChargePercent: 10,
   adminChargeApplicable: true,
   status: 'Draft',
@@ -299,6 +300,7 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
   const watchedCharges = watch('additionalCharges');
   const watchedStatus = watch('status');
   const watchedSiteId = watch('siteId');
+  const watchedBillingModel = watch('billingModel');
   const isLocked = watchedStatus === 'Approved';
 
   useEffect(() => {
@@ -474,7 +476,7 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
         <div className="flex items-center gap-3">
           <Button type="button" variant="icon" onClick={() => setView('dashboard')}><ArrowLeft className="h-5 w-5" /></Button>
           <h3 className="text-xl font-semibold text-primary-text">
-            {getValues('id') && !getValues('id').startsWith('new_') ? 'Edit' : 'New'} Costing Configuration
+            Costing Configuration
           </h3>
           {isLocked && <span className="inline-flex items-center gap-1 text-green-600 text-xs font-semibold bg-green-50 px-2 py-1 rounded-full"><Lock className="h-3 w-3" /> Locked</span>}
         </div>
@@ -490,16 +492,28 @@ const CostingResourceConfig: React.FC<{ sites?: any[] }> = ({ sites: externalSit
 
       {/* Site selection */}
       <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Select label="Site *" id="costing-site" {...register('siteId', { required: true })} disabled={isLocked}>
             <option value="">Select a Site</option>
             {sites.map(s => <option key={s.id} value={s.id}>{s.name || s.shortName}</option>)}
           </Select>
           <Input label="Effective From" id="eff-from" type="date" {...register('effectiveFrom')} disabled={isLocked} />
           <Input label="Effective To" id="eff-to" type="date" {...register('effectiveTo')} disabled={isLocked} />
-          <Select label="Billing Cycle" id="bill-cycle" {...register('billingCycle')} disabled={isLocked}>
-            <option>Monthly</option><option>Weekly</option>
+          <Select label="Billing Model" id="bill-model" {...register('billingModel')} disabled={isLocked}>
+            <option>Per Month</option><option>Per Day</option><option>Per Hour</option>
           </Select>
+          {watchedBillingModel === 'Per Month' && (
+            <Input 
+              label="Billing Cycle (Day)" 
+              id="bill-cycle-day" 
+              type="number" 
+              min={1} 
+              max={31} 
+              {...register('billingCycleDay', { min: 1, max: 31 })} 
+              disabled={isLocked} 
+              placeholder="1-31"
+            />
+          )}
         </div>
       </div>
 

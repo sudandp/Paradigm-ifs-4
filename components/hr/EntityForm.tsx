@@ -185,8 +185,16 @@ const entitySchema = yup.object({
     categories: yup.array().of(
       yup.object({
         name: yup.string().required(),
-        employmentPlusPolice: yup.array().of(yup.string().required()).defined(),
-        policeOnly: yup.array().of(yup.string().required()).defined(),
+        roles: yup.array().of(
+          yup.object({
+            roleName: yup.string().required(),
+            verifications: yup.object({
+              employee: yup.boolean().required(),
+              police: yup.boolean().required(),
+              crc: yup.boolean().required(),
+            }).required(),
+          })
+        ).defined(),
       })
     ).optional(),
     crcCheck1: yup.object({
@@ -441,8 +449,16 @@ const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initia
       verificationData: {
         categories: VERIFICATION_CATEGORIES.map(cat => ({
           name: cat.name,
-          employmentPlusPolice: [...cat.empPlusPol],
-          policeOnly: [...cat.polOnly]
+          roles: [
+            ...cat.empPlusPol.map(r => ({
+              roleName: r,
+              verifications: { employee: true, police: true, crc: false }
+            })),
+            ...cat.polOnly.map(r => ({
+              roleName: r,
+              verifications: { employee: false, police: true, crc: false }
+            }))
+          ]
         }))
       },
       gentsUniformConfig: { organizationId: initialData?.id || '', departments: [] },
@@ -570,6 +586,33 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 }];
                 delete (data as any).agreementDetails;
             }
+
+            // Migration: Old verification buckets to new roles structure
+            if (data.verificationData?.categories) {
+                data.verificationData.categories = data.verificationData.categories.map((cat: any) => {
+                    if (cat.roles) return cat; // Already migrated
+                    
+                    const roles: any[] = [];
+                    if (cat.employmentPlusPolice) {
+                        cat.employmentPlusPolice.forEach((r: string) => {
+                            roles.push({
+                                roleName: r,
+                                verifications: { employee: true, police: true, crc: false }
+                            });
+                        });
+                    }
+                    if (cat.policeOnly) {
+                        cat.policeOnly.forEach((r: string) => {
+                            roles.push({
+                                roleName: r,
+                                verifications: { employee: false, police: true, crc: false }
+                            });
+                        });
+                    }
+                    return { name: cat.name, roles };
+                });
+            }
+
             reset(data);
             setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification']));
         } else {
@@ -591,8 +634,16 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 verificationData: {
                     categories: VERIFICATION_CATEGORIES.map(cat => ({
                         name: cat.name,
-                        employmentPlusPolice: [...cat.empPlusPol],
-                        policeOnly: [...cat.polOnly]
+                        roles: [
+                            ...cat.empPlusPol.map(r => ({
+                                roleName: r,
+                                verifications: { employee: true, police: true, crc: false }
+                            })),
+                            ...cat.polOnly.map(r => ({
+                                roleName: r,
+                                verifications: { employee: false, police: true, crc: false }
+                            }))
+                        ]
                     }))
                 },
                 insuranceIds: [], 
@@ -1842,101 +1893,120 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                         {VERIFICATION_CATEGORIES.map((cat, catIdx) => (
                             <div key={cat.name} className="space-y-4">
                                 <div className="flex items-center gap-2 border-b border-border pb-2">
-                                    <div className="h-2 w-2 rounded-full bg-accent" />
+                                    <div className="h-2.5 w-2.5 rounded-full bg-accent" />
                                     <h3 className="text-sm font-bold text-primary-text uppercase tracking-wider">{cat.name}</h3>
                                 </div>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Employment + Police */}
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-bold text-accent uppercase flex items-center gap-1.5">
-                                            <Shield className="h-3.5 w-3.5" /> Employment + Police
-                                        </label>
-                                        <div className="bg-accent/5 border border-accent/10 rounded-xl p-3 min-h-[100px] flex flex-wrap gap-2 content-start">
-                                            {(() => {
-                                                const currentRoles = watch(`verificationData.categories.${catIdx}.employmentPlusPolice`) || [];
-                                                const allRoles = currentRoles;
-                                                
-                                                return (
-                                                    <>
-                                                        {allRoles.map(role => (
-                                                            <button
-                                                                key={role}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const newRoles = currentRoles.filter(r => r !== role);
-                                                                    setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, newRoles);
-                                                                }}
-                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border bg-accent text-white border-accent shadow-sm scale-105 hover:bg-accent-dark hover:border-accent-dark"
-                                                                title="Click to remove"
-                                                            >
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span>{role}</span>
-                                                                    <X className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                        <AddRoleInput 
-                                                            allDesignations={allDesignations.filter(d => isDepartmentMatch(d.department, cat.name))}
-                                                            excludeRoles={currentRoles}
-                                                            categoryName={cat.name}
-                                                            onAdd={(role) => {
-                                                                const current = watch(`verificationData.categories.${catIdx}.employmentPlusPolice`) || [];
-                                                                if (!current.includes(role)) {
-                                                                    setValue(`verificationData.categories.${catIdx}.employmentPlusPolice`, [...current, role]);
-                                                                }
-                                                            }} 
-                                                        />
-                                                    </>
-                                                );
-                                            })()}
-                                        </div>
-                                    </div>
-
-                                    {/* Police Only */}
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-bold text-primary-text uppercase flex items-center gap-1.5">
-                                            <AlertCircle className="h-3.5 w-3.5" /> Police Verification Only
-                                        </label>
-                                        <div className="bg-card/30 border border-border rounded-xl p-3 min-h-[100px] flex flex-wrap gap-2 content-start">
-                                            {(() => {
-                                                const currentRoles = watch(`verificationData.categories.${catIdx}.policeOnly`) || [];
-                                                const allRoles = currentRoles;
-
-                                                return (
-                                                    <>
-                                                        {allRoles.map(role => (
-                                                            <button
-                                                                key={role}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const newRoles = currentRoles.filter(r => r !== role);
-                                                                    setValue(`verificationData.categories.${catIdx}.policeOnly`, newRoles);
-                                                                }}
-                                                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border bg-primary-text text-white border-primary-text shadow-sm scale-105 hover:bg-black"
-                                                                title="Click to remove"
-                                                            >
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span>{role}</span>
-                                                                    <X className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                        <AddRoleInput 
-                                                            allDesignations={allDesignations.filter(d => isDepartmentMatch(d.department, cat.name))}
-                                                            excludeRoles={currentRoles}
-                                                            categoryName={cat.name}
-                                                            onAdd={(role) => {
-                                                                const current = watch(`verificationData.categories.${catIdx}.policeOnly`) || [];
-                                                                if (!current.includes(role)) {
-                                                                    setValue(`verificationData.categories.${catIdx}.policeOnly`, [...current, role]);
-                                                                }
-                                                            }} 
-                                                        />
-                                                    </>
-                                                );
-                                            })()}
-                                        </div>
+                                <div className="bg-card/30 border border-border rounded-xl overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs">
+                                            <thead>
+                                                <tr className="bg-muted/5 border-b border-border">
+                                                    <th className="px-4 py-3 font-bold text-muted uppercase tracking-widest">Role / Designation</th>
+                                                    <th className="px-4 py-3 font-bold text-muted uppercase tracking-widest text-center">Employee Verification</th>
+                                                    <th className="px-4 py-3 font-bold text-muted uppercase tracking-widest text-center">Police Verification</th>
+                                                    <th className="px-4 py-3 font-bold text-muted uppercase tracking-widest text-center">CRC</th>
+                                                    <th className="px-4 py-3 font-bold text-muted uppercase tracking-widest text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/50">
+                                                {(() => {
+                                                    const currentRoles = watch(`verificationData.categories.${catIdx}.roles`) || [];
+                                                    return (
+                                                        <>
+                                                            {currentRoles.map((role, roleIdx) => (
+                                                                <tr key={role.roleName} className="hover:bg-accent/[0.02] transition-colors group">
+                                                                    <td className="px-4 py-3 font-semibold text-primary-text">{role.roleName}</td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="flex justify-center">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent cursor-pointer"
+                                                                                checked={role.verifications.employee}
+                                                                                onChange={(e) => {
+                                                                                    const updated = [...currentRoles];
+                                                                                    updated[roleIdx].verifications.employee = e.target.checked;
+                                                                                    setValue(`verificationData.categories.${catIdx}.roles`, updated);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="flex justify-center">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent cursor-pointer"
+                                                                                checked={role.verifications.police}
+                                                                                onChange={(e) => {
+                                                                                    const updated = [...currentRoles];
+                                                                                    updated[roleIdx].verifications.police = e.target.checked;
+                                                                                    setValue(`verificationData.categories.${catIdx}.roles`, updated);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <div className="flex justify-center">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent cursor-pointer"
+                                                                                checked={role.verifications.crc}
+                                                                                onChange={(e) => {
+                                                                                    const updated = [...currentRoles];
+                                                                                    updated[roleIdx].verifications.crc = e.target.checked;
+                                                                                    setValue(`verificationData.categories.${catIdx}.roles`, updated);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const updated = currentRoles.filter((_, i) => i !== roleIdx);
+                                                                                setValue(`verificationData.categories.${catIdx}.roles`, updated);
+                                                                            }}
+                                                                            className="p-1.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                                            title="Remove role"
+                                                                        >
+                                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                            <tr>
+                                                                <td colSpan={5} className="px-4 py-3 bg-muted/[0.02]">
+                                                                    <AddRoleInput 
+                                                                        allDesignations={allDesignations.filter(d => isDepartmentMatch(d.department, cat.name))}
+                                                                        excludeRoles={currentRoles.map(r => r.roleName)}
+                                                                        categoryName={cat.name}
+                                                                        onAdd={(roleName) => {
+                                                                            const current = watch(`verificationData.categories.${catIdx}.roles`) || [];
+                                                                            // Determine defaults based on category and role if possible,
+                                                                            // but for now use Confirmation: select based on category.
+                                                                            const isPolOnly = cat.polOnly?.includes(roleName);
+                                                                            const isEmpPol = cat.empPlusPol?.includes(roleName);
+                                                                            
+                                                                            setValue(`verificationData.categories.${catIdx}.roles`, [
+                                                                                ...current, 
+                                                                                { 
+                                                                                    roleName, 
+                                                                                    verifications: { 
+                                                                                        employee: isEmpPol || false, 
+                                                                                        police: isEmpPol || isPolOnly || false, 
+                                                                                        crc: false 
+                                                                                    } 
+                                                                                }
+                                                                            ]);
+                                                                        }} 
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
