@@ -759,7 +759,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             {activeTab === 'General' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input label="Society Name (as per document)" id="name" registration={register('name')} error={errors.name?.message} />
+                        <Input label="Society Name" id="name" registration={register('name')} error={errors.name?.message} />
                         {!companyName && companies && (
                             <Select label="Select Company" id="companyId" registration={register('companyId')} error={errors.companyId?.message}>
                                 <option value="">Select Company</option>
@@ -768,7 +768,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 ))}
                             </Select>
                         )}
-                        <Input label="Billing Name" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
+                        <Input label="Society Name (As Per Document)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
                         <Input label="Location / City" id="location" registration={register('location')} error={errors.location?.message} />
                         <Controller name="siteTakeoverDate" control={control} render={({ field }) => (
                             <Input type="date" label="Site Takeover Date" id="siteTakeoverDate" value={field.value} onChange={field.onChange} error={errors.siteTakeoverDate?.message} />
