@@ -6,11 +6,13 @@
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
     "server": "node --loader ts-node/esm src/server.ts",
+    "predev": "node scripts/generate-firebase-sw.js",
     "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
+    "prebuild": "node scripts/generate-firebase-sw.js",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node dist/server.js",
-    "build:apk": "node scripts/bump-version.js && vite build && npx cap sync android",
+    "build:apk": "node scripts/generate-firebase-sw.js && node scripts/bump-version.js && vite build && npx cap sync android",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {

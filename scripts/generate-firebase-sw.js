@@ -1,16 +1,29 @@
-importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env.local
+dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+// Also load from .env (standard fallback)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+const template = `importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
 // Initialize the Firebase app in the service worker by passing in the
 // messagingSenderId.
 // This file is auto-generated during build. Do not edit directly.
 const firebaseConfig = {
-  apiKey: "AIzaSyDOdfKUXBH4T2_mCk9QSYb4lFL9DP4N--o",
-  authDomain: "paradigm-ifs.firebaseapp.com",
-  projectId: "paradigm-ifs",
-  storageBucket: "paradigm-ifs.firebasestorage.app",
-  messagingSenderId: "447552978158",
-  appId: "1:447552978158:web:58c079f59d00d8940bc7ff",
+  apiKey: "${process.env.VITE_FIREBASE_API_KEY || ''}",
+  authDomain: "${process.env.VITE_FIREBASE_AUTH_DOMAIN || ''}",
+  projectId: "${process.env.VITE_FIREBASE_PROJECT_ID || ''}",
+  storageBucket: "${process.env.VITE_FIREBASE_STORAGE_BUCKET || ''}",
+  messagingSenderId: "${process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || ''}",
+  appId: "${process.env.VITE_FIREBASE_APP_ID || ''}",
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -52,3 +65,14 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+`;
+
+const outputPath = path.resolve(__dirname, '../public/firebase-messaging-sw.js');
+
+try {
+  fs.writeFileSync(outputPath, template);
+  console.log('Successfully generated public/firebase-messaging-sw.js with environment variables.');
+} catch (error) {
+  console.error('Error generating firebase-messaging-sw.js:', error);
+  process.exit(1);
+}

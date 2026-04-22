@@ -69,3 +69,4 @@ _backups/
 
 .vercel
 .env*.local
+public/firebase-messaging-sw.js
