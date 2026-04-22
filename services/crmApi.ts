@@ -50,15 +50,31 @@ export const crmApi = {
   // -------------------------------------------------------------------------
 
   getLeads: async (): Promise<CrmLead[]> => {
+    // Plain select — no FK joins (auth.users has no 'name' column)
     const { data, error } = await supabase
       .from('crm_leads')
-      .select('*, assignee:assigned_to(name), creator:created_by(name)')
+      .select('*')
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map((row: any) => {
+
+    // Enrich with user names from public.users
+    const rows = data || [];
+    const userIds = [...new Set(rows.flatMap(r => [r.assigned_to, r.created_by].filter(Boolean)))];
+    let userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', userIds);
+      if (users) {
+        userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+      }
+    }
+
+    return rows.map((row: any) => {
       const lead = toCamelCase(row);
-      lead.assignedToName = row.assignee?.name || null;
-      lead.createdByName = row.creator?.name || null;
+      lead.assignedToName = userMap[row.assigned_to] || null;
+      lead.createdByName = userMap[row.created_by] || null;
       return lead;
     });
   },
@@ -66,13 +82,18 @@ export const crmApi = {
   getLeadById: async (id: string): Promise<CrmLead | null> => {
     const { data, error } = await supabase
       .from('crm_leads')
-      .select('*, assignee:assigned_to(name)')
+      .select('*')
       .eq('id', id)
       .single();
     if (error && error.code !== 'PGRST116') throw error;
     if (!data) return null;
+
     const lead = toCamelCase(data);
-    lead.assignedToName = data.assignee?.name || null;
+    // Enrich assignee name
+    if (data.assigned_to) {
+      const { data: user } = await supabase.from('users').select('name').eq('id', data.assigned_to).single();
+      lead.assignedToName = user?.name || null;
+    }
     return lead;
   },
 

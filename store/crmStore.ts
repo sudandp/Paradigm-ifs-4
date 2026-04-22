@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { crmApi } from '../services/crmApi';
-import type { CrmLead, CrmFollowup, CrmChecklistTemplate, CrmQuotation, LeadStatus } from '../types/crm';
+import type { CrmLead, CrmFollowup, CrmChecklistTemplate, CrmChecklistSubmission, CrmQuotation, LeadStatus } from '../types/crm';
 
 interface CrmState {
   // Data
@@ -8,6 +8,7 @@ interface CrmState {
   followups: Record<string, CrmFollowup[]>; // keyed by leadId
   templates: CrmChecklistTemplate[];
   quotations: CrmQuotation[];
+  submissions: Record<string, CrmChecklistSubmission | null>; // keyed by leadId
 
   // UI State
   isLoading: boolean;
@@ -29,6 +30,7 @@ interface CrmState {
   fetchTemplates: () => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   fetchQuotations: (leadId?: string) => Promise<void>;
+  fetchSubmission: (leadId: string) => Promise<void>;
 
   setSelectedLead: (id: string | null) => void;
   setKanbanFilter: (filter: 'all' | 'mine') => void;
@@ -40,6 +42,7 @@ export const useCrmStore = create<CrmState>((set, get) => ({
   followups: {},
   templates: [],
   quotations: [],
+  submissions: {},
   isLoading: false,
   error: null,
   selectedLeadId: null,
@@ -155,6 +158,17 @@ export const useCrmStore = create<CrmState>((set, get) => ({
     try {
       const quotations = await crmApi.getQuotations(leadId);
       set({ quotations });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchSubmission: async (leadId) => {
+    try {
+      const submission = await crmApi.getChecklistSubmission(leadId);
+      set(state => ({
+        submissions: { ...state.submissions, [leadId]: submission },
+      }));
     } catch (err: any) {
       set({ error: err.message });
     }

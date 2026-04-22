@@ -25,6 +25,15 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },
     { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.', category: 'Dashboards' },
 
+    // Operations Hub
+    { key: 'view_operations', name: 'Access Operations Hub', description: 'Access helpdesk tickets, maintenance, and contracts management.', category: 'Operations Hub' },
+
+    // Finance Hub
+    { key: 'view_finance_reports', name: 'Access Finance Hub', description: 'Access payment tracker and profitability reports.', category: 'Finance Hub' },
+
+    // Enterprise Controls
+    { key: 'manage_approval_workflow', name: 'Manage Enterprise Controls', description: 'Manage approval workflows and view audit trails across the organization.', category: 'Enterprise Controls' },
+
     // Attendance Logs
     { key: 'view_own_attendance', name: 'View Own Attendance', description: 'Allows users to see their own attendance records.', category: 'Attendance Logs' },
     { key: 'view_all_attendance', name: 'View All Attendance', description: 'Allows users to see attendance records for all employees.', category: 'Attendance Logs' },
@@ -37,7 +46,6 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Leaves & Rules
     { key: 'apply_for_leave', name: 'Apply for Leave', description: 'Allows users to request time off.', category: 'Leaves & Rules' },
     { key: 'manage_leave_requests', name: 'Manage Leave Requests', description: 'Approve or reject leave requests for employees.', category: 'Leaves & Rules' },
-    { key: 'manage_approval_workflow', name: 'Manage Approval Workflow', description: 'Set up reporting managers for leave approvals.', category: 'Leaves & Rules' },
     { key: 'manage_attendance_rules', name: 'Manage Attendance Rules', description: 'Set work hours, holidays, and leave allocations.', category: 'Leaves & Rules' },
 
     // Employee Onboarding
@@ -66,7 +74,6 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Finance & Invoicing
     { key: 'view_invoice_summary', name: 'View Invoice Summary', description: 'View and generate monthly invoices for sites.', category: 'Finance & Invoicing' },
     { key: 'manage_finance_settings', name: 'Manage Finance Settings', description: 'Control over global finance configurations.', category: 'Finance & Invoicing' },
-    { key: 'view_finance_reports', name: 'View Finance Reports', description: 'Access to consolidated financial reports.', category: 'Finance & Invoicing' },
 
     // Audit & Costing
     { key: 'view_verification_costing', name: 'View Verification Costing', description: 'Analyze costs associated with third-party document verifications.', category: 'Audit & Costing' },
@@ -126,7 +133,7 @@ const RoleManagement: React.FC = () => {
                 const [fetchedRoles, fetchedTaskGroups] = await Promise.all([api.getRoles(), api.getTaskGroups()]);
                 
                 const roleOrder = [
-                    'bd', 'management', 'admin', 'developer', 'hr', 'operation_manager', 
+                    'bd', 'management', 'admin', 'director', 'developer', 'hr', 'operation_manager', 
                     'finance', 'field_staff', 'site_manager', 'unverified'
                 ];
 

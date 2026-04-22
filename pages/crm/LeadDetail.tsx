@@ -21,7 +21,12 @@ const LeadDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { leads, fetchLeads, createLead, updateLead, deleteLead, updateLeadStatus, followups, fetchFollowups, createFollowup } = useCrmStore();
+  const { 
+    leads, fetchLeads, createLead, updateLead, deleteLead, updateLeadStatus, 
+    followups, fetchFollowups, createFollowup,
+    submissions, fetchSubmission,
+    quotations, fetchQuotations
+  } = useCrmStore();
 
   const isNew = id === 'new';
   const existingLead = leads.find(l => l.id === id);
@@ -68,6 +73,8 @@ const LeadDetail: React.FC = () => {
     if (!isNew && existingLead) {
       setForm(existingLead);
       fetchFollowups(existingLead.id);
+      fetchSubmission(existingLead.id);
+      fetchQuotations(existingLead.id);
     } else if (!isNew && !existingLead && leads.length === 0) {
       fetchLeads();
     }
@@ -81,6 +88,40 @@ const LeadDetail: React.FC = () => {
   }, [leads, id, isNew, existingLead]);
 
   const leadFollowups = id && !isNew ? (followups[id] || []) : [];
+  const leadSubmission = id && !isNew ? (submissions[id] || null) : null;
+  const leadQuotations = id && !isNew ? quotations.filter(q => q.leadId === id) : [];
+
+  // Combine all timeline events
+  const timelineEvents = useMemo(() => {
+    const events: any[] = [
+      ...leadFollowups.map(f => ({ ...f, timelineType: 'followup' }))
+    ];
+
+    if (leadSubmission) {
+      events.push({
+        id: leadSubmission.id,
+        type: 'Site Survey',
+        notes: `Property audit submitted with ${Object.keys(leadSubmission.data || {}).length} responses.`,
+        createdAt: leadSubmission.createdAt,
+        timelineType: 'submission',
+        data: leadSubmission.data,
+        remarks: leadSubmission.remarks
+      });
+    }
+
+    leadQuotations.forEach(q => {
+      events.push({
+        id: q.id,
+        type: 'Quotation',
+        notes: `Quotation ${q.quotationNumber} generated for ₹${q.annualCost?.toLocaleString()}/year.`,
+        createdAt: q.createdAt,
+        timelineType: 'quotation',
+        status: q.status
+      });
+    });
+
+    return events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [leadFollowups, leadSubmission, leadQuotations]);
 
   const handleSave = async () => {
     if (!form.clientName?.trim()) {
@@ -136,13 +177,13 @@ const LeadDetail: React.FC = () => {
         <div className="flex items-center gap-4 w-full">
           <button 
             onClick={() => navigate('/crm')} 
-            className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center hover:bg-emerald-500 hover:text-[#041b0f] transition-all group"
+            className="w-10 h-10 rounded-xl bg-white/[0.05] md:bg-gray-100 border border-white/10 md:border-border flex items-center justify-center text-white md:text-primary-text hover:bg-emerald-500 hover:text-white md:hover:text-white transition-all group"
           >
             <ArrowLeft className="w-5 h-5 transition-colors" />
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-3xl font-black text-white tracking-tight truncate uppercase">
+              <h1 className="text-xl md:text-3xl font-black text-white md:text-primary-text tracking-tight truncate uppercase">
                 {isNew ? 'New Lead' : form.clientName}
               </h1>
               {!isNew && form.status && (
@@ -157,7 +198,7 @@ const LeadDetail: React.FC = () => {
           {!isNew && (
             <button 
               onClick={handleDelete} 
-              className="w-11 h-11 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl"
+              className="w-11 h-11 rounded-xl bg-white/[0.05] md:bg-red-50 border border-white/10 md:border-red-200 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl md:shadow-sm"
               title="Delete Lead"
             >
               <Trash2 className="w-5 h-5" />
@@ -349,42 +390,62 @@ const LeadDetail: React.FC = () => {
                 )}
 
                 <div className="relative space-y-12 before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-[1px] before:bg-white/10 md:before:bg-border/60">
-                  {leadFollowups.length === 0 && (
+                  {timelineEvents.length === 0 && (
                     <div className="text-center py-20">
                       <div className="w-16 h-16 bg-white/[0.05] md:bg-page rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed border-white/10 md:border-border">
                         <MessageSquare className="w-8 h-8 text-white/10 md:text-muted/30" />
                       </div>
-                      <p className="text-[10px] md:text-sm font-black md:font-bold text-white/20 md:text-muted uppercase tracking-[0.2em] md:tracking-widest">{leadFollowups.length === 0 ? 'Initial journey starting...' : ''}</p>
+                      <p className="text-[10px] md:text-sm font-black md:font-bold text-white/20 md:text-muted uppercase tracking-[0.2em] md:tracking-widest">Initial journey starting...</p>
                     </div>
                   )}
-                  {leadFollowups.map((fu, idx) => (
-                    <div key={fu.id} className="relative pl-12 group">
+                  {timelineEvents.map((ev, idx) => (
+                    <div key={ev.id} className="relative pl-12 group">
                       <div className="absolute left-0 top-1 w-10 h-10 rounded-xl bg-[#041b0f] md:bg-white border border-white/10 md:border-2 md:border-border flex items-center justify-center z-10 group-hover:border-emerald-500 md:group-hover:border-accent transition-colors shadow-xl md:shadow-sm">
-                        {fu.type === 'Call' && <Phone className="w-4 h-4 text-emerald-400 md:text-accent" />}
-                        {fu.type === 'Meeting' && <Users className="w-4 h-4 text-emerald-400 md:text-accent" />}
-                        {fu.type === 'Email' && <Mail className="w-4 h-4 text-emerald-400 md:text-accent" />}
-                        {fu.type === 'Site Visit' && <MapPin className="w-4 h-4 text-emerald-400 md:text-accent" />}
-                        {(!['Call', 'Meeting', 'Email', 'Site Visit'].includes(fu.type || '')) && <Clock className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                        {ev.timelineType === 'followup' && (
+                          <>
+                            {ev.type === 'Call' && <Phone className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                            {ev.type === 'Meeting' && <Users className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                            {ev.type === 'Email' && <Mail className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                            {ev.type === 'Site Visit' && <MapPin className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                            {(!['Call', 'Meeting', 'Email', 'Site Visit'].includes(ev.type || '')) && <Clock className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                          </>
+                        )}
+                        {ev.timelineType === 'submission' && <ClipboardCheck className="w-4 h-4 text-emerald-400 md:text-accent" />}
+                        {ev.timelineType === 'quotation' && <DollarSign className="w-4 h-4 text-emerald-400 md:text-accent" />}
                       </div>
                       <div className="bg-white/[0.02] md:bg-page/40 p-6 rounded-[2rem] md:rounded-2xl border border-transparent group-hover:border-white/5 md:group-hover:border-border group-hover:bg-white/[0.04] md:group-hover:bg-white transition-all">
                         <div className="flex items-center gap-3 mb-2">
-                          <span className="text-[10px] md:text-xs font-black md:font-black uppercase tracking-widest text-emerald-400 md:text-primary-text">{fu.type}</span>
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${ev.timelineType === 'submission' ? 'text-blue-400' : ev.timelineType === 'quotation' ? 'text-amber-400' : 'text-emerald-400 md:text-primary-text'}`}>
+                            {ev.timelineType === 'submission' ? 'Site Audit' : ev.timelineType === 'quotation' ? 'Proposal' : ev.type}
+                          </span>
                           <span className="w-1 h-1 rounded-full bg-white/10 md:bg-border" />
                           <span className="text-[9px] md:text-[10px] font-black md:font-bold text-white/20 md:text-muted uppercase md:capitalize tracking-widest md:tracking-normal">
-                            {new Date(fu.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {new Date(ev.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                           </span>
                         </div>
-                        <p className="text-sm font-medium text-white/70 md:text-primary-text leading-relaxed">{fu.notes}</p>
-                        {fu.outcome && (
-                          <div className="mt-4 p-4 md:p-3 rounded-2xl md:rounded-lg bg-emerald-500/5 md:bg-accent/5 border-l-4 border-emerald-500 md:border-accent">
-                            <p className="text-[9px] md:text-[10px] font-black text-emerald-400 md:text-accent uppercase tracking-widest md:tracking-wider mb-1">Outcome</p>
-                            <p className="text-xs font-bold text-white/80 md:text-primary-text">{fu.outcome}</p>
+                        <p className="text-sm font-medium text-white/70 md:text-primary-text leading-relaxed">{ev.notes}</p>
+                        
+                        {ev.timelineType === 'submission' && ev.data && (
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            {Object.entries(ev.data).map(([key, val]: [string, any]) => (
+                              <div key={key} className="bg-white/5 md:bg-page p-2 rounded-lg border border-white/5">
+                                <p className="text-[8px] uppercase text-white/40 md:text-muted mb-0.5">{key.replace('f_', '').replace('_', ' ')}</p>
+                                <p className="text-xs font-bold text-emerald-400 md:text-primary-text">{val.toString()}</p>
+                              </div>
+                            ))}
                           </div>
                         )}
-                        {fu.nextFollowupDate && (
+
+                        {ev.outcome && (
+                          <div className="mt-4 p-4 md:p-3 rounded-2xl md:rounded-lg bg-emerald-500/5 md:bg-accent/5 border-l-4 border-emerald-500 md:border-accent">
+                            <p className="text-[9px] md:text-[10px] font-black text-emerald-400 md:text-accent uppercase tracking-widest md:tracking-wider mb-1">Outcome</p>
+                            <p className="text-xs font-bold text-white/80 md:text-primary-text">{ev.outcome}</p>
+                          </div>
+                        )}
+                        {ev.nextFollowupDate && (
                           <div className="mt-4 flex items-center gap-2 text-[9px] md:text-[10px] font-black text-orange-400 md:text-orange-600 uppercase bg-orange-400/5 md:bg-orange-50 w-fit px-3 py-1 rounded-lg md:rounded-full border border-orange-400/10 md:border-orange-100">
                             <Clock className="w-3.5 h-3.5" />
-                            Next: {new Date(fu.nextFollowupDate).toLocaleDateString('en-IN')}
+                            Next: {new Date(ev.nextFollowupDate).toLocaleDateString('en-IN')}
                           </div>
                         )}
                       </div>
@@ -408,7 +469,13 @@ const LeadDetail: React.FC = () => {
                 return (
                   <div 
                     key={status} 
-                    className={`flex items-center gap-4 p-3 rounded-2xl transition-all cursor-pointer ${isCurrent ? 'bg-emerald-500/5 md:bg-accent/5 border border-emerald-500/20 md:border-accent/20' : 'opacity-40 grayscale-[0.5]'}`}
+                    className={`flex items-center gap-4 p-3 rounded-2xl transition-all cursor-pointer hover:bg-accent/5 ${
+                      isCurrent 
+                        ? 'bg-emerald-500/5 md:bg-accent/5 border border-emerald-500/20 md:border-accent/20' 
+                        : isPast 
+                          ? 'opacity-70 md:opacity-80' 
+                          : 'opacity-40 md:opacity-50'
+                    }`}
                     onClick={async () => {
                       if (isNew || !id) {
                         setForm(p => ({ ...p, status }));
@@ -426,11 +493,19 @@ const LeadDetail: React.FC = () => {
                       }
                     }}
                   >
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-[10px] ${isPast ? 'bg-emerald-500 md:bg-accent text-[#041b0f] md:text-white shadow-lg' : isCurrent ? 'bg-white/[0.05] md:bg-white border border-emerald-500 md:border-accent text-emerald-400 md:text-accent' : 'bg-white/[0.02] md:bg-page border border-white/5 md:border-border text-white/20 md:text-muted'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-[10px] ${
+                      isPast 
+                        ? 'bg-accent text-white shadow-lg' 
+                        : isCurrent 
+                          ? 'bg-white border-2 border-accent text-accent' 
+                          : 'bg-gray-50 md:bg-page border border-border text-muted'
+                    }`}>
                       {isPast ? '✓' : idx + 1}
                     </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${isCurrent ? 'text-emerald-400 md:text-accent' : 'text-white/60 md:text-muted'}`}>{status}</span>
-                    {isCurrent && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 md:bg-accent animate-pulse" />}
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${
+                      isCurrent ? 'text-accent' : isPast ? 'text-primary-text' : 'text-muted'
+                    }`}>{status}</span>
+                    {isCurrent && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />}
                   </div>
                 );
               })}

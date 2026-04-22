@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCrmStore } from '../../store/crmStore';
 import { useAuthStore } from '../../store/authStore';
@@ -6,7 +6,7 @@ import type { CrmLead, LeadStatus } from '../../types/crm';
 import { LEAD_STATUS_ORDER, LEAD_STATUS_COLORS } from '../../types/crm';
 import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
-  Building2, Phone, Mail, Calendar, ChevronRight, Loader2,
+  Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
   ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin
 } from 'lucide-react';
 
@@ -14,7 +14,24 @@ const CrmDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter } = useCrmStore();
-  const [viewMode, setViewMode] = useState<'kanban' | 'table'>(window.innerWidth < 768 ? 'table' : 'kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const updateScrollButtons = useCallback(() => {
+    const el = kanbanScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 10);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
+  }, []);
+
+  const scrollKanban = useCallback((direction: 'left' | 'right') => {
+    const el = kanbanScrollRef.current;
+    if (!el) return;
+    const scrollAmount = 300;
+    el.scrollBy({ left: direction === 'right' ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -61,12 +78,12 @@ const CrmDashboard: React.FC = () => {
   }, [filteredLeads]);
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in pb-32 md:pb-8 min-w-0 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-        <div>
-          <h1 className="text-3xl font-black text-[#0F172A] md:text-primary-text tracking-tight uppercase max-md:text-white">CRM Pipeline</h1>
-          <p className="text-[11px] text-muted mt-1.5 font-bold uppercase tracking-widest max-md:text-emerald-400/60">Streamline leads & accelerate property onboarding</p>
+        <div className="w-full sm:w-auto">
+          <h1 className="text-2xl md:text-3xl font-black text-[#0F172A] md:text-primary-text tracking-tight uppercase max-md:text-white">CRM Pipeline</h1>
+          <p className="text-[10px] md:text-[11px] text-muted mt-1.5 font-bold uppercase tracking-widest max-md:text-emerald-400/60 leading-relaxed">Streamline leads & accelerate property onboarding</p>
         </div>
         <button
           onClick={() => navigate('/crm/leads/new')}
@@ -78,19 +95,19 @@ const CrmDashboard: React.FC = () => {
       </div>
 
       {/* Mobile Floating Action Button - Premium Design */}
-      {viewMode === 'table' && (
+      <div className="md:hidden">
         <button
           onClick={() => navigate('/crm/leads/new')}
-          className="fixed bottom-8 right-6 w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(16,185,129,0.4)] z-50 md:hidden active:scale-90 transition-all border-4 border-white/10 backdrop-blur-lg hover:scale-110 group"
+          className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-[0_8px_30px_rgb(16,185,129,0.4)] z-40 md:hidden active:scale-90 transition-all border border-white/20 backdrop-blur-lg hover:scale-110 group"
           style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
         >
-          <div className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-20 group-active:hidden" />
-          <Plus className="w-8 h-8 relative z-10" />
+          <div className="absolute inset-0 rounded-2xl bg-emerald-400 animate-ping opacity-20 group-active:hidden" />
+          <Plus className="w-7 h-7 relative z-10" />
         </button>
-      )}
+      </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <StatCard icon={<Users className="w-5 h-5 md:w-6 md:h-6" />} label="Total" value={stats.total} color="#3b82f6" trend="+12% month" />
         <StatCard icon={<Target className="w-5 h-5 md:w-6 md:h-6" />} label="Active" value={stats.active} color="#f59e0b" trend="4 in neg" />
         <StatCard icon={<TrendingUp className="w-5 h-5 md:w-6 md:h-6" />} label="Won" value={stats.won} color="#10b981" suffix={`(${stats.conversionRate}%)`} trend="Top perf" />
@@ -98,43 +115,43 @@ const CrmDashboard: React.FC = () => {
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-4 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl">
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl">
         <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted md:text-muted group-focus-within:text-emerald-500 transition-colors max-md:text-white/20" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-muted md:text-muted group-focus-within:text-emerald-500 transition-colors max-md:text-white/20" />
           <input
             type="text"
-            placeholder="Search name, city, contact..."
+            placeholder="Search leads..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-12 bg-white md:bg-white border-border md:border-border rounded-2xl pl-12 pr-4 text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]"
+            className="w-full h-11 md:h-12 bg-white md:bg-white border-border md:border-border rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]"
           />
         </div>
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1 md:pb-0">
-          <div className="flex bg-page md:bg-page p-1 rounded-2xl border border-border md:border-border min-w-max max-md:bg-white/[0.05] max-md:border-white/5">
+        <div className="flex items-center justify-between md:justify-start gap-3">
+          <div className="flex bg-page md:bg-page p-1 rounded-2xl border border-border md:border-border max-md:bg-white/[0.05] max-md:border-white/5">
             <button
               onClick={() => setKanbanFilter('all')}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'all' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'all' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
             >
               All
             </button>
             <button
               onClick={() => setKanbanFilter('mine')}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'mine' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'mine' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
             >
               Mine
             </button>
           </div>
-          <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/5 min-w-max">
+          <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/5 md:bg-page md:border-border">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-2 rounded-xl transition-all ${viewMode === 'kanban' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'kanban' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
               title="Kanban View"
             >
               <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-2 rounded-xl transition-all ${viewMode === 'table' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'table' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
               title="List View"
             >
               <Users className="w-4 h-4 md:w-5 md:h-5" />
@@ -158,17 +175,44 @@ const CrmDashboard: React.FC = () => {
 
       {/* Kanban Board */}
       {!isLoading && viewMode === 'kanban' && (
-        <div className="overflow-x-auto pb-8 -mx-4 px-4 hide-scrollbar">
-          <div className="flex gap-6 min-w-max">
-            {LEAD_STATUS_ORDER.filter(s => s !== 'Onboarding Started').map(status => (
-              <KanbanColumn
-                key={status}
-                status={status}
-                leads={kanbanColumns[status] || []}
-                color={LEAD_STATUS_COLORS[status]}
-                onCardClick={(id) => navigate(`/crm/leads/${id}`)}
-              />
-            ))}
+        <div className="relative group/kanban">
+          {/* Left Arrow */}
+          {canScrollLeft && (
+            <button
+              onClick={() => scrollKanban('left')}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white border border-border shadow-lg items-center justify-center text-primary-text hover:bg-accent hover:text-white hover:border-accent transition-all opacity-0 group-hover/kanban:opacity-100"
+              aria-label="Scroll left"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          {/* Right Arrow */}
+          {canScrollRight && (
+            <button
+              onClick={() => scrollKanban('right')}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white border border-border shadow-lg items-center justify-center text-primary-text hover:bg-accent hover:text-white hover:border-accent transition-all opacity-0 group-hover/kanban:opacity-100"
+              aria-label="Scroll right"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+          <div
+            ref={kanbanScrollRef}
+            onScroll={updateScrollButtons}
+            className="overflow-x-auto pb-8 -mx-4 px-4 hide-scrollbar snap-x snap-mandatory scroll-smooth max-w-[calc(100vw-2rem)] md:max-w-full"
+          >
+            <div className="flex gap-4 md:gap-5 w-max px-2 md:px-0">
+              {LEAD_STATUS_ORDER.filter(s => s !== 'Onboarding Started').map(status => (
+                <div key={status} className="snap-center">
+                  <KanbanColumn
+                    status={status}
+                    leads={kanbanColumns[status] || []}
+                    color={LEAD_STATUS_COLORS[status]}
+                    onCardClick={(id) => navigate(`/crm/leads/${id}`)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -279,7 +323,7 @@ interface KanbanColumnProps {
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick }) => (
-  <div className="w-[320px] flex-shrink-0 flex flex-col">
+  <div className="w-[85vw] md:w-[280px] lg:w-[300px] flex-shrink-0 flex flex-col">
     <div className="flex items-center justify-between mb-5 px-3">
       <div className="flex items-center gap-3">
         <div className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2" style={{ backgroundColor: color, '--tw-ring-color': `${color}15` } as any} />
@@ -289,7 +333,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
         {leads.length}
       </span>
     </div>
-    <div className="flex-1 space-y-4 min-h-[600px] p-2 bg-white/[0.02] md:bg-page/30 rounded-3xl md:rounded-2xl border border-dashed border-white/5 md:border-border/60">
+    <div className="flex-1 space-y-4 min-h-[500px] md:min-h-[600px] p-2 bg-white/[0.02] md:bg-page/30 rounded-3xl md:rounded-2xl border border-dashed border-white/5 md:border-border/60">
       {leads.map(lead => (
         <div
           key={lead.id}
