@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -28,10 +28,27 @@ export interface NavLinkConfig {
 
 // All links are defined here, and filtered by role below.
 export const allNavLinks: NavLinkConfig[] = [
+    // CRM & Sales
+    { to: '/crm', label: 'CRM Pipeline', icon: Target, permission: 'view_crm_pipeline', category: 'CRM & Sales' },
+    { to: '/crm/checklists', label: 'Checklist Templates', icon: ClipboardCheck, permission: 'view_crm_checklists', category: 'CRM & Sales' },
+
     // Dashboards
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
     { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
     { to: '/verification/dashboard', label: 'All Submissions', icon: LayoutDashboard, permission: 'view_all_submissions', category: 'Dashboards' },
+
+    // Operations Hub (Phase 2)
+    { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_operations', category: 'Operations Hub' },
+    { to: '/operations/maintenance', label: 'Preventive Maintenance', icon: Wrench, permission: 'view_operations', category: 'Operations Hub' },
+    { to: '/operations/contracts', label: 'Contract Manager', icon: FileSignature, permission: 'view_operations', category: 'Operations Hub' },
+
+    // Finance Hub (Phase 3)
+    { to: '/finance/profitability', label: 'Profitability', icon: LineChart, permission: 'view_finance_reports', category: 'Finance Hub' },
+    { to: '/finance/payments', label: 'Payment Tracker', icon: Wallet, permission: 'view_finance_reports', category: 'Finance Hub' },
+
+    // Enterprise Controls (Phase 4)
+    { to: '/enterprise/approvals', label: 'Approvals Inbox', icon: CheckCircle2, permission: 'manage_approval_workflow', category: 'Enterprise Controls' },
+    { to: '/enterprise/audit-trail', label: 'Audit Trail', icon: History, permission: 'manage_approval_workflow', category: 'Enterprise Controls' },
 
     // Attendance Logs
     { to: '/attendance/dashboard', label: 'Attendance', icon: Calendar, permission: 'view_own_attendance', category: 'Attendance Logs' },
@@ -93,6 +110,7 @@ export const allNavLinks: NavLinkConfig[] = [
 ];
 
 const CATEGORY_ICONS: Record<string, any> = {
+    'CRM & Sales': Target,
     'Dashboards': Home,
     'Attendance Logs': Calendar,
     'Real-time Tracking': Navigation,
@@ -217,12 +235,16 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                 <div className={`p-2 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
                     <div className="flex items-center justify-center flex-1">
                         {isCollapsed ? (
-                            <div className="h-8 w-8 flex items-center justify-center overflow-hidden rounded-lg">
-                                <Logo 
-                                    className="h-7 max-w-none object-left" 
-                                    variant={mode === 'dark' ? 'white' : 'original'} 
-                                />
-                            </div>
+                            <div 
+                                className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-accent/5 transition-all duration-300"
+                                style={{
+                                    backgroundImage: `url(/paradigm-logo.png)`,
+                                    backgroundSize: '300% auto',
+                                    backgroundPosition: '0% center',
+                                    backgroundRepeat: 'no-repeat'
+                                }}
+                                title="Paradigm Services"
+                            />
                         ) : (
                             <div className="w-full px-2 flex justify-start pl-4">
                                 <Logo 

@@ -132,6 +132,26 @@ const QuickAddSitePage = lazyWithRetry(() => import('./pages/forms/QuickAddSiteP
 const AddTaskPage = lazyWithRetry(() => import('./pages/forms/AddTaskPage'));
 const NewUniformRequestPage = lazyWithRetry(() => import('./pages/forms/NewUniformRequestPage'));
 
+// CRM Module
+const CrmDashboard = lazyWithRetry(() => import('./pages/crm/CrmDashboard'));
+const LeadDetail = lazyWithRetry(() => import('./pages/crm/LeadDetail'));
+const ChecklistBuilder = lazyWithRetry(() => import('./pages/crm/ChecklistBuilder'));
+const SiteSurveyForm = lazyWithRetry(() => import('./pages/crm/SiteSurveyForm'));
+const QuotationBuilder = lazyWithRetry(() => import('./pages/crm/QuotationBuilder'));
+
+// Operations Module (Phase 2)
+const HelpdeskTickets = lazyWithRetry(() => import('./pages/operations/HelpdeskTickets'));
+const MaintenanceScheduler = lazyWithRetry(() => import('./pages/operations/MaintenanceScheduler'));
+const ContractManager = lazyWithRetry(() => import('./pages/operations/ContractManager'));
+
+// Finance Module (Phase 3)
+const ProfitabilityDashboard = lazyWithRetry(() => import('./pages/finance/ProfitabilityDashboard'));
+const PaymentTracker = lazyWithRetry(() => import('./pages/finance/PaymentTracker'));
+
+// Enterprise Controls (Phase 4)
+const ApprovalsInbox = lazyWithRetry(() => import('./pages/enterprise/ApprovalsInbox'));
+const AuditTrail = lazyWithRetry(() => import('./pages/enterprise/AuditTrail'));
+
 // Onboarding Form Steps
 const PersonalDetails = lazyWithRetry(() => import('./pages/onboarding/PersonalDetails'));
 const AddressDetails = lazyWithRetry(() => import('./pages/onboarding/AddressDetails'));
@@ -1154,6 +1174,36 @@ const App: React.FC = () => {
             <Route path="tasks" element={<Tasks />} />
             <Route path="tasks/add" element={<AddTaskPage />} />
             <Route path="tasks/edit/:id" element={<AddTaskPage />} />
+          </Route>
+
+          {/* CRM */}
+          <Route element={<ProtectedRoute requiredPermission="view_crm_pipeline" />}>
+            <Route path="crm" element={<CrmDashboard />} />
+            <Route path="crm/leads/:id" element={<LeadDetail />} />
+            <Route path="crm/leads/:id/survey" element={<SiteSurveyForm />} />
+            <Route path="crm/leads/:id/quotation" element={<QuotationBuilder />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_crm_checklists" />}>
+            <Route path="crm/checklists" element={<ChecklistBuilder />} />
+          </Route>
+
+          {/* Operations Hub (Phase 2) */}
+          <Route element={<ProtectedRoute requiredPermission="view_operations" />}>
+            <Route path="operations/tickets" element={<HelpdeskTickets />} />
+            <Route path="operations/maintenance" element={<MaintenanceScheduler />} />
+            <Route path="operations/contracts" element={<ContractManager />} />
+          </Route>
+
+          {/* Finance Hub (Phase 3) */}
+          <Route element={<ProtectedRoute requiredPermission="view_finance_reports" />}>
+            <Route path="finance/profitability" element={<ProfitabilityDashboard />} />
+            <Route path="finance/payments" element={<PaymentTracker />} />
+          </Route>
+
+          {/* Enterprise Controls (Phase 4) */}
+          <Route element={<ProtectedRoute requiredPermission="manage_approval_workflow" />}>
+            <Route path="enterprise/approvals" element={<ApprovalsInbox />} />
+            <Route path="enterprise/audit-trail" element={<AuditTrail />} />
           </Route>
 
           {/* Support */}

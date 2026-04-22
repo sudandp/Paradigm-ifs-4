@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller, useFieldArray, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company, SiteStaffDesignation, MasterGentsUniforms, MasterLadiesUniforms } from '../../types';
+import type { Entity, RegistrationType, Policy, Insurance, UploadedFile, Company, SiteStaffDesignation } from '../../types';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
@@ -11,8 +11,8 @@ import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import { api } from '../../services/api';
 import Checkbox from '../ui/Checkbox';
-import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, Search, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp, Shirt } from 'lucide-react';
-import UniformSizeTable from './uniforms/UniformSizeTable';
+import { Loader2, Plus, Trash2, Calendar, FileText, Shield, Info, Clock, Wrench, Smartphone, HardDrive, Percent, CheckCircle, AlertCircle, UploadCloud, ShieldCheck, ShieldAlert, FileWarning, Search, ChevronLeft, ChevronRight, X, ChevronDown, ChevronUp } from 'lucide-react';
+
 import Toast from '../ui/Toast';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -595,7 +595,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             }
 
             reset(data);
-            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification']));
+            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification']));
         } else {
             reset({ 
                 id: `new_${Date.now()}`, 
@@ -667,8 +667,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
         return !!currentErrors.holidayConfig;
       case 'Assets':
         return !!currentErrors.assetTracking;
-      case 'Uniform':
-        return false; // No validation for uniform yet
+
       case 'Verification':
         return !!currentErrors.verificationData;
 
@@ -698,7 +697,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
         message: "Missing mandatory fields to create a profile. Please fill them, or use 'Save Draft' to continue later.", 
         type: 'error' 
     });
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification'];
     for (const tab of tabOrder) {
       if (getTabErrors(tab, errors)) {
         setActiveTab(tab);
@@ -708,7 +707,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleNext = async () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification'];
     const currentIndex = tabOrder.indexOf(activeTab);
     
     // Mark current tab as completed
@@ -724,7 +723,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleBack = () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Uniform', 'Verification'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification'];
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);

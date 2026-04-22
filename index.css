@@ -62,6 +62,24 @@ html {
     padding-bottom: var(--pb-safe);
 }
 
+/* Scrollbar Utilities */
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Animations */
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+    animation: fade-in 0.5s ease-out forwards;
+}
+
 ﻿.user-marker {
     position: relative;
     width: 48px !important;
@@ -347,28 +365,39 @@ body {
 }
 .form-input {
     background-color: #ffffff;
-    border: 1px solid #e6eef3;
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1rem;
     width: 100%;
     font-size: 0.875rem;
     color: #0f172a;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+
+.form-input:hover {
+    border-color: #cbd5e1;
+}
+
 .form-input:focus {
     outline: none;
-    border-color: #005d22;
-    box-shadow: 0 0 0 1px #005d22;
+    border-color: #006b3f;
+    box-shadow: 0 0 0 4px rgba(0, 107, 63, 0.1);
+    background-color: #ffffff;
 }
+
 .form-input::placeholder {
-    color: #6b7280;
+    color: #94a3b8;
 }
+
 .form-input--error {
     border-color: #ef4444 !important;
+    background-color: #fffafb;
 }
+
 .form-input--error:focus {
     border-color: #ef4444 !important;
-    box-shadow: 0 0 0 1px #ef4444 !important;
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
 }
 .form-header-title {
     position: relative;

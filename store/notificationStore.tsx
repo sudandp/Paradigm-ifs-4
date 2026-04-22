@@ -322,7 +322,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
             
             // Check for redundant device approval notifications to suppress toasts
             const isDeviceApprovalRedundant = 
-              (newNotif.type === 'device_approval' || newNotif.type === 'approval_request') && 
+              ((newNotif.type as string) === 'device_approval' || (newNotif.type as string) === 'approval_request') && 
               (newNotif.message?.toLowerCase().includes('submitted for approval') || 
                newNotif.message?.toLowerCase().includes('requested approval to add a new web device'));
 

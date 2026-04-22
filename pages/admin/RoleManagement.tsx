@@ -16,6 +16,10 @@ import ToggleSwitch from '../../components/ui/ToggleSwitch';
 import Input from '../../components/ui/Input';
 
 export const allPermissions: { key: Permission; name: string; description: string; category: string }[] = [
+    // CRM & Sales
+    { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
+    { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
+
     // Dashboards
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },

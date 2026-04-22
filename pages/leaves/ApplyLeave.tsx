@@ -202,12 +202,12 @@ const ApplyLeave: React.FC = () => {
                 const events = await api.getAttendanceEvents(user.id, startDate, endDate);
                 
                 if (events && events.length > 0) {
-                    const punchInEvents = events.filter(e => e.type === 'punch-in');
-                    const punchOutEvents = events.filter(e => e.type === 'punch-out');
-                    const breakInEvents = events.filter(e => e.type === 'break-in');
-                    const breakOutEvents = events.filter(e => e.type === 'break-out');
-                    const siteOtInEvents = events.filter(e => e.type === 'site-ot-in');
-                    const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out');
+                    const punchInEvents = events.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
+                    const punchOutEvents = events.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
+                    const breakInEvents = events.filter(e => e.type === 'break-in' || (e as any).type === 'break_in');
+                    const breakOutEvents = events.filter(e => e.type === 'break-out' || (e as any).type === 'break_out');
+                    const siteOtInEvents = events.filter(e => e.type === 'site-ot-in' || (e as any).type === 'site_ot_in');
+                    const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out' || (e as any).type === 'site_ot_out');
 
                     // Punch In: Earliest
                     if (punchInEvents.length > 0) {
@@ -216,8 +216,6 @@ const ApplyLeave: React.FC = () => {
                         );
                         setValue('punchIn', format(new Date(earliestIn.timestamp), 'HH:mm'), { shouldValidate: true });
                         if (earliestIn.locationName) setValue('locationName', earliestIn.locationName);
-                    } else {
-                        setValue('punchIn', '00:00', { shouldValidate: true });
                     }
 
                     // Punch Out: Latest
@@ -230,8 +228,6 @@ const ApplyLeave: React.FC = () => {
                         if (!punchInEvents[0]?.locationName && latestOut.locationName) {
                             setValue('locationName', latestOut.locationName);
                         }
-                    } else {
-                        setValue('punchOut', '00:00', { shouldValidate: true });
                     }
 
                     // Breaks: Earliest Break-in and Latest Break-out
@@ -242,11 +238,14 @@ const ApplyLeave: React.FC = () => {
                                 new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
                             );
                             setValue('breakIn', format(new Date(earliestBIn.timestamp), 'HH:mm'), { shouldValidate: true });
-                        } else {
-                            setValue('breakIn', '00:00', { shouldValidate: true });
                         }
 
-                        setValue('breakOut', '00:00');
+                        if (breakOutEvents.length > 0) {
+                            const latestBOut = breakOutEvents.reduce((prev, curr) => 
+                                new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                            );
+                            setValue('breakOut', format(new Date(latestBOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                        }
                     }
 
                     // Site OT: Earliest OT-in and Latest OT-out
@@ -257,8 +256,6 @@ const ApplyLeave: React.FC = () => {
                                 new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
                             );
                             setValue('siteOtIn', format(new Date(earliestOTIn.timestamp), 'HH:mm'), { shouldValidate: true });
-                        } else {
-                            setValue('siteOtIn', '00:00', { shouldValidate: true });
                         }
 
                         if (siteOtOutEvents.length > 0) {
@@ -266,25 +263,10 @@ const ApplyLeave: React.FC = () => {
                                 new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
                             );
                             setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
-                        } else {
-                            setValue('siteOtOut', '00:00', { shouldValidate: true });
                         }
-                    } else {
-                        setValue('includeSiteOt', false);
-                        setValue('siteOtIn', '22:00');
-                        setValue('siteOtOut', '23:00');
                     }
-                } else {
-                    // No events found - reset to 00:00 as requested
-                    setValue('punchIn', '00:00', { shouldValidate: true });
-                    setValue('punchOut', '00:00', { shouldValidate: true });
-                    setValue('includeBreak', false);
-                    setValue('breakIn', '00:00', { shouldValidate: true });
-                    setValue('breakOut', '00:00', { shouldValidate: true });
-                    setValue('includeSiteOt', false);
-                    setValue('siteOtIn', '22:00', { shouldValidate: true });
-                    setValue('siteOtOut', '23:00', { shouldValidate: true });
                 }
+                // No else block - keeping existing values if no events found as requested
             } catch (err) {
                 console.error('Failed to fetch attendance logs:', err);
                 // Non-blocking error, just keep as is or log it

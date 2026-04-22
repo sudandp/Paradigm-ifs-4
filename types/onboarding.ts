@@ -1,3 +1,20 @@
+import type { 
+  PersonalDetails, 
+  AddressDetails, 
+  FamilyMember, 
+  EducationRecord, 
+  BankDetails, 
+  UanDetails, 
+  EsiDetails, 
+  GmcDetails, 
+  OrganizationDetails, 
+  EmployeeUniformSelection, 
+  BiometricsData, 
+  SalaryChangeRequest 
+} from './user';
+
+import type { VerificationUsageItem } from './index';
+
 export interface OnboardingData {
   id?: string;
   status: 'draft' | 'pending' | 'verified' | 'rejected';

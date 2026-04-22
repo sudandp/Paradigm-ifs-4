@@ -7,6 +7,7 @@ export * from './onboarding';
 export * from './settings';
 export * from './attendance';
 export * from './common';
+export * from './crm';
 
 import { UploadedFile } from './common';
 

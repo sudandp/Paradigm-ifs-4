@@ -47,7 +47,11 @@ export type Permission =
   | 'view_mobile_nav_profile'
   | 'manage_finance_settings'
   | 'view_finance_reports'
-  | 'view_attendance_tracker';
+  | 'view_attendance_tracker'
+  | 'view_crm'
+  | 'view_crm_pipeline'
+  | 'view_crm_checklists'
+  | 'view_operations';
 
 export interface TaskGroup {
   id: string;

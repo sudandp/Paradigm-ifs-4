@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
-import type { Organization, Entity, ManpowerDetail, SiteStaffDesignation } from '../../types';
+import type { Organization, Entity, ManpowerDetail, SiteStaffDesignation, UploadedFile } from '../../types';
 import Button from '../../components/ui/Button';
 import { Plus, Edit, Trash2, Eye, Loader2, Upload, Download, CheckCircle, AlertCircle, Building, Users, Settings } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
@@ -152,24 +152,41 @@ export const SiteManagement: React.FC = () => {
         }
     };
 
-    const handleSaveEntity = async (entityData: Entity, pendingFiles: Record<string, File>) => {
+    const handleSaveEntity = async (entityData: Entity, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => {
         try {
-            // Re-use logic for file uploads if needed, or stick to simple save if no files
-            // For now, let's process files similar to EntityManagement.tsx
             const updatedData = { ...entityData };
             const fileEntries = Object.entries(pendingFiles);
             
             if (fileEntries.length > 0) {
                 setToast({ message: 'Uploading documents...', type: 'success' });
-                for (const [path, file] of fileEntries) {
-                    const uploadResult = await api.uploadDocument(file, 'onboarding-documents', undefined, path);
-                    const pathParts = path.split('.');
-                    let current: any = updatedData;
-                    for (let i = 0; i < pathParts.length - 1; i++) {
-                        if (!current[pathParts[i]]) current[pathParts[i]] = {};
-                        current = current[pathParts[i]];
+                for (const [path, files] of fileEntries) {
+                    const filesArray = Array.isArray(files) ? files : [files];
+                    const uploadedUrls: string[] = [];
+
+                    for (const uploadedFile of filesArray) {
+                        if (uploadedFile.file) {
+                            const uploadResult = await api.uploadDocument(uploadedFile.file, 'onboarding-documents', undefined, path);
+                            uploadedUrls.push(uploadResult.url);
+                        }
                     }
-                    current[`${pathParts[pathParts.length - 1]}Url`] = uploadResult.url;
+
+                    if (uploadedUrls.length > 0) {
+                        const pathParts = path.split('.');
+                        let current: any = updatedData;
+                        for (let i = 0; i < pathParts.length - 1; i++) {
+                            if (!current[pathParts[i]]) current[pathParts[i]] = {};
+                            current = current[pathParts[i]];
+                        }
+                        
+                        const keyName = pathParts[pathParts.length - 1];
+                        if (Array.isArray(files)) {
+                             // For multi-upload fields, we usually store the full array or add to it
+                             current[keyName] = uploadedUrls;
+                        } else {
+                             // For single upload fields, we usually append 'Url' to the key
+                             current[`${keyName}Url`] = uploadedUrls[0];
+                        }
+                    }
                 }
             }
 
