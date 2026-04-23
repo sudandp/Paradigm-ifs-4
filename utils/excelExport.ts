@@ -430,3 +430,197 @@ export const exportLeaveBalancesToExcel = async (
     const fileName = `Leave_Balances_${format(new Date(), 'yyyyMMdd')}.xlsx`;
     saveAs(new Blob([buffer]), fileName);
 };
+
+
+export const exportMonthlyMatrixToExcel = async (
+    monthlyData: Record<string, any[]>,
+    dateRange: { startDate: Date; endDate: Date },
+    logoBase64?: string,
+    generatedBy?: string
+) => {
+    const workbook = new ExcelJS.Workbook();
+
+    // Sort month keys to ensure chronological order in sheets
+    const sortedMonthKeys = Object.keys(monthlyData).sort();
+
+    for (const monthKey of sortedMonthKeys) {
+        const data = monthlyData[monthKey];
+        const monthDate = new Date(monthKey + '-01'); // Ensure it's treated as start of month
+        const worksheet = workbook.addWorksheet(format(monthDate, 'MMMM yyyy'));
+
+        // 1. Add Logo if available
+        if (logoBase64 && logoBase64.startsWith('data:image')) {
+            try {
+                const base64Data = logoBase64.split(',')[1];
+                const imageId = workbook.addImage({
+                    base64: base64Data,
+                    extension: 'png',
+                });
+                worksheet.addImage(imageId, {
+                    tl: { col: 0, row: 0 },
+                    ext: { width: 140, height: 35 }
+                });
+            } catch (error) {
+                console.error('Failed to add logo to Excel:', error);
+            }
+        }
+
+        // Paradigm Services label
+        worksheet.mergeCells('A3:E3');
+        const companyCell = worksheet.getCell('A3');
+        companyCell.value = 'PARADIGM SERVICES';
+        companyCell.font = { bold: true, size: 9, color: { argb: 'FF9CA3AF' } };
+        companyCell.alignment = { horizontal: 'left', vertical: 'middle' };
+
+        // Get the maximum number of days to determine the last column
+        const maxDays = data.length > 0 ? (data[0].statuses?.length || 31) : 31;
+        const endColIndex = 1 + maxDays + 10; // Employee + Days + 10 stats columns
+        
+        // Helper to get column letter
+        const getColLetter = (n: number) => {
+            let letter = '';
+            while (n > 0) {
+                let temp = (n - 1) % 26;
+                letter = String.fromCharCode(65 + temp) + letter;
+                n = (n - temp - 1) / 26;
+            }
+            return letter;
+        };
+        const mergeEndCol = getColLetter(endColIndex);
+        
+        // 2. Add Title & Metadata at the top right
+        worksheet.mergeCells(`F1:${mergeEndCol}1`);
+        const titleCell = worksheet.getCell('F1');
+        titleCell.value = 'MONTHLY ATTENDANCE REPORT';
+        titleCell.font = { size: 22, bold: true, color: { argb: 'FF111827' } };
+        titleCell.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        worksheet.mergeCells(`F2:${mergeEndCol}2`);
+        const dateCell = worksheet.getCell('F2');
+        dateCell.value = format(monthDate, 'MMMM yyyy');
+        dateCell.font = { size: 12, bold: true, color: { argb: 'FF374151' } };
+        dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        worksheet.mergeCells(`F3:${mergeEndCol}3`);
+        const genCell1 = worksheet.getCell('F3');
+        genCell1.value = `Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}`;
+        genCell1.font = { size: 10, color: { argb: 'FF6B7280' } };
+        genCell1.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        let currentRow = 5;
+        if (generatedBy) {
+            worksheet.mergeCells(`F4:${mergeEndCol}4`);
+            const genCell2 = worksheet.getCell('F4');
+            genCell2.value = `By: ${generatedBy}`;
+            genCell2.font = { size: 10, color: { argb: 'FF6B7280' } };
+            genCell2.alignment = { horizontal: 'right', vertical: 'middle' };
+            currentRow = 6;
+        }
+
+        // 3. Render Matrix Header
+        const headerRow = worksheet.getRow(currentRow);
+        headerRow.height = 25;
+        
+        const headers = ['Employee'];
+        for (let i = 1; i <= maxDays; i++) headers.push(i.toString());
+        headers.push('P', '1/2P', 'OT', 'C/O', 'E/L', 'S/L', 'A', 'W/O', 'H', 'Pay');
+        
+        headerRow.values = headers;
+        
+        headerRow.eachCell((cell, colNumber) => {
+            cell.font = { bold: true, color: { argb: 'FF374151' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            
+            let bgColor = 'FFF9FAFB'; // Default
+            if (colNumber === 1) cell.alignment = { horizontal: 'left', vertical: 'middle' };
+            
+            const headerText = cell.value as string;
+            if (headerText === 'P') { bgColor = 'FFD1FAE5'; cell.font.color = { argb: 'FF065F46' }; }
+            else if (headerText === '1/2P') { bgColor = 'FFDBEAFE'; cell.font.color = { argb: 'FF1E40AF' }; }
+            else if (headerText === 'OT') { bgColor = 'FFCCFBF1'; cell.font.color = { argb: 'FF0F766E' }; }
+            else if (headerText === 'C/O') { bgColor = 'FFCFFAFE'; cell.font.color = { argb: 'FF0E7490' }; }
+            else if (headerText === 'E/L') { bgColor = 'FFE0E7FF'; cell.font.color = { argb: 'FF3730A3' }; }
+            else if (headerText === 'S/L') { bgColor = 'FFF3E8FF'; cell.font.color = { argb: 'FF6B21A8' }; }
+            else if (headerText === 'A') { bgColor = 'FFFEE2E2'; cell.font.color = { argb: 'FF991B1B' }; }
+            else if (headerText === 'H') { bgColor = 'FFFFEDD5'; cell.font.color = { argb: 'FF9A3412' }; }
+            else if (headerText === 'Pay') { bgColor = 'FFD1FAE5'; cell.font.color = { argb: 'FF065F46' }; }
+            
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        });
+        
+        currentRow++;
+
+        // 4. Render Employee Rows
+        data.forEach((employee) => {
+            const row = worksheet.getRow(currentRow);
+            row.height = 20;
+            
+            const rowData = [employee.userName || employee.employeeName];
+            const statuses = employee.statuses || [];
+            
+            for (let i = 0; i < maxDays; i++) {
+                rowData.push(statuses[i] || '-');
+            }
+            
+            rowData.push(
+                employee.presentDays || 0,
+                employee.halfDays || 0,
+                employee.overtimeDays || 0,
+                employee.compOffs || 0,
+                employee.earnedLeaves || 0,
+                employee.sickLeaves || 0,
+                employee.absentDays || 0,
+                employee.weekOffs || 0,
+                employee.holidays || 0,
+                employee.totalPayableDays || 0
+            );
+            
+            row.values = rowData;
+            
+            row.eachCell((cell, colNumber) => {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                
+                if (colNumber === 1) {
+                    cell.font = { bold: true };
+                    cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                }
+                
+                if (colNumber > 1 + maxDays) {
+                    cell.font = { bold: true };
+                    const headerText = headers[colNumber - 1];
+                    if (headerText === 'P' || headerText === 'Pay') cell.font.color = { argb: 'FF059669' };
+                    else if (headerText === '1/2P') cell.font.color = { argb: 'FF2563EB' };
+                    else if (headerText === 'OT') cell.font.color = { argb: 'FF0D9488' };
+                    else if (headerText === 'C/O') cell.font.color = { argb: 'FF0891B2' };
+                    else if (headerText === 'E/L') cell.font.color = { argb: 'FF4F46E5' };
+                    else if (headerText === 'S/L') cell.font.color = { argb: 'FF9333EA' };
+                    else if (headerText === 'A') { cell.font.color = { argb: 'FFDC2626' }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; }
+                    else if (headerText === 'H') cell.font.color = { argb: 'FFEA580C' };
+                    else if (headerText === 'W/O') cell.font.color = { argb: 'FF6B7280' };
+                }
+                else if (colNumber > 1 && colNumber <= 1 + maxDays) {
+                    const s = cell.value as string;
+                    cell.font = { bold: true };
+                    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') cell.font.color = { argb: 'FF059669' };
+                    else if (s === 'A' || s === 'Absent') cell.font.color = { argb: 'FFDC2626' };
+                    else if (s === 'W/O' || s === 'Weekly Off') cell.font.color = { argb: 'FF64748B' };
+                    else if (s === 'H' || s === 'Holiday') cell.font.color = { argb: 'FF4F46E5' };
+                    else if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) cell.font.color = { argb: 'FF7C3AED' };
+                    else cell.font.color = { argb: 'FF475569' };
+                }
+            });
+            
+            currentRow++;
+        });
+
+        worksheet.getColumn(1).width = 25;
+        for (let i = 2; i <= 1 + maxDays; i++) worksheet.getColumn(i).width = 5;
+        for (let i = 2 + maxDays; i <= endColIndex; i++) worksheet.getColumn(i).width = 6;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = `Monthly_Attendance_Report_${format(dateRange.startDate, 'yyyy')}.xlsx`;
+    saveAs(new Blob([buffer]), fileName);
+};

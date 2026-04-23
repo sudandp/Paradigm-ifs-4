@@ -1,6 +1,6 @@
 import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 
 // Register a standard font if needed, or use defaults
 // Font.register({ family: 'Inter', src: '...' });
@@ -1562,6 +1562,128 @@ export const AuditLogDocument: React.FC<{
           )} fixed />
         </Page>
       ))}
+    </Document>
+  );
+};
+
+
+export const MonthlyMatrixReportDocument: React.FC<{
+  monthlyData: Record<string, any[]>;
+  generatedBy?: string;
+  logoUrl?: string;
+  globalDateRange: { startDate: Date; endDate: Date };
+}> = ({ monthlyData, generatedBy, logoUrl, globalDateRange }) => {
+  const getStatusColor = (s: string) => {
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#059669';
+    if (s === 'A' || s === 'Absent') return '#DC2626';
+    if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
+    if (s === 'H' || s === 'Holiday') return '#4F46E5';
+    if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
+    return '#475569';
+  };
+
+  const getStatusBg = (s: string) => {
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#ECFDF5';
+    if (s === 'A' || s === 'Absent') return '#FEF2F2';
+    if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
+    if (s === 'H' || s === 'Holiday') return '#EEF2FF';
+    return '#FFFFFF';
+  };
+
+  const rowsPerPage = 18;
+  const sortedMonthKeys = Object.keys(monthlyData).sort();
+
+  return (
+    <Document>
+      {sortedMonthKeys.map((monthKey) => {
+        const monthData = monthlyData[monthKey];
+        const monthDate = new Date(monthKey + '-01');
+        
+        // Calculate days for this month within the global range
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+        const displayStart = monthStart > globalDateRange.startDate ? monthStart : globalDateRange.startDate;
+        const displayEnd = monthEnd < globalDateRange.endDate ? monthEnd : globalDateRange.endDate;
+        const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
+
+        const pages: any[][] = [];
+        for (let i = 0; i < monthData.length; i += rowsPerPage) {
+          pages.push(monthData.slice(i, i + rowsPerPage));
+        }
+        if (pages.length === 0) pages.push([]);
+
+        return pages.map((pageData, pageIdx) => (
+          <Page key={`${monthKey}-${pageIdx}`} size="A3" orientation="landscape" style={[styles.page, { padding: '30 20' }]}>
+            <View style={[styles.header, { borderBottomWidth: 2, borderBottomColor: '#0F172A', paddingBottom: 10, marginBottom: 15 }]}>
+              <View style={styles.headerLeft}>
+                {logoUrl && <Image src={logoUrl} style={{ height: 40, width: 'auto', marginBottom: 4 }} />}
+                <Text style={{ fontSize: 10, color: '#94A3B8', fontWeight: 'bold', letterSpacing: 1.5 }}>PARADIGM SERVICES</Text>
+              </View>
+              <View style={styles.headerRight}>
+                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>MONTHLY ATTENDANCE REPORT</Text>
+                <Text style={{ fontSize: 10, color: '#64748B' }}>
+                  {format(monthDate, 'MMMM yyyy')}
+                </Text>
+                <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 4 }}>
+                  Generated: {format(new Date(), 'dd MMM yyyy HH:mm')} {generatedBy && `| By: ${generatedBy}`}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden', flex: 1 }}>
+              <View style={{ flexDirection: 'row', backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, paddingVertical: 5 }]}><Text>Employee</Text></View>
+                {monthDays.map((d, i) => (
+                  <View key={i} style={[styles.matrixCell, { paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold' }}>{format(d, 'd')}</Text></View>
+                ))}
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>1/2P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#9333EA' }}>S/L</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', color: '#DC2626' }}>A</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#6B7280' }}>W/O</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#EA580C' }}>H</Text></View>
+                <View style={[styles.matrixCell, { width: 28, paddingVertical: 5, backgroundColor: '#D1FAE5' }]}><Text style={{ fontWeight: 'bold', color: '#065F46' }}>Pay</Text></View>
+              </View>
+
+              {pageData.map((emp: any, empIdx: number) => {
+                const statuses = emp.statuses || [];
+                return (
+                  <View key={empIdx} style={{ flexDirection: 'row', backgroundColor: empIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                    <View style={[styles.matrixRowLabel, { width: 140, textAlign: 'left', paddingLeft: 5, backgroundColor: 'transparent', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }]}>
+                      <Text style={{ fontSize: 8, fontWeight: 'bold' }}>{emp.userName || emp.employeeName}</Text>
+                    </View>
+                    {monthDays.map((d, i) => {
+                      const status = statuses[i] || '-';
+                      return (
+                        <View key={i} style={[styles.matrixCell, { backgroundColor: getStatusBg(status) }]}>
+                          <Text style={{ color: getStatusColor(status), fontWeight: 'bold', fontSize: 7 }}>{status}</Text>
+                        </View>
+                      );
+                    })}
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#059669' }}>{emp.presentDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#2563EB' }}>{emp.halfDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0D9488' }}>{emp.overtimeDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#0891B2' }}>{emp.compOffs || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#4F46E5' }}>{emp.earnedLeaves || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#9333EA' }}>{emp.sickLeaves || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25, backgroundColor: '#FEF2F2' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#DC2626' }}>{emp.absentDays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#6B7280' }}>{emp.weekOffs || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 25 }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#EA580C' }}>{emp.holidays || 0}</Text></View>
+                    <View style={[styles.matrixCell, { width: 28, backgroundColor: '#ECFDF5' }]}><Text style={{ fontWeight: 'bold', fontSize: 7, color: '#065F46' }}>{emp.totalPayableDays || 0}</Text></View>
+                  </View>
+                );
+              })}
+            </View>
+            
+            <Text style={styles.footer} fixed>
+              Paradigm Services - {format(monthDate, 'MMMM yyyy')} - Page {pageIdx + 1} of {pages.length}
+            </Text>
+          </Page>
+        ));
+      })}
     </Document>
   );
 };

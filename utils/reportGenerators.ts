@@ -255,63 +255,109 @@ export const reportGenerators = {
         const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
         const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
 
+        let workStatus = 'A';
+        let workColor = '#dc2626';
+        let leaveStatus = '';
+        let leaveColor = '';
+
         if (punchIn || punchOut) {
           const durationHours = (punchIn && punchOut) ? (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000 : 0;
           totalWorkHours += durationHours;
           if (isSunday) {
-            status = 'WOP';
-            color = '#0d9488';
-            presentCount++;
-            overtimeCount++;
+            workStatus = 'WOP';
+            workColor = '#0d9488';
             dayWorked = true;
           } else if (durationHours >= 5 || (!punchOut && punchIn)) {
-            status = 'P';
-            color = '#16a34a';
-            presentCount++;
+            workStatus = 'P';
+            workColor = '#16a34a';
             if (durationHours > 14) overtimeCount++;
             dayWorked = true;
           } else if (durationHours > 1) {
-            status = '0.5P';
-            color = '#d97706';
-            halfDayCount++;
+            workStatus = '0.5P';
+            workColor = '#d97706';
             dayWorked = true;
           } else if (punchIn || punchOut) {
-            // Catch-all for any activity that doesn't meet the 5h/1h rules above
+            workStatus = 'P';
+            workColor = '#16a34a';
+            dayWorked = true;
+          }
+        }
+
+        let isCorrection = false;
+        let isHalfDayLeave = false;
+
+        if (dayLeave) {
+          const lt = (dayLeave.leave_type || '').toLowerCase();
+          const lStatus = String(dayLeave.status || dayLeave.leaveStatus || '').toLowerCase();
+          isCorrection = lt.includes('correction') || lStatus === 'correction_made';
+          isHalfDayLeave = dayLeave.day_option === 'half';
+
+          const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(lt);
+          if (isCorrection) {
+              leaveStatus = 'P';
+              leaveColor = '#16a34a';
+          } else if (lt === 'sick') { 
+              leaveStatus = 'S/L'; 
+              leaveColor = '#7c3aed'; 
+          } else if (lt.includes('comp') || lt === 'c/o') { 
+              leaveStatus = 'C/O'; 
+              leaveColor = '#0891b2'; 
+          } else if (isLOP) { 
+              leaveStatus = 'A'; 
+              leaveColor = '#dc2626'; 
+          } else { 
+              leaveStatus = 'E/L'; 
+              leaveColor = '#4f46e5'; 
+          }
+        }
+
+        // Combine logic
+        if (isCorrection) {
             status = 'P';
             color = '#16a34a';
             presentCount++;
             dayWorked = true;
-          }
-        } else if (dayLeave) {
-          const lt = (dayLeave.leave_type || '').toLowerCase();
-          const isLOP = ['loss of pay', 'loss-of-pay', 'lop'].includes(lt);
-          if (lt === 'sick') { status = 'S/L'; color = '#7c3aed'; sickLeaveCount++; }
-          else if (lt.includes('comp') || lt === 'c/o') { status = 'C/O'; color = '#0891b2'; compOffCount++; }
-          else if (isLOP) { status = 'A'; color = '#dc2626'; absentCount++; }
-          else { status = 'E/L'; color = '#4f46e5'; earnedLeaveCount++; }
-          
-          if (!isLOP) {
-            leaveCount++;
+        } else if (workStatus !== 'A' && isHalfDayLeave) {
+            status = '0.5P';
+            color = '#1d4ed8'; // blueish for half-day split
+            halfDayCount++;
+            if (leaveStatus === 'S/L') sickLeaveCount += 0.5;
+            else if (leaveStatus === 'C/O') compOffCount += 0.5;
+            else if (leaveStatus === 'E/L') earnedLeaveCount += 0.5;
             dayWorked = true;
-          }
+        } else if (workStatus !== 'A') {
+            status = workStatus;
+            color = workColor;
+            if (status === 'P' || status === 'WOP') presentCount++;
+            else if (status === '0.5P') halfDayCount++;
+        } else if (dayLeave) {
+            status = leaveStatus;
+            color = leaveColor;
+            if (status === 'S/L') sickLeaveCount++;
+            else if (status === 'C/O') compOffCount++;
+            else if (status === 'E/L') earnedLeaveCount++;
+            else if (status === 'A') absentCount++;
+            else if (status === 'P') presentCount++; // From correction
+            
+            if (status !== 'A') dayWorked = true;
         } else if (isPublicHoliday) {
-          status = 'H';
-          color = '#854d0e';
-          bgColor = '#fef9c3';
-          holidayCount++;
-          dayWorked = true;
+            status = 'H';
+            color = '#854d0e';
+            bgColor = '#fef9c3';
+            holidayCount++;
+            dayWorked = true;
         } else if (isSunday) {
-          if (daysPresentInWeek >= 3) {
-            status = 'WO';
-            color = '#6b7280';
-            weeklyOffCount++;
-          } else {
-            status = 'A';
-            color = '#dc2626';
-            absentCount++;
-          }
+            if (daysPresentInWeek >= 3) {
+                status = 'WO';
+                color = '#6b7280';
+                weeklyOffCount++;
+            } else {
+                status = 'A';
+                color = '#dc2626';
+                absentCount++;
+            }
         } else {
-          absentCount++;
+            absentCount++;
         }
 
         if (dayWorked) daysPresentInWeek++;

@@ -520,6 +520,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0">
                             <span className={`inline-flex items-center justify-center w-full min-h-[18px] font-bold text-[9px] ${
                                 d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
+                                d.status === '0.5P' || d.status === '1/2P' ? 'bg-gradient-to-r from-emerald-100 to-blue-100 text-blue-800' :
                                 d.status === 'A' ? 'bg-rose-50 text-rose-600' :
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
                                 d.status === 'H' || d.status === 'H/P' ? 'bg-indigo-50 text-indigo-700' :

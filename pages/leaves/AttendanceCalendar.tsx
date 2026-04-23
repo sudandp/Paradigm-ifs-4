@@ -155,7 +155,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             const foundLeave = leaveRequests.find(req => {
                 if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation' && req.status !== 'correction_made') return false;
-                return day >= startOfDay(new Date(req.startDate)) && day <= endOfDay(new Date(req.endDate));
+                return day >= startOfDay(new Date(req.startDate.replace(/-/g, '/'))) && day <= endOfDay(new Date(req.endDate.replace(/-/g, '/')));
             });
 
             const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
@@ -243,17 +243,33 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     const { workingHours } = calculateWorkingHours(dayEvents, date);
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
-                    count += (workingHours >= shiftThreshold) ? 1 : 0.5;
+
+                    const relevantLeave = leaveRequests?.find(req => {
+                        if (req.status !== 'approved' && req.status !== 'correction_made' && req.status !== 'pending_hr_confirmation') return false;
+                        const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
+                        const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
+                        return date >= start && date <= end;
+                    });
+
+                    if (relevantLeave && relevantLeave.leaveType === 'Correction') {
+                        count += 1;
+                    } else if (relevantLeave && relevantLeave.dayOption === 'half') {
+                        count += 1; // Half leave + present half = 1 day
+                    } else {
+                        count += (workingHours >= shiftThreshold) ? 1 : 0.5;
+                    }
                 } else {
                     count += 1;
                 }
             } else if (status === 'leave') {
                 const dateStr = format(date, 'yyyy-MM-dd');
                 const leaveReq = leaveRequests?.find(req => {
-                    return date >= startOfDay(new Date(req.startDate)) && date <= endOfDay(new Date(req.endDate));
+                    return date >= startOfDay(new Date(req.startDate.replace(/-/g, '/'))) && date <= endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                 });
                 
-                if (leaveReq && leaveReq.leaveType !== 'Loss of Pay') {
+                if (leaveReq && leaveReq.leaveType === 'Correction' && leaveReq.status === 'correction_made') {
+                    count += 1;
+                } else if (leaveReq && leaveReq.leaveType !== 'Loss of Pay') {
                     count += (leaveReq.dayOption === 'half') ? 0.5 : 1;
                     // If half day leave, check if they worked the other half
                     if (leaveReq.dayOption === 'half') {
@@ -312,7 +328,26 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             
-                            if (workingHours >= shiftThreshold) {
+                            const relevantLeave = leaveRequests?.find(req => {
+                                if (req.status !== 'approved' && req.status !== 'correction_made' && req.status !== 'pending_hr_confirmation') return false;
+                                const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
+                                const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
+                                return date >= start && date <= end;
+                            });
+
+                            if (relevantLeave && relevantLeave.leaveType === 'Correction') {
+                                overlayText = 'P';
+                                customStyle = {
+                                    background: '#10b981', // Solid green for correction
+                                    borderColor: 'transparent'
+                                };
+                            } else if (relevantLeave && relevantLeave.dayOption === 'half') {
+                                overlayText = '0.5P';
+                                customStyle = {
+                                    background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green / Half Blue
+                                    borderColor: 'transparent'
+                                };
+                            } else if (workingHours >= shiftThreshold) {
                                 overlayText = 'P';
                             } else {
                                 overlayText = '0.5P';
@@ -326,13 +361,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             overlayText = status === 'sunday' ? null : 'H';
                         } else if (status === 'leave') {
                             const request = leaveRequests?.find(req => {
-                                if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation') return false;
+                                if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation' && req.status !== 'correction_made') return false;
                                 const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
                                 const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                                 return date >= start && date <= end;
                             });
                             if (request) {
-                                if (request.dayOption === 'half') {
+                                if (request.leaveType === 'Correction') {
+                                    overlayText = 'P';
+                                    customStyle = {
+                                        background: '#10b981', // Solid green for correction
+                                        borderColor: 'transparent'
+                                    };
+                                } else if (request.dayOption === 'half') {
                                     overlayText = '0.5P';
                                     customStyle = {
                                         background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green / Half Blue

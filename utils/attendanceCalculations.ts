@@ -563,19 +563,29 @@ export function evaluateAttendanceStatus(params: {
 
   // B. Handle Combinations or pure status
   if (workStatus && workStatus !== 'A') {
-      // If work is partial and there's a 1/2 day leave, combine them
-      const isPartialWork = workStatus !== 'P';
-      const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
+      const isCorrection = approvedLeave && (
+          String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase().includes('correction') ||
+          String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
+      );
       
-      if (isPartialWork && isHalfDayLeave) {
-          status = `${workStatus}+${getLeaveCode(approvedLeave)}`;
+      if (isCorrection) {
+          status = getLeaveCode(approvedLeave);
       } else {
-          // Pure work status
-          // Reservation: H/P only for explicit holidays (National/Manual). 
-          // Recurring holidays (like alternate Saturdays) just show 'P' if worked.
-          if (isHoliday) status = 'H/P';
-          else if (isWeekend) status = 'W/P';
-          else status = workStatus;
+          // If work is partial and there's a 1/2 day leave, combine them
+          const isPartialWork = workStatus !== 'P';
+          const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
+          
+          if (isPartialWork && isHalfDayLeave) {
+              // Instead of 1/2P+1/2E/L which breaks formatting, we represent half day present + half day leave as 0.5P
+              status = '0.5P';
+          } else {
+              // Pure work status
+              // Reservation: H/P only for explicit holidays (National/Manual). 
+              // Recurring holidays (like alternate Saturdays) just show 'P' if worked.
+              if (isHoliday) status = 'H/P';
+              else if (isWeekend) status = 'W/P';
+              else status = workStatus;
+          }
       }
   } else if (approvedLeave) {
       const lStatus = String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase();

@@ -7,13 +7,13 @@ import { LEAD_STATUS_ORDER, LEAD_STATUS_COLORS } from '../../types/crm';
 import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
-  ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin
+  ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin, Edit2, Trash2
 } from 'lucide-react';
 
 const CrmDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter } = useCrmStore();
+  const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter, deleteLead } = useCrmStore();
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -209,6 +209,11 @@ const CrmDashboard: React.FC = () => {
                     leads={kanbanColumns[status] || []}
                     color={LEAD_STATUS_COLORS[status]}
                     onCardClick={(id) => navigate(`/crm/leads/${id}`)}
+                    onDeleteClick={async (id) => {
+                      if (window.confirm('Are you sure you want to delete this lead?')) {
+                        await deleteLead(id);
+                      }
+                    }}
                   />
                 </div>
               ))}
@@ -238,7 +243,31 @@ const CrmDashboard: React.FC = () => {
                     onClick={() => navigate(`/crm/leads/${lead.id}`)}
                   >
                     <td className="px-4 md:px-6 py-5">
-                      <div className="font-black text-primary-text md:text-primary-text group-hover:text-accent md:group-hover:text-accent transition-colors leading-none max-md:text-white max-md:group-hover:text-emerald-400">{lead.clientName}</div>
+                      <div className="font-black text-primary-text md:text-primary-text group-hover:text-accent md:group-hover:text-accent transition-colors leading-none max-md:text-white max-md:group-hover:text-emerald-400 flex items-center gap-2">
+                        {lead.clientName}
+                        <div className="hidden group-hover:flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/crm/leads/${lead.id}`);
+                            }}
+                            className="p-1 text-muted hover:text-accent transition-colors"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Delete this lead?')) {
+                                await deleteLead(lead.id);
+                              }
+                            }}
+                            className="p-1 text-muted hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                       {lead.associationName && <div className="text-[10px] text-muted md:text-muted font-bold mt-1.5 uppercase tracking-wider truncate max-w-[150px] md:max-w-xs max-md:text-white/30">{lead.associationName}</div>}
                     </td>
                     <td className="hidden md:table-cell px-6 py-5">
@@ -320,9 +349,10 @@ interface KanbanColumnProps {
   leads: CrmLead[];
   color: string;
   onCardClick: (id: string) => void;
+  onDeleteClick: (id: string) => void;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick }) => (
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick }) => (
   <div className="w-[85vw] md:w-[280px] lg:w-[300px] flex-shrink-0 flex flex-col">
     <div className="flex items-center justify-between mb-5 px-3">
       <div className="flex items-center gap-3">
@@ -346,8 +376,27 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
             <h4 className="text-sm font-black text-white md:text-primary-text group-hover:text-emerald-400 md:group-hover:text-accent transition-colors leading-tight line-clamp-2 uppercase tracking-tight md:tracking-normal">
               {lead.clientName}
             </h4>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 bg-emerald-500 md:bg-accent/5 text-[#041b0f] md:text-accent transition-all">
-              <ArrowUpRight className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCardClick(lead.id);
+                }}
+                className="w-8 h-8 rounded-xl bg-white/10 md:bg-gray-100 border border-white/10 md:border-border flex items-center justify-center text-white md:text-primary-text hover:bg-emerald-500 hover:text-white md:hover:text-white transition-all group/icon"
+                title="Edit Lead"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteClick(lead.id);
+                }}
+                className="w-8 h-8 rounded-xl bg-white/10 md:bg-red-50 border border-white/10 md:border-red-100 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all group/icon"
+                title="Delete Lead"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
 

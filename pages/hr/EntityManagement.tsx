@@ -367,6 +367,7 @@ const EntityManagement: React.FC = () => {
 
             if (clientData.status === 'draft') {
                 setToast({ message: 'Draft saved successfully.', type: 'success' });
+                setEntityFormState(prev => ({ ...prev, initialData: savedClient }));
             } else {
                 setToast({ message: clientData.id.startsWith('new_') ? 'Society added successfully.' : 'Society updated successfully.', type: 'success' });
                 setEntityFormState({ isOpen: false, initialData: null, companyName: '' });
@@ -558,27 +559,37 @@ const EntityManagement: React.FC = () => {
                 }
             }
 
+            let savedComp: any;
             if (mode === 'add') {
-                const newCompany = await api.createCompany({ 
+                savedComp = await api.createCompany({ 
                     id: `comp_${Date.now()}`, 
                     groupId,
                     ...updatedData
                 });
-                newGroups[groupIndex].companies.push({ ...newCompany, entities: [] });
+                newGroups[groupIndex].companies.push({ ...savedComp, entities: [] });
                 setToast({ message: `Company '${data.name}' added successfully.`, type: 'success' });
             } else if (data.id) {
-                const updatedCompany = await api.updateCompany(data.id, updatedData);
+                savedComp = await api.updateCompany(data.id, updatedData);
                 const compIndex = newGroups[groupIndex].companies.findIndex(c => c.id === data.id);
                 if (compIndex !== -1) {
                     newGroups[groupIndex].companies[compIndex] = {
                         ...newGroups[groupIndex].companies[compIndex],
-                        ...updatedCompany
+                        ...savedComp
                     };
                 }
                 setToast({ message: 'Company updated successfully.', type: 'success' });
             }
             setGroups(newGroups);
-            setCompanyFormState({ ...companyFormState, isOpen: false });
+
+            if (data.status === 'draft') {
+                setCompanyFormState(prev => ({ 
+                    ...prev, 
+                    mode: 'edit',
+                    initialData: savedComp 
+                }));
+            } else {
+                setCompanyFormState({ ...companyFormState, isOpen: false });
+            }
         } catch (error) {
             console.error(error);
             setToast({ message: 'Failed to save company details.', type: 'error' });

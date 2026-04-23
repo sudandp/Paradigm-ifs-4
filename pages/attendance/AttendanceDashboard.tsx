@@ -6,7 +6,7 @@ import { isAdmin } from '../../utils/auth';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { pdf } from '@react-pdf/renderer';
-import { BasicReportDocument, MonthlyReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
+import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import type {
@@ -45,6 +45,7 @@ import {
     isAfter,
     isBefore,
     eachDayOfInterval,
+    eachMonthOfInterval,
     differenceInHours,
     differenceInMinutes,
     isSaturday,
@@ -73,6 +74,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { useLogoStore } from '../../store/logoStore';
 import {
     exportAttendanceToExcel,
+    exportMonthlyMatrixToExcel,
     exportGenericReportToExcel,
     exportLeaveBalancesToExcel,
     MonthlyReportRow,
@@ -455,6 +457,7 @@ const AttendanceDashboard: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
     const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
+    const [monthlyDataMap, setMonthlyDataMap] = useState<Record<string, EmployeeMonthlyData[]>>({});
 
     const [dateRange, setDateRange] = useState<Range>({
         startDate: startOfToday(),
@@ -1439,54 +1442,108 @@ const AttendanceDashboard: React.FC = () => {
     });
 
     // Determine which PDF component to render
-    const renderReportContent = useCallback((isPreview: boolean = false) => {
+        const renderReportContent = useCallback((isPreview: boolean = false) => {
         const reportDateRange = `${format(dateRange.startDate!, 'yyyy-MM-dd')} to ${format(dateRange.endDate!, 'yyyy-MM-dd')}`;
         const orgName = selectedSite !== 'all' ? users.find(u => u.organizationId === selectedSite)?.organizationName : 'All Sites';
         const socName = selectedSociety !== 'all' ? users.find(u => u.societyId === selectedSociety)?.societyName : 'All Societies';
         const logoBase64 = logoForPdf;
+        const currentLogoUrl = useLogoStore.getState().currentLogo;
+        const fallbackLogoUrl = logoBase64 || currentLogoUrl || pdfLogoLocalPath;
         const dr = { startDate: dateRange.startDate!, endDate: dateRange.endDate! };
 
         // For web preview: use standard HTML components (safe for DOM rendering)
         if (isPreview) {
-            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} />;
             if (reportType === 'monthly' || reportType === 'work_hours') {
                 const isWorkHours = reportType === 'work_hours';
+                const monthsInRange = dateRange.startDate && dateRange.endDate 
+                    ? eachMonthOfInterval({ start: dateRange.startDate, end: dateRange.endDate })
+                    : [new Date()];
+
                 return (
-                    <div className="w-full">
-                        {/* Always render MonthlyHoursReport (hidden if only monthly view) to compute and lift high-precision data */}
-                        <div className={isWorkHours ? 'block' : 'hidden'}>
-                            <MonthlyHoursReport 
-                                month={(dateRange.startDate?.getMonth() ?? new Date().getMonth()) + 1} 
-                                year={dateRange.startDate?.getFullYear() || new Date().getFullYear()} 
-                                userId={selectedUser === 'all' ? undefined : selectedUser} 
-                                scopedSettings={scopedSettings}
-                                hideHeader
-                                selectedStatus={selectedStatus}
-                                selectedSite={selectedSite}
-                                selectedSociety={selectedSociety}
-                                selectedRole={selectedRole}
-                                onDataLoaded={setExportedMonthlyData}
-                            />
-                        </div>
-                        
-                        {/* If Monthly, show the professional 31-day Status Matrix View using the computed data */}
-                        {!isWorkHours && (
-                            exportedMonthlyData.length > 0 ? (
-                                <MonthlyStatusView 
-                                    data={exportedMonthlyData.map(mapToMonthlyReportRow)} 
-                                    dateRange={dr} 
-                                    logoUrl={logoBase64} 
-                                    generatedBy={user?.name}
-                                    days={eachDayOfInterval({ start: dr.startDate, end: dr.endDate })}
-                                />
-                            ) : (
-                                <div className="p-20 flex flex-col items-center justify-center text-gray-400 bg-gray-50/5 rounded-2xl border border-dashed border-gray-100/10">
-                                    <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-4" />
-                                    <p className="text-sm font-medium">Preparing monthly status grid...</p>
-                                    <p className="text-xs opacity-50 mt-1">Calculating high-precision attendance distributions</p>
+                    <div className="space-y-12">
+                        {/* Hidden Data Loaders for each month in range - Only for Monthly Matrix Report */}
+                        {reportType === 'monthly' && (
+                            <div className="hidden">
+                                {monthsInRange.map(m => (
+                                    <MonthlyHoursReport 
+                                        key={`loader-${format(m, 'yyyy-MM')}`}
+                                        month={m.getMonth() + 1} 
+                                        year={m.getFullYear()} 
+                                        userId={selectedUser === 'all' ? undefined : selectedUser} 
+                                        scopedSettings={scopedSettings}
+                                        selectedStatus={selectedStatus}
+                                        selectedSite={selectedSite}
+                                        selectedSociety={selectedSociety}
+                                        selectedRole={selectedRole}
+                                        onDataLoaded={(data) => {
+                                            const monthKey = format(m, 'yyyy-MM');
+                                            setMonthlyDataMap(prev => ({...prev, [monthKey]: data}));
+                                            // Also set the first month to legacy state for backward compat if needed
+                                            if (monthsInRange[0] && m.getTime() === monthsInRange[0].getTime()) {
+                                                setExportedMonthlyData(data);
+                                            }
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        {!isWorkHours && monthsInRange.map(m => {
+                            const monthKey = format(m, 'yyyy-MM');
+                            const monthData = monthlyDataMap[monthKey] || [];
+                            const monthStart = startOfMonth(m);
+                            const monthEnd = endOfMonth(m);
+                            // Adjust display range to match actual month days within global range
+                            const displayStart = isAfter(monthStart, dateRange.startDate!) ? monthStart : dateRange.startDate!;
+                            const displayEnd = isBefore(monthEnd, dateRange.endDate!) ? monthEnd : dateRange.endDate!;
+                            
+                            return (
+                                <div key={`view-${monthKey}`} className="space-y-4">
+                                    <div className="flex items-center gap-4 px-2">
+                                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-[0.2em]">
+                                            {format(m, 'MMMM yyyy')}
+                                        </h3>
+                                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                                    </div>
+                                    
+                                    {monthData.length > 0 ? (
+                                        <MonthlyStatusView 
+                                            data={monthData.map(mapToMonthlyReportRow)} 
+                                            dateRange={{ startDate: displayStart, endDate: displayEnd }} 
+                                            logoUrl={fallbackLogoUrl} 
+                                            generatedBy={user?.name}
+                                            days={eachDayOfInterval({ start: displayStart, end: displayEnd })}
+                                        />
+                                    ) : (
+                                        <div className="p-12 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                                            <Loader2 className="h-6 w-6 animate-spin text-emerald-500 mb-3" />
+                                            <p className="text-xs font-medium uppercase tracking-wider">Loading {format(m, 'MMMM')} data...</p>
+                                        </div>
+                                    )}
                                 </div>
-                            )
+                            );
+                        })}
+
+                        {isWorkHours && (
+                            <div className="space-y-8">
+                                {monthsInRange.map(m => (
+                                    <div key={`work-hours-${format(m, 'yyyy-MM')}`}>
+                                        <MonthlyHoursReport 
+                                            month={m.getMonth() + 1} 
+                                            year={m.getFullYear()} 
+                                            userId={selectedUser === 'all' ? undefined : selectedUser} 
+                                            scopedSettings={scopedSettings}
+                                            hideHeader={false}
+                                            selectedStatus={selectedStatus}
+                                            selectedSite={selectedSite}
+                                            selectedSociety={selectedSociety}
+                                            selectedRole={selectedRole}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 );
@@ -1499,7 +1556,18 @@ const AttendanceDashboard: React.FC = () => {
         // For PDF generation: use react-pdf Document components (NOT safe for DOM rendering)
         if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'monthly' || reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'monthly') {
+            const mappedMap = Object.fromEntries(
+                Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+            );
+            return <MonthlyMatrixReportDocument 
+                monthlyData={mappedMap} 
+                globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                logoUrl={logoBase64} 
+                generatedBy={user?.name} 
+            />;
+        }
+        if (reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
         if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
         
@@ -1530,7 +1598,18 @@ const AttendanceDashboard: React.FC = () => {
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
-                case 'monthly':
+                case 'monthly': {
+                    const mappedMap = Object.fromEntries(
+                        Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+                    );
+                    blob = await pdf(<MonthlyMatrixReportDocument 
+                        monthlyData={mappedMap} 
+                        globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                        generatedBy={generatedBy}
+                        logoUrl={logoBase64}
+                    />).toBlob();
+                    break;
+                }
                 case 'work_hours': {
                     const days = eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
                     blob = await pdf(<MonthlyReportDocument 
@@ -1603,7 +1682,17 @@ const AttendanceDashboard: React.FC = () => {
         try {
             const logoBase64 = logoForPdf;
 
-            if (reportType === 'monthly' || reportType === 'work_hours') {
+            if (reportType === 'monthly') {
+                const mappedMap = Object.fromEntries(
+                    Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
+                );
+                await exportMonthlyMatrixToExcel(
+                    mappedMap,
+                    { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
+                    logoBase64,
+                    user?.name || 'Unknown User'
+                );
+            } else if (reportType === 'work_hours') {
                 await exportAttendanceToExcel(
                     exportedMonthlyData,
                     { startDate: dateRange.startDate!, endDate: dateRange.endDate! },
@@ -1710,7 +1799,75 @@ const AttendanceDashboard: React.FC = () => {
                     headers = { userName: 'Employee Name', date: 'Date', status: 'Status', checkIn: 'Punch In', checkOut: 'Punch Out', locationName: 'Location', duration: 'Hours' };
                     dataToExport = basicReportData;
                     break;
-                case 'monthly':
+                case 'monthly': {
+                    const monthsInRange = eachMonthOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! });
+                    
+                    // Build custom CSV string to include the PARADIGM SERVICES header
+                    let csvContent = '\uFEFF';
+                    
+                    monthsInRange.forEach((m, idx) => {
+                        const monthKey = format(m, 'yyyy-MM');
+                        const monthData = monthlyDataMap[monthKey] || [];
+                        const monthStart = startOfMonth(m);
+                        const monthEnd = endOfMonth(m);
+                        const displayStart = isAfter(monthStart, dateRange.startDate!) ? monthStart : dateRange.startDate!;
+                        const displayEnd = isBefore(monthEnd, dateRange.endDate!) ? monthEnd : dateRange.endDate!;
+                        const daysInMonth = eachDayOfInterval({ start: displayStart, end: displayEnd });
+
+                        if (idx > 0) csvContent += `\n\n`; // Spacer between months
+
+                        // Metadata Header matching preview
+                        csvContent += `"PARADIGM SERVICES",,,,,,,,,,,,,,,,"MONTHLY ATTENDANCE REPORT"\n`;
+                        csvContent += `,,,,,,,,,,,,,,,,,"${format(m, 'MMMM yyyy')}"\n`;
+                        csvContent += `,,,,,,,,,,,,,,,,,"Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}"\n`;
+                        if (user?.name) csvContent += `,,,,,,,,,,,,,,,,,"By: ${user.name}"\n`;
+                        csvContent += `\n`; // Empty row
+                        
+                        // Column Headers
+                        let headerRow = [`"Employee Name"`];
+                        daysInMonth.forEach(d => headerRow.push(`"${format(d, 'd')}"`));
+                        headerRow.push(`"P"`, `"1/2P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
+                        csvContent += headerRow.join(',') + '\n';
+                        
+                        // Data Rows
+                        monthData.forEach(emp => {
+                            let rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
+                            const statuses = emp.statuses || [];
+                            daysInMonth.forEach((_, i) => {
+                                rowData.push(`"${String(statuses[i] || '-').replace(/"/g, '""')}"`);
+                            });
+                            rowData.push(
+                                `"${emp.presentDays || 0}"`,
+                                `"${emp.halfDays || 0}"`,
+                                `"${emp.overtimeDays || 0}"`,
+                                `"${emp.compOffs || 0}"`,
+                                `"${emp.earnedLeaves || 0}"`,
+                                `"${emp.sickLeaves || 0}"`,
+                                `"${emp.absentDays || 0}"`,
+                                `"${emp.weekOffs || 0}"`,
+                                `"${emp.holidays || 0}"`,
+                                `"${emp.totalPayableDays || 0}"`
+                            );
+                            csvContent += rowData.join(',') + '\n';
+                        });
+                    });
+                    
+                    // Download custom CSV directly
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', fileName);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    setToast({ message: 'CSV report downloaded successfully.', type: 'success' });
+                    setIsDownloading(false);
+                    return; // Exit here since we handled downloading manually for monthly
+                }
                 case 'work_hours':
                     // Map complex monthly data to a flat CSV structure
                     headers = { 
