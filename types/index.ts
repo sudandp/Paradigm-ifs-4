@@ -858,6 +858,15 @@ export interface CandidateReferral {
   referrerName: string;
   referrerMobile: string;
   referrerRole: string;
+  // New AP Group fields
+  employeeId?: string;
+  siteLocation?: string;
+  // Payment details for external
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
+  
   candidateName: string;
   candidateMobile: string;
   candidateRole: string;
@@ -874,6 +883,15 @@ export interface BusinessReferral {
   referrerMobile: string;
   referrerRole: string;
   siteAndDesignation: string;
+  // New AP Group fields
+  employeeId?: string;
+  siteLocation?: string;
+  // Payment details for external
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
+
   contactPersonName: string;
   contactPersonDesignation: string;
   clientEmail: string;

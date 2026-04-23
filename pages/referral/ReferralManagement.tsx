@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, Search, ArrowLeft, UserPlus,
   Phone, Briefcase, CheckCircle2, LayoutGrid, List,
-  ShieldCheck, RefreshCw, Calendar, Clock, ChevronRight
+  ShieldCheck, RefreshCw, Calendar, Clock, ChevronRight, Trash2,
+  Building, Layers
 } from 'lucide-react';
 import { api } from '../../services/api';
 
@@ -46,16 +47,15 @@ const ReferralManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [referralType, setReferralType] = useState<'candidate' | 'business'>('candidate');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-
-  useEffect(() => {
-    fetchReferrals();
-  }, []);
 
   const fetchReferrals = async () => {
     setLoading(true);
     try {
-      const data = await api.getCandidateReferrals();
+      const data = referralType === 'candidate' 
+        ? await api.getCandidateReferrals() 
+        : await api.getBusinessReferrals();
       setReferrals(data);
     } catch (error) {
       console.error('Failed to fetch referrals:', error);
@@ -64,21 +64,52 @@ const ReferralManagement: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    fetchReferrals();
+  }, [referralType]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchReferrals();
     setRefreshing(false);
   };
 
-  const filteredReferrals = referrals.filter(ref =>
-    ref.candidateName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ref.referrerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ref.candidateRole?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredReferrals = referrals.filter(ref => {
+    const searchLower = searchTerm.toLowerCase();
+    if (referralType === 'candidate') {
+      return (
+        ref.candidateName?.toLowerCase().includes(searchLower) ||
+        ref.referrerName?.toLowerCase().includes(searchLower) ||
+        ref.candidateRole?.toLowerCase().includes(searchLower)
+      );
+    } else {
+      return (
+        ref.communityName?.toLowerCase().includes(searchLower) ||
+        ref.contactPersonName?.toLowerCase().includes(searchLower) ||
+        ref.referrerName?.toLowerCase().includes(searchLower)
+      );
+    }
+  });
 
   const totalCount = referrals.length;
   const employeeRefs = referrals.filter(r => r.isParadigmEmployee).length;
   const verifiedCount = referrals.filter(r => r.status === 'yes').length;
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this referral?')) return;
+    
+    try {
+      if (referralType === 'candidate') {
+        await api.deleteCandidateReferral(id);
+      } else {
+        await api.deleteBusinessReferral(id);
+      }
+      await fetchReferrals();
+    } catch (error) {
+      console.error('Failed to delete referral:', error);
+      alert('Failed to delete referral');
+    }
+  };
 
   return (
     <div className="space-y-8 animate-fade-in pb-32 md:pb-8 min-w-0 overflow-x-hidden">
@@ -97,9 +128,32 @@ const ReferralManagement: React.FC = () => {
               Referral Management
             </h1>
             <p className="text-[10px] text-muted mt-1 font-bold uppercase tracking-widest max-md:text-emerald-400/60">
-              Employee Candidate Submissions
+              {referralType === 'candidate' ? 'Employee Candidate Submissions' : 'Strategic Business Opportunities'}
             </p>
           </div>
+        </div>
+
+        <div className="flex bg-page p-1 rounded-2xl border border-border max-md:bg-white/[0.05] max-md:border-white/5">
+          <button
+            onClick={() => setReferralType('candidate')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+              referralType === 'candidate' 
+                ? 'bg-accent text-white shadow-lg shadow-accent/20' 
+                : 'text-muted hover:text-primary-text'
+            }`}
+          >
+            Candidates
+          </button>
+          <button
+            onClick={() => setReferralType('business')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+              referralType === 'business' 
+                ? 'bg-accent text-white shadow-lg shadow-accent/20' 
+                : 'text-muted hover:text-primary-text'
+            }`}
+          >
+            Business
+          </button>
         </div>
 
         <button
@@ -115,7 +169,7 @@ const ReferralManagement: React.FC = () => {
       {/* ── Stats Row ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 md:gap-5">
         <StatCard icon={<Users className="w-5 h-5" />} label="Total" value={totalCount} color="#006b3f" sub="All referrals" />
-        <StatCard icon={<ShieldCheck className="w-5 h-5" />} label="Employees" value={employeeRefs} color="#3b82f6" sub="Paradigm staff" />
+        <StatCard icon={<ShieldCheck className="w-5 h-5" />} label="Employees" value={employeeRefs} color="#3b82f6" sub="AP Group staff" />
         <StatCard icon={<CheckCircle2 className="w-5 h-5" />} label="Verified" value={verifiedCount} color="#10b981" sub="System approved" />
       </div>
 
@@ -191,7 +245,13 @@ const ReferralManagement: React.FC = () => {
         /* ── Grid View ── */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
           {filteredReferrals.map((referral, idx) => (
-            <ReferralCard key={referral.id} referral={referral} index={idx} />
+            <ReferralCard 
+              key={referral.id} 
+              referral={referral} 
+              index={idx} 
+              type={referralType}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
       ) : (
@@ -201,10 +261,16 @@ const ReferralManagement: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-page max-md:bg-white/5 max-md:border-white/5">
-                  <th className="text-left px-4 md:px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">Candidate</th>
-                  <th className="hidden md:table-cell text-left px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px]">Contact</th>
+                  <th className="text-left px-4 md:px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">
+                    {referralType === 'candidate' ? 'Candidate' : 'Community / Business'}
+                  </th>
+                  <th className="hidden md:table-cell text-left px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px]">
+                    {referralType === 'candidate' ? 'Contact' : 'Client Contact'}
+                  </th>
                   <th className="text-left px-4 md:px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">Referred By</th>
-                  <th className="hidden md:table-cell text-left px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px]">Role</th>
+                  <th className="hidden md:table-cell text-left px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px]">
+                    {referralType === 'candidate' ? 'Role' : 'Service Type'}
+                  </th>
                   <th className="text-left px-4 md:px-6 py-5 font-black text-muted uppercase tracking-widest text-[10px] max-md:text-white/40">Status</th>
                   <th className="text-left px-4 md:px-6 py-5 font-black text-white/0 uppercase tracking-widest text-[10px]" />
                 </tr>
@@ -225,12 +291,12 @@ const ReferralManagement: React.FC = () => {
                       {/* Candidate */}
                       <td className="px-4 md:px-6 py-5">
                         <div className="font-black text-primary-text group-hover:text-accent transition-colors leading-none max-md:text-white max-md:group-hover:text-emerald-400">
-                          {referral.candidateName}
+                          {referralType === 'candidate' ? referral.candidateName : referral.communityName}
                         </div>
-                        {referral.candidateRole && (
+                        {(referral.candidateRole || referral.communityNature) && (
                           <div className="mt-1.5">
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-accent/8 text-accent border border-accent/15 max-md:bg-emerald-500/10 max-md:text-emerald-400 max-md:border-emerald-500/10">
-                              {referral.candidateRole}
+                              {referralType === 'candidate' ? referral.candidateRole : referral.communityNature}
                             </span>
                           </div>
                         )}
@@ -238,16 +304,16 @@ const ReferralManagement: React.FC = () => {
 
                       {/* Contact */}
                       <td className="hidden md:table-cell px-6 py-5">
-                        {referral.candidateMobile && (
+                        {(referral.candidateMobile || referral.clientPhone) && (
                           <div className="flex items-center gap-1.5 text-[11px] text-primary-text font-bold">
                             <Phone className="w-3 h-3 text-muted" />
-                            {referral.candidateMobile}
+                            {referralType === 'candidate' ? referral.candidateMobile : referral.clientPhone}
                           </div>
                         )}
-                        {referral.referredPersonRole && (
+                        {(referral.referredPersonRole || referral.contactPersonName) && (
                           <div className="flex items-center gap-1.5 text-[10px] text-muted font-semibold mt-1">
                             <Briefcase className="w-3 h-3" />
-                            {referral.referredPersonRole}
+                            {referralType === 'candidate' ? referral.referredPersonRole : referral.contactPersonName}
                           </div>
                         )}
                       </td>
@@ -273,15 +339,15 @@ const ReferralManagement: React.FC = () => {
                       {/* Referrer Role */}
                       <td className="hidden md:table-cell px-6 py-5">
                         <div className="flex flex-col gap-1.5">
-                          {referral.referrerRole && (
-                            <span className="inline-block px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-page border border-border text-muted">
-                              {referral.referrerRole}
+                          {(referral.referrerRole || referral.serviceInterested) && (
+                            <span className="inline-block px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-page border border-border text-muted truncate max-w-[150px]" title={referralType === 'candidate' ? referral.referrerRole : referral.serviceInterested}>
+                              {referralType === 'candidate' ? referral.referrerRole : referral.serviceInterested}
                             </span>
                           )}
                           {referral.isParadigmEmployee && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-50 border border-blue-100 text-blue-600">
                               <ShieldCheck className="w-3 h-3" />
-                              Employee
+                              AP Group Employee
                             </span>
                           )}
                         </div>
@@ -302,10 +368,22 @@ const ReferralManagement: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Arrow */}
+                      {/* Actions */}
                       <td className="px-4 md:px-6 py-5">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-page group-hover:bg-accent group-hover:text-white transition-all max-md:bg-white/5 max-md:group-hover:bg-emerald-500 max-md:group-hover:text-[#041b0f]">
-                          <ChevronRight className="w-4 h-4" />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(referral.id);
+                            }}
+                            className="w-8 h-8 rounded-full flex items-center justify-center bg-page text-red-500 hover:bg-red-500 hover:text-white transition-all max-md:bg-white/5"
+                            title="Delete Referral"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-page group-hover:bg-accent group-hover:text-white transition-all max-md:bg-white/5 max-md:group-hover:bg-emerald-500 max-md:group-hover:text-[#041b0f]">
+                            <ChevronRight className="w-4 h-4" />
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -321,7 +399,7 @@ const ReferralManagement: React.FC = () => {
 };
 
 // ─── Referral Card (Grid View) ────────────────────────────────────────────────
-const ReferralCard: React.FC<{ referral: any; index: number }> = ({ referral, index }) => {
+const ReferralCard: React.FC<{ referral: any; index: number; type: 'candidate' | 'business'; onDelete: (id: string) => void }> = ({ referral, index, type, onDelete }) => {
   const isVerified = referral.status === 'yes';
   const initials = referral.referrerName?.charAt(0)?.toUpperCase() ?? '?';
   const formattedDate = referral.createdAt
@@ -340,34 +418,58 @@ const ReferralCard: React.FC<{ referral: any; index: number }> = ({ referral, in
       <div className="flex items-start justify-between mb-5">
         <div className="space-y-1.5">
           <h3 className="text-base font-black tracking-tight text-primary-text group-hover:text-accent transition-colors uppercase max-md:text-white max-md:group-hover:text-emerald-400">
-            {referral.candidateName}
+            {type === 'candidate' ? referral.candidateName : referral.communityName}
           </h3>
-          {referral.candidateRole && (
+          {(referral.candidateRole || referral.communityNature) && (
             <span className="inline-block px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-accent/8 text-accent border border-accent/15 max-md:bg-emerald-500/10 max-md:text-emerald-400 max-md:border-emerald-500/10">
-              {referral.candidateRole}
+              {type === 'candidate' ? referral.candidateRole : referral.communityNature}
             </span>
           )}
         </div>
-        <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-page border border-border group-hover:bg-accent group-hover:border-accent transition-all max-md:bg-white/5 max-md:border-white/5 max-md:group-hover:bg-emerald-500">
-          <UserPlus className="h-5 w-5 text-muted group-hover:text-white transition-colors" />
+        <div className="flex flex-col gap-2 items-end">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(referral.id);
+            }}
+            className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors max-md:hover:bg-white/10"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-page border border-border group-hover:bg-accent group-hover:border-accent transition-all max-md:bg-white/5 max-md:border-white/5 max-md:group-hover:bg-emerald-500">
+            {type === 'candidate' ? (
+              <UserPlus className="h-5 w-5 text-muted group-hover:text-white transition-colors" />
+            ) : (
+              <Building className="h-5 w-5 text-muted group-hover:text-white transition-colors" />
+            )}
+          </div>
         </div>
       </div>
 
       {/* Contact Info */}
       <div className="space-y-2.5 mb-5">
-        {referral.candidateMobile && (
+        {(referral.candidateMobile || referral.clientPhone) && (
           <div className="flex items-center gap-2.5">
             <Phone className="h-4 w-4 text-muted/60 flex-shrink-0 max-md:text-white/20" />
             <span className="text-sm font-bold text-primary-text max-md:text-white/70">
-              {referral.candidateMobile}
+              {type === 'candidate' ? referral.candidateMobile : referral.clientPhone}
             </span>
           </div>
         )}
-        {referral.referredPersonRole && (
+        {(referral.referredPersonRole || referral.contactPersonName) && (
           <div className="flex items-center gap-2.5">
             <Briefcase className="h-4 w-4 text-muted/60 flex-shrink-0 max-md:text-white/20" />
             <span className="text-sm font-bold text-primary-text max-md:text-white/70">
-              {referral.referredPersonRole}
+              {type === 'candidate' ? referral.referredPersonRole : referral.contactPersonName}
+            </span>
+          </div>
+        )}
+        {type === 'business' && referral.serviceInterested && (
+          <div className="flex items-center gap-2.5">
+            <Layers className="h-4 w-4 text-muted/60 flex-shrink-0 max-md:text-white/20" />
+            <span className="text-xs font-bold text-primary-text/60 max-md:text-white/40 truncate">
+              {referral.serviceInterested}
             </span>
           </div>
         )}
@@ -394,15 +496,29 @@ const ReferralCard: React.FC<{ referral: any; index: number }> = ({ referral, in
 
         {/* Badges */}
         <div className="flex items-center gap-2 flex-wrap">
-          {referral.referrerRole && (
+          {referral.isParadigmEmployee && (
+            <div className="w-full space-y-2 mt-1">
+              <span className="flex items-center gap-1 text-[9px] font-black uppercase py-1.5 px-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 max-md:bg-blue-500/10 max-md:border-blue-500/10 max-md:text-blue-400">
+                <ShieldCheck className="h-3 w-3" />
+                AP Group Employee
+              </span>
+              <div className="flex items-center gap-2 px-1">
+                {referral.employeeId && (
+                  <span className="text-[9px] font-black text-muted uppercase tracking-widest max-md:text-white/40">
+                    ID: {referral.employeeId}
+                  </span>
+                )}
+                {referral.siteLocation && (
+                  <span className="text-[9px] font-black text-muted uppercase tracking-widest truncate max-md:text-white/40">
+                    • {referral.siteLocation}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {!referral.isParadigmEmployee && referral.referrerRole && (
             <span className="text-[9px] font-black uppercase py-1.5 px-3 rounded-xl bg-page border border-border text-muted max-md:bg-white/5 max-md:border-white/5 max-md:text-white/40">
               {referral.referrerRole}
-            </span>
-          )}
-          {referral.isParadigmEmployee && (
-            <span className="flex items-center gap-1 text-[9px] font-black uppercase py-1.5 px-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 max-md:bg-blue-500/10 max-md:border-blue-500/10 max-md:text-blue-400">
-              <ShieldCheck className="h-3 w-3" />
-              Employee
             </span>
           )}
         </div>

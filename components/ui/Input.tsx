@@ -3,7 +3,8 @@ import { type UseFormRegisterReturn } from 'react-hook-form';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
+  label?: React.ReactNode;
+  requiredIndicator?: boolean;
   labelClassName?: string;
   error?: string;
   description?: string;
@@ -17,7 +18,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(({ 
-  label, labelClassName, id, error, description, registration, icon, 
+  label, requiredIndicator, labelClassName, id, error, description, registration, icon, 
   autoCapitalizeCustom = true, forceUppercase = false, pattern, onComplete, ...props 
 }, ref) => {
   const [showPassword, setShowPassword] = useState(false);
@@ -112,7 +113,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({
         className={finalClassName}
         style={icon ? { paddingLeft: '3.5rem' } : undefined}
         aria-invalid={!!error}
-        aria-label={props['aria-label'] || label}
+        aria-label={props['aria-label'] || getStringFromLabel(label)}
         autoCapitalize={forceUppercase ? "characters" : (autoCapitalizeCustom ? "words" : undefined)}
         inputMode={getDynamicInputMode()}
         {...registration}
@@ -144,6 +145,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({
       {label && (
         <label htmlFor={inputId} className={labelClassName || "block text-sm font-medium text-muted"}>
           {label}
+          {requiredIndicator && <span className="text-red-500 ml-1 font-bold">*</span>}
         </label>
       )}
       {description && <p className="text-xs text-muted mb-1">{description}</p>}
@@ -154,6 +156,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({
     </div>
   );
 });
+
+// Helper to get string from ReactNode for aria-label
+const getStringFromLabel = (label: React.ReactNode): string | undefined => {
+  if (typeof label === 'string') return label;
+  return undefined;
+};
 
 Input.displayName = 'Input';
 

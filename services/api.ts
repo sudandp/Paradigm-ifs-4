@@ -7122,7 +7122,13 @@ export const api = {
     // 1. Store in business_referrals
     const { error: refError } = await supabase
       .from('business_referrals')
-      .insert(toSnakeCase(referral));
+      .insert(toSnakeCase({
+        ...referral,
+        companyName: referral.communityName,
+        contactPerson: referral.contactPersonName,
+        contactMobile: referral.clientPhone,
+        serviceRequired: referral.serviceInterested
+      }));
     if (refError) throw refError;
 
     // 2. Also create a lead in CRM Pipeline
@@ -7161,5 +7167,24 @@ export const api = {
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []).map(toCamelCase);
+  },
+
+  getBusinessReferrals: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('business_referrals')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  deleteCandidateReferral: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('candidate_referrals').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  deleteBusinessReferral: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('business_referrals').delete().eq('id', id);
+    if (error) throw error;
   }
 };
