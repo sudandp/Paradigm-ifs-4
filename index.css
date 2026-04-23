@@ -1721,4 +1721,366 @@ body.pro-dark-theme, body.pro-dark-theme #root, .pro-dark-theme .bg-page {
 }
 
 
+/* ═══════════════════════════════════════════
+   REFERRAL MODAL — Premium Redesign
+   Brand: #006b3f (bottle green) / #041b0f (deep forest)
+   ═══════════════════════════════════════════ */
 
+@keyframes referral-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes referral-panel-up {
+    from { opacity: 0; transform: translateY(32px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes referral-card-in {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes referral-glow-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50%       { opacity: 0.80; transform: scale(1.08); }
+}
+
+/* Backdrop */
+.referral-backdrop {
+    animation: referral-backdrop-in 0.22s ease forwards;
+}
+.referral-bg-blur {
+    inset: 0;
+    position: absolute;
+    background: rgba(4, 27, 15, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* Panel — desktop */
+.referral-panel {
+    position: relative;
+    z-index: 1;
+    animation: referral-panel-up 0.32s cubic-bezier(0.22, 0.8, 0.4, 1) forwards;
+}
+.referral-panel--desktop {
+    background: #ffffff;
+    border-radius: 1.5rem;
+    padding: 0;
+    border: 1px solid rgba(0, 107, 63, 0.12);
+    box-shadow:
+        0 0 0 1px rgba(0, 107, 63, 0.06),
+        0 24px 64px rgba(4, 27, 15, 0.18),
+        0 8px 24px rgba(0, 107, 63, 0.1);
+    overflow: hidden;
+}
+
+/* Panel — mobile: bottom sheet */
+.referral-panel--mobile {
+    background: #051f10;
+    border-radius: 1.5rem 1.5rem 0 0;
+    border: 1px solid rgba(34, 197, 94, 0.12);
+    border-bottom: none;
+    box-shadow: 0 -8px 40px rgba(4, 27, 15, 0.5);
+    padding-bottom: env(safe-area-inset-bottom, 1.5rem);
+    overflow: hidden;
+}
+
+/* Decorative top glow strip */
+.referral-top-glow {
+    position: absolute;
+    top: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 80px;
+    background: radial-gradient(ellipse at center, rgba(0, 107, 63, 0.45) 0%, transparent 70%);
+    pointer-events: none;
+    animation: referral-glow-pulse 3s ease-in-out infinite;
+    z-index: 0;
+}
+
+/* Header row */
+.referral-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem 1.5rem 0;
+    position: relative;
+    z-index: 1;
+}
+.referral-panel--mobile .referral-header {
+    padding: 1.25rem 1.25rem 0;
+}
+
+/* Sparkle icon badge */
+.referral-header-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.65rem;
+    background: linear-gradient(135deg, #006b3f 0%, #005632 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(0, 107, 63, 0.35);
+}
+.referral-panel--mobile .referral-header-icon {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+}
+
+/* Eyebrow label */
+.referral-eyebrow {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #006b3f;
+    margin-bottom: 0.1rem;
+    line-height: 1;
+}
+.referral-panel--mobile .referral-eyebrow {
+    color: #22c55e;
+}
+
+/* Modal title */
+.referral-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+}
+.referral-panel--mobile .referral-title {
+    color: #ffffff;
+}
+
+/* Close button */
+.referral-close-btn {
+    margin-left: auto;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+.referral-close-btn:hover {
+    background: #e2e8f0;
+    color: #475569;
+    transform: rotate(90deg);
+}
+.referral-panel--mobile .referral-close-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+}
+.referral-panel--mobile .referral-close-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+/* Subtitle */
+.referral-subtitle {
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    color: #64748b;
+    padding: 0.75rem 1.5rem 1.25rem;
+    position: relative;
+    z-index: 1;
+}
+.referral-panel--mobile .referral-subtitle {
+    color: rgba(255, 255, 255, 0.45);
+    padding: 0.65rem 1.25rem 1rem;
+}
+
+/* Cards container */
+.referral-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0 1.5rem;
+    position: relative;
+    z-index: 1;
+}
+.referral-panel--mobile .referral-cards {
+    padding: 0 1.25rem;
+}
+
+/* Individual option card */
+.referral-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1rem 1rem 1rem;
+    border-radius: 1rem;
+    text-align: left;
+    width: 100%;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    animation: referral-card-in 0.35s ease both;
+    border: 1.5px solid #f1f5f9;
+    background: #f8fafc;
+}
+.referral-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 107, 63, 0.04) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    border-radius: inherit;
+}
+.referral-card:hover {
+    border-color: rgba(0, 107, 63, 0.3);
+    background: #f0faf4;
+    box-shadow: 0 4px 20px rgba(0, 107, 63, 0.1), 0 1px 4px rgba(0, 107, 63, 0.06);
+    transform: translateY(-1px);
+}
+.referral-card:hover::before { opacity: 1; }
+.referral-card:active { transform: scale(0.985); }
+
+/* Dark mobile card variant */
+.referral-panel--mobile .referral-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.07);
+}
+.referral-panel--mobile .referral-card:hover {
+    background: rgba(34, 197, 94, 0.06);
+    border-color: rgba(34, 197, 94, 0.22);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
+}
+
+/* Card icon slab */
+.referral-card-icon {
+    width: 2.625rem;
+    height: 2.625rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.referral-card:hover .referral-card-icon {
+    transform: scale(1.08) rotate(-2deg);
+}
+
+/* Card text */
+.referral-card-body { flex: 1; min-width: 0; }
+.referral-card-top-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.2rem;
+}
+.referral-card-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+.referral-panel--mobile .referral-card-title { color: #ffffff; }
+
+.referral-card-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(0, 107, 63, 0.1);
+    color: #006b3f;
+    border: 1px solid rgba(0, 107, 63, 0.18);
+    flex-shrink: 0;
+}
+.referral-panel--mobile .referral-card-badge {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.2);
+}
+
+.referral-card-desc {
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+.referral-panel--mobile .referral-card-desc { color: rgba(255, 255, 255, 0.38); }
+
+/* Arrow CTA */
+.referral-card-arrow {
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f5f9;
+    color: #94a3b8;
+    flex-shrink: 0;
+    transition: all 0.22s ease;
+    border: 1px solid #e2e8f0;
+}
+.referral-card:hover .referral-card-arrow {
+    background: #006b3f;
+    color: #ffffff;
+    border-color: #006b3f;
+    transform: translateX(2px);
+    box-shadow: 0 4px 10px rgba(0, 107, 63, 0.28);
+}
+.referral-panel--mobile .referral-card-arrow {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.35);
+}
+.referral-panel--mobile .referral-card:hover .referral-card-arrow {
+    background: #22c55e;
+    color: #041b0f;
+    border-color: #22c55e;
+    box-shadow: 0 4px 10px rgba(34, 197, 94, 0.3);
+}
+
+/* Footer */
+.referral-footer {
+    padding: 1.25rem 1.5rem 1.5rem;
+    position: relative;
+    z-index: 1;
+}
+.referral-panel--mobile .referral-footer {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+/* Cancel button */
+.referral-cancel-btn {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+}
+.referral-cancel-btn:hover {
+    background: #e2e8f0;
+    color: #475569;
+}
+.referral-cancel-btn:active { transform: scale(0.98); }
+.referral-panel--mobile .referral-cancel-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.09);
+    color: rgba(255, 255, 255, 0.45);
+}
+.referral-panel--mobile .referral-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: rgba(255, 255, 255, 0.7);
+}
