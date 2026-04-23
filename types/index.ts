@@ -853,3 +853,33 @@ export interface SiteCostingMaster {
   createdAt?: string;
   updatedAt?: string;
 }
+export interface CandidateReferral {
+  id?: string;
+  referrerName: string;
+  referrerMobile: string;
+  referrerRole: string;
+  candidateName: string;
+  candidateMobile: string;
+  candidateRole: string;
+  referredPersonRole?: string;
+  createdBy?: string;
+  createdAt?: string;
+}
+
+export interface BusinessReferral {
+  id?: string;
+  referrerName: string;
+  referrerMobile: string;
+  referrerRole: string;
+  siteAndDesignation: string;
+  contactPersonName: string;
+  contactPersonDesignation: string;
+  clientEmail: string;
+  clientPhone: string;
+  serviceInterested: string;
+  communityName: string;
+  communityNature: string;
+  totalUnits: number;
+  createdBy?: string;
+  createdAt?: string;
+}

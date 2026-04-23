@@ -132,17 +132,20 @@ const BottomNav: React.FC = () => {
                             {/* Outer ring — same color as bar, acts as notch border */}
                             <div className="w-[72px] h-[72px] rounded-full bg-[#041b0f] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
                                 {/* Inner green circle — 52px */}
-                                <button
+                                <motion.button
                                     onClick={() => setReferralModalOpen(true)}
-                                    className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group"
+                                    className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden"
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
                                     style={{
                                         background: 'radial-gradient(circle at 40% 35%, #1a9a6a, #006b3f 60%, #004d2d)',
                                         boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.15), 0 4px 12px rgba(0,107,63,0.4)',
                                     }}
                                     aria-label="Referral Program"
                                 >
+                                    {/* Reverse rotate the icon to keep it upright if desired, or let it rotate with button */}
                                     <Plus className="text-white w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
-                                </button>
+                                </motion.button>
                             </div>
                         </div>
                     </div>

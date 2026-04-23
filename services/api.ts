@@ -7109,5 +7109,57 @@ export const api = {
       versionNo: (existing.versionNo || 1) + 1,
       status: 'Draft',
     });
+  },
+
+  saveCandidateReferral: async (referral: any): Promise<void> => {
+    const { error } = await supabase
+      .from('candidate_referrals')
+      .insert(toSnakeCase(referral));
+    if (error) throw error;
+  },
+
+  saveBusinessReferral: async (referral: any): Promise<void> => {
+    // 1. Store in business_referrals
+    const { error: refError } = await supabase
+      .from('business_referrals')
+      .insert(toSnakeCase(referral));
+    if (refError) throw refError;
+
+    // 2. Also create a lead in CRM Pipeline
+    const leadData = {
+      clientName: referral.communityName,
+      associationName: referral.communityName,
+      contactPerson: referral.contactPersonName,
+      phone: referral.clientPhone,
+      email: referral.clientEmail,
+      source: 'Referral',
+      propertyType: referral.communityNature?.includes('Villa') ? 'Residential' : 'Residential', 
+      unitCount: Number(referral.totalUnits) || 0,
+      status: 'New Lead',
+      city: referral.siteAndDesignation?.split(' - ')[0] || '',
+      notes: `Referred by: ${referral.referrerName} (${referral.referrerRole})\nSite/Desig: ${referral.siteAndDesignation}`,
+      createdBy: referral.createdBy,
+    };
+
+    try {
+      const { error: leadError } = await supabase
+        .from('crm_leads')
+        .insert(toSnakeCase(leadData));
+      
+      if (leadError) {
+        console.warn('Business referral saved, but failed to push to CRM Pipeline:', leadError);
+      }
+    } catch (e) {
+      console.warn('Error pushing referral to CRM:', e);
+    }
+  },
+
+  getCandidateReferrals: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('candidate_referrals')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
   }
 };

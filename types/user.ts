@@ -51,7 +51,8 @@ export type Permission =
   | 'view_crm'
   | 'view_crm_pipeline'
   | 'view_crm_checklists'
-  | 'view_operations';
+  | 'view_operations'
+  | 'view_referrals';
 
 export interface TaskGroup {
   id: string;

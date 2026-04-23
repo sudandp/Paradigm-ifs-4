@@ -155,6 +155,7 @@ const AuditTrail = lazyWithRetry(() => import('./pages/enterprise/AuditTrail'));
 // Referral Module
 const EmployeeReferralForm = lazyWithRetry(() => import('./pages/referral/EmployeeReferralForm'));
 const BusinessReferralForm = lazyWithRetry(() => import('./pages/referral/BusinessReferralForm'));
+const ReferralManagement = lazyWithRetry(() => import('./pages/referral/ReferralManagement'));
 
 // Onboarding Form Steps
 const PersonalDetails = lazyWithRetry(() => import('./pages/onboarding/PersonalDetails'));
@@ -281,7 +282,7 @@ class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode },
 // across browser reloads and tab closures.  This enables the app to
 // return the user to the same page after a refresh or PWA relaunch.
 const LAST_PATH_KEY = 'app:lastPath';
-const IGNORED_PATH_PREFIXES = ['/auth', '/splash', '/pending-approval', '/forbidden', '/blocked-access'];
+const IGNORED_PATH_PREFIXES = ['/auth', '/splash', '/pending-approval', '/forbidden', '/blocked-access', '/referral/employee', '/referral/business'];
 
 const shouldStorePath = (path: string) => {
   // ignore auth pages, splash, pending, forbidden or catch-all redirects
@@ -304,8 +305,10 @@ const MainLayoutWrapper: React.FC = () => {
     return null;
   }
 
-  if (!user) {
-    // Not logged in, redirect to login
+  const isPublicReferralPath = location.pathname.startsWith('/referral/employee') || location.pathname.startsWith('/referral/business');
+
+  if (!user && !isPublicReferralPath) {
+    // Not logged in and not a public path, redirect to login
     // Store the current path before redirecting if it should be remembered.
     if (shouldStorePath(location.pathname + location.search)) {
       localStorage.setItem(LAST_PATH_KEY, location.pathname + location.search);
@@ -1016,6 +1019,9 @@ const App: React.FC = () => {
           {/* Referral Module — accessible to all authenticated users */}
           <Route path="referral/employee" element={<EmployeeReferralForm />} />
           <Route path="referral/business" element={<BusinessReferralForm />} />
+          <Route element={<ProtectedRoute requiredPermission="view_referrals" />}>
+            <Route path="referral/management" element={<ReferralManagement />} />
+          </Route>
 
           {/* Onboarding Flow */}
           <Route element={<ProtectedRoute requiredPermission="create_enrollment" />}>

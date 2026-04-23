@@ -86,11 +86,26 @@ const ReferralModal: React.FC = () => {
                     ))}
                 </div>
 
-                <div className={`mt-8 pt-6 border-t flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest font-bold ${
-                    isMobile ? 'border-white/10 text-gray-500' : 'border-gray-100 text-gray-400'
+                <div className={`mt-8 pt-6 border-t flex flex-col items-center gap-4 ${
+                    isMobile ? 'border-white/10' : 'border-gray-100'
                 }`}>
-                    <ExternalLink className="h-3 w-3" />
-                    <span>Referral Forms</span>
+                    <button
+                        onClick={() => setReferralModalOpen(false)}
+                        className={`w-full py-3 rounded-xl font-bold transition-all active:scale-[0.98] ${
+                            isMobile 
+                                ? 'bg-white/5 text-white/60 hover:bg-white/10' 
+                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                        }`}
+                    >
+                        Cancel & Go Back
+                    </button>
+
+                    <div className={`flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest font-bold ${
+                        isMobile ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                        <ExternalLink className="h-3 w-3" />
+                        <span>Referral Forms</span>
+                    </div>
                 </div>
             </div>
         </Modal>

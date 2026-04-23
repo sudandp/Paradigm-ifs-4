@@ -32,6 +32,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // CRM & Sales
     { to: '/crm', label: 'CRM Pipeline', icon: Target, permission: 'view_crm_pipeline', category: 'CRM & Sales' },
     { to: '/crm/checklists', label: 'Checklist Templates', icon: ClipboardCheck, permission: 'view_crm_checklists', category: 'CRM & Sales' },
+    { to: '/referral/management', label: 'Referral Management', icon: Users, permission: 'view_referrals', category: 'CRM & Sales' },
 
     // Dashboards
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
@@ -498,7 +499,9 @@ const MainLayout: React.FC = () => {
         }
     }, [user, fetchNotifications]);
 
-    if (!user) {
+    const isPublicReferralPath = location.pathname.startsWith('/referral/employee') || location.pathname.startsWith('/referral/business');
+
+    if (!user && !isPublicReferralPath) {
         return <Navigate to="/auth/login" replace />;
     }
 
