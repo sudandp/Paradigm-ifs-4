@@ -110,7 +110,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                         </button>
                                     </div>
                                 )}
-                                 <NotificationBell theme={isMobile ? 'dark' : 'light'} />
+                                 {user && <NotificationBell theme={isMobile ? 'dark' : 'light'} />}
                                 {!isMobile && (
                                     user ? (
                                         <div className="relative" ref={userMenuRef}>

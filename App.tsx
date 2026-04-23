@@ -315,7 +315,7 @@ const MainLayoutWrapper: React.FC = () => {
     }
     return <Navigate to="/auth/login" replace />;
   }
-  if (user.role === 'unverified') {
+  if (user && user.role === 'unverified') {
     // Logged in but not approved, redirect to pending page
     return <Navigate to="/pending-approval" replace />;
   }
@@ -323,7 +323,7 @@ const MainLayoutWrapper: React.FC = () => {
   // Handle Salary Hold / Strike 3 Block
   // If user is on salary hold, they must provide reasoning and agree to terms.
   // We allow them to access the profile page specifically if they've acknowledged (which we check via reason).
-  if (user.salaryHold) {
+  if (user && user.salaryHold) {
     const isAllowedPath = location.pathname === '/blocked-access' || 
                           location.pathname === '/profile' || 
                           location.pathname === '/auth/logout';
