@@ -1910,7 +1910,7 @@ export const api = {
   },
   saveEntity: async (entity: Partial<Entity>): Promise<Entity> => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id, agreements, ...rest } = entity;
+    const { id, agreements, latitude, longitude, ...rest } = entity;
     const status = await Network.getStatus();
     
     const entityToSave = { 

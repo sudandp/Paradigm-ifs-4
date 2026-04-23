@@ -152,6 +152,10 @@ const PaymentTracker = lazyWithRetry(() => import('./pages/finance/PaymentTracke
 const ApprovalsInbox = lazyWithRetry(() => import('./pages/enterprise/ApprovalsInbox'));
 const AuditTrail = lazyWithRetry(() => import('./pages/enterprise/AuditTrail'));
 
+// Referral Module
+const EmployeeReferralForm = lazyWithRetry(() => import('./pages/referral/EmployeeReferralForm'));
+const BusinessReferralForm = lazyWithRetry(() => import('./pages/referral/BusinessReferralForm'));
+
 // Onboarding Form Steps
 const PersonalDetails = lazyWithRetry(() => import('./pages/onboarding/PersonalDetails'));
 const AddressDetails = lazyWithRetry(() => import('./pages/onboarding/AddressDetails'));
@@ -1008,6 +1012,10 @@ const App: React.FC = () => {
             <Route path="profile" element={<ProfilePage />} />
           </Route>
           <Route path="mobile-home" element={<MobileHome />} />
+
+          {/* Referral Module — accessible to all authenticated users */}
+          <Route path="referral/employee" element={<EmployeeReferralForm />} />
+          <Route path="referral/business" element={<BusinessReferralForm />} />
 
           {/* Onboarding Flow */}
           <Route element={<ProtectedRoute requiredPermission="create_enrollment" />}>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell } from 'lucide-react';
+import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -12,6 +12,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDevice } from '../../hooks/useDevice';
 import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 import { isAdmin } from '../../utils/auth';
+import { useUiSettingsStore } from '../../store/uiSettingsStore';
 
 interface HeaderProps {
     setIsMobileMenuOpen?: (isOpen: boolean) => void;
@@ -24,6 +25,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const { isMobile } = useDevice();
+    const { setReferralModalOpen } = useUiSettingsStore();
     const location = useLocation();
 
     useEffect(() => {
@@ -69,7 +71,17 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                         </div>
 
                         <div className="flex-none flex items-center justify-center">
-                            <div className="flex items-center">
+                            <div className="flex items-center space-x-2">
+                                {!isMobile && (
+                                    <button
+                                        onClick={() => setReferralModalOpen(true)}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 transition-all group mr-2"
+                                        title="Referral Program"
+                                    >
+                                        <Plus className="h-4 w-4 group-hover:rotate-90 transition-transform" />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Referral</span>
+                                    </button>
+                                )}
                                 <NotificationBell theme={isMobile ? 'dark' : 'light'} />
                                 {!isMobile && user && (
                                     <div className="relative" ref={userMenuRef}>

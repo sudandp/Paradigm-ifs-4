@@ -17,6 +17,7 @@ import { NotificationPanel } from '../notifications/NotificationPanel';
 import BreakTrackingMonitor from '../attendance/BreakTrackingMonitor';
 import { useSettingsStore } from '../../store/settingsStore';
 import { PingAlarmOverlay } from '../notifications/PingAlarmOverlay';
+import ReferralModal from '../modals/ReferralModal';
 
 export interface NavLinkConfig {
     to: string;
@@ -624,6 +625,7 @@ const MainLayout: React.FC = () => {
                     </Button>
                 </div>
             )}
+            <ReferralModal />
         </div>
     );
 };
