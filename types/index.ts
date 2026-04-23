@@ -862,6 +862,8 @@ export interface CandidateReferral {
   candidateMobile: string;
   candidateRole: string;
   referredPersonRole?: string;
+  isParadigmEmployee?: boolean;
+  status?: string;
   createdBy?: string;
   createdAt?: string;
 }
@@ -880,6 +882,8 @@ export interface BusinessReferral {
   communityName: string;
   communityNature: string;
   totalUnits: number;
+  isParadigmEmployee?: boolean;
+  status?: string;
   createdBy?: string;
   createdAt?: string;
 }

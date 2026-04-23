@@ -42,7 +42,8 @@ const EmployeeReferralForm: React.FC = () => {
             await api.saveCandidateReferral({
                 ...data,
                 createdBy: user?.id,
-                isParadigmEmployee: isParadigmEmployee
+                isParadigmEmployee: !!isParadigmEmployee,
+                status: isParadigmEmployee ? 'yes' : 'pending'
             });
             setIsSuccess(true);
         } catch (err: any) {
