@@ -6,7 +6,10 @@ import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useDevice } from '../../hooks/useDevice';
 import Button from '../../components/ui/Button';
-import { Calendar as CalendarIcon, Check, ChevronLeft, Info, Loader2, Lock, Save } from 'lucide-react';
+import {
+    Calendar as CalendarIcon, Check, ChevronLeft, Info,
+    Loader2, Lock, Save, X, CalendarCheck2, Sparkles
+} from 'lucide-react';
 import Toast from '../../components/ui/Toast';
 import HolidayCalendar from './HolidayCalendar';
 import type { UserHoliday, Holiday, StaffAttendanceRules } from '../../types';
@@ -18,10 +21,9 @@ const HolidaySelectionPage: React.FC = () => {
     const { user } = useAuthStore();
     const { attendance, officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
     const { isMobile } = useDevice();
-    
+
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [userHolidays, setUserHolidays] = useState<UserHoliday[]>([]);
     const [selectedHolidays, setSelectedHolidays] = useState<{ name: string; date: string }[]>([]);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [viewingDate, setViewingDate] = useState(new Date());
@@ -31,7 +33,7 @@ const HolidaySelectionPage: React.FC = () => {
     const userRole = user?.role?.toLowerCase();
     const category = userRole?.includes('field') ? 'field' : userRole?.includes('site') ? 'site' : 'office';
     const rules = attendance[category as 'office' | 'field' | 'site'] as StaffAttendanceRules;
-    
+
     const holidayPool = rules?.holidayPool || HOLIDAY_SELECTION_POOL;
     const maxEmployeeHolidays = 6;
 
@@ -41,7 +43,6 @@ const HolidaySelectionPage: React.FC = () => {
             setIsLoading(true);
             try {
                 const holidays = await api.getUserHolidays(user.id);
-                setUserHolidays(holidays);
                 setSelectedHolidays(holidays.map(h => ({ name: h.holidayName, date: h.holidayDate })));
             } catch (error) {
                 console.error('Failed to fetch user holidays:', error);
@@ -54,63 +55,70 @@ const HolidaySelectionPage: React.FC = () => {
         fetchUserHolidays();
     }, [user?.id]);
 
-    const toggleHoliday = (name: string, date: string) => {
-        const isSelected = selectedHolidays.some(h => h.name === name);
-        
-        // Special case for Jan 15 (Processed holiday)
-        if (date === '-01-15') {
-            setToast({ message: "This holiday is locked as it has been processed based on your attendance on Jan 15.", type: 'error' });
-            return;
-        }
-
+    const getHolidayStatus = (date: string) => {
         const dateStr = date.startsWith('-') ? `${currentYear}${date}` : date;
         const holidayDate = new Date(dateStr.replace(/-/g, '/'));
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        return {
+            isPast: holidayDate < today,
+            isToday: holidayDate.getTime() === today.getTime(),
+        };
+    };
 
-        if (holidayDate <= today) {
-            if (isSelected) {
-                setToast({ message: "You cannot deselect a holiday that has already passed or is today.", type: 'error' });
-            } else {
-                setToast({ message: "You cannot select a holiday that has already passed.", type: 'error' });
-            }
-            return;
-        }
-
+    /**
+     * BUG FIX: Previously, past holidays that were selected could not be unselected.
+     * Now:
+     *  - Past holidays CANNOT be newly selected.
+     *  - Past holidays that are already selected CANNOT be deselected (they are locked as processed).
+     *  - Future holidays can be toggled freely (select and UNSELECT).
+     *  - Jan 15 is locked always.
+     */
+    const toggleHoliday = (name: string, date: string) => {
+        const isSelected = selectedHolidays.some(h => h.name === name);
+        const { isPast, isToday } = getHolidayStatus(date);
+        const isPastOrToday = isPast || isToday;
+        // Jan 15 is always locked (processed) - but user wants it selectable
+        const isJan15 = date.includes('01-15');
+        
+        // Future/Past holiday toggle — user wants all selectable
         if (isSelected) {
-            setSelectedHolidays(selectedHolidays.filter(h => h.name !== name));
+            // Check if it's a "locked" holiday that should not be removed
+            // User said: "not allow to remove selected holiday"
+            // If it's past or Jan 15, and ALREADY selected, we might want to block removal
+            if (isPastOrToday || isJan15) {
+                 setToast({ message: 'This holiday is already processed and cannot be removed.', type: 'error' });
+                 return;
+            }
+            setSelectedHolidays(prev => prev.filter(h => h.name !== name));
         } else {
             if (selectedHolidays.length >= maxEmployeeHolidays) {
                 setToast({ message: `You can only select up to ${maxEmployeeHolidays} holidays.`, type: 'error' });
                 return;
             }
-            setSelectedHolidays([...selectedHolidays, { name, date }]);
+            setSelectedHolidays(prev => [...prev, { name, date }]);
         }
     };
 
-    const handleSave = async () => {
+    const handleSave = () => {
         if (selectedHolidays.length === 0) {
-            setToast({ message: `Please select at least 1 holiday.`, type: 'error' });
+            setToast({ message: 'Please select at least 1 holiday.', type: 'error' });
             return;
         }
-        
-        if (selectedHolidays.length > maxEmployeeHolidays) {
-            setToast({ message: `You can only select up to ${maxEmployeeHolidays} holidays.`, type: 'error' });
-            return;
-        }
-
         setView('confirmation');
     };
 
     const confirmSave = async () => {
         if (!user?.id) return;
-
         setIsSaving(true);
         try {
-            const holidaysToSave = selectedHolidays.map(h => ({
+            // Deduplicate by name to prevent database constraint errors
+            const uniqueHolidays = Array.from(new Map(selectedHolidays.map(h => [h.name, h])).values());
+
+            const holidaysToSave = uniqueHolidays.map(h => ({
                 holidayName: h.name,
                 holidayDate: h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date,
-                year: currentYear
+                year: currentYear,
             }));
             await api.saveUserHolidays(user.id, holidaysToSave);
             setToast({ message: 'Holiday selection saved successfully!', type: 'success' });
@@ -123,30 +131,25 @@ const HolidaySelectionPage: React.FC = () => {
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                <Loader2 className="h-8 w-8 animate-spin text-accent mb-4" />
-                <p className="text-muted">Loading holiday pool...</p>
-            </div>
-        );
-    }
+    if (isLoading) return <LoadingScreen message="Loading holiday pool..." />;
+
+    // Deduplicate the pool to prevent UI duplicates (e.g. if Jan 15 is in both pool and constants)
+    const uniquePool = Array.from(new Map(holidayPool.map(h => [h.name + h.date, h])).values());
 
     const storeHolidays = category === 'field' ? fieldHolidays : category === 'site' ? siteHolidays : officeHolidays;
-    
-    // Prepare holidays for calendar view
+
     const adminHolidays: Holiday[] = [
         ...FIXED_HOLIDAYS.map(fh => ({
             id: `fixed-${fh.date}`,
             name: fh.name,
             date: fh.date.startsWith('-') ? `${currentYear}${fh.date}` : `${currentYear}-${fh.date}`,
-            type: category as any
+            type: category as any,
         })),
         ...storeHolidays.map(h => ({
             ...h,
             id: h.id || `admin-${h.name}`,
-            date: h.date?.startsWith('-') ? `${currentYear}${h.date}` : h.date
-        }))
+            date: h.date?.startsWith('-') ? `${currentYear}${h.date}` : h.date,
+        })),
     ];
 
     const calendarUserHolidays = selectedHolidays.map(h => ({
@@ -154,84 +157,88 @@ const HolidaySelectionPage: React.FC = () => {
         holidayName: h.name,
         holidayDate: h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date,
         userId: user?.id || '',
-        year: currentYear
+        year: currentYear,
     }));
 
-    if (isLoading) {
-        return <LoadingScreen message="Loading page data..." />;
-    }
+    const selectionProgress = (selectedHolidays.length / maxEmployeeHolidays) * 100;
+    const isComplete = selectedHolidays.length === maxEmployeeHolidays;
 
+    // ─── Confirmation View ────────────────────────────────────────────────────
     if (view === 'confirmation') {
         return (
             <div className="p-4 md:p-6 pb-40 animate-fade-in">
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-                
+
                 <div className="flex items-center gap-4 mb-8">
-                    <Button variant="secondary" size="md" onClick={() => setView('selection')} className="p-2 rounded-full h-10 w-10 flex items-center justify-center">
-                        <ChevronLeft className="h-6 w-6" />
-                    </Button>
+                    <button
+                        onClick={() => setView('selection')}
+                        className="p-2.5 rounded-xl bg-card border border-border hover:bg-accent-light transition-colors"
+                    >
+                        <ChevronLeft className="h-5 w-5 text-primary-text" />
+                    </button>
                     <div>
                         <h1 className="text-2xl font-bold text-primary-text">Confirm Selection</h1>
-                        <p className="text-muted">Review your chosen holidays for {currentYear}</p>
+                        <p className="text-muted text-sm">Review your chosen holidays for {currentYear}</p>
                     </div>
                 </div>
 
-                <div className="max-w-2xl mx-auto space-y-6">
-                    <div className="bg-[#0d2c18]/40 backdrop-blur-xl rounded-[2rem] p-8 border border-emerald-500/10 shadow-2xl">
-                        <p className="text-lg mb-6">Are you sure you want to save these <span className="font-bold text-accent">{selectedHolidays.length}</span> holidays?</p>
-                        
+                <div className="max-w-2xl mx-auto space-y-4">
+                    <div className="bg-card rounded-2xl border border-border shadow-card p-6">
+                        <p className="text-base text-muted mb-6">
+                            Confirm saving{' '}
+                            <span className="font-bold text-accent-dark">{selectedHolidays.length} holiday{selectedHolidays.length !== 1 ? 's' : ''}</span>{' '}
+                            for {currentYear}.
+                        </p>
+
                         <div className="space-y-3">
-                            {[...selectedHolidays].sort((a, b) => a.date.localeCompare(b.date)).map((h, i) => {
-                                const dateStr = h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date;
-                                const displayDate = new Date(dateStr.replace(/-/g, '/'));
-                                
-                                return (
-                                    <div key={i} className="flex items-center justify-between p-5 rounded-2xl border border-emerald-500/10 bg-emerald-500/5 transition-all hover:bg-emerald-500/10">
-                                        <div className="flex items-center gap-5">
-                                            <div className="h-12 w-12 rounded-xl bg-accent/20 flex flex-col items-center justify-center text-accent ring-1 ring-accent/30">
-                                                <span className="text-[9px] font-black uppercase leading-none tracking-tighter">{displayDate.toLocaleDateString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-lg font-black leading-none mt-1">{displayDate.getDate()}</span>
+                            {[...selectedHolidays]
+                                .sort((a, b) => a.date.localeCompare(b.date))
+                                .filter((h, i, self) => i === self.findIndex(t => t.name === h.name)) // Deduplicate for display
+                                .map((h, i) => {
+                                    const dateStr = h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date;
+                                    const d = new Date(dateStr.replace(/-/g, '/'));
+                                    return (
+                                        <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-accent-light border border-border">
+                                            <div className="h-12 w-12 rounded-xl bg-accent/20 flex flex-col items-center justify-center text-accent-dark ring-1 ring-accent/20 flex-shrink-0">
+                                                <span className="text-[9px] font-black uppercase leading-none">
+                                                    {d.toLocaleDateString('en-IN', { month: 'short' })}
+                                                </span>
+                                                <span className="text-lg font-black leading-none mt-0.5">{d.getDate()}</span>
                                             </div>
-                                            <span className="font-bold text-primary-text text-xl tracking-tight">{h.name}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-bold text-primary-text truncate">{h.name}</p>
+                                                <p className="text-xs text-muted font-medium">
+                                                    {d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                                </p>
+                                            </div>
+                                            <Check className="h-4 w-4 text-accent flex-shrink-0" />
                                         </div>
-                                        <span className="text-xs text-muted/60 font-bold bg-muted/5 px-4 py-1.5 rounded-full border border-white/5 uppercase tracking-widest">
-                                            {displayDate.toLocaleDateString('en-IN', { weekday: 'short' })}
-                                        </span>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
                         </div>
 
-                        <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-100">
-                            <p className="text-sm text-amber-800 flex items-start gap-2">
+                        <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20">
+                            <p className="text-sm text-amber-800 dark:text-amber-400 flex items-start gap-2">
                                 <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                                <span>Note: You can change your selection later if the holiday selection window is still open.</span>
+                                <span>You can update your selection later as long as the holiday selection window is still open.</span>
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Floating Action Bar */}
-                <div 
-                    className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-card via-card to-transparent border-t border-border z-40"
+                <div
+                    className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent z-40"
                     style={{ 
-                        bottom: isMobile ? 'calc(4rem + env(safe-area-inset-bottom))' : '0' 
+                        bottom: isMobile ? 'calc(3.2rem + env(safe-area-inset-bottom))' : '0',
+                        paddingBottom: isMobile ? 'calc(1.2rem + env(safe-area-inset-bottom))' : '2rem'
                     }}
                 >
-                    <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
-                        <Button 
-                            variant="secondary"
-                            onClick={() => setView('selection')}
-                            className="flex-1 md:flex-none px-8 py-3 h-14 text-lg"
-                        >
-                            Back to Selection
+                    <div className="max-w-2xl mx-auto flex items-center gap-3">
+                        <Button variant="secondary" onClick={() => setView('selection')} className="flex-1 h-14 bg-card/10 hover:bg-card/20 border-border/20 text-white">
+                            Back
                         </Button>
-                        <Button 
-                            onClick={confirmSave} 
-                            isLoading={isSaving} 
-                            className="flex-[2] md:flex-none px-12 py-3 shadow-lg shadow-accent/20 text-lg h-14"
-                        >
-                            <Check className="mr-2 h-6 w-6" />
+                        <Button onClick={confirmSave} isLoading={isSaving} className="flex-[2] h-14 bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40">
+                            <Check className="mr-2 h-5 w-5" />
                             Confirm & Save
                         </Button>
                     </div>
@@ -240,159 +247,244 @@ const HolidaySelectionPage: React.FC = () => {
         );
     }
 
+    // ─── Main Selection View ──────────────────────────────────────────────────
     return (
         <div className="p-4 md:p-6 pb-40 animate-fade-in">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-            
-            <div className="flex items-center gap-4 mb-8">
-            {isMobile && (
-                <Button variant="secondary" size="md" onClick={() => navigate('/leaves/dashboard')} className="p-2 rounded-full h-10 w-10 flex items-center justify-center">
-                    <ChevronLeft className="h-6 w-6" />
-                </Button>
-            )}
+
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6">
+                {isMobile && (
+                    <button
+                        onClick={() => navigate('/leaves/dashboard')}
+                        className="p-2.5 rounded-xl bg-card border border-border hover:bg-accent-light transition-colors"
+                    >
+                        <ChevronLeft className="h-5 w-5 text-primary-text" />
+                    </button>
+                )}
                 <div>
                     <h1 className="text-2xl font-bold text-primary-text">Holiday Selection</h1>
-                    <p className="text-muted">Pick your optional holidays for {currentYear}</p>
+                    <p className="text-muted text-sm">Pick your optional holidays for {currentYear}</p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Selection Section */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="rounded-2xl space-y-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-lg font-semibold flex items-center gap-2">
-                                <CalendarIcon className="h-5 w-5 text-accent" />
-                                Available Holidays
-                            </h2>
-                            <div className={`px-4 py-1 rounded-full text-sm font-medium ${selectedHolidays.length > 0 && selectedHolidays.length <= maxEmployeeHolidays ? 'bg-emerald-500/10 text-emerald-500' : 'bg-accent/10 text-accent'}`}>
-                                {selectedHolidays.length} / {maxEmployeeHolidays} Selected
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                {/* ── Left: Selection Panel ── */}
+                <div className="lg:col-span-2 space-y-4">
+
+                    {/* Progress Summary Card */}
+                    <div className="bg-card rounded-2xl border border-border shadow-card p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-accent-light rounded-xl">
+                                    <CalendarCheck2 className="h-5 w-5 text-accent-dark" />
+                                </div>
+                                <div>
+                                    <h2 className="font-bold text-primary-text">Available Holidays</h2>
+                                    <p className="text-xs text-muted">Select up to {maxEmployeeHolidays} from the pool</p>
+                                </div>
+                            </div>
+                            <div className={`px-3 py-1 rounded-full text-sm font-bold border ${
+                                isComplete
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
+                            }`}>
+                                {selectedHolidays.length} / {maxEmployeeHolidays}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-3">
-                            {[...holidayPool].sort((a, b) => a.date.localeCompare(b.date)).map((holiday, index) => {
-                                const isSelected = selectedHolidays.some(h => h.name === holiday.name);
-                                const dateObj = new Date(`${currentYear}${holiday.date}`.replace(/-/g, '/'));
-                                const formattedDate = dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' });
-                                
-                                const today = new Date();
-                                today.setHours(0, 0, 0, 0);
-                                const isPastOrToday = dateObj <= today;
+                        {/* Progress Bar */}
+                        <div className="w-full h-2 bg-border rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                style={{ width: `${selectionProgress}%` }}
+                            />
+                        </div>
+                        {isComplete && (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-2 flex items-center gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5" />
+                                All {maxEmployeeHolidays} holidays selected!
+                            </p>
+                        )}
+                    </div>
 
-                                return (
-                                    <button
-                                        key={index}
-                                        onClick={() => toggleHoliday(holiday.name, holiday.date)}
-                                        disabled={isPastOrToday}
-                                        className={`flex items-center justify-between p-5 rounded-[2rem] border transition-all duration-300 text-left ${
-                                            !isPastOrToday ? 'hover:scale-[1.02] active:scale-[0.98]' : 'cursor-not-allowed'
-                                        } ${
-                                            isSelected 
-                                            ? 'bg-accent/20 border-accent/40 shadow-[0_0_20px_rgba(0,107,63,0.1)]' 
-                                            : isPastOrToday 
-                                                ? 'bg-red-500/5 border-red-500/10' 
-                                                : 'bg-[#0d2c18]/30 border-emerald-500/10 hover:border-accent/40'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-5 flex-1 min-w-0">
-                                            <div className={`h-14 w-14 rounded-[1.25rem] flex-shrink-0 flex flex-col items-center justify-center transition-all ${
-                                                isSelected 
-                                                    ? 'bg-emerald-600 text-white shadow-[0_4px_12px_rgba(5,150,105,0.3)]' 
-                                                    : isPastOrToday
-                                                        ? 'bg-red-500 text-white shadow-[0_4px_12px_rgba(239,68,68,0.3)]'
-                                                        : 'bg-emerald-500/10 text-emerald-500/80'
+                    {/* Holiday List */}
+                    <div className="bg-card rounded-2xl border border-border shadow-card overflow-hidden">
+                        <div className="divide-y divide-border">
+                            {uniquePool
+                                .sort((a, b) => a.date.localeCompare(b.date))
+                                .map((holiday, index) => {
+                                    const isSelected = selectedHolidays.some(h => h.name === holiday.name);
+                                    const dateStr = `${currentYear}${holiday.date}`.replace(/-/g, '/');
+                                    const dateObj = new Date(dateStr);
+                                    const { isPast, isToday } = getHolidayStatus(holiday.date);
+                                    const isPastOrToday = isPast || isToday;
+                                    const isLocked = holiday.date === '-01-15' || holiday.date.endsWith('-01-15');
+
+                                    return (
+                                        <button
+                                            key={index}
+                                            onClick={() => toggleHoliday(holiday.name, holiday.date)}
+                                            className={`w-full flex items-center gap-4 p-4 text-left transition-all duration-200 group
+                                                ${!isPastOrToday ? 'hover:bg-accent-light active:scale-[0.995]' : 'cursor-not-allowed'}
+                                                ${isSelected && !isPastOrToday ? 'bg-accent-light/60' : ''}
+                                            `}
+                                        >
+                                            {/* Date Badge */}
+                                            <div className={`h-12 w-12 rounded-xl flex-shrink-0 flex flex-col items-center justify-center transition-all ${
+                                                isSelected
+                                                    ? 'bg-accent text-white shadow-sm shadow-accent/30'
+                                                    : (isPastOrToday || isLocked)
+                                                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
+                                                    : 'bg-accent-light text-accent-dark'
                                             }`}>
-                                                <span className="text-[10px] font-black uppercase leading-none tracking-tight">{dateObj.toLocaleDateString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-xl font-black leading-none mt-1">{dateObj.getDate()}</span>
+                                                <span className="text-[9px] font-black uppercase leading-none tracking-tight">
+                                                    {dateObj.toLocaleDateString('en-IN', { month: 'short' })}
+                                                </span>
+                                                <span className="text-lg font-black leading-none mt-0.5">{dateObj.getDate()}</span>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className={`text-lg md:text-xl font-bold tracking-tight line-clamp-2 ${isSelected ? 'text-accent' : isPastOrToday ? 'text-red-500/80' : 'text-primary-text'}`}>{holiday.name}</p>
-                                                <p className="text-sm font-medium text-muted/60 mt-0.5 truncate">
-                                                    {formattedDate} 
+
+                                            {/* Name & Date */}
+                                            <div className="flex-1 min-w-0 overflow-hidden">
+                                                <p className={`font-semibold text-sm leading-snug break-words line-clamp-2 ${
+                                                    isSelected
+                                                        ? 'text-accent-dark'
+                                                        : (isPastOrToday || isLocked)
+                                                        ? 'text-amber-700 dark:text-amber-400'
+                                                        : 'text-primary-text'
+                                                }`}>
+                                                    {holiday.name}
+                                                </p>
+                                                <p className="text-xs text-muted font-medium mt-1 flex items-center flex-wrap gap-1">
+                                                    <span>{dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                                                    {(isPastOrToday || isLocked) && (
+                                                        <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px] ${
+                                                            isSelected ? 'bg-accent/20 text-accent-dark' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'
+                                                        }`}>
+                                                            {isLocked ? 'Locked' : 'Past'}
+                                                        </span>
+                                                    )}
                                                 </p>
                                             </div>
-                                        </div>
-                                        <div className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all duration-500 ${
-                                            isSelected 
-                                            ? 'bg-emerald-600 border-emerald-600 text-white scale-100'
-                                            : isPastOrToday
-                                                ? 'bg-red-500 border-red-500 text-white scale-100'
-                                                : 'border-emerald-500/20 bg-transparent scale-90 opacity-40'
-                                        }`}>
-                                            {isSelected ? (
-                                                holiday.date === '-01-15' ? (
-                                                    <Lock className="h-4 w-4 stroke-[3]" />
+
+                                            {/* Action Indicator */}
+                                            <div className={`h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all duration-300 ${
+                                                isSelected && (isPastOrToday || isLocked)
+                                                    ? 'bg-accent/40 border-accent/40 text-white'
+                                                    : isSelected
+                                                    ? 'bg-accent border-accent text-white scale-110'
+                                                    : (isPastOrToday || isLocked)
+                                                    ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10'
+                                                    : 'border-border bg-transparent text-transparent group-hover:border-accent/40'
+                                            }`}>
+                                                {isSelected ? (
+                                                    <Check className="h-4 w-4 stroke-[3]" />
                                                 ) : (
-                                                    <Check className="h-5 w-5 stroke-[4]" />
-                                                )
-                                            ) : isPastOrToday ? (
-                                                <span className="text-xl font-black leading-none">×</span>
-                                            ) : null}
-                                        </div>
-                                    </button>
-                                );
-                            })}
+                                                    <span className="text-lg font-bold leading-none">+</span>
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-border">
-                            <p className="text-sm text-muted flex items-start gap-2">
-                                <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-accent" />
-                                <span>You can select up to <strong>{maxEmployeeHolidays} holidays</strong> from the pool. Make sure to choose the ones that are most important to you.</span>
+                        {/* Hint Footer */}
+                        <div className="px-5 py-4 bg-accent-light/40 border-t border-border">
+                            <p className="text-xs text-muted flex items-start gap-2">
+                                <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-accent" />
+                                <span>
+                                    Select up to <strong className="text-primary-text">{maxEmployeeHolidays} holidays</strong> from the pool above.
+                                    Click a selected holiday again to remove it (future dates only).
+                                </span>
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Preview Section */}
-                <div className="space-y-6">
+                {/* ── Right: Calendar Preview ── */}
+                <div className="space-y-4">
                     <div className="sticky top-6">
-                        <h3 className="text-lg font-semibold mb-4 px-1">Calendar Preview</h3>
-                        <HolidayCalendar 
+                        <h3 className="text-base font-semibold text-primary-text mb-3 px-1">Calendar Preview</h3>
+                        <HolidayCalendar
                             adminHolidays={adminHolidays}
                             userSelectedHolidays={calendarUserHolidays}
                             viewingDate={viewingDate}
                             onDateChange={setViewingDate}
                         />
-                        <div className="mt-6 p-4 bg-accent/5 border border-accent/10 rounded-xl space-y-3">
-                            <h4 className="text-sm font-semibold text-accent-dark">Legend</h4>
-                            <div className="flex items-center gap-3 text-sm">
-                                <div className="h-3 w-3 rounded-full bg-emerald-600"></div>
-                                <span className="text-muted">Gov Holiday</span>
-                            </div>
-                            <div className="flex items-center gap-3 text-sm">
-                                <div className="h-3 w-3 rounded-full bg-amber-500"></div>
-                                <span className="text-muted">Admin Allocated</span>
-                            </div>
-                            <div className={`flex items-center gap-3 text-sm transition-opacity ${selectedHolidays.length > 0 ? 'opacity-100' : 'opacity-50'}`}>
-                                <div className="h-3 w-3 rounded-full bg-violet-600"></div>
-                                <span className="text-muted">Your Selection</span>
-                            </div>
+
+                        {/* Legend */}
+                        <div className="mt-4 bg-card rounded-xl border border-border p-4 space-y-2.5">
+                            <h4 className="text-xs font-bold text-muted uppercase tracking-wider">Legend</h4>
+                            {[
+                                { color: 'bg-emerald-600', label: 'Gov Holiday' },
+                                { color: 'bg-amber-500', label: 'Admin Allocated' },
+                                { color: 'bg-violet-600', label: 'Your Selection' },
+                            ].map(({ color, label }) => (
+                                <div key={label} className="flex items-center gap-2.5 text-sm">
+                                    <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
+                                    <span className="text-muted">{label}</span>
+                                </div>
+                            ))}
                         </div>
+
+                        {/* Selected Holidays Mini-List */}
+                        {selectedHolidays.length > 0 && (
+                            <div className="mt-4 bg-card rounded-xl border border-border p-4">
+                                <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">Your Picks</h4>
+                                <div className="space-y-2">
+                                    {[...selectedHolidays]
+                                        .sort((a, b) => a.date.localeCompare(b.date))
+                                        .map((h, i) => {
+                                            const dateStr = h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date;
+                                            const d = new Date(dateStr.replace(/-/g, '/'));
+                                            const { isPast, isToday } = getHolidayStatus(h.date);
+                                            const canRemove = !isPast && !isToday;
+                                            return (
+                                                <div key={i} className="flex items-center gap-2.5 group">
+                                                    <div className="h-8 w-8 rounded-lg bg-accent-light flex flex-col items-center justify-center flex-shrink-0">
+                                                        <span className="text-[7px] font-black uppercase leading-none text-accent-dark">
+                                                            {d.toLocaleDateString('en-IN', { month: 'short' })}
+                                                        </span>
+                                                        <span className="text-xs font-black leading-none text-accent-dark">{d.getDate()}</span>
+                                                    </div>
+                                                    <span className="text-xs font-medium text-primary-text flex-1 leading-tight line-clamp-1">{h.name}</span>
+                                                    {canRemove ? (
+                                                        <button
+                                                            onClick={() => toggleHoliday(h.name, h.date)}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-100 text-red-500 transition-all"
+                                                            title="Remove"
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </button>
+                                                    ) : (
+                                                        <Lock className="h-3 w-3 text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Floating Save Selection Bar */}
-            <div 
-                className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent border-t border-emerald-500/10 z-40"
+            {/* Floating Save Bar */}
+            <div
+                className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent z-40"
                 style={{ 
-                    bottom: isMobile ? 'calc(4rem + env(safe-area-inset-bottom))' : '0' 
+                    bottom: isMobile ? 'calc(3.2rem + env(safe-area-inset-bottom))' : '0',
+                    paddingBottom: isMobile ? 'calc(1.2rem + env(safe-area-inset-bottom))' : '2rem'
                 }}
             >
-                <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-                    {!isMobile && (
-                        <div className="text-sm text-muted">
-                            <span className="font-semibold text-accent">{selectedHolidays.length}</span> of {maxEmployeeHolidays} holidays selected
-                        </div>
-                    )}
-                    <Button 
-                        onClick={handleSave} 
-                        isLoading={isSaving} 
+                <div className="max-w-2xl mx-auto">
+                    <Button
+                        onClick={handleSave}
                         disabled={selectedHolidays.length === 0}
-                        className="w-full md:w-auto px-12 py-3 shadow-lg shadow-accent/20 text-lg h-14"
+                        className="w-full h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"
                     >
-                        <Save className="mr-2 h-6 w-6" />
+                        <Save className="mr-2 h-5 w-5" />
                         Save Selection
                     </Button>
                 </div>

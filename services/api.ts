@@ -3483,7 +3483,10 @@ export const api = {
       const status = leave.status;
       
       const leaveStartDateObj = new Date(leaveStart.replace(/-/g, '/'));
-      if (leaveStartDateObj > endOfMonth(referenceDate)) return;
+
+      // Only count leaves that have already started (up to today).
+      // Do NOT cut off at end-of-month — that was blocking cross-month approved leaves.
+      if (leaveStartDateObj > new Date(todayStr.replace(/-/g, '/'))) return;
       
       let leaveAmount = 1;
       if (leave.day_option === 'half') leaveAmount = 0.5;
@@ -3536,6 +3539,9 @@ export const api = {
           if (isApproved) balance.compOffUsed += leaveAmount;
           if (isPending) balance.compOffPending += leaveAmount;
         }
+      } else if (type.includes('loss of pay') || type === 'lop') {
+        // Loss of Pay doesn't reduce any leave balance but is tracked
+        if (isApproved) balance.earnedUsed += 0; // no deduction
       }
     });
 

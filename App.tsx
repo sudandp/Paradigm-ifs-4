@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { secureSet, secureRemove, secureGet } from './utils/secureStorage';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
@@ -607,7 +608,9 @@ const App: React.FC = () => {
         // 1. Check for long-term "Remember Me" token if no session is found
         // NOTE: We only do this if Supabase didn't already found a session in CapacitorStorage.
         if (!session) {
-          const { value: refreshToken } = await Preferences.get({ key: 'supabase.auth.rememberMe' });
+          // [SECURITY] Read encrypted token, fall back to legacy plaintext key for backward compatibility.
+          const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+            ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
           if (refreshToken) {
             console.log('Attempting to restore session from long-term token...');
             try {
@@ -700,14 +703,12 @@ const App: React.FC = () => {
 
       // Always persist the latest refresh token so it survives app restarts.
       // TOKEN_REFRESHED fires automatically when Supabase silently renews the access token.
+      // [SECURITY] Tokens and emails are AES-256 encrypted via secureStorage before persisting.
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
-        Preferences.set({ 
-          key: 'supabase.auth.rememberMe', 
-          value: session.refresh_token 
-        }).catch(err => console.error('Error synchronizing auth token:', err));
+        secureSet('supabase.auth.rememberMe', session.refresh_token).catch(err => console.error('Error synchronizing auth token:', err));
           
         if (session.user.email) {
-          Preferences.set({ key: 'rememberedEmail', value: session.user.email }).catch(e => console.warn('[App] Prefs auth save failed:', e));
+          secureSet('rememberedEmail', session.user.email).catch(e => console.warn('[App] Prefs auth save failed:', e));
         }
       }
 
@@ -757,8 +758,10 @@ const App: React.FC = () => {
           setUser(null);
           resetAttendance();
           useOnboardingStore.getState().reset();
-          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(e => console.warn('[App] Prefs remove failed:', e));
-          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {});
+          secureRemove('supabase.auth.rememberMe').catch(e => console.warn('[App] secureRemove failed:', e));
+          secureRemove('rememberedEmail').catch(() => {});
+          Preferences.remove({ key: 'supabase.auth.rememberMe' }).catch(() => {}); // legacy cleanup
+          Preferences.remove({ key: 'rememberedEmail' }).catch(() => {}); // legacy cleanup
         }
       }
     });
@@ -784,7 +787,9 @@ const App: React.FC = () => {
         // If it cannot (e.g. no network), we fall back to our persisted refreshToken.
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          const { value: refreshToken } = await Preferences.get({ key: 'supabase.auth.rememberMe' });
+          // [SECURITY] Read encrypted token, fall back to legacy plaintext key for backward compatibility.
+          const refreshToken = (await secureGet('supabase.auth.rememberMe'))
+            ?? (await Preferences.get({ key: 'supabase.auth.rememberMe' })).value;
           if (refreshToken) {
             console.log('[AppState] Silently restoring session from saved token...');
             const { data: refreshData, error: refreshErr } = await supabase.auth

@@ -79,9 +79,12 @@ const EmployeeReferralForm: React.FC = () => {
     return (
         <div className={`flex flex-col h-full ${isMobile ? 'min-h-screen bg-[#041b0f]' : 'bg-page'}`}>
             {/* Header */}
-            <div className={`flex-shrink-0 flex items-center gap-4 px-6 py-4 border-b sticky top-0 z-20 backdrop-blur-md ${
-                isMobile ? 'border-white/10 bg-[#041b0f]/80' : 'border-gray-200 bg-white/80'
-            }`}>
+            <div 
+                className={`flex-shrink-0 flex items-center gap-4 px-6 pb-4 border-b sticky top-0 z-20 backdrop-blur-md ${
+                    isMobile ? 'border-white/10 bg-[#041b0f]/80' : 'border-gray-200 bg-white/80'
+                }`}
+                style={{ paddingTop: isMobile ? 'calc(1rem + env(safe-area-inset-top))' : '1rem' }}
+            >
                 <button
                     onClick={() => navigate(-1)}
                     className={`p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ${isMobile ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-gray-700'}`}

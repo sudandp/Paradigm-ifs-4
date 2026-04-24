@@ -238,7 +238,8 @@ const LeaveDashboard: React.FC = () => {
 
             // Fetch base data points
             const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData] = await Promise.all([
-                api.getLeaveBalancesForUser(user.id, dateStr),
+                // Always use today's date for balance calculation so cross-month approved leaves are counted
+                api.getLeaveBalancesForUser(user.id, format(new Date(), 'yyyy-MM-dd')),
                 api.getLeaveRequests({
                     userId: user.id,
                     status: filter === 'all' ? undefined : filter

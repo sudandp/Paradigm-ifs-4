@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
+import { secureGet } from '../../utils/secureStorage';
 import { useForm, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -70,7 +71,9 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         const checkRememberedEmail = async () => {
-            const { value: email } = await Preferences.get({ key: 'rememberedEmail' });
+            // [SECURITY] Read encrypted email; fall back to legacy plaintext key for backward compatibility.
+            const email = (await secureGet('rememberedEmail'))
+                ?? (await Preferences.get({ key: 'rememberedEmail' })).value;
             const { value: pass } = await Preferences.get({ key: 'rememberedPassword' });
             if (email) { setValue('email', email); setValue('rememberMe', true); }
             if (pass) { setValue('password', pass); setValue('rememberMe', true); }

@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
+import { secureSet, secureGet, secureRemove } from '../utils/secureStorage';
 import type { User, AttendanceEventType } from '../types';
 import { supabase } from '../services/supabase';
 import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
@@ -252,8 +253,9 @@ export const useAuthStore = create<AuthState>()(
                 // If sign-in is successful, we take full control.
                 // FORCE PERSISTENCE: As per user request ("keep login until unless user logout by them"),
                 // we always save the refresh token to Preferences, regardless of the "Remember Me" checkbox.
-                await Preferences.set({ key: 'rememberedEmail', value: email });
-                await Preferences.set({ key: 'supabase.auth.rememberMe', value: data.session.refresh_token });
+                // [SECURITY] Values are AES-256 encrypted via secureStorage utility before persisting.
+                await secureSet('rememberedEmail', email);
+                await secureSet('supabase.auth.rememberMe', data.session.refresh_token);
                 
                 // [SECURITY FIX C8] Removed plaintext password storage.
                 // The refresh token above provides persistent sessions without storing credentials.
@@ -412,9 +414,11 @@ export const useAuthStore = create<AuthState>()(
                     console.error('Failed to dispatch logout farewell notification', e);
                 }
             }
-            // Clear all persistent tokens on logout
-            await Preferences.remove({ key: 'supabase.auth.rememberMe' });
-            await Preferences.remove({ key: 'rememberedEmail' });
+            // Clear all persistent tokens on logout (secure + legacy plaintext keys)
+            await secureRemove('supabase.auth.rememberMe');
+            await secureRemove('rememberedEmail');
+            await Preferences.remove({ key: 'supabase.auth.rememberMe' }); // legacy plaintext cleanup
+            await Preferences.remove({ key: 'rememberedEmail' }); // legacy plaintext cleanup
             await Preferences.remove({ key: 'rememberedPassword' });
             
             // Trigger the actual sign out

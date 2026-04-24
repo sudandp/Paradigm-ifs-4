@@ -34,7 +34,9 @@ const AuthLayout: React.FC = () => {
                     {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
                     <div className="w-full bg-white/10 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 text-left mb-8">
                         <div className="flex justify-center mb-8">
-                            <Logo className="h-14" variant="original" />
+                            <div className="bg-white py-2 px-20 rounded-2xl shadow-lg">
+                                <Logo className="h-10" variant="original" />
+                            </div>
                         </div>
 
                         <div className="text-left mb-6">
@@ -50,17 +52,18 @@ const AuthLayout: React.FC = () => {
                         <div className="mt-8 pt-6 border-t border-white/10">
                             <button 
                                 onClick={() => setReferralModalOpen(true)}
-                                className="w-full flex items-center justify-between p-4 bg-emerald-500/20 rounded-2xl border border-emerald-500/30 active:scale-95 transition-all"
+                                className="w-full flex items-center justify-center group active:scale-95 transition-all"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
-                                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
+                                <div className="relative inline-flex items-center rounded-2xl border-[3px] border-white overflow-hidden shadow-[0_10px_30px_-10px_rgba(255,0,0,0.5)]">
+                                    <div className="bg-black py-3 px-6 flex items-center">
+                                        <span className="text-white font-[900] text-xl tracking-tighter italic">REFERRAL</span>
                                     </div>
-                                    <span className="text-white font-bold text-sm">Refer & Earn Rewards</span>
+                                    <div className="bg-[#ff0000] py-3 px-8 -ml-3 rounded-l-2xl flex items-center relative z-10">
+                                        <span className="text-white font-[900] text-xl tracking-tighter italic">PROGRAM</span>
+                                    </div>
+                                    {/* Subtle shine effect */}
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent pointer-events-none"></div>
                                 </div>
-                                <ArrowRight className="w-4 h-4 text-emerald-400" />
                             </button>
                         </div>
                     </div>
@@ -99,7 +102,9 @@ const AuthLayout: React.FC = () => {
                         <div className="relative z-10 flex flex-col h-full">
                             <div>
                                 <div className="transform transition-all duration-500 hover:scale-105 origin-left">
-                                    <Logo className="h-10" variant="original" />
+                                     <div className="inline-block bg-white py-1.5 px-4 rounded-xl shadow-md">
+                                         <Logo className="h-8" variant="original" />
+                                     </div>
                                 </div>
                                 <div className="mt-16 space-y-3">
                                     <h1 className="text-3xl font-black text-white leading-[1.1] tracking-tight animate-in fade-in slide-in-from-left-8 duration-700">
@@ -128,10 +133,17 @@ const AuthLayout: React.FC = () => {
                                     </p>
                                     <button 
                                         onClick={() => setReferralModalOpen(true)}
-                                        className="mt-5 flex items-center justify-center gap-2 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[13px] font-black transition-all shadow-xl shadow-emerald-900/40 active:scale-[0.98] group-hover/refer:translate-y-[-2px]"
+                                        className="mt-6 flex items-center justify-center active:scale-[0.98] transition-all group"
                                     >
-                                        Start Referring
-                                        <ArrowRight className="w-3.5 h-3.5 group-hover/refer:translate-x-1 transition-transform" />
+                                        <div className="relative inline-flex items-center rounded-xl border-2 border-white overflow-hidden shadow-2xl group-hover:scale-[1.02] transition-transform duration-300">
+                                            <div className="bg-black py-2.5 px-4 flex items-center">
+                                                <span className="text-white font-[900] text-base tracking-tighter italic">REFERRAL</span>
+                                            </div>
+                                            <div className="bg-[#ff0000] py-2.5 px-6 -ml-2 rounded-l-xl flex items-center relative z-10">
+                                                <span className="text-white font-[900] text-base tracking-tighter italic">PROGRAM</span>
+                                            </div>
+                                            <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
+                                        </div>
                                     </button>
                                 </div>
                             </div>

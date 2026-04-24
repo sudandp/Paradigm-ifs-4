@@ -54,18 +54,18 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
 
     return (
         <header
-            className={`transition-all duration-300 flex-shrink-0 ${
+            className={`relative transition-all duration-300 flex-shrink-0 ${
                 isMobile 
                 ? 'bg-transparent' 
                 : 'bg-white border-b border-gray-200/60'
             }`}
         >
-            <div className="px-4">
-                <div className={`flex items-center h-14 ${isMobile ? 'justify-center gap-3' : 'justify-between'}`}>
-                    <div className={`${isMobile ? 'flex-none' : 'flex-1'} flex justify-center md:justify-start`}>
+            <div className="px-4 w-full">
+                <div className={`flex items-center h-14 w-full ${isMobile ? 'justify-center' : 'justify-between'}`}>
+                    <div className={isMobile ? "absolute inset-x-0 flex justify-center pointer-events-none" : "flex-1 flex justify-start"}>
                             {isMobile && (
-                                <div className="flex items-center justify-center bg-transparent py-2 border-0">
-                                    <Logo className="border-0 h-[42px]" variant="original" />
+                                <div className="pointer-events-auto bg-white py-2 px-6 rounded-xl border-0 shadow-md my-2 transition-all duration-300 mx-auto">
+                                    <Logo className="border-0 h-[36px]" variant="original" />
                                 </div>
                             )}
                         </div>
@@ -74,43 +74,52 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                             <div className="flex items-center space-x-2">
                                 {!isMobile && (
                                     <div className="relative">
-                                        {/* Firecracker Effect Particles */}
-                                        <div className="absolute inset-0 pointer-events-none -m-4 overflow-visible">
-                                            {[...Array(8)].map((_, i) => (
-                                                <motion.div
-                                                    key={i}
-                                                    className={`absolute h-1 w-1 rounded-full ${
-                                                        i % 2 === 0 ? 'bg-yellow-400' : 'bg-emerald-400'
-                                                    }`}
-                                                    initial={{ top: "50%", left: "50%", opacity: 0, scale: 0 }}
-                                                    animate={{ 
-                                                        top: ["50%", `${50 + Math.sin(i * 45 * Math.PI / 180) * 40}%`],
-                                                        left: ["50%", `${50 + Math.cos(i * 45 * Math.PI / 180) * 40}%`],
-                                                        opacity: [0, 1, 0],
-                                                        scale: [0, 1.5, 0.5]
-                                                    }}
-                                                    transition={{ 
-                                                        duration: 1.2, 
-                                                        repeat: Infinity, 
-                                                        delay: i * 0.15,
-                                                        ease: "easeOut" 
-                                                    }}
-                                                />
-                                            ))}
-                                        </div>
+                                         {/* Firework Animation Effect */}
+                                         <div className="absolute inset-0 pointer-events-none -m-6 overflow-visible z-0">
+                                             {[...Array(12)].map((_, i) => (
+                                                 <motion.div
+                                                     key={i}
+                                                     className={`absolute h-1.5 w-1.5 rounded-full ${
+                                                         i % 3 === 0 ? 'bg-yellow-400' : i % 3 === 1 ? 'bg-red-500' : 'bg-emerald-400'
+                                                     } shadow-[0_0_8px_rgba(255,255,255,0.8)]`}
+                                                     initial={{ top: "50%", left: "50%", opacity: 0, scale: 0 }}
+                                                     animate={{ 
+                                                         top: ["50%", `${50 + Math.sin(i * 30 * Math.PI / 180) * 50}%`],
+                                                         left: ["50%", `${50 + Math.cos(i * 30 * Math.PI / 180) * 50}%`],
+                                                         opacity: [0, 1, 0.8, 0],
+                                                         scale: [0, 1.2, 0.8, 0]
+                                                     }}
+                                                     transition={{ 
+                                                         duration: 1.5, 
+                                                         repeat: Infinity, 
+                                                         delay: i * 0.1,
+                                                         ease: "easeOut" 
+                                                     }}
+                                                 />
+                                             ))}
+                                         </div>
 
                                         <button
                                             onClick={() => setReferralModalOpen(true)}
-                                            className="relative flex items-center gap-2 px-3 py-1.5 rounded-full text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 transition-all group mr-2 shadow-sm animate-pulse-subtle"
+                                            className="relative flex items-center group mr-2 active:scale-95 transition-all"
                                             title="Referral Program"
                                         >
-                                            <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping duration-[3000ms]" />
-                                            <Plus className="h-4 w-4 group-hover:rotate-90 transition-transform relative z-10" />
-                                            <span className="text-xs font-bold uppercase tracking-wider relative z-10">Referral</span>
+                                            <div className="relative inline-flex items-center rounded-lg border border-white/80 overflow-hidden shadow-md group-hover:scale-105 transition-all duration-300">
+                                                <div className="bg-black py-1 px-2.5 flex items-center">
+                                                    <span className="text-white font-[900] text-[10px] tracking-tighter italic">REFERRAL</span>
+                                                </div>
+                                                <div className="bg-[#ff0000] py-1 px-3 -ml-1 rounded-l-lg flex items-center relative z-10">
+                                                    <span className="text-white font-[900] text-[10px] tracking-tighter italic">PROGRAM</span>
+                                                </div>
+                                            </div>
                                         </button>
                                     </div>
                                 )}
-                                 {user && <NotificationBell theme={isMobile ? 'dark' : 'light'} />}
+                                 {user && (
+                                     <div className={isMobile ? "absolute right-4 top-[25%] -translate-y-1/2" : ""}>
+                                         <NotificationBell theme={isMobile ? 'dark' : 'light'} />
+                                     </div>
+                                 )}
                                 {!isMobile && (
                                     user ? (
                                         <div className="relative" ref={userMenuRef}>
