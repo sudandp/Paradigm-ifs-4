@@ -10,10 +10,11 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
  * Rejects unauthenticated requests with 401.
  */
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-    // Skip auth in dev if Supabase is not configured
+    // [SECURITY FIX H4] Fail-closed: deny access when Supabase is not configured
+    // instead of silently skipping auth (fail-open is dangerous in production)
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-        console.warn('[AuthMiddleware] Supabase not configured — skipping auth');
-        return next();
+        console.error('[AuthMiddleware] CRITICAL: Supabase not configured — blocking all requests');
+        return res.status(503).json({ error: 'Server authentication is not configured. Contact administrator.' });
     }
 
     const authHeader = req.headers['authorization'];

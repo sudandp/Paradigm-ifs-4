@@ -14,6 +14,11 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
     const { user } = useAuthStore();
     const [imgError, setImgError] = useState(false);
 
+    // Reset error state if the URL changes so we can try loading the new one
+    React.useEffect(() => {
+        setImgError(false);
+    }, [photoUrl]);
+
     const resolvedPhotoUrl = useMemo(() => {
         if (!photoUrl) return null;
         
@@ -23,7 +28,8 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
             photoUrl.startsWith('https') || 
             photoUrl.startsWith('data:') ||
             photoUrl.startsWith('/api/') ||
-            photoUrl.startsWith('./')
+            photoUrl.startsWith('./') ||
+            photoUrl.startsWith('blob:')
         ) {
             return photoUrl;
         }

@@ -102,6 +102,24 @@ const entitySchema = yup.object({
       addendum2Date: yup.string().optional().nullable(),
       wordCopyUrls: yup.array().of(yup.string()).optional(),
       signedCopyUrls: yup.array().of(yup.string()).optional(),
+      hasSecurityDeposit: yup.boolean().default(false).optional(),
+      securityDepositType: yup.string().oneOf(['Security Deposit', 'Bank Guarantee', '']).optional(),
+      securityDepositAmount: yup.number().typeError('Must be a number').nullable().when('hasSecurityDeposit', {
+          is: true,
+          then: schema => schema.required('Amount is required')
+      }),
+      securityDepositValidFrom: yup.string().nullable().when('hasSecurityDeposit', {
+          is: true,
+          then: schema => schema.required('Valid from date is required')
+      }),
+      securityDepositValidTo: yup.string().nullable().when('hasSecurityDeposit', {
+          is: true,
+          then: schema => schema.required('Valid to date is required')
+      }),
+      securityDepositDocUrls: yup.array().of(yup.string()).when('hasSecurityDeposit', {
+          is: true,
+          then: schema => schema.min(1, 'At least one document is required')
+      }),
     })
   ).optional(),
   
@@ -561,10 +579,14 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             const data = { ...initialData };
             // Migration: agreementDetails -> agreements array
             if ((data as any).agreementDetails && (!data.agreements || data.agreements.length === 0)) {
-                data.agreements = [{
-                    id: `agr_${Date.now()}`,
-                    ...(data as any).agreementDetails
-                }];
+                if (Array.isArray((data as any).agreementDetails)) {
+                    data.agreements = (data as any).agreementDetails;
+                } else {
+                    data.agreements = [{
+                        id: `agr_${Date.now()}`,
+                        ...(data as any).agreementDetails
+                    }];
+                }
                 delete (data as any).agreementDetails;
             }
 
@@ -1242,6 +1264,63 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <Controller name={`agreements.${index}.addendum2Date`} control={control} render={({ field: f }) => (
                                     <Input type="date" label="Addendum 2 Date" id={`addendum2Date-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.addendum2Date?.message} />
                                 )} />
+                            </div>
+
+                            {/* Security Deposit Section */}
+                            <div className="pt-6 border-t border-accent/10 space-y-6">
+                                <Controller name={`agreements.${index}.hasSecurityDeposit`} control={control} render={({ field: { value, onChange } }) => (
+                                    <Checkbox 
+                                        id={`hasSecurityDeposit-${field.id}`} 
+                                        label="Requires Security Deposit / Bank Guarantee" 
+                                        checked={value} 
+                                        onChange={onChange}
+                                        labelClassName="font-bold text-primary-text"
+                                    />
+                                )} />
+
+                                {watch(`agreements.${index}.hasSecurityDeposit`) && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in pl-6 border-l-2 border-accent/20">
+                                        <Select 
+                                            label="Type" 
+                                            id={`securityDepositType-${field.id}`} 
+                                            registration={register(`agreements.${index}.securityDepositType` as const)}
+                                            error={errors.agreements?.[index]?.securityDepositType?.message}
+                                        >
+                                            <option value="">Select Type</option>
+                                            <option value="Security Deposit">Security Deposit</option>
+                                            <option value="Bank Guarantee">Bank Guarantee</option>
+                                        </Select>
+                                        <Input 
+                                            label="Amount" 
+                                            type="number" 
+                                            id={`securityDepositAmount-${field.id}`} 
+                                            registration={register(`agreements.${index}.securityDepositAmount` as const)} 
+                                            error={errors.agreements?.[index]?.securityDepositAmount?.message} 
+                                        />
+                                        <Controller name={`agreements.${index}.securityDepositValidFrom`} control={control} render={({ field: f }) => (
+                                            <Input type="date" label="Valid From" id={`securityDepositValidFrom-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.securityDepositValidFrom?.message} />
+                                        )} />
+                                        <Controller name={`agreements.${index}.securityDepositValidTo`} control={control} render={({ field: f }) => (
+                                            <Input type="date" label="Valid To" id={`securityDepositValidTo-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.securityDepositValidTo?.message} />
+                                        )} />
+                                        <div className="lg:col-span-4 mt-2">
+                                            <Controller name={`agreements.${index}.securityDepositDocUrls`} control={control} render={({ field: f }) => {
+                                                const pending = pendingFiles[`agreements.${index}.securityDepositDoc`] as UploadedFile[];
+                                                const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                                return (
+                                                    <MultiUploadDocument 
+                                                        label="Security Deposit / Bank Guarantee Documents" 
+                                                        files={Array.isArray(pending) ? pending : existing}
+                                                        onFilesChange={(files) => {
+                                                            handleFileUpload(`agreements.${index}.securityDepositDoc`, files);
+                                                            f.onChange(files.map(file => file.url).filter(Boolean));
+                                                        }}
+                                                    />
+                                                );
+                                            }} />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

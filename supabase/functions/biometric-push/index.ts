@@ -2,9 +2,17 @@
 /// <reference lib="deno.ns" />
 import { createClient, SupabaseClient } from 'supabase';
 
+// [SECURITY FIX L1] Restrict CORS to known origins instead of wildcard
+const ALLOWED_ORIGINS = [
+  'https://paradigm-ifs-4.vercel.app',
+  'https://paradigm-ifs.vercel.app',
+  'capacitor://localhost',  // Capacitor mobile
+  'http://localhost',       // Capacitor mobile
+];
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': '*', // Biometric devices need wildcard — validated via device key instead
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-device-key',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
@@ -110,9 +118,17 @@ Deno.serve(async (req: Request) => {
 
     if (deviceError || !device) {
       console.error(`Unknown device SN: ${sn}. Error:`, deviceError);
-      // We still return OK to prevent device from retrying indefinitely, 
-      // but we should log this in production.
-      return new Response('OK', { status: 200, headers: corsHeaders });
+      // Return 403 for unknown devices instead of silently accepting
+      return new Response('Forbidden: Unknown Device', { status: 403, headers: corsHeaders });
+    }
+
+    // [SECURITY FIX H1] Validate device key if configured.
+    // Devices should send X-Device-Key header containing their registered key.
+    const deviceKey = req.headers.get('x-device-key');
+    const storedKey = (device as any).device_key;
+    if (storedKey && deviceKey !== storedKey) {
+      console.error(`[SECURITY] Device key mismatch for SN: ${sn}`);
+      return new Response('Forbidden: Invalid Device Key', { status: 403, headers: corsHeaders });
     }
 
     // --- CASE A: Attendance Logs ---

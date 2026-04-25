@@ -329,20 +329,39 @@ const EntityManagement: React.FC = () => {
                         const uploadResult = await api.uploadLogo(file);
                         updatedClientData.logoUrl = uploadResult;
                     } else {
-                        // Legacy/Generic nested path handling
+                        // Array/Nested path handling
                         const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
-                        const f = files[0] as UploadedFile;
-                        const file = f?.file;
-                        if (!file) continue;
-                        const uploadResult = await api.uploadDocument(file, 'onboarding-documents', undefined, path);
+                        const newFiles = files.filter(f => f.file) as UploadedFile[];
+                        if (newFiles.length === 0) continue;
+                        
+                        const uploadPromises = newFiles.map(f => {
+                            const file = f.file!;
+                            return api.uploadDocument(file, 'onboarding-documents', undefined, path);
+                        });
+                        const results = await Promise.all(uploadPromises);
+                        const newUrls = results.map(r => r.url);
                         
                         const pathParts = path.split('.');
                         let current: any = updatedClientData;
                         for (let i = 0; i < pathParts.length - 1; i++) {
-                            if (!current[pathParts[i]]) current[pathParts[i]] = {};
+                            const nextIsNumber = !isNaN(Number(pathParts[i + 1]));
+                            if (!current[pathParts[i]]) {
+                                current[pathParts[i]] = nextIsNumber ? [] : {};
+                            }
                             current = current[pathParts[i]];
                         }
-                        current[`${pathParts[pathParts.length - 1]}Url`] = uploadResult.url;
+                        
+                        const lastPart = pathParts[pathParts.length - 1];
+                        
+                        // Handle specific fields that expect arrays
+                        const arrayFields = ['wordCopy', 'signedCopy', 'dcCopy1', 'dcCopy2', 'docUrls', 'securityDepositDoc'];
+                        if (arrayFields.includes(lastPart)) {
+                            const targetField = lastPart === 'docUrls' ? 'docUrls' : `${lastPart}Urls`;
+                            current[targetField] = [...(current[targetField] || []), ...newUrls];
+                        } else {
+                            // Single URL fields
+                            current[`${lastPart}Url`] = newUrls[0];
+                        }
                     }
                 }
             }

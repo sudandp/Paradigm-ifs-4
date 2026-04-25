@@ -1236,7 +1236,24 @@ const App: React.FC = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
-      <Toaster position="top-right" reverseOrder={false} gutter={8} />
+      <Toaster 
+        position="top-right" 
+        reverseOrder={false} 
+        gutter={8}
+        containerStyle={{
+          top: 16,
+          right: 16,
+        }}
+        toastOptions={{
+          style: {
+            maxWidth: '340px',
+            fontSize: '13px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            wordBreak: 'break-word',
+          },
+        }}
+      />
     </>
   );
 };

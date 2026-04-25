@@ -6,8 +6,46 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+/**
+ * [SECURITY FIX C3] Validate the caller's JWT before serving any file.
+ * Returns the authenticated user or null.
+ */
+async function authenticateRequest(req: VercelRequest): Promise<{ id: string } | null> {
+  // 1. Try Authorization: Bearer <token>
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.replace('Bearer ', '');
+    try {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (!error && data?.user) return { id: data.user.id };
+    } catch { /* fall through */ }
+  }
+
+  // 2. Try sb-access-token cookie (Supabase session)
+  const cookies = req.headers.cookie || '';
+  const tokenMatch = cookies.match(/sb-[^=]+-auth-token=([^;]+)/);
+  if (tokenMatch) {
+    try {
+      const decoded = JSON.parse(decodeURIComponent(tokenMatch[1]));
+      const accessToken = Array.isArray(decoded) ? decoded[0] : decoded?.access_token;
+      if (accessToken) {
+        const { data, error } = await supabase.auth.getUser(accessToken);
+        if (!error && data?.user) return { id: data.user.id };
+      }
+    } catch { /* fall through */ }
+  }
+
+  return null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    // [SECURITY FIX C3] Require authentication
+    const user = await authenticateRequest(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required to access files' });
+    }
+
     const pathSegments = req.query.path;
     let filePath = '';
     
@@ -20,8 +58,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     }
 
-    // Fix: Decode first to ensure we don't double encode
+    // [SECURITY FIX C3] Path traversal protection
     const decodedFullPath = decodeURIComponent(filePath);
+    if (decodedFullPath.includes('..') || decodedFullPath.includes('\\')) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+
     const parts = decodedFullPath.split('/');
     const bucket = parts[0];
     const storagePath = parts.slice(1).join('/');

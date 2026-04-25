@@ -564,6 +564,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
 
   return {
     date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    reportDate: format(nowIST, 'dd MMM yyyy'),
     generatedTime: format(nowIST, 'hh:mm a'),
     totalEmployees: String(filteredUsers.length),
     totalPresent: String(totalPresent),
@@ -572,6 +573,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     attendancePercentage: filteredUsers.length > 0 ? Math.round((totalPresent/filteredUsers.length)*100).toString() : '0',
     onLeaveCount: String(onLeaveCount),
     inactiveCount: String(inactiveCount),
+    logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
     table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
   };
 }
@@ -791,6 +793,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
     totalAbsent: String(Math.round(totalAbsentCount)),
     lateCount: String(totalLateCount),
     attendancePercentage: attendancePercentage,
+    logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
     table: tableHtml
   };
 }
@@ -1010,12 +1013,12 @@ function getDefaultPremiumTemplate() {
         <div style="display: flex; align-items: center; gap: 12px;">
           <!-- Logo Placeholder -->
           <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);">
-            <img src="https://app.paradigmfms.com/logos/pms-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
+            <img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
             <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span>
           </div>
         </div>
         <div class="header-right" style="text-align: right;">
-          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Intelligence Report</div>
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Attendance Management System</div>
           <div style="font-size: 16px; font-weight: 600;">{reportDate}</div>
         </div>
       </div>

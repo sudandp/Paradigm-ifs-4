@@ -1041,33 +1041,43 @@ export const api = {
    * @param docName  (optional) descriptive name of the document (e.g. 'idProofFront')
    */
   ensureBucket: async (bucket: string): Promise<void> => {
+    // [SECURITY FIX H2 + M3] Define allowed MIME types and size limits.
+    // Only branding buckets (logo, background) should be public.
+    const ALLOWED_MIME_TYPES = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+      'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'text/csv',
+      'application/xml', 'text/xml'
+    ];
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+    const PUBLIC_BUCKETS = [LOGO_BUCKET, BACKGROUND_BUCKET, AVATAR_BUCKET];
+    const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
+
     try {
       const { data: buckets } = await supabase.storage.listBuckets();
       const existing = buckets?.find(b => b.name === bucket);
       if (!existing) {
-        console.log(`Bucket "${bucket}" not found, creating as public...`);
+        console.log(`Bucket "${bucket}" not found, creating (public=${isPublicBucket})...`);
         const { error } = await supabase.storage.createBucket(bucket, {
-          public: true,
-          allowedMimeTypes: null,
-          fileSizeLimit: null
+          public: isPublicBucket,
+          allowedMimeTypes: ALLOWED_MIME_TYPES,
+          fileSizeLimit: MAX_FILE_SIZE
         });
         if (error) {
           console.error(`Failed to create bucket "${bucket}":`, error);
         } else {
           console.log(`Bucket "${bucket}" created successfully.`);
         }
-      } else if (!existing.public) {
-        // Bucket exists but is private — update it to public so getPublicUrl works
+      } else if (!existing.public && isPublicBucket) {
+        // Only make public if it's a branding/avatar bucket
         console.log(`Bucket "${bucket}" exists but is private, updating to public...`);
         const { error } = await supabase.storage.updateBucket(bucket, { public: true });
         if (error) {
           console.error(`Failed to update bucket "${bucket}" to public:`, error);
         } else {
           console.log(`Bucket "${bucket}" is now public.`);
-          // Fire a small success toast if it was a compliance bucket
-          if (bucket === 'compliance-documents') {
-            console.log('Fixed compliance-documents bucket access.');
-          }
         }
       }
     } catch (e) {
@@ -1654,7 +1664,7 @@ export const api = {
     const { role, ...rest } = userData;
     const dbData: any = toSnakeCase(rest);
     if (role) dbData.role_id = role;
-    if (!dbData.passcode) dbData.passcode = '5687';
+    if (!dbData.passcode) dbData.passcode = String(Math.floor(1000 + Math.random() * 9000));
 
     const { data, error } = await supabase.from('users').insert(dbData).select().single();
     if (error) throw error;

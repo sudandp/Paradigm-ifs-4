@@ -20,6 +20,16 @@ import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification, scheduleStepBreakReminders, cancelStepBreakReminders } from '../utils/permissionUtils';
+// [SECURITY] Defense-in-depth: rate limiting, audit logging, session management
+import {
+  checkRateLimit,
+  recordFailedAttempt,
+  clearRateLimit,
+  logSecurityEvent,
+  startSessionMonitor,
+  stopSessionMonitor,
+  sanitizeEmail
+} from '../utils/security';
 
 // Centralized friendly error message handler for Supabase
 // Centralized friendly error message handler for Supabase
@@ -223,6 +233,26 @@ export const useAuthStore = create<AuthState>()(
         loginWithEmail: async (email, password, rememberMe) => {
             set({ error: null, loading: true });
 
+            // [SECURITY] Sanitize email input
+            const cleanEmail = sanitizeEmail(email);
+            if (!cleanEmail) {
+                set({ error: 'Please enter a valid email address.', loading: false });
+                return { error: { message: 'Please enter a valid email address.' } };
+            }
+
+            // [SECURITY] Check rate limit before attempting login
+            const rateCheck = checkRateLimit(cleanEmail, 'login');
+            if (!rateCheck.allowed) {
+                logSecurityEvent({
+                    event_type: 'login_lockout',
+                    user_email: cleanEmail,
+                    severity: 'warning',
+                    details: { message: rateCheck.message }
+                });
+                set({ error: rateCheck.message, loading: false });
+                return { error: { message: rateCheck.message } };
+            }
+
             // NOTE: We intentionally do NOT call signOut() here. Doing so before each login
             // attempt was invalidating valid sessions on other devices and causing unnecessary
             // re-auth loops. Supabase's signInWithPassword handles session replacement natively.
@@ -245,10 +275,21 @@ export const useAuthStore = create<AuthState>()(
 
                 // Handle sign-in errors
                 if (error || !data.user || !data.session) {
+                    // [SECURITY] Record failed attempt for rate limiting
+                    recordFailedAttempt(cleanEmail, 'login');
+                    logSecurityEvent({
+                        event_type: 'login_failure',
+                        user_email: cleanEmail,
+                        severity: 'warning',
+                        details: { error: error?.message || 'No session returned' }
+                    });
                     const friendlyError = getFriendlyAuthError(error?.message || 'Invalid login credentials');
                     set({ error: friendlyError, loading: false });
                     return { error: { message: friendlyError } };
                 }
+
+                // [SECURITY] Clear rate limit on successful login
+                clearRateLimit(cleanEmail, 'login');
 
                 // If sign-in is successful, we take full control.
                 // FORCE PERSISTENCE: As per user request ("keep login until unless user logout by them"),
@@ -267,6 +308,24 @@ export const useAuthStore = create<AuthState>()(
                 if (appUser) {
                     // Success case: profile fetched
                     set({ user: appUser, error: null, loading: false });
+                    // [SECURITY] Log successful login
+                    logSecurityEvent({
+                        event_type: 'login_success',
+                        user_id: appUser.id,
+                        user_email: cleanEmail,
+                        severity: 'info',
+                        details: { role: appUser.role, method: 'email' }
+                    });
+                    // [SECURITY] Start session inactivity monitor (30 min timeout)
+                    startSessionMonitor(() => {
+                        get().forceLogout('Your session has expired due to inactivity. Please log in again.');
+                        logSecurityEvent({
+                            event_type: 'session_expired',
+                            user_id: appUser.id,
+                            severity: 'info',
+                            details: { reason: 'inactivity_timeout' }
+                        });
+                    });
                     // Dispatch login greeting via the Notification Rules engine
                     // Admins can configure who receives this in Notification Management
                     try {
@@ -421,7 +480,20 @@ export const useAuthStore = create<AuthState>()(
             await Preferences.remove({ key: 'rememberedEmail' }); // legacy plaintext cleanup
             await Preferences.remove({ key: 'rememberedPassword' });
             
-            // Trigger the actual sign out
+            // [SECURITY] Stop session monitor
+            stopSessionMonitor();
+
+            // [SECURITY] Log logout event
+            if (currentUser) {
+                logSecurityEvent({
+                    event_type: 'logout',
+                    user_id: currentUser.id,
+                    severity: 'info'
+                });
+            }
+            
+            // Trigger the actual sign out — use 'global' scope to revoke ALL sessions
+            // This ensures password changes invalidate all active sessions
             await authService.signOut();
             
             // Local state cleanup

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
-    "server": "node --loader ts-node/esm src/server.ts",
+    "server": "tsx src/server.ts",
     "predev": "node scripts/generate-firebase-sw.js",
     "dev": "concurrently -c \"green,blue\" \"npm run server\" \"vite\"",
     "prebuild": "node scripts/generate-firebase-sw.js",
@@ -108,6 +108,7 @@
     "puppeteer": "^24.30.0",
     "tailwindcss": "^4.1.18",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vite-plugin-pwa": "^1.2.0",

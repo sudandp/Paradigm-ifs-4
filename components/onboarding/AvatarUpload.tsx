@@ -176,7 +176,7 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
         accept="image/*"
         capture="user"
         onChange={handleNativeCameraCapture}
-        style={{ display: 'none' }}
+        className="sr-only"
       />
 
       {isCameraOpen && (
@@ -200,11 +200,9 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
               <span className="text-xs mt-2 font-medium">Processing...</span>
             </div>
           ) : (file?.preview && !hasError) ? (
-            <img 
-              src={file.preview} 
-              alt="Profile preview" 
+            <ProfilePlaceholder 
+              photoUrl={file.preview}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-              onError={() => setHasError(true)}
             />
           ) : (
             <ProfilePlaceholder />
@@ -222,14 +220,14 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
           </button>
         )}
       </div>
-      <button id="avatar-hidden-capture-btn" className="hidden" onClick={handleCaptureClick} type="button"></button>
+      <button id="avatar-hidden-capture-btn" className="sr-only" onClick={handleCaptureClick} type="button"></button>
+      <input id={inputId} name={inputId} type="file" className="sr-only" onChange={handleFileChange} accept="image/*" disabled={isLoading} />
       {!hideControls && (
         <div className="flex items-center space-x-2 md:hidden mt-4">
           <label htmlFor={inputId} className={`w-32 h-10 cursor-pointer inline-flex items-center justify-center font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 rounded-full bg-accent text-white hover:bg-accent-dark focus:ring-accent text-sm ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <Edit className="w-4 h-4 mr-2" />
             {file ? 'Change' : 'Upload'}
           </label>
-          <input id={inputId} name={inputId} type="file" className="sr-only" onChange={handleFileChange} accept="image/*" disabled={isLoading} />
           <button
             type="button"
             onClick={handleCaptureClick}

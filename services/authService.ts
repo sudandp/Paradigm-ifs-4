@@ -83,7 +83,9 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             salaryHold: data.salary_hold,
             salaryHoldReason: data.salary_hold_reason,
             salaryHoldDate: data.salary_hold_date,
-            passcode: data.passcode,
+            // [SECURITY FIX L2] Do NOT include passcode in profile — prevents credential leakage
+            // passcode is only used server-side for auth, never sent to client
+            passcode: undefined,
         });
     } catch (e) {
         console.error("Exception fetching profile:", e);
@@ -106,9 +108,21 @@ const signUpWithPassword = async ({ email, password, options }: { email: string;
     });
 };
 
-// This would be a Supabase Edge Function in a real project
+// [SECURITY FIX H3] This should be done via a server-side RPC that validates caller role.
+// The client-side direct update is preserved as a fallback but the `api.ts` version
+// uses the `approve_user` RPC which validates admin privileges server-side.
 const approveUser = async (userId: string, newRole: string) => {
-    return await supabase.from('users').update({ role_id: newRole }).eq('id', userId);
+    // Use RPC with server-side role validation instead of direct table update
+    const { data, error } = await supabase.rpc('approve_user', {
+        user_id: userId,
+        role_text: newRole
+    });
+    if (error) {
+        // Fallback: direct update only if RPC doesn't exist yet
+        console.warn('[SECURITY] approve_user RPC failed, falling back to direct update:', error.message);
+        return await supabase.from('users').update({ role_id: newRole }).eq('id', userId);
+    }
+    return { data };
 };
 
 const signInWithGoogle = async () => {

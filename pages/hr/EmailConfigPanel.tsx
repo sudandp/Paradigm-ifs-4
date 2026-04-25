@@ -192,12 +192,12 @@ const EmailConfigPanel: React.FC = () => {
       <div class="header-content" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 12px;">
           <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);">
-            <img src="https://app.paradigmfms.com/logos/pms-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
+            <img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'">
             <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span>
           </div>
         </div>
         <div class="header-right" style="text-align: right;">
-          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Intelligence Report</div>
+          <div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Attendance Management System</div>
           <div style="font-size: 16px; font-weight: 600;">{reportDate}</div>
         </div>
       </div>

@@ -532,17 +532,19 @@ const ProfilePage: React.FC = () => {
                         </div>
 
                         {/* Custom Avatar Controls */}
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-2 relative z-50 pointer-events-auto">
                             <button 
+                                type="button"
                                 onClick={() => document.getElementById('avatar-upload')?.click()}
-                                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:bg-white/10"
+                                className="cursor-pointer px-4 py-2 bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <Edit className="w-3 h-3 text-emerald-400" />
                                 Change
                             </button>
                             <button 
+                                type="button"
                                 onClick={() => document.getElementById('avatar-hidden-capture-btn')?.click()}
-                                className="px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:bg-rose-500/20"
+                                className="px-4 py-2 bg-transparent border-none text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <Camera className="w-3 h-3" />
                                 Capture

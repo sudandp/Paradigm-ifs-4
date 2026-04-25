@@ -357,7 +357,11 @@ interface MailReportModalProps {
 const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSend, isSending, reportType, currentUserEmail }) => {
     const [email, setEmail] = useState(currentUserEmail);
     const [subject, setSubject] = useState(`${reportType.replace(/_/g, ' ').toUpperCase()} Attendance Report`);
-    const [message, setMessage] = useState(`Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`);
+    const [message, setMessage] = useState(
+        reportType === 'attendance_monthly' 
+        ? `Dear Management,\n\nThis is the consolidated attendance summary for the period of April 2026. It covers overall employee presence across all active members of the staff.\n\nPlease review the detailed monthly attendance grid below for any discrepancies.`
+        : `Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`
+    );
 
     if (!isOpen) return null;
 
