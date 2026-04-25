@@ -125,11 +125,17 @@ const SignUp: React.FC = () => {
                 Create Account
             </Button>
 
-            <div className="text-center mt-3">
+            <div className="text-center mt-3 space-y-4">
                 <p className={isMobile ? "text-[13px] text-white/60 font-medium" : "text-sm text-gray-500 font-medium pt-4"}>
                     Already have an account?{' '}
                     <Link to="/auth/login" className={`font-bold transition-colors ${isMobile ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'} ml-0.5`}>Sign In</Link>
                 </p>
+                <div className={`pt-6 border-t ${isMobile ? 'border-white/10' : 'border-gray-100'}`}>
+                    <p className={`text-[10px] uppercase tracking-widest font-medium leading-relaxed ${isMobile ? 'text-white/30' : 'text-gray-400'}`}>
+                        © Paradigm FMS Services. All rights reserved.<br />
+                        Developed by <span className={isMobile ? 'text-white/50' : 'text-gray-600'}>Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className={`transition-colors ${isMobile ? 'hover:text-emerald-400' : 'hover:text-emerald-600'}`}>sudhan@paradigmfms.com</a>
+                    </p>
+                </div>
             </div>
         </form>
     );

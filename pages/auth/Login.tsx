@@ -218,13 +218,19 @@ const Login: React.FC = () => {
                         </Button>
                     </div>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center space-y-4">
                         <p className="text-[13px] text-white/50">
                             Don't have an account?{' '}
                             <Link to="/auth/signup" className="font-bold text-emerald-400 hover:underline decoration-emerald-400/30 underline-offset-4 transition-all">
                                 Create Account
                             </Link>
                         </p>
+                        <div className="pt-4 border-t border-white/10">
+                            <p className="text-[10px] text-white/30 leading-relaxed uppercase tracking-wider">
+                                © Paradigm FMS Services. All rights reserved.<br />
+                                Developed by <span className="text-white/50">Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className="hover:text-emerald-400 transition-colors">sudhan@paradigmfms.com</a>
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -312,11 +318,17 @@ const Login: React.FC = () => {
                     Sign in with Google
                 </button>
 
-                <div className="text-center mt-12">
+                <div className="text-center mt-12 space-y-6">
                     <p className="text-sm text-gray-500 font-medium">
                         Don't have an account?{' '}
                         <Link to="/auth/signup" className="text-emerald-600 hover:text-emerald-700 font-bold ml-1">Sign Up</Link>
                     </p>
+                    <div className="pt-6 border-t border-gray-100">
+                        <p className="text-[11px] text-gray-400 leading-relaxed uppercase tracking-widest font-medium">
+                            © Paradigm FMS Services. All rights reserved.<br />
+                            Developed by <span className="text-gray-600">Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className="hover:text-emerald-600 transition-colors">sudhan@paradigmfms.com</a>
+                        </p>
+                    </div>
                 </div>
             </div>
         </>

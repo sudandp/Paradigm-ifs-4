@@ -2,5 +2,16 @@
   "rewrites": [
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive, nosnippet"
+        }
+      ]
+    }
   ]
 }

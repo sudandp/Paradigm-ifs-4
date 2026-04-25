@@ -107,10 +107,14 @@ const MobileLayout: React.FC = () => {
                 
                 {/* App Version Footer */}
                 {!isFullScreenLoading && (
-                <div className="mt-8 mb-4 py-4 flex flex-col items-center justify-center opacity-30 select-none">
+                <div className="mt-8 mb-4 py-4 flex flex-col items-center justify-center opacity-30 select-none text-center">
                     <div className="h-[1px] w-8 bg-gradient-to-r from-transparent via-white/40 to-transparent mb-3" />
-                    <p className="text-[10px] text-white font-semibold tracking-[0.15em] uppercase">
-                        Paradigm v{appVersion}
+                    <p className="text-[9px] text-white font-semibold tracking-[0.1em] uppercase mb-1">
+                        Paradigm FMS Services v{appVersion}
+                    </p>
+                    <p className="text-[8px] text-white/70 tracking-normal leading-relaxed">
+                        © All rights reserved. Developed by Sudhan<br />
+                        <a href="mailto:sudhan@paradigmfms.com" className="active:text-emerald-400">sudhan@paradigmfms.com</a>
                     </p>
                 </div>
                 )}

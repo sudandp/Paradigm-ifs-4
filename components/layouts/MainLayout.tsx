@@ -542,8 +542,14 @@ const MainLayout: React.FC = () => {
                 </div>
                 <div className={`flex-shrink-0 px-2 py-4 mt-auto flex flex-col items-center gap-2 ${isMobile ? 'border-t border-transparent' : 'border-t border-border'}`}>
                     {isSidebarExpanded && (
-                        <div className={`text-[11px] font-medium tracking-wider uppercase opacity-40 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-primary-text'}`}>
-                            v{appVersion}
+                        <div className="flex flex-col items-center gap-1">
+                            <div className={`text-[11px] font-medium tracking-wider uppercase opacity-40 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-primary-text'}`}>
+                                v{appVersion}
+                            </div>
+                            <div className={`text-[9px] text-center px-4 leading-tight opacity-50 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-gray-500'}`}>
+                                © Paradigm FMS Services. All rights reserved.<br />
+                                Developed by Sudhan (<a href="mailto:sudhan@paradigmfms.com" className="hover:underline">sudhan@paradigmfms.com</a>)
+                            </div>
                         </div>
                     )}
                     <button
