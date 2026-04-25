@@ -76,7 +76,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/locations', label: 'Geo Locations', icon: MapIcon, permission: 'manage_geo_locations', category: 'Site Management' },
 
     // Operations & Team
-    { to: '/tasks', label: 'Task Management', icon: ListTodo, permission: 'manage_tasks', category: 'Operations & Team' },
+    { to: '/tasks', label: 'Task Manager', icon: ListTodo, permission: 'view_profile', category: 'Operations & Team' },
     { to: '/my-team/field-reports', label: 'Field Reports', icon: ClipboardList, permission: 'view_field_reports', category: 'Operations & Team' },
     { to: '/my-team', label: 'My Team', icon: Users, permission: 'view_my_team', category: 'Operations & Team' },
 

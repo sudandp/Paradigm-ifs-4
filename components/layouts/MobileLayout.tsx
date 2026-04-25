@@ -20,19 +20,28 @@ const MobileLayout: React.FC = () => {
     const lastScrollY = useRef(0);
     const ticking = useRef(false);
     const isFullScreenLoading = useLoadingScreenStore((s) => s.isFullScreenLoading);
+    const mainRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        setIsHeaderVisible(true);
+        lastScrollY.current = 0;
+    }, [location.pathname]);
 
     useEffect(() => {
         const handleScroll = () => {
-            if (!ticking.current) {
+            if (!ticking.current && mainRef.current) {
                 window.requestAnimationFrame(() => {
-                    const currentScrollY = window.scrollY;
-
-                    // Show header when scrolling up or at top
-                    // Hide header IMMEDIATELY when scrolling down
-                    if (currentScrollY < lastScrollY.current || currentScrollY < 10) {
+                    if (!mainRef.current) {
+                        ticking.current = false;
+                        return;
+                    }
+                    const currentScrollY = mainRef.current.scrollTop;
+                    
+                    // Strictly show header only when at the very top (header area seen)
+                    // Hide immediately upon scrolling down
+                    if (currentScrollY <= 20) {
                         setIsHeaderVisible(true);
-                    } else if (currentScrollY > lastScrollY.current && currentScrollY > 10) {
-                        // Hide immediately after scrolling down past 10px
+                    } else {
                         setIsHeaderVisible(false);
                     }
 
@@ -43,8 +52,15 @@ const MobileLayout: React.FC = () => {
             }
         };
 
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
+        const mainElement = mainRef.current;
+        if (mainElement) {
+            mainElement.addEventListener('scroll', handleScroll, { passive: true });
+        }
+        return () => {
+            if (mainElement) {
+                mainElement.removeEventListener('scroll', handleScroll);
+            }
+        };
     }, []);
 
     useEffect(() => {
@@ -54,7 +70,7 @@ const MobileLayout: React.FC = () => {
     }, [user, fetchNotifications]);
 
     return (
-        <div className="flex flex-col min-h-screen bg-[#041b0f]">
+        <div className="flex flex-col h-screen overflow-hidden bg-[#041b0f]">
             {/* Mobile Header - Auto-hide on scroll (FAST) */}
             {/* Hide global header for specific standalone pages like Apply for Leave or Site Attendance Tracker */}
              {!isFullScreenLoading &&
@@ -66,8 +82,8 @@ const MobileLayout: React.FC = () => {
               !location.pathname.startsWith('/finance/site-tracker/edit') && 
               !location.pathname.startsWith('/referral/') && (
                 <div
-                    className={`fixed top-[calc(1.5rem+env(safe-area-inset-top))] left-4 right-4 z-50 max-w-md mx-auto transition-transform duration-300 ${
-                        isHeaderVisible ? 'translate-y-0' : '-translate-y-[200%]'
+                    className={`fixed top-[calc(1rem+env(safe-area-inset-top))] left-4 right-4 z-50 max-w-md mx-auto transition-transform duration-400 ${
+                        isHeaderVisible ? 'translate-y-0' : '-translate-y-[250%]'
                     }`}
                 >
                     <Header />
@@ -77,8 +93,9 @@ const MobileLayout: React.FC = () => {
             {/* Main Content Area */}
             {/* Increased bottom padding by 30% (9.1rem = 7rem * 1.3) for more clearance */}
             <main
+                ref={mainRef}
                 className={`flex-1 overflow-y-auto ${
-                    location.pathname.startsWith('/referral/') ? 'px-0 pt-0' : 'px-4 pt-[calc(7.5rem+env(safe-area-inset-top))]'
+                    location.pathname.startsWith('/referral/') ? 'px-0 pt-0' : 'px-4 pt-[calc(6.5rem+env(safe-area-inset-top))]'
                 }`}
                 style={{ 
                     paddingBottom: (location.pathname.includes('/add') || location.pathname.includes('/edit') || location.pathname.startsWith('/referral/'))

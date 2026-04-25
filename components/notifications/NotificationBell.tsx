@@ -94,7 +94,7 @@ const NotificationBell: React.FC<{ className?: string; theme?: 'light' | 'dark' 
                                 transition: { type: "spring", stiffness: 500, damping: 25 }
                             }}
                             exit={{ scale: 0, opacity: 0 }}
-                            className="absolute -top-0.5 -right-0.5 flex z-20"
+                            className="absolute -top-0.5 right-0 flex z-20"
                         >
                             <motion.span 
                                 animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0.25, 0.6] }}

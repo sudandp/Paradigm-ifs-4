@@ -116,7 +116,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                     </div>
                                 )}
                                  {user && (
-                                     <div className={isMobile ? "absolute right-4 top-[25%] -translate-y-1/2" : ""}>
+                                     <div className={isMobile ? "absolute right-8 top-[20%] -translate-y-1/2" : ""}>
                                          <NotificationBell theme={isMobile ? 'dark' : 'light'} />
                                      </div>
                                  )}

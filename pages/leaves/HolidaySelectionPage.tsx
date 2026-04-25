@@ -226,23 +226,47 @@ const HolidaySelectionPage: React.FC = () => {
                     </div>
                 </div>
 
-                <div
-                    className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent z-40"
-                    style={{ 
-                        bottom: isMobile ? 'calc(3.2rem + env(safe-area-inset-bottom))' : '0',
-                        paddingBottom: isMobile ? 'calc(1.2rem + env(safe-area-inset-bottom))' : '2rem'
-                    }}
-                >
-                    <div className="max-w-2xl mx-auto flex items-center gap-3">
-                        <Button variant="secondary" onClick={() => setView('selection')} className="flex-1 h-14 bg-card/10 hover:bg-card/20 border-border/20 text-white">
+               {/* Floating Action Bar (Sticky) */}
+            <div 
+                className={`fixed left-0 right-0 z-40 transition-all duration-300 ${
+                    isMobile 
+                        ? "p-4 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent bottom-[calc(3.2rem+env(safe-area-inset-bottom))] pb-[calc(1.2rem+env(safe-area-inset-bottom))]" 
+                        : "bg-white/80 backdrop-blur-md border-t border-border py-4 px-8 bottom-0 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]"
+                }`}
+            >
+                <div className={`flex items-center gap-4 ${!isMobile ? "max-w-7xl mx-auto justify-between" : "flex-col"}`}>
+                    {!isMobile && (
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-accent/5 rounded-xl border border-accent/10">
+                                <CalendarIcon className="h-5 w-5 text-accent" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-xs font-black text-muted uppercase tracking-widest">Confirmation</span>
+                                <p className="text-sm font-bold text-primary-text">Review and save your selection</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className={`flex items-center gap-3 ${!isMobile ? "" : "w-full"}`}>
+                        <Button
+                            variant="secondary"
+                            onClick={() => setView('selection')}
+                            className={!isMobile ? "px-8 py-3 rounded-xl border-2 font-black uppercase tracking-widest text-xs" : "flex-1 h-12 rounded-xl bg-white/5 border-white/10 text-white"}
+                        >
                             Back
                         </Button>
-                        <Button onClick={confirmSave} isLoading={isSaving} className="flex-[2] h-14 bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40">
-                            <Check className="mr-2 h-5 w-5" />
+                        <Button
+                            onClick={confirmSave}
+                            isLoading={isSaving}
+                            className={!isMobile 
+                                ? "px-10 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs" 
+                                : "flex-1 h-12 rounded-xl bg-[#006b3f] text-white font-bold"}
+                        >
                             Confirm & Save
                         </Button>
                     </div>
                 </div>
+            </div>
             </div>
         );
     }
@@ -389,16 +413,19 @@ const HolidaySelectionPage: React.FC = () => {
                                 })}
                         </div>
 
-                        {/* Hint Footer */}
-                        <div className="px-5 py-4 bg-accent-light/40 border-t border-border">
-                            <p className="text-xs text-muted flex items-start gap-2">
-                                <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-accent" />
-                                <span>
-                                    Select up to <strong className="text-primary-text">{maxEmployeeHolidays} holidays</strong> from the pool above.
-                                    Click a selected holiday again to remove it (future dates only).
-                                </span>
-                            </p>
-                        </div>
+                        {/* Hint Footer (Mobile only, Desktop hint is moved to fixed bar) */}
+                        {isMobile && (
+                            <div className="px-5 py-4 bg-accent-light/40 border-t border-border">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-accent/10 rounded-lg">
+                                        <CalendarIcon className="h-4 w-4 text-accent" />
+                                    </div>
+                                    <p className="text-xs font-bold text-accent-dark tracking-tight leading-none uppercase">
+                                        {selectedHolidays.length === 6 ? 'Selection complete. Ready to save.' : `Select up to 6 holidays. (${selectedHolidays.length}/6 selected)`}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -472,19 +499,38 @@ const HolidaySelectionPage: React.FC = () => {
 
             {/* Floating Save Bar */}
             <div
-                className="fixed left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent z-40"
-                style={{ 
-                    bottom: isMobile ? 'calc(3.2rem + env(safe-area-inset-bottom))' : '0',
-                    paddingBottom: isMobile ? 'calc(1.2rem + env(safe-area-inset-bottom))' : '2rem'
-                }}
+                className={`fixed left-0 right-0 z-40 transition-all duration-300 ${
+                    isMobile 
+                        ? "p-4 bg-gradient-to-t from-[#041b0f] via-[#041b0f]/95 to-transparent bottom-[calc(3.2rem+env(safe-area-inset-bottom))] pb-[calc(1.2rem+env(safe-area-inset-bottom))]" 
+                        : "bg-white/80 backdrop-blur-md border-t border-border py-4 px-8 bottom-0 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]"
+                }`}
             >
-                <div className="max-w-2xl mx-auto">
+                <div className={`flex items-center gap-4 ${!isMobile ? "max-w-7xl mx-auto justify-between" : "flex-col"}`}>
+                    {!isMobile && (
+                        <div className="flex items-center gap-4 flex-1">
+                            <div className={`p-2 rounded-xl border transition-colors ${selectedHolidays.length === 6 ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                                <CalendarIcon className={`h-5 w-5 ${selectedHolidays.length === 6 ? 'text-emerald-600' : 'text-amber-600'}`} />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${selectedHolidays.length === 6 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                    {selectedHolidays.length} / 6 Holidays Selected
+                                </span>
+                                <p className="text-xs font-bold text-muted uppercase tracking-tight">
+                                    {selectedHolidays.length === 6 
+                                        ? 'Selection complete. You can proceed to save.' 
+                                        : `Select ${6 - selectedHolidays.length} more holiday${6 - selectedHolidays.length === 1 ? '' : 's'} to continue.`}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     <Button
                         onClick={handleSave}
                         disabled={selectedHolidays.length === 0}
-                        className="w-full h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"
+                        className={!isMobile 
+                            ? "px-12 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs" 
+                            : "w-full h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"}
                     >
-                        <Save className="mr-2 h-5 w-5" />
                         Save Selection
                     </Button>
                 </div>

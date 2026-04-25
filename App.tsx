@@ -1189,11 +1189,9 @@ const App: React.FC = () => {
           </Route>
 
           {/* Tasks */}
-          <Route element={<ProtectedRoute requiredPermission="manage_tasks" />}>
-            <Route path="tasks" element={<Tasks />} />
-            <Route path="tasks/add" element={<AddTaskPage />} />
-            <Route path="tasks/edit/:id" element={<AddTaskPage />} />
-          </Route>
+          <Route path="tasks" element={<Tasks />} />
+          <Route path="tasks/add" element={<AddTaskPage />} />
+          <Route path="tasks/edit/:id" element={<AddTaskPage />} />
 
           {/* CRM */}
           <Route element={<ProtectedRoute requiredPermission="view_crm_pipeline" />}>

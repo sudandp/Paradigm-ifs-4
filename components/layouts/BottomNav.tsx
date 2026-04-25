@@ -41,9 +41,9 @@ const BottomNav: React.FC = () => {
         },
         {
             to: '/tasks',
-            label: 'Pickup',
+            label: 'Tasks',
             icon: ClipboardCheck,
-            show: userPermissions.includes('view_mobile_nav_tasks' as any)
+            show: true
         },
         {
             to: '/leaves/dashboard',

@@ -116,6 +116,7 @@ const ApplyLeave: React.FC = () => {
     const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
     const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
+    const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
@@ -148,12 +149,19 @@ const ApplyLeave: React.FC = () => {
             try {
                 // Fetch Balances
                 const balance = await api.getLeaveBalancesForUser(user.id);
+                setFullBalance(balance);
+                
+                // Fetch Children
+                const children = await api.getUserChildren(user.id).catch(() => []);
+                setUserChildren(children as UserChild[]);
+
                 const baseType = watchLeaveType.toLowerCase().replace(/\s/g, '');
                 let balanceKeyBase = baseType;
                 
                 if (baseType === 'compoff') balanceKeyBase = 'compOff';
                 else if (baseType === 'childcare') balanceKeyBase = 'childCare';
                 else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
+                else if (baseType === 'maternity') balanceKeyBase = 'maternity';
                 
                 const typeKeyStr = `${balanceKeyBase}Total`;
                 const usedKeyStr = `${balanceKeyBase}Used`;
@@ -356,6 +364,7 @@ const ApplyLeave: React.FC = () => {
                 if (baseType === 'compoff') balanceKeyBase = 'compOff';
                 else if (baseType === 'childcare') balanceKeyBase = 'childCare';
                 else if (baseType === 'pinkleave') balanceKeyBase = 'pink';
+                else if (baseType === 'maternity') balanceKeyBase = 'maternity';
                 
                 const typeKeyStr = `${balanceKeyBase}Total`;
                 const usedKeyStr = `${balanceKeyBase}Used`;
@@ -367,6 +376,7 @@ const ApplyLeave: React.FC = () => {
                 if (leaveTypeLower === 'compoff') leaveTypeMapped = 'compOff';
                 else if (leaveTypeLower === 'pinkleave') leaveTypeMapped = 'pink';
                 else if (leaveTypeLower === 'childcare') leaveTypeMapped = 'childCare';
+                else if (leaveTypeLower === 'maternity') leaveTypeMapped = 'maternity';
                 
                 const isExpired = balance.expiryStates && (balance.expiryStates as any)[leaveTypeMapped];
                 
@@ -534,6 +544,7 @@ const ApplyLeave: React.FC = () => {
             case 'Pink Leave': return 'Pink Leave';
             case 'Comp Off': return 'Comp Off';
             case 'Loss of Pay': return 'Loss of Pay';
+            case 'Maternity': return 'Maternity Leave';
             case 'Child Care': return 'Child Care Leave';
             case 'WFH': return 'Work From Home (WFH)';
             case 'Correction': return 'Correction';
@@ -599,7 +610,8 @@ const ApplyLeave: React.FC = () => {
                                         <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
                                         <option value="Comp Off">Comp Off</option>
                                         <option value="Loss of Pay">Loss of Pay</option>
-                                        {isFemale && userChildren.length > 0 && <option value="Child Care">Child Care</option>}
+                                        {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
+                                        {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
                                         <option value="WFH">Work From Home (WFH)</option>
                                         <option value="Correction">Request for Correction</option>
                                         <option value="Permission">Request for Permission</option>
