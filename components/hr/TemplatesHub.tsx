@@ -20,6 +20,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../services/supabase';
 import { format } from 'date-fns';
+import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 
 // Icon map for template cards
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -62,6 +63,7 @@ const TemplatesHub: React.FC = () => {
   const [isPreparing, setIsPreparing] = useState(false);
   const [displayProgress, setDisplayProgress] = useState(0);
   const [isActualDone, setIsActualDone] = useState(false);
+  const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
   // High-end smooth progress animation
   React.useEffect(() => {
@@ -259,7 +261,7 @@ const TemplatesHub: React.FC = () => {
 
   const logAction = async (
     template: TemplateDefinition,
-    action: 'upload' | 'download',
+    action: 'upload' | 'download' | 'restore',
     rowsAffected: number,
     rowsCreated: number,
     rowsUpdated: number,
@@ -273,6 +275,7 @@ const TemplatesHub: React.FC = () => {
         action,
         user_id: user?.id,
         user_name: user?.name || 'Unknown',
+        user_photo: user?.photoUrl, // Capture current photo
         rows_affected: rowsAffected,
         rows_created: rowsCreated,
         rows_updated: rowsUpdated,
@@ -313,9 +316,12 @@ const TemplatesHub: React.FC = () => {
       : [activeTemplate!]
     ).sort((a, b) => (priorityMap[a.id] || 3) - (priorityMap[b.id] || 3));
 
+    const previousStates: Record<string, any[]> = {};
+
     try {
       for (const template of templatesToProcess) {
         const result = isMasterMode ? masterResult![template.id] : parseResult!;
+        previousStates[template.id] = [];
         let created = 0;
         let updated = 0;
         let failed = 0;
@@ -468,6 +474,9 @@ const TemplatesHub: React.FC = () => {
               });
 
               if (template.id === 'attendance_overview') {
+                const { data: existing } = await supabase.from('attendance_settings_scopes').select('*').eq('scope_type', 'entity').eq('scope_id', targetId).maybeSingle();
+                if (existing) previousStates[template.id].push({ table: 'attendance_settings_scopes', data: existing });
+                
                 await supabase.from('attendance_settings_scopes').upsert({
                   scope_type: 'entity',
                   scope_id: targetId,
@@ -475,8 +484,9 @@ const TemplatesHub: React.FC = () => {
                 }, { onConflict: 'scope_type,scope_id' });
                 updated++;
               } else if (template.id === 'costing_resource') {
-                const { data: existing } = await supabase.from('site_costing_master').select('id, config_data').eq('site_id', targetId).maybeSingle();
+                const { data: existing } = await supabase.from('site_costing_master').select('*').eq('site_id', targetId).maybeSingle();
                 if (existing) {
+                  previousStates[template.id].push({ table: 'site_costing_master', data: existing });
                   await supabase.from('site_costing_master').update({ config_data: dataPayload, updated_at: new Date().toISOString() }).eq('id', existing.id);
                 } else {
                   await supabase.from('site_costing_master').insert({ id: crypto.randomUUID(), site_id: targetId, config_data: dataPayload });
@@ -485,7 +495,9 @@ const TemplatesHub: React.FC = () => {
               } else if (['backoffice_heads', 'gmc_policy'].includes(template.id)) {
                 // Settings singleton update
                 const settingKey = template.id === 'backoffice_heads' ? 'back_office_id_series' : 'gmc_policy';
-                const { data: settings } = await supabase.from('settings').select(settingKey as any).eq('id', 'singleton').single();
+                const { data: settings } = await supabase.from('settings').select('*').eq('id', 'singleton').single();
+                if (settings) previousStates[template.id].push({ table: 'settings', data: settings });
+                
                 const currentData = settings?.[settingKey] || [];
                 const updatedData = Array.isArray(currentData) ? [...currentData, dataPayload] : [dataPayload];
                 await supabase.from('settings').update({ [settingKey]: updatedData }).eq('id', 'singleton');
@@ -497,6 +509,7 @@ const TemplatesHub: React.FC = () => {
                 const currentList = (existingRecord as any)?.[fieldKey] || [];
                 const newList = Array.isArray(currentList) ? [...currentList, dataPayload] : [dataPayload];
                 if (existingRecord) {
+                  previousStates[template.id].push({ table: template.table, data: existingRecord });
                   await supabase.from(template.table).update({ [fieldKey]: newList }).eq('id', (existingRecord as any).id);
                 } else {
                   await supabase.from(template.table).insert({ id: crypto.randomUUID(), organization_id: targetId, [fieldKey]: newList });
@@ -533,19 +546,21 @@ const TemplatesHub: React.FC = () => {
               if (comp) payload.company_id = comp.id;
             }
 
-            const { data: existing } = await supabase
-              .from(template.table)
-              .select('id')
-              .ilike(template.matchKey, matchValue)
-              .maybeSingle();
+              const { data: existing } = await supabase
+                .from(template.table)
+                .select('*')
+                .ilike(template.matchKey, matchValue)
+                .maybeSingle();
 
-            if (existing) {
-              const { error } = await supabase.from(template.table).update({ ...payload }).eq('id', existing.id);
-              if (error) { console.error(`Update failed for ${template.table}:`, error); failed++; } else updated++;
-            } else {
-              const { error } = await supabase.from(template.table).insert({ id: crypto.randomUUID(), ...payload });
-              if (error) { console.error(`Insert failed for ${template.table}:`, error); failed++; } else created++;
-            }
+              if (existing) {
+                // Save snapshot for restore
+                previousStates[template.id].push({ table: template.table, data: existing });
+                const { error } = await supabase.from(template.table).update({ ...payload }).eq('id', existing.id);
+                if (error) { console.error(`Update failed for ${template.table}:`, error); failed++; } else updated++;
+              } else {
+                const { error } = await supabase.from(template.table).insert({ id: crypto.randomUUID(), ...payload });
+                if (error) { console.error(`Insert failed for ${template.table}:`, error); failed++; } else created++;
+              }
           } catch (e) {
             console.error(e);
             failed++;
@@ -558,7 +573,8 @@ const TemplatesHub: React.FC = () => {
 
         await logAction(template, 'upload', result.rows.length, created, updated, failed, {
           columns: template.columns.map(c => c.header),
-          sampleRows: result.rows.slice(0, 3).map(r => r.data)
+          sampleRows: result.rows.slice(0, 3).map(r => r.data),
+          previousState: previousStates[template.id]
         });
       }
 
@@ -599,6 +615,55 @@ const TemplatesHub: React.FC = () => {
       console.warn('Failed to load change logs');
     } finally {
       setLogsLoading(false);
+    }
+  };
+
+  const handleRestore = async (log: ChangeLogEntry) => {
+    if (!log.details?.previousState || log.details.previousState.length === 0) {
+      setToast({ message: 'This entry does not contain restore data.', type: 'warning' });
+      return;
+    }
+
+    const template = TEMPLATE_DEFINITIONS.find(t => t.id === log.template_id);
+    if (!template) {
+      setToast({ message: 'Template definition no longer exists.', type: 'error' });
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to restore ${log.details.previousState.length} records to their previous state? This will overwrite the changes made during this upload.`)) {
+      return;
+    }
+
+    setIsRestoring(log.id);
+    try {
+      let restored = 0;
+      let failed = 0;
+
+      for (const record of log.details.previousState) {
+        // Handle polymorphic snapshots (different tables)
+        const targetTable = record.table || template.table;
+        const targetData = record.data || record;
+        
+        const { error } = await supabase.from(targetTable).update(targetData).eq('id', targetData.id);
+        if (error) failed++;
+        else restored++;
+      }
+
+      await logAction(template, 'restore', log.details.previousState.length, 0, restored, failed, {
+        originalLogId: log.id,
+        restoredCount: restored
+      });
+
+      setToast({ 
+        message: `Restore complete: ${restored} records reverted.${failed > 0 ? ` ${failed} failed.` : ''}`, 
+        type: failed > 0 ? 'warning' : 'success' 
+      });
+      loadChangeLogs();
+    } catch (err) {
+      console.error('Restore failed:', err);
+      setToast({ message: 'An error occurred during restore.', type: 'error' });
+    } finally {
+      setIsRestoring(null);
     }
   };
 
@@ -702,12 +767,28 @@ const TemplatesHub: React.FC = () => {
                       <div>
                         <p className="text-sm font-semibold text-primary-text">{log.template_name}<span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${log.action === 'upload' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>{log.action.toUpperCase()}</span></p>
                         <p className="text-xs text-muted mt-0.5 flex items-center gap-3">
-                          <span className="flex items-center gap-1"><User className="h-3 w-3" />{log.user_name}</span>
+                          <span className="flex items-center gap-1.5">
+                            <div className="h-4 w-4 rounded-full overflow-hidden shadow-sm">
+                              <ProfilePlaceholder photoUrl={(log as any).user_photo} seed={log.user_id} />
+                            </div>
+                            {log.user_name}
+                          </span>
                           <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{format(new Date(log.created_at), 'dd MMM yyyy, hh:mm a')}</span>
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
+                      {log.action === 'upload' && log.details?.previousState?.length > 0 && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={(e) => { e.stopPropagation(); handleRestore(log); }}
+                          disabled={!!isRestoring}
+                          className="h-7 text-[10px] font-bold border-amber-200 text-amber-600 hover:bg-amber-50"
+                        >
+                          {isRestoring === log.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Restore Version'}
+                        </Button>
+                      )}
                       {log.action === 'upload' && (<div className="flex items-center gap-3 text-xs"><span className="text-emerald-600 font-medium">{log.rows_created} created</span><span className="text-amber-600 font-medium">{log.rows_updated} updated</span>{log.rows_failed > 0 && <span className="text-red-500 font-medium">{log.rows_failed} failed</span>}</div>)}
                       <ChevronDown className={`h-4 w-4 text-muted transition-transform ${expandedLogId === log.id ? 'rotate-180' : ''}`} />
                     </div>
