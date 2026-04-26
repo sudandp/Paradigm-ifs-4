@@ -642,9 +642,13 @@ export const useAuthStore = create<AuthState>()(
                     const { breakReminderInterval, breakLimit } = get();
                     restoreBreakRemindersOnResume(
                         new Date(lastBreakIn),
-                        breakReminderInterval || 15,
+                        breakReminderInterval || 0.1666,
                         breakLimit || 60
                     ).catch(e => console.warn('[authStore] Failed to restore break reminders on resume:', e));
+                } else if (!isOnBreak) {
+                    // Sync: If we are NOT on break (e.g. broke out on another device),
+                    // ensure all local/native reminders are cancelled.
+                    cancelStepBreakReminders();
                 }
                 
                 // Sync tracking state after status update
@@ -699,6 +703,14 @@ export const useAuthStore = create<AuthState>()(
             // Previous logic for preventing multiple check-ins per day has been removed
             // based on user feedback to support multiple sessions.
             // ----------------------------------------------------------------------
+
+            // IMMEDIATELY cancel break alarms if the user is breaking out.
+            // Do NOT wait for GPS or API calls, otherwise the device will keep ringing 
+            // for up to 10 seconds while waiting for location acquisition.
+            if (newType === 'break-out') {
+                cancelNotification('BREAK_END');
+                cancelStepBreakReminders();
+            }
 
             try {
                 // --- 3-Stage Location Acquisition using Capacitor ---
@@ -848,10 +860,7 @@ export const useAuthStore = create<AuthState>()(
                         // Schedule recurring step reminders (native)
                         scheduleStepBreakReminders(new Date(), breakInterval || 0.1666);
                     } else if (newType === 'break-out') {
-                        // Cancel break reminder
-                        cancelNotification('BREAK_END');
-                        // Cancel NEW recurring step reminders
-                        cancelStepBreakReminders();
+                        // Alarms are already cancelled at the start of the function to prevent ringing
                     }
 
                     const actionLabel = getActionTextForType(newType, workType);

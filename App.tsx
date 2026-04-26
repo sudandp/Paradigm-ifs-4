@@ -32,7 +32,7 @@ import { Toaster } from 'react-hot-toast';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { useScreenOrientation } from './hooks/useScreenOrientation';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { cancelStepBreakReminders, scheduleStepBreakReminders } from './utils/permissionUtils';
+import { cancelStepBreakReminders, scheduleStepBreakReminders, registerBreakNotificationActions, updateBreakReminderChannelSound } from './utils/permissionUtils';
 import BreakAlertModal from './components/attendance/BreakAlertModal';
 import { useBreakAlertStore } from './store/breakAlertStore';
 
@@ -379,6 +379,19 @@ const App: React.FC = () => {
   // Lock screen orientation to portrait on native
   useScreenOrientation();
 
+  // Register break notification action buttons on native boot.
+  // Must run on every launch — action types don't persist across app restarts.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    registerBreakNotificationActions().catch(e =>
+      console.warn('[App] Failed to register break notification actions:', e)
+    );
+    // Also ensure channel sound matches user preference
+    updateBreakReminderChannelSound().catch(e =>
+      console.warn('[App] Failed to update break channel sound:', e)
+    );
+  }, []);
+
   // Configure StatusBar on native
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -393,7 +406,48 @@ const App: React.FC = () => {
       if (canGoBack) {
         window.history.back();
       } else {
-        CapacitorApp.minimizeApp();
+        const { isCheckedIn, isFieldCheckedIn } = useAuthStore.getState();
+        if (isCheckedIn || isFieldCheckedIn) {
+          const proceed = window.confirm(
+            "⚠️ IMPORTANT WARNING ⚠️\n\n" +
+            "You are currently clocked in. For accurate attendance and salary calculation, the app must remain open in the background.\n\n" +
+            "If you Force Close the app or turn off your GPS/Location, your work hours and route will NOT be recorded. This will directly affect your salary and attendance records.\n\n" +
+            "Are you sure you want to minimize the app?"
+          );
+          if (proceed) {
+            CapacitorApp.minimizeApp();
+          }
+        } else {
+          CapacitorApp.minimizeApp();
+        }
+      }
+    });
+    return () => { handler.then(h => h.remove()); };
+  }, []);
+
+  // Check GPS/Location status when app comes to foreground
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handler = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
+      if (isActive) {
+        const { isCheckedIn, isFieldCheckedIn } = useAuthStore.getState();
+        if (isCheckedIn || isFieldCheckedIn) {
+          try {
+            const { Geolocation } = await import('@capacitor/geolocation');
+            const permissions = await Geolocation.checkPermissions();
+            // If location is completely denied, warn the user
+            if (permissions.location === 'denied') {
+              window.alert(
+                "⚠️ GPS/LOCATION DISABLED ⚠️\n\n" +
+                "Your location permissions are denied or GPS is turned off.\n\n" +
+                "Since you are currently clocked in, turning off GPS will stop your tracking. This will result in missing route data and can directly affect your salary calculation.\n\n" +
+                "Please enable Location Services in your phone settings."
+              );
+            }
+          } catch (e) {
+            console.warn('[App] Failed to check GPS status on resume', e);
+          }
+        }
       }
     });
     return () => { handler.then(h => h.remove()); };
@@ -440,47 +494,64 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    const actionListener = LocalNotifications.addListener('localNotificationActionPerformed', async (action) => {
-      console.log('[App] Local notification action:', action);
-      
-      if (action.actionId === 'RESUME_WORK') {
-        console.log('[App] Resume Work action triggered via break reminder');
-        try {
-          // Programmatically trigger break-out
-          const { toggleCheckInStatus } = useAuthStore.getState();
-          const { success, message } = await toggleCheckInStatus(
-            'Resumed work via notification reminder',
-            null,
-            'office',
-            undefined,
-            'break-out'
-          );
-          
-          if (success) {
-            console.log('[App] Break-out successful via notification action');
-            // Navigate to home if needed, or just refresh state
-            navigate('/profile', { replace: true });
-          } else {
-            console.warn('[App] Break-out failed via notification action:', message);
-          }
-        } catch (err) {
-          console.error('[App] Error during break-out via notification action:', err);
-        }
-      } else if (action.actionId === 'CONTINUE_BREAK') {
-        console.log('[App] Continue Break acknowledged. Re-scheduling reminders to extend coverage...');
-        // Re-schedule reminders from NOW so the next wave of 8 one-shot notifications
-        // is set up, preventing silent gaps after the initial 8 have fired.
-        try {
-          const { breakReminderInterval } = useAuthStore.getState();
-          await scheduleStepBreakReminders(new Date(), breakReminderInterval || 0.1666);
-          console.log('[App] Break reminders extended.');
-        } catch (err) {
-          console.warn('[App] Failed to extend break reminders:', err);
-        }
-      }
-    });
+        // ── FOREGROUND handler ─────────────────────────────────────────────────────
+        // When a break reminder notification fires while the app is OPEN on Android/iOS,
+        // intercept it and show the same full-screen BreakAlertModal (with looping alarm)
+        // that web users see. Cancel the system tray notification so it doesn't double-show.
+        const receivedListener = LocalNotifications.addListener('localNotificationReceived', async (notification) => {
+            console.log('[App] Local notification received in foreground:', notification.id, notification.channelId);
 
-    return () => {
+            if (notification.channelId === 'break_reminders' || notification.channelId === 'insistent_break_alarms') {
+                try {
+                    await LocalNotifications.cancel({ notifications: [{ id: notification.id }] });
+                } catch (e) {}
+                
+                const { breakReminderInterval } = useAuthStore.getState();
+                const elapsed: number = (notification as any).extra?.elapsedMinutes ?? breakReminderInterval ?? 0.1666;
+                console.log('[App] Triggering break alert modal directly (foreground):', elapsed);
+                triggerBreakAlert(elapsed);
+            }
+        });
+
+        // ── CUSTOM NATIVE ALARM handler ────────────────────────────────────────────
+        // Catch actions from the Android BreakAlarmReceiver
+        const handleNativeAlarmAction = async (e: any) => {
+            const data = e.detail;
+            if (!data) return;
+            
+            console.log('[App] Native alarm action received:', data);
+            processBreakAction(data.action, data.elapsedMinutes);
+        };
+
+        const processBreakAction = async (actionId: string, elapsed: number) => {
+            if (actionId === 'RESUME_WORK') {
+                const { toggleCheckInStatus } = useAuthStore.getState();
+                const { success } = await toggleCheckInStatus('Resumed work via alarm action', null, 'office', undefined, 'break-out');
+                if (success) navigate('/profile', { replace: true });
+            } else if (actionId === 'CONTINUE_BREAK' || actionId === 'OPEN_MODAL') {
+                const { breakReminderInterval } = useAuthStore.getState();
+                const elapsedMins = elapsed || breakReminderInterval || 0.1666;
+                console.log('[App] Triggering break alert modal directly:', elapsedMins);
+                triggerBreakAlert(elapsedMins);
+            }
+        };
+
+        window.addEventListener('breakAlarmAction', handleNativeAlarmAction);
+
+        // ── BACKGROUND / ACTION handler (For iOS fallback) ─────────────────────────
+        // When user taps an action button on the standard LocalNotification tray (iOS)
+        const actionListener = LocalNotifications.addListener('localNotificationActionPerformed', async (action) => {
+            console.log('[App] Local notification action:', action);
+            if (action.actionId === 'RESUME_WORK') {
+                processBreakAction('RESUME_WORK', 0);
+            } else if (action.actionId === 'CONTINUE_BREAK') {
+                processBreakAction('CONTINUE_BREAK', 0);
+            }
+        });
+
+        return () => {
+            window.removeEventListener('breakAlarmAction', handleNativeAlarmAction);
+            receivedListener.then(h => h.remove());
       actionListener.then(h => h.remove());
     };
   }, [navigate]);

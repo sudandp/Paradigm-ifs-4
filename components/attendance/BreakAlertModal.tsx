@@ -1,13 +1,17 @@
 // components/attendance/BreakAlertModal.tsx
 // Full-screen urgent alert modal that fires when the break reminder timer goes off.
-// Plays a looping alarm until the user either continues their break or breaks out.
-// Works on Web (setInterval-based) and mirrors the UX expected on native.
+// • Web/PWA: shows this modal with looping audio from the user's selected alert tone.
+// • Android/iOS: the BreakAlertModal fires in FOREGROUND mode;
+//   background alerts are handled by LocalNotifications (native) with action buttons.
+// Alarm doesn't stop until user taps "Continue Break" or "Break Out Now".
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Coffee, LogIn, Clock, Bell } from 'lucide-react';
 import { useBreakAlertStore } from '../../store/breakAlertStore';
 import { useAuthStore } from '../../store/authStore';
+import { useAlertToneStore } from '../../store/alertToneStore';
 import { scheduleStepBreakReminders, cancelStepBreakReminders } from '../../utils/permissionUtils';
+import { previewRingtone, stopRingtonePreview } from '../../plugins/ringtonePlugin';
 
 // ─── Interval options (mirrors AttendanceActionPage) ─────────────────────────
 const INTERVALS: { label: string; value: number }[] = [
@@ -27,6 +31,7 @@ const formatElapsed = (minutes: number): string => {
 const BreakAlertModal: React.FC = () => {
     const { showModal, elapsedMinutes, dismissAlert } = useBreakAlertStore();
     const { toggleCheckInStatus, breakReminderInterval } = useAuthStore();
+    const { getWebPath } = useAlertToneStore();
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const pulseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -35,20 +40,35 @@ const BreakAlertModal: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [pulse, setPulse] = useState(false);
 
-    // ── Start / stop the looping alarm ────────────────────────────────────────
+    // ── Start the looping alarm using selected tone ────────────────────────────
     const startAlarm = useCallback(() => {
-        if (!audioRef.current) {
-            audioRef.current = new Audio('/sounds/beep.wav');
-            audioRef.current.loop = true;
-        }
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(e => console.warn('[BreakAlert] Audio play blocked:', e));
+        const { isNativeRingtoneActive, nativeRingtoneUri } = useAlertToneStore.getState();
 
-        // Pulsing visual ring every second
+        if (isNativeRingtoneActive() && nativeRingtoneUri) {
+            // Play using native Android ringtone API
+            previewRingtone(nativeRingtoneUri, true);
+        } else {
+            // Play using web Audio API
+            const audioPath = getWebPath();
+            if (!audioRef.current || audioRef.current.src !== window.location.origin + audioPath) {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                }
+                audioRef.current = new Audio(audioPath);
+                audioRef.current.loop = true;
+            }
+            audioRef.current.currentTime = 0;
+            audioRef.current.play().catch(e => console.warn('[BreakAlert] Audio play blocked:', e));
+        }
         pulseIntervalRef.current = setInterval(() => setPulse(p => !p), 800);
-    }, []);
+    }, [getWebPath]);
 
     const stopAlarm = useCallback(() => {
+        const { isNativeRingtoneActive } = useAlertToneStore.getState();
+        if (isNativeRingtoneActive()) {
+            stopRingtonePreview();
+        }
+
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
@@ -76,13 +96,33 @@ const BreakAlertModal: React.FC = () => {
         setIsLoading(true);
         stopAlarm();
         try {
+            // Local cancel/reschedule
             await cancelStepBreakReminders();
-            // Re-schedule from NOW with the newly selected interval
-            await scheduleStepBreakReminders(new Date(), selectedInterval);
-            // Persist interval into the store so resume logic uses the right value
-            useAuthStore.setState({ breakReminderInterval: selectedInterval });
+            
+            // Sync: Trigger a new 'break-in' event in the database.
+            // This will fire the realtime listener on all other devices (like Android),
+            // causing them to refresh their status and reset their own reminder timers.
+            const { success, message } = await toggleCheckInStatus(
+                `Break acknowledged: Still on break (${selectedInterval}m interval)`,
+                null,
+                'office',
+                undefined,
+                'break-in',
+                selectedInterval
+            );
+
+            if (success) {
+                // If DB sync succeeded, the local schedule will be handled by the subsequent
+                // checkAttendanceStatus refresh, but we can also do it here for immediate feedback.
+                await scheduleStepBreakReminders(new Date(), selectedInterval);
+                useAuthStore.setState({ breakReminderInterval: selectedInterval });
+            } else {
+                console.warn('[BreakAlert] Sync failed:', message);
+                // Fallback: still try to reschedule locally even if DB sync failed
+                await scheduleStepBreakReminders(new Date(), selectedInterval);
+            }
         } catch (err) {
-            console.warn('[BreakAlert] Failed to reschedule reminders:', err);
+            console.warn('[BreakAlert] Failed to acknowledge break:', err);
         } finally {
             setIsLoading(false);
             dismissAlert();
@@ -122,7 +162,7 @@ const BreakAlertModal: React.FC = () => {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-[9999] flex items-center justify-center"
-                    style={{ background: 'rgba(2, 20, 10, 0.92)', backdropFilter: 'blur(12px)' }}
+                    style={{ background: 'rgba(2, 20, 10, 0.93)', backdropFilter: 'blur(14px)' }}
                 >
                     <motion.div
                         initial={{ scale: 0.85, opacity: 0, y: 30 }}
@@ -136,35 +176,32 @@ const BreakAlertModal: React.FC = () => {
                             boxShadow: '0 0 60px rgba(239, 68, 68, 0.25), 0 25px 50px rgba(0,0,0,0.6)',
                         }}
                     >
-                        {/* ── Pulsing ring ──────────────────────────────── */}
+                        {/* Pulsing border ring */}
                         <motion.div
-                            animate={{ scale: pulse ? 1.06 : 1, opacity: pulse ? 0.6 : 0.3 }}
+                            animate={{ scale: pulse ? 1.06 : 1, opacity: pulse ? 0.6 : 0.25 }}
                             transition={{ duration: 0.4 }}
-                            className="absolute -inset-1 rounded-3xl pointer-events-none"
-                            style={{
-                                background: 'transparent',
-                                border: '2px solid rgba(239, 68, 68, 0.7)',
-                            }}
+                            className="absolute -inset-0.5 rounded-3xl pointer-events-none"
+                            style={{ border: '2px solid rgba(239, 68, 68, 0.8)', background: 'transparent' }}
                         />
 
                         <div className="relative p-7">
-                            {/* ── Icon ─────────────────────────────────── */}
+                            {/* Icon */}
                             <div className="flex justify-center mb-5">
                                 <motion.div
-                                    animate={{ scale: pulse ? 1.12 : 1 }}
+                                    animate={{ scale: pulse ? 1.15 : 1 }}
                                     transition={{ duration: 0.4 }}
                                     className="w-16 h-16 rounded-2xl flex items-center justify-center"
                                     style={{
                                         background: 'rgba(239, 68, 68, 0.15)',
                                         border: '1px solid rgba(239, 68, 68, 0.4)',
-                                        boxShadow: '0 0 30px rgba(239, 68, 68, 0.2)',
+                                        boxShadow: `0 0 ${pulse ? '40px' : '20px'} rgba(239, 68, 68, 0.3)`,
                                     }}
                                 >
                                     <Bell className="w-7 h-7 text-red-400" />
                                 </motion.div>
                             </div>
 
-                            {/* ── Title ────────────────────────────────── */}
+                            {/* Title */}
                             <div className="text-center mb-2">
                                 <p className="text-[11px] font-black text-red-400 uppercase tracking-[0.2em] mb-1">
                                     Break Reminder
@@ -174,7 +211,7 @@ const BreakAlertModal: React.FC = () => {
                                 </h2>
                             </div>
 
-                            {/* ── Elapsed time ─────────────────────────── */}
+                            {/* Elapsed time */}
                             <div className="flex items-center justify-center gap-2 mb-6">
                                 <Clock className="w-3.5 h-3.5 text-emerald-400" />
                                 <p className="text-sm text-slate-300 font-medium">
@@ -183,7 +220,7 @@ const BreakAlertModal: React.FC = () => {
                                 </p>
                             </div>
 
-                            {/* ── Continue break: interval selector ────── */}
+                            {/* Continue break — interval selector */}
                             <div
                                 className="rounded-2xl p-4 mb-4"
                                 style={{
@@ -236,7 +273,7 @@ const BreakAlertModal: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* ── Break Out button ──────────────────────── */}
+                            {/* Break Out button */}
                             <button
                                 onClick={handleBreakOut}
                                 disabled={isLoading}
@@ -254,7 +291,6 @@ const BreakAlertModal: React.FC = () => {
                                 {isLoading ? 'Breaking out…' : 'Break Out Now'}
                             </button>
 
-                            {/* ── Fine print ───────────────────────────── */}
                             <p className="text-center text-[9px] text-slate-600 mt-4 font-medium">
                                 Alarm will keep playing until you make a choice.
                             </p>

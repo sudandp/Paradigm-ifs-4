@@ -12,8 +12,9 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2 } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
+import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -897,7 +898,7 @@ const ProfilePage: React.FC = () => {
                             </form>
                         </section>
 
-                        {/* Passcode Fragment */}
+                        {/* Security Pin Section */}
                         <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
                             <div className="flex items-center gap-3 mb-6">
                                 <Lock className="h-5 w-5 text-amber-400" />
@@ -909,6 +910,11 @@ const ProfilePage: React.FC = () => {
                                 <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
                                 <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-2">Update Security</Button>
                             </form>
+                        </section>
+
+                        {/* Alert Tone Picker Section */}
+                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                            <AlertTonePicker />
                         </section>
 
                         {/* Family Section Fragment */}

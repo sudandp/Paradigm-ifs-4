@@ -5,6 +5,8 @@ import { Contacts } from '@capacitor-community/contacts';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
 import { pushNotificationService } from '../services/pushNotificationService';
+import { useAlertToneStore } from '../store/alertToneStore';
+import { scheduleBreakAlarm, cancelBreakAlarm } from '../plugins/breakAlarmPlugin';
 
 // Notification IDs to ensure we can cancel them specifically
 const NOTIFICATION_IDS = {
@@ -345,7 +347,8 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
 };
 
 /**
- * Request notification permissions specifically (legacy support or targeted)
+ * Request notification permissions specifically (legacy support or targeted).
+ * Also registers action types and ensures they're set up regardless.
  */
 export const requestNotificationPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
@@ -353,32 +356,80 @@ export const requestNotificationPermissions = async () => {
     try {
         const result = await LocalNotifications.requestPermissions();
         if (result.display === 'granted') {
-            // Register action types for break reminders
-            await LocalNotifications.registerActionTypes({
-                types: [
-                    {
-                        id: 'BREAK_REMINDER_ACTIONS',
-                        actions: [
-                            {
-                                id: 'CONTINUE_BREAK',
-                                title: 'Still on Break ☕',
-                                foreground: true,
-                            },
-                            {
-                                id: 'RESUME_WORK',
-                                title: 'Resume Work (Break Out) 🏁',
-                                foreground: true,
-                                destructive: true,
-                            }
-                        ]
-                    }
-                ]
-            });
+            await registerBreakNotificationActions();
         } else {
             console.warn('Local notification permissions not granted');
         }
     } catch (error) {
         console.error('Error requesting notification permissions:', error);
+    }
+};
+
+/**
+ * Register action buttons for break reminder notifications.
+ * Must be called on app boot (not just on permission grant) so they
+ * survive app restarts without re-requesting permissions.
+ */
+export const registerBreakNotificationActions = async () => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+        await LocalNotifications.registerActionTypes({
+            types: [
+                {
+                    id: 'BREAK_REMINDER_ACTIONS',
+                    actions: [
+                        {
+                            id: 'CONTINUE_BREAK',
+                            title: 'Still on Break ☕',
+                            foreground: true,
+                        },
+                        {
+                            id: 'RESUME_WORK',
+                            title: 'Break Out Now 🏁',
+                            foreground: true,
+                            destructive: true,
+                        }
+                    ]
+                }
+            ]
+        });
+        console.log('[PermissionUtils] Break notification actions registered.');
+    } catch (error) {
+        console.error('[PermissionUtils] Failed to register action types:', error);
+    }
+};
+
+/**
+ * Update the break_reminders Android notification channel with the user's selected tone.
+ * Call this when the user changes their preferred alert tone in Settings.
+ */
+export const updateBreakReminderChannelSound = async () => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+        const toneFilename = useAlertToneStore.getState().getNativeFilename();
+        // If it's a native ringtone, the Java RingtonePlugin already handles the channel.
+        // On boot, the channel already exists in Android, so we don't need to touch it.
+        if (toneFilename === '__native_ringtone__') {
+            console.log(`[PermissionUtils] break_reminders channel uses native system ringtone.`);
+            return;
+        }
+
+        // Delete and recreate the channel so the new sound takes effect.
+        // Android does NOT allow updating the sound of an existing channel once created.
+        try { await LocalNotifications.deleteChannel({ id: 'break_reminders' }); } catch (_) {}
+        await LocalNotifications.createChannel({
+            id: 'break_reminders',
+            name: 'Break Status Reminders',
+            description: 'Periodic break reminder alerts. Customize the alert tone in Settings.',
+            importance: 5,
+            visibility: 1,
+            sound: toneFilename, // no extension
+            vibration: true,
+            lights: true,
+        });
+        console.log(`[PermissionUtils] break_reminders channel updated with sound: ${toneFilename}`);
+    } catch (error) {
+        console.error('[PermissionUtils] Failed to update break channel sound:', error);
     }
 };
 
@@ -533,8 +584,10 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
 
 /**
  * Schedule recurring break reminders.
- * On native: schedules up to 8 LocalNotification one-shots.
- * On web: uses setInterval with the browser Notification API — truly recurring.
+ * • Native (Android/iOS): schedules up to 8 LocalNotification one-shots with action buttons.
+ *   Uses user-selected alert tone from alertToneStore.
+ *   Background-safe: fires even when app is closed.
+ * • Web: setInterval that dispatches 'break-alert-trigger' event → BreakAlertModal.
  */
 export const scheduleStepBreakReminders = async (startTime: Date, intervalMinutes: number = 15) => {
     // Cancel any previously running reminders first
@@ -542,21 +595,18 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
 
     if (!Capacitor.isNativePlatform()) {
         // ── Web / PWA path ────────────────────────────────────────────────────
-        // Use setInterval so notifications continue indefinitely until cancelled.
         _webBreakStepCount = 0;
         const intervalMs = intervalMinutes * 60 * 1000;
         _webBreakIntervalId = setInterval(() => {
             _webBreakStepCount++;
             const elapsedMins = _webBreakStepCount * intervalMinutes;
 
-            // ── Primary: dispatch in-app modal event ────────────────────────
-            // The App.tsx listener catches this and shows the BreakAlertModal
-            // with looping alarm sound and action buttons.
+            // Primary: dispatch in-app modal event (foreground)
             window.dispatchEvent(new CustomEvent('break-alert-trigger', {
                 detail: { elapsedMinutes: elapsedMins }
             }));
 
-            // ── Fallback: browser notification when tab is in background ────
+            // Fallback: browser notification when tab is in background
             const displayTime = elapsedMins < 1
                 ? `${Math.round(elapsedMins * 60)} seconds`
                 : `${Math.round(elapsedMins)} minute${Math.round(elapsedMins) !== 1 ? 's' : ''}`;
@@ -569,38 +619,66 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
         return;
     }
 
-    // ── Native path (Android / iOS) ───────────────────────────────────────────
-    try {
-        const notifications = [];
-        // Schedule up to 8 reminders per session (2h at 15m, 4h at 30m, etc.)
-        // The App.tsx CONTINUE_BREAK action handler re-calls this to extend coverage.
+    // ── Native path (Android) ──────────────────────────────────────────────
+    if (Capacitor.getPlatform() === 'android') {
+        const toneFilename = useAlertToneStore.getState().getNativeFilename();
+        const nativeUri = useAlertToneStore.getState().nativeRingtoneUri;
         for (let i = 1; i <= 8; i++) {
             const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
+            if (triggerTime <= new Date()) continue;
+            const elapsedMins = i * intervalMinutes;
+            await scheduleBreakAlarm(
+                elapsedMins,
+                NOTIFICATION_IDS.RECURRING_BREAK + i,
+                toneFilename !== '__native_ringtone__' ? toneFilename : undefined,
+                nativeUri || undefined
+            );
+        }
+        return;
+    }
 
-            // Skip if trigger time is in the past
+    // ── Native path (iOS) ────────────────────────────────────────────────────
+    try {
+        // Ensure action buttons are registered (safe to call multiple times)
+        await registerBreakNotificationActions();
+
+        // Get user's selected alert tone
+        const toneFilename = useAlertToneStore.getState().getNativeFilename();
+
+        const notifications: any[] = [];
+        for (let i = 1; i <= 8; i++) {
+            const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
             if (triggerTime <= new Date()) continue;
 
             const elapsedMins = i * intervalMinutes;
-            const displayTime = elapsedMins < 1 
-                ? `${Math.round(elapsedMins * 60)} seconds` 
+            const displayTime = elapsedMins < 1
+                ? `${Math.round(elapsedMins * 60)} seconds`
                 : `${Math.round(elapsedMins)} minute${Math.round(elapsedMins) !== 1 ? 's' : ''}`;
 
-            notifications.push({
-                title: 'Break Update ☕',
-                body: `You've been on break for ${displayTime}. Are you still on break?`,
+            const notificationPayload: any = {
+                title: '🔔 Break Reminder',
+                body: `You've been on break for ${displayTime}. Still on break or returning to work?`,
                 id: NOTIFICATION_IDS.RECURRING_BREAK + i,
-                schedule: { at: triggerTime },
-                // Android: sound must reference filename WITHOUT extension from res/raw/
-                sound: 'beep',
+                schedule: { at: triggerTime, allowWhileIdle: true },
                 channelId: 'break_reminders',
                 actionTypeId: 'BREAK_REMINDER_ACTIONS',
                 smallIcon: 'ic_stat_icon_config_sample',
-            });
+                extra: { elapsedMinutes: elapsedMins }, // read by foreground handler → BreakAlertModal
+                ongoing: false,           // dismissible by swipe, but action buttons remain
+            };
+
+            // Only add the 'sound' property for built-in res/raw tones.
+            // For native URI ringtones, we omit 'sound' and let the channel default handle it.
+            if (toneFilename !== '__native_ringtone__') {
+                notificationPayload.sound = toneFilename;
+            }
+
+            notifications.push(notificationPayload);
         }
 
         if (notifications.length > 0) {
             await LocalNotifications.schedule({ notifications });
-            console.log(`Scheduled ${notifications.length} recurring break reminders every ${intervalMinutes}m`);
+            console.log(`[Native] Scheduled ${notifications.length} break reminders (tone: ${toneFilename}, every ${intervalMinutes}m)`);
         }
     } catch (error) {
         console.error('Failed to schedule step break reminders:', error);
@@ -644,7 +722,15 @@ export const cancelStepBreakReminders = async () => {
 
     if (!Capacitor.isNativePlatform()) return;
 
-    // ── Native path ───────────────────────────────────────────────────────────
+    // ── Native path (Android) ────────────────────────────────────────────────
+    if (Capacitor.getPlatform() === 'android') {
+        for (let i = 1; i <= 8; i++) {
+            await cancelBreakAlarm(NOTIFICATION_IDS.RECURRING_BREAK + i);
+        }
+        return;
+    }
+
+    // ── Native path (iOS) ────────────────────────────────────────────────────
     try {
         const pending = await LocalNotifications.getPending();
         const idsToCancel = pending.notifications
