@@ -19,7 +19,7 @@ import { processDailyEvents } from '../utils/attendanceCalculations';
 import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification, scheduleStepBreakReminders, cancelStepBreakReminders } from '../utils/permissionUtils';
+import { scheduleShiftEndReminder, scheduleBreakEndReminder, cancelNotification, scheduleStepBreakReminders, cancelStepBreakReminders, restoreBreakRemindersOnResume } from '../utils/permissionUtils';
 // [SECURITY] Defense-in-depth: rate limiting, audit logging, session management
 import {
   checkRateLimit,
@@ -167,7 +167,7 @@ export const useAuthStore = create<AuthState>()(
         loading: false,
         geofencingSettings: null,
         breakLimit: 60,
-        breakReminderInterval: 15,
+        breakReminderInterval: 0.1666,
         dailyPunchCount: 0,
         approvedUnlockCount: 0,
         dailyUnlockRequestCount: 0,
@@ -635,6 +635,17 @@ export const useAuthStore = create<AuthState>()(
                     isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
                     isSiteOtCheckedIn
                 });
+
+                // If user is still on break and the app just resumed / reloaded,
+                // re-schedule break reminders so they are not silently lost.
+                if (isOnBreak && lastBreakIn) {
+                    const { breakReminderInterval, breakLimit } = get();
+                    restoreBreakRemindersOnResume(
+                        new Date(lastBreakIn),
+                        breakReminderInterval || 15,
+                        breakLimit || 60
+                    ).catch(e => console.warn('[authStore] Failed to restore break reminders on resume:', e));
+                }
                 
                 // Sync tracking state after status update
                 get().syncRouteTracking();
@@ -831,11 +842,11 @@ export const useAuthStore = create<AuthState>()(
                         cancelNotification('BREAK_END');
                     } else if (newType === 'break-in') {
                         // Persist user-selected interval so the web foreground monitor can read it
-                        set({ breakReminderInterval: breakInterval || 15 });
+                        set({ breakReminderInterval: breakInterval || 0.1666 });
                         // Schedule Break End Reminder (native)
                         scheduleBreakEndReminder(new Date(), get().breakLimit);
                         // Schedule recurring step reminders (native)
-                        scheduleStepBreakReminders(new Date(), breakInterval || 15);
+                        scheduleStepBreakReminders(new Date(), breakInterval || 0.1666);
                     } else if (newType === 'break-out') {
                         // Cancel break reminder
                         cancelNotification('BREAK_END');

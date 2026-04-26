@@ -17,7 +17,7 @@ const AttendanceActionPage: React.FC = () => {
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
-    const [breakInterval, setBreakInterval] = useState<number>(15);
+    const [breakInterval, setBreakInterval] = useState<number>(0.1666);
 
     React.useEffect(() => {
         const init = async () => {
@@ -166,14 +166,14 @@ const AttendanceActionPage: React.FC = () => {
                                     Reminder Interval
                                 </label>
                                 <div className="grid grid-cols-4 gap-2 relative bg-white/5 p-1.5 rounded-2xl border border-emerald-500/10">
-                                    {[15, 30, 45, 60].map((mins) => (
+                                    {[0.1666, 1, 15, 30, 45, 60].map((mins) => (
                                         <button
                                             key={mins}
                                             onClick={() => setBreakInterval(mins)}
                                             className="relative py-2.5 px-1 rounded-xl text-xs font-black transition-all z-10 select-none group"
                                         >
                                             <span className={`relative z-20 ${breakInterval === mins ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                {mins}m
+                                                {mins === 0.1666 ? '10s' : `${mins}m`}
                                             </span>
                                             {breakInterval === mins && (
                                                 <motion.div
@@ -188,7 +188,7 @@ const AttendanceActionPage: React.FC = () => {
                                 <div className="flex items-start gap-2 mt-4">
                                     <Clock className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
                                     <p className="text-[10px] text-emerald-300/70 text-left leading-relaxed font-medium">
-                                        You will receive a notification every <span className="text-white font-bold underline decoration-emerald-500/50">{breakInterval} minutes</span> to acknowledge your break status.
+                                        You will receive a notification every <span className="text-white font-bold underline decoration-emerald-500/50">{breakInterval === 0.1666 ? '10 seconds' : `${breakInterval} minutes`}</span> to acknowledge your break status.
                                     </p>
                                 </div>
                             </div>

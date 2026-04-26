@@ -32,7 +32,9 @@ import { Toaster } from 'react-hot-toast';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { useScreenOrientation } from './hooks/useScreenOrientation';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { cancelStepBreakReminders } from './utils/permissionUtils';
+import { cancelStepBreakReminders, scheduleStepBreakReminders } from './utils/permissionUtils';
+import BreakAlertModal from './components/attendance/BreakAlertModal';
+import { useBreakAlertStore } from './store/breakAlertStore';
 
 
 import { AlertTriangle } from 'lucide-react';
@@ -359,6 +361,20 @@ const App: React.FC = () => {
   const { isOnline } = useNetworkStatus();
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
+  const { triggerAlert: triggerBreakAlert } = useBreakAlertStore();
+
+  // ── Listen for web-side break alert timer events ──────────────────────────
+  // permissionUtils.ts dispatches 'break-alert-trigger' via setInterval on web.
+  // We catch it here and show the BreakAlertModal (with looping alarm sound).
+  useEffect(() => {
+    const handleBreakAlertTrigger = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { elapsedMinutes: number };
+      console.log('[App] break-alert-trigger received, elapsed:', detail?.elapsedMinutes);
+      triggerBreakAlert(detail?.elapsedMinutes ?? 0);
+    };
+    window.addEventListener('break-alert-trigger', handleBreakAlertTrigger);
+    return () => window.removeEventListener('break-alert-trigger', handleBreakAlertTrigger);
+  }, [triggerBreakAlert]);
 
   // Lock screen orientation to portrait on native
   useScreenOrientation();
@@ -451,7 +467,16 @@ const App: React.FC = () => {
           console.error('[App] Error during break-out via notification action:', err);
         }
       } else if (action.actionId === 'CONTINUE_BREAK') {
-        console.log('[App] Continue Break acknowledged. No action needed as future reminders are already scheduled.');
+        console.log('[App] Continue Break acknowledged. Re-scheduling reminders to extend coverage...');
+        // Re-schedule reminders from NOW so the next wave of 8 one-shot notifications
+        // is set up, preventing silent gaps after the initial 8 have fired.
+        try {
+          const { breakReminderInterval } = useAuthStore.getState();
+          await scheduleStepBreakReminders(new Date(), breakReminderInterval || 0.1666);
+          console.log('[App] Break reminders extended.');
+        } catch (err) {
+          console.warn('[App] Failed to extend break reminders:', err);
+        }
       }
     });
 
@@ -1254,6 +1279,8 @@ const App: React.FC = () => {
           },
         }}
       />
+      {/* ── Break Alert Modal: full-screen overlay with looping alarm ── */}
+      <BreakAlertModal />
     </>
   );
 };

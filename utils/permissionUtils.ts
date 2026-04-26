@@ -13,6 +13,26 @@ const NOTIFICATION_IDS = {
     RECURRING_BREAK: 2000, // Base ID for recurring break reminders
 };
 
+// ─── Web-side break reminder state ──────────────────────────────────────────
+// Stores active setInterval IDs so we can cancel them on break-out or re-schedule.
+let _webBreakIntervalId: ReturnType<typeof setInterval> | null = null;
+let _webBreakEndTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let _webBreakStepCount = 0;
+
+/**
+ * Show a browser Notification (works on web / PWA).
+ * Silently no-ops if permission is not granted.
+ */
+const showWebNotification = (title: string, body: string) => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') return;
+    try {
+        new Notification(title, { body, icon: '/logos/paradigm-logo.png' });
+    } catch (e) {
+        console.warn('[WebNotif] Failed to show notification:', e);
+    }
+};
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -440,7 +460,7 @@ export const requestMusicAudioPermissions = async () => {
  * Schedule a "Shift End" reminder.
  */
 export const scheduleShiftEndReminder = async (startTime: Date, shiftDurationHours: number = 9) => {
-    if (!Capacitor.isNativePlatform()) return;
+    if (!Capacitor.isNativePlatform()) return; // Shift-end reminder stays native-only
  
     try {
         const endTime = new Date(startTime.getTime() + shiftDurationHours * 60 * 60 * 1000);
@@ -468,14 +488,28 @@ export const scheduleShiftEndReminder = async (startTime: Date, shiftDurationHou
  
 /**
  * Schedule a "Break Over" reminder.
+ * Works on both native (LocalNotifications) and web (browser Notification API).
  */
 export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurationMinutes: number = 60) => {
-    if (!Capacitor.isNativePlatform()) return;
+    const endTime = new Date(breakStartTime.getTime() + breakDurationMinutes * 60 * 1000);
+    const msUntilEnd = endTime.getTime() - Date.now();
+    if (msUntilEnd <= 0) return;
+
+    if (!Capacitor.isNativePlatform()) {
+        // Web: use setTimeout to fire a browser notification
+        if (_webBreakEndTimeoutId !== null) clearTimeout(_webBreakEndTimeoutId);
+        _webBreakEndTimeoutId = setTimeout(() => {
+            showWebNotification(
+                'Break Over ⏳',
+                'Your break time is up. Please resume work!'
+            );
+            _webBreakEndTimeoutId = null;
+        }, msUntilEnd);
+        console.log(`[Web] Scheduled break-end reminder in ${Math.round(msUntilEnd / 60000)}m`);
+        return;
+    }
  
     try {
-        const endTime = new Date(breakStartTime.getTime() + breakDurationMinutes * 60 * 1000);
-        if (endTime <= new Date()) return;
- 
         await LocalNotifications.schedule({
             notifications: [
                 {
@@ -498,27 +532,62 @@ export const scheduleBreakEndReminder = async (breakStartTime: Date, breakDurati
 };
 
 /**
- * Schedule a series of recurring break reminders.
+ * Schedule recurring break reminders.
+ * On native: schedules up to 8 LocalNotification one-shots.
+ * On web: uses setInterval with the browser Notification API — truly recurring.
  */
 export const scheduleStepBreakReminders = async (startTime: Date, intervalMinutes: number = 15) => {
-    if (!Capacitor.isNativePlatform()) return;
+    // Cancel any previously running reminders first
+    await cancelStepBreakReminders();
 
+    if (!Capacitor.isNativePlatform()) {
+        // ── Web / PWA path ────────────────────────────────────────────────────
+        // Use setInterval so notifications continue indefinitely until cancelled.
+        _webBreakStepCount = 0;
+        const intervalMs = intervalMinutes * 60 * 1000;
+        _webBreakIntervalId = setInterval(() => {
+            _webBreakStepCount++;
+            const elapsedMins = _webBreakStepCount * intervalMinutes;
+
+            // ── Primary: dispatch in-app modal event ────────────────────────
+            // The App.tsx listener catches this and shows the BreakAlertModal
+            // with looping alarm sound and action buttons.
+            window.dispatchEvent(new CustomEvent('break-alert-trigger', {
+                detail: { elapsedMinutes: elapsedMins }
+            }));
+
+            // ── Fallback: browser notification when tab is in background ────
+            const displayTime = elapsedMins < 1
+                ? `${Math.round(elapsedMins * 60)} seconds`
+                : `${Math.round(elapsedMins)} minute${Math.round(elapsedMins) !== 1 ? 's' : ''}`;
+            showWebNotification(
+                'Break Reminder ☕',
+                `You've been on break for ${displayTime}. Open the app to respond.`
+            );
+        }, intervalMs);
+        console.log(`[Web] Break alert timer set — fires every ${intervalMinutes}m (id: ${_webBreakIntervalId})`);
+        return;
+    }
+
+    // ── Native path (Android / iOS) ───────────────────────────────────────────
     try {
-        // Cancel any existing recurring reminders first
-        await cancelStepBreakReminders();
-
         const notifications = [];
-        // Schedule up to 8 reminders (e.g., 2 hours if interval is 15m)
-        // This provides enough coverage without overwhelming the system
+        // Schedule up to 8 reminders per session (2h at 15m, 4h at 30m, etc.)
+        // The App.tsx CONTINUE_BREAK action handler re-calls this to extend coverage.
         for (let i = 1; i <= 8; i++) {
             const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
-            
+
             // Skip if trigger time is in the past
             if (triggerTime <= new Date()) continue;
 
+            const elapsedMins = i * intervalMinutes;
+            const displayTime = elapsedMins < 1 
+                ? `${Math.round(elapsedMins * 60)} seconds` 
+                : `${Math.round(elapsedMins)} minute${Math.round(elapsedMins) !== 1 ? 's' : ''}`;
+
             notifications.push({
                 title: 'Break Update ☕',
-                body: `You have been on break for ${i * intervalMinutes} minutes. Are you still on break?`,
+                body: `You've been on break for ${displayTime}. Are you still on break?`,
                 id: NOTIFICATION_IDS.RECURRING_BREAK + i,
                 schedule: { at: triggerTime },
                 // Android: sound must reference filename WITHOUT extension from res/raw/
@@ -539,11 +608,43 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
 };
 
 /**
- * Cancel all recurring break reminders.
+ * Restore break reminders after app resume / page reload when user is still on break.
+ * Call this from authStore.checkAttendanceStatus() when isOnBreak is true.
+ */
+export const restoreBreakRemindersOnResume = async (breakStartTime: Date, intervalMinutes: number, breakLimitMinutes: number) => {
+    const now = Date.now();
+    const startMs = new Date(breakStartTime).getTime();
+    const elapsedMs = now - startMs;
+
+    // Only restore if break is still within the allowed break limit
+    if (elapsedMs >= breakLimitMinutes * 60 * 1000) return;
+
+    console.log(`[BreakReminder] Restoring reminders — elapsed ${Math.round(elapsedMs / 60000)}m, interval ${intervalMinutes}m`);
+
+    // Use the original breakStartTime so interval steps line up correctly
+    await scheduleStepBreakReminders(new Date(breakStartTime), intervalMinutes);
+    await scheduleBreakEndReminder(new Date(breakStartTime), breakLimitMinutes);
+};
+
+/**
+ * Cancel all recurring break reminders (both web setInterval and native LocalNotifications).
  */
 export const cancelStepBreakReminders = async () => {
+    // ── Web path ─────────────────────────────────────────────────────────────
+    if (_webBreakIntervalId !== null) {
+        clearInterval(_webBreakIntervalId);
+        _webBreakIntervalId = null;
+        _webBreakStepCount = 0;
+        console.log('[Web] Break step reminders cancelled.');
+    }
+    if (_webBreakEndTimeoutId !== null) {
+        clearTimeout(_webBreakEndTimeoutId);
+        _webBreakEndTimeoutId = null;
+    }
+
     if (!Capacitor.isNativePlatform()) return;
 
+    // ── Native path ───────────────────────────────────────────────────────────
     try {
         const pending = await LocalNotifications.getPending();
         const idsToCancel = pending.notifications
