@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -33,6 +33,7 @@ import NotificationTemplateConfig from '../../components/hr/NotificationTemplate
 import OnboardRejectReasonConfig from '../../components/hr/OnboardRejectReasonConfig';
 import SalaryTemplateConfig from '../../components/hr/SalaryTemplateConfig';
 import SalaryLineItemConfig from '../../components/hr/SalaryLineItemConfig';
+import TemplatesHub from '../../components/hr/TemplatesHub';
 
 
 const NameInputModal: React.FC<{
@@ -101,7 +102,8 @@ const EntityManagement: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-    const [activeSubcategory, setActiveSubcategory] = useState<string>('client_structure');
+    const [searchParams] = useSearchParams();
+    const activeSubcategory = searchParams.get('tab') || 'client_structure';
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLocation, setSelectedLocation] = useState<string>('Bangalore');
     const [viewingClients, setViewingClients] = useState<{ companyName: string; clients: Entity[] } | null>(null);
@@ -852,6 +854,7 @@ const EntityManagement: React.FC = () => {
             case 'onboard_reject_reason': return <OnboardRejectReasonConfig />;
             case 'salary_template': return <SalaryTemplateConfig />;
             case 'salary_line_item': return <SalaryLineItemConfig />;
+            case 'templates_hub': return <TemplatesHub />;
             default:
                 const activeItem = subcategories.find(sc => sc.key === activeSubcategory);
                 return <PlaceholderView title={activeItem?.label || 'Configuration'} />;
@@ -969,54 +972,7 @@ const EntityManagement: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-                <nav className="bg-card border border-border shadow-md rounded-xl overflow-hidden">
-                    {isMobile ? (
-                        <div className="p-4 bg-page/50 border-b border-border">
-                            <Select
-                                id="hr-config-select"
-                                value={activeSubcategory}
-                                onChange={e => setActiveSubcategory(e.target.value)}
-                            >
-                                {subcategories.map(sc => <option key={sc.key} value={sc.key}>{sc.label}</option>)}
-                            </Select>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col bg-page/10">
-                            {/* Row 1: First 7 items */}
-                            <div className="flex border-b border-border/50">
-                                {subcategories.slice(0, 7).map(sc => (
-                                    <button
-                                        key={sc.key}
-                                        onClick={() => setActiveSubcategory(sc.key)}
-                                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-4 transition-all duration-300 ${activeSubcategory === sc.key
-                                            ? 'border-accent text-accent bg-accent/5'
-                                            : 'border-transparent text-muted hover:text-primary-text hover:bg-page/50'
-                                            }`}
-                                    >
-                                        <sc.icon className={`h-4 w-4 transition-transform duration-300 ${activeSubcategory === sc.key ? 'text-accent scale-110' : 'text-muted group-hover:scale-110'}`} />
-                                        <span>{sc.label}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            {/* Row 2: Last 7 items */}
-                            <div className="flex">
-                                {subcategories.slice(7).map(sc => (
-                                    <button
-                                        key={sc.key}
-                                        onClick={() => setActiveSubcategory(sc.key)}
-                                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-4 transition-all duration-300 ${activeSubcategory === sc.key
-                                            ? 'border-accent text-accent bg-accent/5'
-                                            : 'border-transparent text-muted hover:text-primary-text hover:bg-page/50'
-                                            }`}
-                                    >
-                                        <sc.icon className={`h-4 w-4 transition-transform duration-300 ${activeSubcategory === sc.key ? 'text-accent scale-110' : 'text-muted group-hover:scale-110'}`} />
-                                        <span>{sc.label}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </nav>
+                {/* Tab navigation removed - handled by sidebar */}
                 <main className="animate-fade-in-scale">
                     {isLoading ? (
                         <div className="flex items-center justify-center p-20 bg-card border border-border shadow-md rounded-2xl">

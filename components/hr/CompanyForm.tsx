@@ -9,7 +9,7 @@ import Button from '../ui/Button';
 import UploadDocument from '../UploadDocument';
 import MultiUploadDocument from '../MultiUploadDocument';
 import Toast from '../ui/Toast';
-import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye, ChevronUp } from 'lucide-react';
+import { Plus, Trash2, Calendar, FileText, Sparkles, Search, ChevronDown, Eye, ChevronUp, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import CompanyProfilePreview from './CompanyProfilePreview';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useNavigate } from 'react-router-dom';
@@ -129,8 +129,37 @@ type Tab = 'Details' | 'Contacts' | 'License' | 'Documents' | 'Holidays' | 'Poli
 const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, initialData, groupName, existingLocations }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('Details');
+  const [completedTabs, setCompletedTabs] = useState<Set<Tab>>(new Set());
   const [pendingFiles, setPendingFiles] = useState<Record<string, UploadedFile | UploadedFile[]>>({});
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+
+  const handleNext = async () => {
+    const tabOrder: Tab[] = ['Details', 'Contacts', 'License', 'Documents', 'Holidays', 'Policies', 'Preview'];
+    const currentIndex = tabOrder.indexOf(activeTab);
+    
+    // Mark current tab as completed
+    setCompletedTabs(prev => {
+        const next = new Set(prev);
+        next.add(activeTab);
+        return next;
+    });
+
+    if (currentIndex < tabOrder.length - 1) {
+      setActiveTab(tabOrder[currentIndex + 1]);
+    }
+  };
+
+  const handleBack = () => {
+    if (activeTab === 'Preview') {
+        setActiveTab('Details');
+        return;
+    }
+    const tabOrder: Tab[] = ['Details', 'Contacts', 'License', 'Documents', 'Holidays', 'Policies', 'Preview'];
+    const currentIndex = tabOrder.indexOf(activeTab);
+    if (currentIndex > 0) {
+      setActiveTab(tabOrder[currentIndex - 1]);
+    }
+  };
   
   const { register, handleSubmit, formState: { errors }, reset, control, watch } = useForm<Partial<Company>>({
     resolver: yupResolver(companySchema) as any,
@@ -268,16 +297,20 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
 
   const TabButton = ({ tabName }: { tabName: Tab }) => {
     const hasError = hasTabError(tabName);
+    const isCompleted = completedTabs.has(tabName);
+    
     return (
       <button
         type="button"
         onClick={() => setActiveTab(tabName)}
-        className={`relative whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${activeTab === tabName ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-primary-text'}`}
+        className={`relative whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-all flex items-center gap-2 ${activeTab === tabName ? 'border-accent text-accent bg-accent/5' : 'border-transparent text-muted hover:text-primary-text'}`}
       >
-        {tabName}
-        {hasError && (
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white shadow-sm animate-pulse" />
-        )}
+        <span>{tabName}</span>
+        {hasError ? (
+          <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.9)]" />
+        ) : isCompleted ? (
+          <CheckCircle className="h-4 w-4 text-green-500" />
+        ) : null}
       </button>
     );
   };
@@ -1040,12 +1073,38 @@ const CompanyForm: React.FC<CompanyFormProps> = ({ isOpen, onClose, onSave, init
                 </div>
             )}
 
-            {/* Profile Preview Tab */}
             {activeTab === 'Preview' && (
                 <div className="animate-in zoom-in-95 duration-200">
                     <CompanyProfilePreview data={formData} logoUrl={logoPreview} />
                 </div>
             )}
+
+            <div className="flex justify-between items-center pt-8 border-t border-border mt-8">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleBack}
+                    disabled={activeTab === 'Details'}
+                    className="flex items-center gap-2"
+                >
+                    <ChevronLeft className="h-4 w-4" /> Back
+                </Button>
+                
+                {activeTab !== 'Preview' ? (
+                    <Button
+                        type="button"
+                        variant="primary"
+                        onClick={handleNext}
+                        className="flex items-center gap-2 bg-accent hover:bg-accent-dark"
+                    >
+                        Save & Next <ChevronRight className="h-4 w-4" />
+                    </Button>
+                ) : (
+                    <div className="text-sm text-muted italic flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" /> All sections ready. Click {isEditing ? 'Save Changes' : 'Create Profile'} above to complete.
+                    </div>
+                )}
+            </div>
           </div>
         </form>
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}

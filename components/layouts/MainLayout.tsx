@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2 } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, Mail, UserX, LayoutTemplate, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -69,9 +69,22 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: FileDigit, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
     { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_attendance_rules', category: 'Employee Onboarding' },
 
+    // Client Management
+    { to: '/hr/entity-management?tab=client_structure', label: 'Client Structure', icon: ClipboardList, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=site_configuration', label: 'Site Configuration', icon: Settings, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=costing_resource', label: 'Costing & Resource', icon: Calculator, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=backoffice_heads', label: 'Back Office & ID Series', icon: Users, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=staff_designation', label: 'Staff Designation', icon: Badge, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=gmc_policy', label: 'GMC Policy', icon: HeartPulse, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=asset', label: 'Asset Management', icon: Archive, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=tools_list', label: 'Tools List', icon: Wrench, permission: 'view_entity_management', category: 'Client Management' },
+    { to: '/hr/entity-management?tab=attendance_overview', label: 'Attendance Overview', icon: BarChart, permission: 'view_entity_management', category: 'Client Management' },
+
+    // Templates Hub
+    { to: '/hr/entity-management?tab=templates_hub', label: 'Client Management', icon: FileSpreadsheet, permission: 'view_entity_management', category: 'Templates Hub' },
+
     // Site Management
     { to: '/admin/sites', label: 'Site Management', icon: Building, permission: 'manage_sites', category: 'Site Management' },
-    { to: '/hr/entity-management', label: 'Client Management', icon: Briefcase, permission: 'view_entity_management', category: 'Site Management' },
     { to: '/attendance/locations', label: 'My Locations', icon: MapPin, permission: 'view_my_locations', category: 'Site Management' },
     { to: '/hr/locations', label: 'Geo Locations', icon: MapIcon, permission: 'manage_geo_locations', category: 'Site Management' },
 
@@ -118,6 +131,8 @@ const CATEGORY_ICONS: Record<string, any> = {
     'Real-time Tracking': Navigation,
     'Leaves & Rules': GitPullRequest,
     'Employee Onboarding': UserPlus,
+    'Client Management': Briefcase,
+    'Templates': LayoutTemplate,
     'Site Management': Building,
     'Operations & Team': ListTodo,
     'Uniforms & Kit': Shirt,
@@ -158,20 +173,37 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
 
     const groupedLinks = useMemo(() => {
         const groups: Record<string, NavLinkConfig[]> = {};
-        availableNavLinks.forEach(link => {
-            const cat = link.category || 'Other';
-            if (!groups[cat]) groups[cat] = [];
-            groups[cat].push(link);
+        
+        // Use allNavLinks to maintain logical order within categories
+        allNavLinks.forEach(link => {
+            if (!user) return;
+            if (isAdmin(user.role) || userPermissions.includes(link.permission)) {
+                const cat = link.category || 'Other';
+                if (!groups[cat]) groups[cat] = [];
+                groups[cat].push(link);
+            }
         });
-        return groups;
-    }, [availableNavLinks]);
+        
+        // Sort categories alphabetically A-Z
+        const sortedGroups: Record<string, NavLinkConfig[]> = {};
+        Object.keys(groups).sort().forEach(key => {
+            sortedGroups[key] = groups[key];
+        });
+        
+        return sortedGroups;
+    }, [user, userPermissions]);
 
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
     // Auto-expand the category containing the active link
     useEffect(() => {
-        const currentPath = location.pathname;
-        const activeLink = allNavLinks.find(link => link.to === currentPath);
+        const currentPath = location.pathname + location.search;
+        const activeLink = allNavLinks.find(link => {
+            if (link.to.includes('?')) {
+                return link.to === currentPath;
+            }
+            return link.to === location.pathname;
+        });
         if (activeLink?.category) {
             setExpandedCategories(prev => ({
                 ...prev,
@@ -277,7 +309,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                     // Collapsed mode: Category representative icons (only 10)
                     Object.entries(groupedLinks).map(([category, links]) => {
                         const Icon = CATEGORY_ICONS[category] || Grid3X3;
-                        const isCategoryActive = links.some(link => location.pathname === link.to);
+                        const isCategoryActive = links.some(link => {
+                            const currentFull = location.pathname + location.search;
+                            return link.to === currentFull || (link.to === location.pathname && !location.search);
+                        });
                         
                         return (
                             <button
@@ -315,7 +350,10 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                         const isExpanded = expandedCategories[category] ?? false;
                         const CategoryIcon = CATEGORY_ICONS[category] || Grid3X3;
 
-                        const isCategoryActive = links.some(link => location.pathname === link.to);
+                        const isCategoryActive = links.some(link => {
+                            const currentFull = location.pathname + location.search;
+                            return link.to === currentFull || (link.to === location.pathname && !location.search);
+                        });
 
                         return (
                             <div key={category} className={`${groupIdx > 0 ? 'mt-4 pt-4 border-t border-gray-50' : ''}`}>
@@ -357,40 +395,44 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                                             animate={{ height: "auto", opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
                                             transition={{ duration: 0.2, ease: "easeInOut" }}
-                                            className="overflow-hidden space-y-0.5 bg-[#006b3f]/5 rounded-b-lg -mt-1 pt-2 pb-1"
+                                            className="overflow-hidden space-y-1 bg-slate-50/80 rounded-b-xl -mt-1 pt-3 pb-2"
                                         >
-                                            {links.map((link, idx) => (
-                                                <NavLink
-                                                    key={link.to}
-                                                    to={link.to}
-                                                    end
-                                                    onClick={handleLinkClick}
-                                                    style={{ paddingLeft: `${2.75 + (idx * 0.5)}rem` }}
-                                                    className={({ isActive }) =>
-                                                        `group flex items-center pr-3 py-1.5 mx-1 rounded-lg text-sm font-medium transition-all duration-150 ease-in-out ${mode === 'light'
-                                                            ? isActive
-                                                                ? 'bg-[#006b3f] text-white font-semibold shadow-sm'
-                                                                : 'text-gray-700 hover:bg-[#006b3f]/10 hover:text-[#006b3f]'
-                                                            : isActive
-                                                                ? 'bg-white/10 text-white font-semibold'
-                                                                : 'text-white/70 hover:bg-white/5 hover:text-white'
-                                                        }`
-                                                    }
-                                                    title={link.label}
-                                                >
-                                                    {({ isActive }) => (
-                                                        <>
-                                                            <link.icon
-                                                                className={`h-4 w-4 flex-shrink-0 transition-all duration-150 mr-2.5 ${mode === 'light'
-                                                                    ? isActive ? 'text-white' : 'text-gray-500 group-hover:text-[#006b3f]'
-                                                                    : isActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'
-                                                                }`}
-                                                            />
-                                                            <span className="truncate">{link.label}</span>
-                                                        </>
-                                                    )}
-                                                </NavLink>
-                                            ))}
+                                            {links.map((link) => {
+                                                // Determine active state manually to support ?tab= query params
+                                                const linkHasQuery = link.to.includes('?');
+                                                const [linkPath, linkSearch] = link.to.split('?');
+                                                const currentSearch = location.search.replace('?', '');
+                                                const isLinkActive = linkHasQuery
+                                                    ? location.pathname === linkPath && currentSearch === linkSearch
+                                                    : location.pathname === link.to && !location.search;
+
+                                                return (
+                                                    <NavLink
+                                                        key={link.to}
+                                                        to={link.to}
+                                                        onClick={handleLinkClick}
+                                                        className={
+                                                            `group flex items-center pr-3 py-2.5 mx-2 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out pl-11 ${mode === 'light'
+                                                                ? isLinkActive
+                                                                    ? 'bg-white text-[#006b3f] font-bold shadow-sm border border-slate-100'
+                                                                    : 'text-slate-600 hover:bg-white/60 hover:text-[#006b3f] hover:shadow-sm'
+                                                                : isLinkActive
+                                                                    ? 'bg-white/10 text-white font-semibold'
+                                                                    : 'text-white/70 hover:bg-white/5 hover:text-white'
+                                                            }`
+                                                        }
+                                                        title={link.label}
+                                                    >
+                                                        <link.icon
+                                                            className={`h-4 w-4 flex-shrink-0 transition-all duration-200 mr-3 ${mode === 'light'
+                                                                ? isLinkActive ? 'text-[#006b3f]' : 'text-slate-400 group-hover:text-[#006b3f]'
+                                                                : isLinkActive ? 'text-white' : 'text-white/50 group-hover:text-white/80'
+                                                            }`}
+                                                        />
+                                                        <span className="truncate">{link.label}</span>
+                                                    </NavLink>
+                                                );
+                                            })}
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
@@ -545,10 +587,6 @@ const MainLayout: React.FC = () => {
                         <div className="flex flex-col items-center gap-1">
                             <div className={`text-[11px] font-medium tracking-wider uppercase opacity-40 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-primary-text'}`}>
                                 v{appVersion}
-                            </div>
-                            <div className={`text-[9px] text-center px-4 leading-tight opacity-50 transition-all duration-300 animate-fade-in ${isMobile ? 'text-white' : 'text-gray-500'}`}>
-                                © Paradigm FMS Services. All rights reserved.<br />
-                                Developed by Sudhan (<a href="mailto:sudhan@paradigmfms.com" className="hover:underline">sudhan@paradigmfms.com</a>)
                             </div>
                         </div>
                     )}

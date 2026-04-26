@@ -112,6 +112,25 @@ export interface Organization {
 
 export type RegistrationType = 'ROC' | 'ROF' | 'Society' | 'Trust' | '';
 
+export interface EntityAgreement {
+  id: string;
+  fromDate?: string;
+  toDate?: string;
+  renewalTriggerDays?: number;
+  minWageTriggerDays?: number;
+  wordCopyUrls?: string[];
+  signedCopyUrls?: string[];
+  agreementDate?: string;
+  addendum1Date?: string;
+  addendum2Date?: string;
+  hasSecurityDeposit?: boolean;
+  securityDepositType?: 'Security Deposit' | 'Bank Guarantee' | '';
+  securityDepositAmount?: number;
+  securityDepositValidFrom?: string;
+  securityDepositValidTo?: string;
+  securityDepositDocUrls?: string[];
+}
+
 export interface Entity {
   id: string;
   status?: 'draft' | 'completed';
@@ -172,18 +191,7 @@ export interface Entity {
     projectType?: string;
     unitCount?: number;
   };
-  agreements?: {
-    id: string;
-    fromDate?: string;
-    toDate?: string;
-    renewalTriggerDays?: number;
-    minWageTriggerDays?: number;
-    wordCopyUrls?: string[];
-    signedCopyUrls?: string[];
-    agreementDate?: string;
-    addendum1Date?: string;
-    addendum2Date?: string;
-  }[];
+  agreements?: EntityAgreement[];
   complianceDetails?: {
     form6Applicable: boolean;
     form6ValidityFrom?: string;
@@ -486,17 +494,11 @@ export interface SiteConfiguration {
   siteAreaSqFt?: number | null;
   projectType?: 'Apartment' | 'Villa' | 'Vilament' | 'Rowhouse' | 'Combined' | 'Commercial Office' | 'Commercial Retail' | 'Commercial' | 'Public' | '';
   apartmentCount?: number | null;
-  agreements?: {
-    id: string;
-    fromDate?: string | null;
-    toDate?: string | null;
+  agreements?: (EntityAgreement & {
     renewalIntervalDays?: number | null;
     softCopy?: UploadedFile | null;
     scannedCopy?: UploadedFile | null;
-    agreementDate?: string | null;
-    addendum1Date?: string | null;
-    addendum2Date?: string | null;
-  }[];
+  })[];
   siteOperations?: {
     form6Applicable: boolean;
     form6RenewalTaskCreation?: boolean;
@@ -548,15 +550,9 @@ export interface SiteConfiguration {
   issuedTools?: IssuedTool[];
 }
 
-export interface Agreement {
-  id: string;
+export interface Agreement extends EntityAgreement {
   name: string;
-  fromDate?: string;
-  toDate?: string;
   renewalIntervalDays?: number | null;
   softCopy?: UploadedFile | null;
   scannedCopy?: UploadedFile | null;
-  agreementDate?: string;
-  addendum1Date?: string;
-  addendum2Date?: string;
 }

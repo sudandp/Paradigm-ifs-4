@@ -17,6 +17,7 @@ import Toast from '../ui/Toast';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { getProxyUrl, getUploadedFileFromUrl } from '../../utils/fileUrl';
+import EntityProfilePreview from './EntityProfilePreview';
 
 interface EntityFormProps {
   isOpen: boolean;
@@ -251,7 +252,7 @@ const entitySchema = yup.object({
   companyId: yup.string().optional(),
 }).defined();
 
-type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Verification';
+type Tab = 'General' | 'Management' | 'Agreement' | 'Compliance' | 'Holidays' | 'Assets' | 'Verification' | 'Preview';
 
 const VERIFICATION_CATEGORIES = [
   { 
@@ -617,7 +618,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
             }
 
             reset(data);
-            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification']));
+            setCompletedTabs(new Set<Tab>(['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification', 'Preview']));
         } else {
             reset({ 
                 id: `new_${Date.now()}`, 
@@ -729,7 +730,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleNext = async () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification'];
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification', 'Preview'];
     const currentIndex = tabOrder.indexOf(activeTab);
     
     // Mark current tab as completed
@@ -745,7 +746,11 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
   };
 
   const handleBack = () => {
-    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification'];
+    if (activeTab === 'Preview') {
+        setActiveTab('General');
+        return;
+    }
+    const tabOrder: Tab[] = ['General', 'Management', 'Agreement', 'Compliance', 'Holidays', 'Assets', 'Verification', 'Preview'];
     const currentIndex = tabOrder.indexOf(activeTab);
     if (currentIndex > 0) {
       setActiveTab(tabOrder[currentIndex - 1]);
@@ -804,6 +809,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 <TabButton tabName="Holidays" />
                 <TabButton tabName="Assets" />
                 <TabButton tabName="Verification" />
+                <TabButton tabName="Preview" />
             </nav>
           </div>
           
@@ -1268,22 +1274,22 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
 
                             {/* Security Deposit Section */}
                             <div className="pt-6 border-t border-accent/10 space-y-6">
-                                <Controller name={`agreements.${index}.hasSecurityDeposit`} control={control} render={({ field: { value, onChange } }) => (
+                                <Controller name={`agreements.${index}.hasSecurityDeposit` as any} control={control} render={({ field: { value, onChange } }) => (
                                     <Checkbox 
                                         id={`hasSecurityDeposit-${field.id}`} 
                                         label="Requires Security Deposit / Bank Guarantee" 
-                                        checked={value} 
+                                        checked={!!value} 
                                         onChange={onChange}
                                         labelClassName="font-bold text-primary-text"
                                     />
                                 )} />
 
-                                {watch(`agreements.${index}.hasSecurityDeposit`) && (
+                                {watch(`agreements.${index}.hasSecurityDeposit` as any) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in pl-6 border-l-2 border-accent/20">
                                         <Select 
                                             label="Type" 
                                             id={`securityDepositType-${field.id}`} 
-                                            registration={register(`agreements.${index}.securityDepositType` as const)}
+                                            registration={register(`agreements.${index}.securityDepositType` as any)}
                                             error={errors.agreements?.[index]?.securityDepositType?.message}
                                         >
                                             <option value="">Select Type</option>
@@ -1294,19 +1300,19 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                             label="Amount" 
                                             type="number" 
                                             id={`securityDepositAmount-${field.id}`} 
-                                            registration={register(`agreements.${index}.securityDepositAmount` as const)} 
+                                            registration={register(`agreements.${index}.securityDepositAmount` as any)} 
                                             error={errors.agreements?.[index]?.securityDepositAmount?.message} 
                                         />
-                                        <Controller name={`agreements.${index}.securityDepositValidFrom`} control={control} render={({ field: f }) => (
+                                        <Controller name={`agreements.${index}.securityDepositValidFrom` as any} control={control} render={({ field: f }) => (
                                             <Input type="date" label="Valid From" id={`securityDepositValidFrom-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.securityDepositValidFrom?.message} />
                                         )} />
-                                        <Controller name={`agreements.${index}.securityDepositValidTo`} control={control} render={({ field: f }) => (
+                                        <Controller name={`agreements.${index}.securityDepositValidTo` as any} control={control} render={({ field: f }) => (
                                             <Input type="date" label="Valid To" id={`securityDepositValidTo-${field.id}`} value={f.value} onChange={f.onChange} error={errors.agreements?.[index]?.securityDepositValidTo?.message} />
                                         )} />
                                         <div className="lg:col-span-4 mt-2">
-                                            <Controller name={`agreements.${index}.securityDepositDocUrls`} control={control} render={({ field: f }) => {
+                                            <Controller name={`agreements.${index}.securityDepositDocUrls` as any} control={control} render={({ field: f }) => {
                                                 const pending = pendingFiles[`agreements.${index}.securityDepositDoc`] as UploadedFile[];
-                                                const existing = (f.value || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
+                                                const existing = ((f.value as string[]) || []).map(url => getUploadedFileFromUrl(url)).filter(Boolean) as UploadedFile[];
                                                 return (
                                                     <MultiUploadDocument 
                                                         label="Security Deposit / Bank Guarantee Documents" 
@@ -1916,6 +1922,12 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                     </div>
                 </div>
             )}
+
+            {activeTab === 'Preview' && (
+                <div className="animate-in zoom-in-95 duration-200">
+                    <EntityProfilePreview data={watch()} logoUrl={watch('logoUrl')} />
+                </div>
+            )}
           </div>
 
           <div className="flex justify-between items-center pt-8 border-t border-border mt-8">
@@ -1929,7 +1941,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
               <ChevronLeft className="h-4 w-4" /> Back
             </Button>
             
-            {activeTab !== 'Verification' ? (
+            {activeTab !== 'Preview' ? (
                 <Button
                   type="button"
                   variant="primary"
@@ -1940,7 +1952,7 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                 </Button>
             ) : (
                 <div className="text-sm text-muted italic flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" /> All sections ready. Click Create Profile above to complete.
+                    <CheckCircle className="h-4 w-4 text-green-500" /> All sections ready. Click {isEditing ? 'Save Changes' : 'Create Profile'} above to complete.
                 </div>
             )}
           </div>
