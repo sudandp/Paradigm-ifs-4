@@ -48,14 +48,23 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
         }
     }, [photoUrl]);
 
+    // Pre-load image to handle errors
+    React.useEffect(() => {
+        if (!resolvedPhotoUrl) return;
+        
+        const img = new Image();
+        img.src = resolvedPhotoUrl;
+        img.onload = () => setImgError(false);
+        img.onerror = () => setImgError(true);
+    }, [resolvedPhotoUrl]);
+
     // Show the user's photo if we have one and it loaded successfully
     if (resolvedPhotoUrl && !imgError) {
         return (
-            <img 
-                src={resolvedPhotoUrl} 
-                alt="Profile" 
-                className={`object-cover ${className || ''}`} 
-                onError={() => setImgError(true)}
+            <div 
+                className={`w-full h-full bg-cover bg-center bg-no-repeat ${className || ''}`}
+                style={{ backgroundImage: `url(${resolvedPhotoUrl})` }}
+                aria-label="Profile"
             />
         );
     }

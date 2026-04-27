@@ -614,6 +614,35 @@ const App: React.FC = () => {
         };
     }, [setDeferredPrompt]);
 
+    // ── Audio Context Unlock ──────────────────────────────────────────────────
+    // Most browsers block audio until the user interacts with the page.
+    // This effect ensures we resume the AudioContext on the first click.
+    useEffect(() => {
+        const unlockAudio = async () => {
+            console.log('[App] Attempting to unlock audio context...');
+            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (AudioContextClass) {
+                const tempCtx = new AudioContextClass();
+                if (tempCtx.state === 'suspended') {
+                    await tempCtx.resume();
+                }
+                // Play a silent buffer to fully unlock on some mobile browsers
+                const buffer = tempCtx.createBuffer(1, 1, 22050);
+                const source = tempCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(tempCtx.destination);
+                source.start(0);
+                
+                console.log('[App] Audio context unlocked state:', tempCtx.state);
+            }
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+        };
+
+        window.addEventListener('click', unlockAudio, { once: true });
+        window.addEventListener('touchstart', unlockAudio, { once: true });
+    }, []);
+
   useEffect(() => {
     if (user && shouldStorePath(location.pathname + location.search)) {
       localStorage.setItem(LAST_PATH_KEY, location.pathname + location.search);

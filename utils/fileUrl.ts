@@ -42,10 +42,18 @@ export function getProxyUrl(supabaseUrl: string): string {
     }
     
     // Extract storage path: prefix might end with or without a slash
-    // If prefix is .../public and URL is .../public/logo/1.png -> path is /logo/1.png -> clean to logo/1.png
     let storagePath = sanitizedUrl.substring(SUPABASE_STORAGE_PREFIX.length);
     if (storagePath.startsWith('/')) {
       storagePath = storagePath.substring(1);
+    }
+
+    // EXCEPTION: Public buckets should not be proxied on web because <img> tags 
+    // do not send the Authorization header, causing 401 errors from the proxy.
+    const publicBuckets = ['avatars', 'logo', 'background', 'public'];
+    const bucket = storagePath.split('/')[0];
+    
+    if (publicBuckets.includes(bucket)) {
+      return sanitizedUrl;
     }
     
     return `/api/view-file/${storagePath}`;

@@ -269,16 +269,13 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
                 <div className={`p-2 px-3 border-b flex items-center justify-between h-12 transition-all duration-300 flex-shrink-0 ${mode === 'dark' ? 'bg-[#041b0f] border-[#1f3d2b]' : 'bg-white border-gray-200'}`}>
                     <div className="flex items-center justify-center flex-1">
                         {isCollapsed ? (
-                            <div 
-                                className="h-10 w-10 flex items-center justify-center overflow-hidden rounded-xl bg-accent/5 transition-all duration-300"
-                                style={{
-                                    backgroundImage: `url(/paradigm-logo.png)`,
-                                    backgroundSize: '300% auto',
-                                    backgroundPosition: '0% center',
-                                    backgroundRepeat: 'no-repeat'
-                                }}
-                                title="Paradigm Services"
-                            />
+                            <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-accent/5 transition-all duration-300" title="Paradigm Services">
+                                <Logo 
+                                    localPath="/paradigm-correct-logo.png"
+                                    className="h-7 w-7" 
+                                    variant={mode === 'dark' ? 'white' : 'original'} 
+                                />
+                            </div>
                         ) : (
                             <div className="w-full px-2 flex justify-start pl-4">
                                 <Logo 

@@ -129,7 +129,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                                 aria-expanded={isUserMenuOpen}
                                                 aria-haspopup="true"
                                             >
-                                                <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden shadow-sm">
+                                                <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden shadow-sm flex items-center justify-center bg-gray-50">
                                                     <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} />
                                                 </div>
                                                 <div className="text-left hidden sm:block overflow-hidden ml-1">

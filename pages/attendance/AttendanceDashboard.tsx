@@ -358,7 +358,7 @@ const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSe
     const [email, setEmail] = useState(currentUserEmail);
     const [subject, setSubject] = useState(`${reportType.replace(/_/g, ' ').toUpperCase()} Attendance Report`);
     const [message, setMessage] = useState(
-        reportType === 'attendance_monthly' 
+        reportType === 'monthly' 
         ? `Dear Management,\n\nThis is the consolidated attendance summary for the period of April 2026. It covers overall employee presence across all active members of the staff.\n\nPlease review the detailed monthly attendance grid below for any discrepancies.`
         : `Please find attached the ${reportType.replace(/_/g, ' ')} attendance report.`
     );
@@ -646,7 +646,30 @@ const AttendanceDashboard: React.FC = () => {
 
     const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report'));
     const canViewAllAttendance = user && (isAdmin(user.role) || permissions[user.role]?.includes('view_all_attendance'));
-    const isEmployeeView = !canViewAllAttendance;
+    
+    // Reporting Manager logic
+    const [isReportingManager, setIsReportingManager] = useState(false);
+    const isEmployeeView = !canViewAllAttendance && !isReportingManager;
+
+    // Check if user is a reporting manager
+    useEffect(() => {
+        const checkManagerStatus = async () => {
+            if (!user) return;
+            if (isAdmin(user.role)) {
+                setIsReportingManager(true);
+                return;
+            }
+            try {
+                const team = await api.getTeamMembers(user.id);
+                if (team && team.length > 0) {
+                    setIsReportingManager(true);
+                }
+            } catch (err) {
+                console.warn("Failed to check reporting manager status", err);
+            }
+        };
+        checkManagerStatus();
+    }, [user]);
 
     // Employee View State
     const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0 });
@@ -693,13 +716,36 @@ const AttendanceDashboard: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (canDownloadReport) {
-            api.getUsers().then(setUsers);
-            api.getOrganizations().then(setOrganizations);
-            api.getEntities().then(setSocieties);
-            api.getAllScopedSettings().then(setScopedSettings);
+        if (canDownloadReport || isReportingManager) {
+            const loadInitialData = async () => {
+                try {
+                    let initialUsers = [];
+                    if (isAdmin(user?.role)) {
+                        initialUsers = await api.getUsers();
+                    } else if (user) {
+                        // Managers see their team, normal users see themselves
+                        initialUsers = await api.getTeamMembers(user.id);
+                        const self = await api.getUserById(user.id);
+                        if (self && !initialUsers.find(u => u.id === self.id)) {
+                            initialUsers.push(self);
+                        }
+                    }
+                    
+                    setUsers(initialUsers);
+                    usersRef.current = initialUsers;
+                    
+                    if (isAdmin(user?.role)) {
+                        api.getOrganizations().then(setOrganizations);
+                        api.getEntities().then(setSocieties);
+                    }
+                    api.getAllScopedSettings().then(setScopedSettings);
+                } catch (error) {
+                    console.error("Failed to load initial users", error);
+                }
+            };
+            loadInitialData();
         }
-    }, [canDownloadReport]);
+    }, [canDownloadReport, isReportingManager, user]);
 
     // Fetch Employee Data
     useEffect(() => {
@@ -866,13 +912,20 @@ const AttendanceDashboard: React.FC = () => {
 
     const fetchDashboardData = useCallback((startDate: Date, endDate: Date) => {
         const loadData = async () => {
-            if (isEmployeeView) return;
             setIsLoading(true);
             try {
                 // Ensure we have users data
                 let currentUsers = usersRef.current;
                 if (currentUsers.length === 0) {
-                    currentUsers = await api.getUsers();
+                    if (isAdmin(user?.role)) {
+                        currentUsers = await api.getUsers();
+                    } else if (user) {
+                        currentUsers = await api.getTeamMembers(user.id);
+                        const self = await api.getUserById(user.id);
+                        if (self && !currentUsers.find(u => u.id === self.id)) {
+                            currentUsers.push(self);
+                        }
+                    }
                     setUsers(currentUsers);
                     usersRef.current = currentUsers;
                 }
@@ -1002,7 +1055,7 @@ const AttendanceDashboard: React.FC = () => {
             }
         };
         loadData();
-    }, [isEmployeeView, selectedSite, selectedSociety, selectedRole, users]);
+    }, [user, selectedSite, selectedSociety, selectedRole, users]);
 
     const reportTypeId = useId();
     const employeeId = useId();
@@ -1480,6 +1533,7 @@ const AttendanceDashboard: React.FC = () => {
                                         selectedSite={selectedSite}
                                         selectedSociety={selectedSociety}
                                         selectedRole={selectedRole}
+                                        users={users}
                                         onDataLoaded={(data) => {
                                             const monthKey = format(m, 'yyyy-MM');
                                             setMonthlyDataMap(prev => ({...prev, [monthKey]: data}));
@@ -1498,9 +1552,13 @@ const AttendanceDashboard: React.FC = () => {
                             const monthData = monthlyDataMap[monthKey] || [];
                             const monthStart = startOfMonth(m);
                             const monthEnd = endOfMonth(m);
-                            // Adjust display range to match actual month days within global range
+                            const today = startOfDay(new Date());
+                            // Ensure we don't show future dates in the grid
+                            const maxDisplayDate = isBefore(monthEnd, today) ? monthEnd : today;
+                            
+                            // Adjust display range to match actual month days within global range, but never past today
                             const displayStart = isAfter(monthStart, dateRange.startDate!) ? monthStart : dateRange.startDate!;
-                            const displayEnd = isBefore(monthEnd, dateRange.endDate!) ? monthEnd : dateRange.endDate!;
+                            const displayEnd = isBefore(maxDisplayDate, dateRange.endDate!) ? maxDisplayDate : dateRange.endDate!;
                             
                             return (
                                 <div key={`view-${monthKey}`} className="space-y-4">
@@ -1544,6 +1602,7 @@ const AttendanceDashboard: React.FC = () => {
                                             selectedSite={selectedSite}
                                             selectedSociety={selectedSociety}
                                             selectedRole={selectedRole}
+                                            users={users}
                                         />
                                     </div>
                                 ))}
@@ -2163,140 +2222,8 @@ const AttendanceDashboard: React.FC = () => {
         }
     };
 
-    if (isLoading && !dashboardData && !isEmployeeView) {
+    if (isLoading && !dashboardData) {
         return <LoadingScreen message="Fetching attendance data..." />;
-    }
-
-    if (isEmployeeView) {
-        return (
-            <div className="p-4 space-y-6 pb-24 md:bg-transparent bg-[#041b0f] flex-1 flex flex-col">
-                <div className="flex flex-col gap-4">
-                    <h2 className="text-2xl font-bold text-primary-text">My Attendance</h2>
-
-                    {/* Date Filter */}
-                    <div className="bg-card p-3 rounded-xl shadow-sm border border-border flex flex-wrap items-center gap-2">
-                        {['Today', 'This Month', 'Last 30 Days'].map(filter => (
-                            <Button
-                                key={filter}
-                                type="button"
-                                variant={activeDateFilter === filter ? 'primary' : 'outline'}
-                                onClick={() => handleSetDateFilter(filter)}
-                                className={activeDateFilter === filter
-                                    ? "text-white shadow-md border"
-                                    : "bg-card text-primary-text border border-border hover:bg-accent-light"
-                                }
-                                style={activeDateFilter === filter ? { backgroundColor: '#006B3F', borderColor: '#005632' } : {}}
-                            >
-                                {filter}
-                            </Button>
-                        ))}
-                        <div className="relative" ref={datePickerRef}>
-                            <Button
-                                type="button"
-                                variant={activeDateFilter === 'Custom' ? 'primary' : 'outline'}
-                                onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                                className={activeDateFilter === 'Custom'
-                                    ? "text-white shadow-md border"
-                                    : "bg-card text-primary-text border border-border hover:bg-accent-light"
-                                }
-                                style={activeDateFilter === 'Custom' ? { backgroundColor: '#006B3F', borderColor: '#005632' } : {}}
-                            >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                <span>
-                                    {activeDateFilter === 'Custom'
-                                        ? `${format(dateRange.startDate!, 'dd MMM')} - ${format(dateRange.endDate!, 'dd MMM')}`
-                                        : 'Custom'}
-                                </span>
-                            </Button>
-                            {isDatePickerOpen && (
-                                <div className="absolute top-full right-0 mt-2 z-50 bg-white dark:bg-gray-950 border border-border rounded-lg shadow-xl w-[300px] sm:w-auto overflow-hidden">
-                                    <div className="text-gray-900">
-                                        <DateRangePicker
-                                            onChange={handleCustomDateChange}
-                                            months={1}
-                                            ranges={dateRangeArray}
-                                            direction="horizontal"
-                                            maxDate={new Date()}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Stats Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-card p-6 rounded-xl shadow-sm border border-border flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
-                        <div className="p-4 bg-emerald-600 text-white rounded-full mb-3 shadow-lg shadow-emerald-200 dark:shadow-none">
-                            <UserCheck className="h-8 w-8" />
-                        </div>
-                        <p className="text-sm text-muted font-medium mb-1">Present</p>
-                        <p className="text-2xl font-bold text-primary-text">{employeeStats.present}</p>
-                    </div>
-                    <div className="bg-card p-6 rounded-xl shadow-sm border border-border flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
-                        <div className="p-4 bg-rose-600 text-white rounded-full mb-3 shadow-lg shadow-rose-200 dark:shadow-none">
-                            <UserX className="h-8 w-8" />
-                        </div>
-                        <p className="text-sm text-muted font-medium mb-1">Absent</p>
-                        <p className="text-2xl font-bold text-primary-text">{employeeStats.absent}</p>
-                    </div>
-                    <div className="bg-card p-6 rounded-xl shadow-sm border border-border flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
-                        <div className="p-4 bg-blue-600 text-white rounded-full mb-3 shadow-lg shadow-blue-200 dark:shadow-none">
-                            <Clock className="h-8 w-8" />
-                        </div>
-                        <p className="text-sm text-muted font-medium mb-1">Overtime</p>
-                        <p className="text-2xl font-bold text-primary-text">{employeeStats.ot}h</p>
-                    </div>
-                    <div className="bg-card p-6 rounded-xl shadow-sm border border-border flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
-                        <div className="p-4 bg-purple-600 text-white rounded-full mb-3 shadow-lg shadow-purple-200 dark:shadow-none">
-                            <TrendingUp className="h-8 w-8" />
-                        </div>
-                        <p className="text-sm text-muted font-medium mb-1">Comp Offs</p>
-                        <p className="text-2xl font-bold text-primary-text">{employeeStats.compOff}</p>
-                    </div>
-                </div>
-
-                {/* Logs List */}
-                <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-                    <div className="p-4 border-b border-border font-semibold text-primary-text">Attendance Logs</div>
-                    <div className="divide-y divide-border">
-                        {isLoading ? (
-                            <div className="p-8 text-center text-muted"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
-                        ) : employeeLogs.length === 0 ? (
-                            <div className="p-8 text-center text-muted">No records found for this period.</div>
-                        ) : (
-                            employeeLogs.map((log, idx) => (
-                                <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors">
-                                    <div>
-                                        <p className="font-medium text-primary-text">{log.date}</p>
-                                        <p className="text-xs text-muted">{log.day}</p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1.5">
-                                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm
-                                            ${log.status === 'Present' ? 'bg-emerald-500 text-white dark:bg-emerald-600' :
-                                                log.status === 'Absent' ? 'bg-rose-500 text-white dark:bg-rose-600' :
-                                                    log.status === 'Holiday' ? 'bg-amber-500 text-white dark:bg-amber-600' :
-                                                        log.status === 'Weekend' ? 'bg-indigo-500 text-white dark:bg-indigo-600' :
-                                                            'bg-gray-500 text-white dark:bg-gray-600'}`}>
-                                            {log.status}
-                                        </span>
-                                        {(log.checkIn !== '-' || log.checkOut !== '-') && (
-                                            <div className="text-xs text-muted font-medium">
-                                                {log.checkIn} - {log.checkOut}
-                                            </div>
-                                        )}
-                                        {log.ot > 0 && (
-                                            <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">+{log.ot}h OT</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-            </div>
-        );
     }
 
     const ReportSummaryView = () => {
@@ -2418,8 +2345,10 @@ const AttendanceDashboard: React.FC = () => {
     return (
         <div className="min-h-screen p-4 space-y-6 md:bg-transparent bg-[#041b0f]">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">Attendance Dashboard</h2>
-                {['admin', 'hr', 'hr_ops', 'super_admin'].includes(currentUserRole || '') && (
+                <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">
+                    {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
+                </h2>
+                {isAdmin(user?.role) && (
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                         <Button 
                             onClick={() => setIsManualEntryModalOpen(true)}
@@ -2536,110 +2465,113 @@ const AttendanceDashboard: React.FC = () => {
 
                 {/* Dropdowns Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-x-3 gap-y-4">
-                    <div className="col-span-1">
-                        <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
-                        <select
-                            id={reportTypeId}
-                            name="reportType"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingReportType}
-                            onChange={(e) => setPendingReportType(e.target.value as any)}
-                        >
-                            <option value="basic">Basic Report</option>
-                            <option value="log">Attendance Log</option>
-                            <option value="monthly">Monthly Report</option>
-                            <option value="work_hours">Work Hours Report</option>
-                            <option value="site_ot">Site OT Report</option>
-                            <option value="audit">Audit Log Report</option>
-                        </select>
-                    </div>
+                    {!isEmployeeView && (
+                        <>
+                            <div className="col-span-1">
+                                <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
+                                <select
+                                    id={reportTypeId}
+                                    name="reportType"
+                                    className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                                    value={pendingReportType}
+                                    onChange={(e) => setPendingReportType(e.target.value as any)}
+                                >
+                                    <option value="basic">Basic Report</option>
+                                    <option value="monthly">Monthly Summary</option>
+                                    <option value="log">Attendance Logs</option>
+                                    <option value="site_ot">Site OT Report</option>
+                                    <option value="work_hours">Work Hours Report</option>
+                                    {isAdmin(user?.role) && <option value="audit">Audit Logs</option>}
+                                </select>
+                            </div>
 
-                    <div className="col-span-1">
-                        <label htmlFor="site-select" className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
-                        <select
-                            id="site-select"
-                            name="site"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedSite}
-                            onChange={(e) => {
-                                setPendingSelectedSite(e.target.value);
-                                setPendingSelectedSociety('all'); // Reset pending society
-                                setPendingSelectedUser('all');
-                            }}
-                        >
-                            <option value="all">All Sites</option>
-                            {organizations.map(org => (
-                                <option key={org.id} value={org.id}>{org.fullName || org.shortName}</option>
-                            ))}
-                        </select>
-                    </div>
+                            {isAdmin(user?.role) && (
+                                <>
+                                    <div className="col-span-1">
+                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
+                                        <select
+                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                                            value={pendingSelectedSite}
+                                            onChange={(e) => {
+                                                setPendingSelectedSite(e.target.value);
+                                                setPendingSelectedUser('all');
+                                            }}
+                                        >
+                                            <option value="all">All Sites</option>
+                                            {organizations.map(org => (
+                                                <option key={org.id} value={org.id}>{org.shortName}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Society</label>
+                                        <select
+                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                                            value={pendingSelectedSociety}
+                                            onChange={(e) => {
+                                                setPendingSelectedSociety(e.target.value);
+                                                setPendingSelectedUser('all');
+                                            }}
+                                        >
+                                            <option value="all">All Societies</option>
+                                            {societies
+                                                .filter(s => pendingSelectedSite === 'all' || s.organizationId === pendingSelectedSite)
+                                                .map(soc => (
+                                                    <option key={soc.id} value={soc.id}>{soc.name}</option>
+                                                ))
+                                            }
+                                        </select>
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
+                                        <select
+                                            id={roleId}
+                                            name="role"
+                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                                            value={pendingSelectedRole}
+                                            onChange={(e) => {
+                                                setPendingSelectedRole(e.target.value);
+                                                setPendingSelectedUser('all');
+                                            }}
+                                        >
+                                            <option value="all">All Roles</option>
+                                            {availableRoles.map(role => (
+                                                <option key={role} value={role}>
+                                                    {role ? role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+                        </>
+                    )}
 
-                    <div className="col-span-1">
-                        <label htmlFor="society-select" className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Society</label>
-                        <select
-                            id="society-select"
-                            name="society"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedSociety}
-                            onChange={(e) => {
-                                setPendingSelectedSociety(e.target.value);
-                                setPendingSelectedUser('all');
-                            }}
-                        >
-                            <option value="all">All Societies</option>
-                            {societies
-                                .filter(s => pendingSelectedSite === 'all' || s.organizationId === pendingSelectedSite)
-                                .map(soc => (
-                                    <option key={soc.id} value={soc.id}>{soc.name}</option>
-                                ))
-                            }
-                        </select>
-                    </div>
-
-                    <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
-                        <select
-                            id={roleId}
-                            name="role"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedRole}
-                            onChange={(e) => {
-                                setPendingSelectedRole(e.target.value);
-                                setPendingSelectedUser('all');
-                            }}
-                        >
-                            <option value="all">All Roles</option>
-                            {availableRoles.map(role => (
-                                <option key={role} value={role}>
-                                    {role ? role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="col-span-1">
-                        <label htmlFor={employeeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Employee</label>
-                        <select
-                            id={employeeId}
-                            name="employee"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedUser}
-                            onChange={(e) => setPendingSelectedUser(e.target.value)}
-                        >
-                            <option value="all">All Employees</option>
-                            {users
-                                .filter(u => 
-                                    (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
-                                    (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
-                                    (pendingSelectedSociety === 'all' || u.societyId === pendingSelectedSociety)
-                                )
-                                .sort((a, b) => a.name.localeCompare(b.name))
-                                .map(u => (
-                                    <option key={u.id} value={u.id}>{u.name}</option>
-                                ))
-                            }
-                        </select>
-                    </div>
+                    {(isAdmin(user?.role) || isReportingManager) && (
+                        <div className="col-span-1">
+                            <label htmlFor={employeeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Employee</label>
+                            <select
+                                id={employeeId}
+                                name="employee"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                                value={pendingSelectedUser}
+                                onChange={(e) => setPendingSelectedUser(e.target.value)}
+                            >
+                                <option value="all">All Employees</option>
+                                {users
+                                    .filter(u => 
+                                        (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
+                                        (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
+                                        (pendingSelectedSociety === 'all' || u.societyId === pendingSelectedSociety)
+                                    )
+                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                    .map(u => (
+                                        <option key={u.id} value={u.id}>{u.name}</option>
+                                    ))
+                                }
+                            </select>
+                        </div>
+                    )}
 
                     <div className="col-span-1">
                         <label htmlFor={statusId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Status</label>
@@ -2717,24 +2649,44 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className="flex flex-col gap-8 md:grid md:grid-cols-2 lg:grid-cols-5 md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl">
-                {[
-                    { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-emerald-500" },
-                    { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
-                    { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
-                    { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" },
-                    { title: "Inactive (30 Days)", value: dashboardData?.inactiveCount || 0, icon: UserMinus, color: "bg-amber-500" }
-                ].map((stat, i) => (
-                    <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
-                        <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
-                            <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
+            <div className="flex flex-col gap-8 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl">
+                {isEmployeeView ? (
+                    // Personal Stats for Normal Users
+                    [
+                        { title: "Present", value: employeeStats.present, icon: UserCheck, color: "bg-emerald-500" },
+                        { title: "Absent", value: employeeStats.absent, icon: UserX, color: "bg-[#df0637]" },
+                        { title: "Overtime", value: `${employeeStats.ot}h`, icon: Clock, color: "bg-[#1d63ff]" },
+                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "bg-purple-600" }
+                    ].map((stat, i) => (
+                        <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
+                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
+                                <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
+                            </div>
+                            <div className="flex flex-col">
+                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1">{stat.title}</p>
+                                <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
+                            </div>
                         </div>
-                        <div className="flex flex-col">
-                            <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1">{stat.title}</p>
-                            <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
+                    ))
+                ) : (
+                    // Organizational Stats for Admins/Managers
+                    [
+                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-emerald-500" },
+                        { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
+                        { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
+                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" }
+                    ].map((stat, i) => (
+                        <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
+                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
+                                <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
+                            </div>
+                            <div className="flex flex-col">
+                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1">{stat.title}</p>
+                                <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    ))
+                )}
             </div>
 
             {/* Charts Section */}
@@ -2781,44 +2733,48 @@ const AttendanceDashboard: React.FC = () => {
                         </div>
                     </div>
                     {canDownloadReport && (
-                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                            <Button
-                                type="button"
-                                onClick={handleDownloadPdf}
-                                disabled={isDownloading}
-                                className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                            >
-                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                {isDownloading ? 'Generating...' : 'Download PDF'}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={handleDownloadExcel}
-                                disabled={isDownloading}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                            >
-                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                {isDownloading ? 'Generating...' : 'Download Excel'}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={() => setIsMailModalOpen(true)}
-                                disabled={isDownloading || isSendingEmail}
-                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                            >
-                                {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                                {isSendingEmail ? 'Sending...' : 'Mail Report'}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={handleDownloadCsv}
-                                disabled={isDownloading}
-                                className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                            >
-                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                {isDownloading ? 'Generating...' : 'Download CSV'}
-                            </Button>
-                        </div>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button
+                            type="button"
+                            onClick={handleDownloadPdf}
+                            disabled={isDownloading}
+                            className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                        >
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                            {isDownloading ? 'Generating...' : 'Download PDF'}
+                        </Button>
+                        {isAdmin(user?.role) && (
+                            <>
+                                <Button
+                                    type="button"
+                                    onClick={handleDownloadExcel}
+                                    disabled={isDownloading}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                >
+                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                    {isDownloading ? 'Generating...' : 'Download Excel'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={() => setIsMailModalOpen(true)}
+                                    disabled={isDownloading || isSendingEmail}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                >
+                                    {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                                    {isSendingEmail ? 'Sending...' : 'Mail Report'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={handleDownloadCsv}
+                                    disabled={isDownloading}
+                                    className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                >
+                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                    {isDownloading ? 'Generating...' : 'Download CSV'}
+                                </Button>
+                            </>
+                        )}
+                    </div>
                     )}
                 </div>
 

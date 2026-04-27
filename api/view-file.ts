@@ -40,12 +40,6 @@ async function authenticateRequest(req: VercelRequest): Promise<{ id: string } |
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // [SECURITY FIX C3] Require authentication
-    const user = await authenticateRequest(req);
-    if (!user) {
-      return res.status(401).json({ error: 'Authentication required to access files' });
-    }
-
     const pathSegments = req.query.path;
     let filePath = '';
     
@@ -58,14 +52,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        filePath = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
     }
 
-    // [SECURITY FIX C3] Path traversal protection
     const decodedFullPath = decodeURIComponent(filePath);
+    const parts = decodedFullPath.split('/');
+    const bucket = parts[0];
+
+    const publicBuckets = ['avatars', 'logo', 'background', 'public'];
+    const isPublicBucket = publicBuckets.includes(bucket);
+
+    if (!isPublicBucket) {
+      const user = await authenticateRequest(req);
+      if (!user) {
+        return res.status(401).json({ error: 'Authentication required to access restricted files' });
+      }
+    }
+
+    // [SECURITY FIX C3] Path traversal protection
     if (decodedFullPath.includes('..') || decodedFullPath.includes('\\')) {
       return res.status(400).json({ error: 'Invalid file path' });
     }
 
-    const parts = decodedFullPath.split('/');
-    const bucket = parts[0];
     const storagePath = parts.slice(1).join('/');
 
     if (!bucket || !storagePath) return res.status(400).json({ error: 'Invalid file path format' });
@@ -111,4 +116,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('[view-file] Proxy error:', error);
     return res.status(500).json({ error: 'Failed to fetch file' });
   }
+}
+
+// MIME type lookup by extension
+const MIME_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+function getMimeType(filename: string): string {
+  const ext = '.' + filename.split('.').pop()?.toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
 }

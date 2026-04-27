@@ -327,6 +327,15 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
                newNotif.message?.toLowerCase().includes('requested approval to add a new web device'));
 
             if (!isDeviceApprovalRedundant) {
+              // Play notification sound on web
+              try {
+                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+                audio.volume = 0.5;
+                audio.play().catch(e => console.warn('[NotificationStore] Audio playback failed (browser may have blocked autoplay):', e));
+              } catch (err) {
+                console.warn('[NotificationStore] Failed to initialize audio:', err);
+              }
+
               toast.custom(
                 (t) => (
                   <div className={`pointer-events-auto flex w-full max-w-sm overflow-hidden rounded-2xl bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-xl transition-all duration-300 transform ${t.visible ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-4 opacity-0 scale-95'} border-l-4 ${isEmergency ? 'border-l-red-500' : 'border-l-[#0A6847]'}`}>

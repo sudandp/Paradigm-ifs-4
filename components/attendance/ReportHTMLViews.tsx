@@ -207,17 +207,6 @@ export const MonthlyStatusView: React.FC<{
         <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
             
-            {/* Summary Box */}
-            <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Consolidated Summary</h3>
-                <p className="text-sm text-gray-600 leading-relaxed max-w-3xl">
-                    Dear Management,<br /><br />
-                    This is the consolidated attendance summary for the period of <strong>{subtitle}</strong>. 
-                    It covers overall employee presence across all <strong>{data.length}</strong> active members of the staff.<br /><br />
-                    Please review the detailed monthly attendance grid below for any discrepancies.
-                </p>
-            </div>
-
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">

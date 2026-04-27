@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays } from 'date-fns';
+import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays, startOfToday } from 'date-fns';
 import { Download } from 'lucide-react';
 import { api } from '../../services/api';
 import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
@@ -75,12 +75,13 @@ interface MonthlyHoursReportProps {
   selectedSociety?: string;
   selectedRole?: string;
   onDataLoaded?: (data: EmployeeMonthlyData[]) => void;
+  users?: User[];
 }
 
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
   selectedStatus = 'all', selectedSite = 'all', selectedSociety = 'all', selectedRole = 'all',
-  onDataLoaded
+  onDataLoaded, users: externalUsers
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
@@ -118,7 +119,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     setLoading(true);
     try {
       const [usersData, leavesDataResponse, userHolidaysData] = await Promise.all([
-        api.getUsers(),
+        externalUsers || api.getUsers(),
         api.getLeaveRequests(),
         api.getAllUserHolidays()
       ]);
@@ -141,7 +142,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       }
 
       const startDate = startOfMonth(new Date(year, month - 1));
-      const endDate = endOfMonth(new Date(year, month - 1));
+      let endDate = endOfMonth(new Date(year, month - 1));
+      const today = startOfToday();
+      if (isAfter(endDate, today)) endDate = today;
       // Start fetching from the Monday at least 15 days before the month start to ensure clean weekly blocks
       const fetchStartDate = startOfWeek(subDays(startDate, 15), { weekStartsOn: 1 });
       
@@ -179,7 +182,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   };
 
   const processEmployeeMonth = (user: User, events: AttendanceEvent[], userLeaves: any[], userHolidays: any[], year: number, month: number, fieldViolations: FieldAttendanceViolation[] = [], allLeaves: any[] = []): EmployeeMonthlyData => {
-    const daysInMonth = getDaysInMonth(new Date(year, month - 1));
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = endOfMonth(monthStart);
+    const today = startOfToday();
+    const effectiveEnd = isAfter(monthEnd, today) ? today : monthEnd;
+    const daysInPeriod = effectiveEnd.getDate();
     const dailyData: DailyData[] = [];
     
     let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0;
@@ -192,7 +199,6 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
 
     // Organic initialization from buffer
-    const monthStart = new Date(year, month - 1, 1);
     const bufferStart = subDays(monthStart, 15);
     
     let daysPresentInCurrentWeek = 0;
@@ -270,7 +276,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     let statusToCounterActivity = false;
 
-    for (let day = 1; day <= daysInMonth; day++) {
+    for (let day = 1; day <= daysInPeriod; day++) {
       const currentDate = new Date(year, month - 1, day);
       if (currentDate.getDay() === 1) {
           daysPresentInPreviousWeek = daysActiveInCurrentWeek;
