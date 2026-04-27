@@ -227,8 +227,7 @@ const Login: React.FC = () => {
                         </p>
                         <div className="pt-4 border-t border-white/10">
                             <p className="text-[10px] text-white/30 leading-relaxed uppercase tracking-wider">
-                                © Paradigm FMS Services. All rights reserved.<br />
-                                Developed by <span className="text-white/50">Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className="hover:text-emerald-400 transition-colors">sudhan@paradigmfms.com</a>
+                                © Paradigm FMS Services. All rights reserved.
                             </p>
                         </div>
                     </div>
@@ -325,8 +324,7 @@ const Login: React.FC = () => {
                     </p>
                     <div className="pt-6 border-t border-gray-100">
                         <p className="text-[11px] text-gray-400 leading-relaxed uppercase tracking-widest font-medium">
-                            © Paradigm FMS Services. All rights reserved.<br />
-                            Developed by <span className="text-gray-600">Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className="hover:text-emerald-600 transition-colors">sudhan@paradigmfms.com</a>
+                            © Paradigm FMS Services. All rights reserved.
                         </p>
                     </div>
                 </div>

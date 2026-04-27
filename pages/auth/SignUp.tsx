@@ -132,8 +132,7 @@ const SignUp: React.FC = () => {
                 </p>
                 <div className={`pt-6 border-t ${isMobile ? 'border-white/10' : 'border-gray-100'}`}>
                     <p className={`text-[10px] uppercase tracking-widest font-medium leading-relaxed ${isMobile ? 'text-white/30' : 'text-gray-400'}`}>
-                        © Paradigm FMS Services. All rights reserved.<br />
-                        Developed by <span className={isMobile ? 'text-white/50' : 'text-gray-600'}>Sudhan</span> • <a href="mailto:sudhan@paradigmfms.com" className={`transition-colors ${isMobile ? 'hover:text-emerald-400' : 'hover:text-emerald-600'}`}>sudhan@paradigmfms.com</a>
+                        © Paradigm FMS Services. All rights reserved.
                     </p>
                 </div>
             </div>
