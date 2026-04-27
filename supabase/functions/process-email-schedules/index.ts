@@ -339,6 +339,13 @@ serve(async (req: Request) => {
       // Extract and process custom greeting message
       let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
 
+      // Premium Greeting Logic (Synced with Test logic)
+      if (rule.report_type === 'attendance_monthly') {
+          greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
+      } else if (rule.report_type === 'attendance_daily') {
+          greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
+      }
+
       if (template?.variables && Array.isArray(template.variables)) {
         const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
         if (customMsgObj && customMsgObj.description) {

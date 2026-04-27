@@ -105,7 +105,15 @@ const reportGenerators = {
       } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
       else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
       else { status = 'Inactive'; color = '#9ca3af'; }
-      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}"><td style="border:1px solid #eee;padding:8px">${i+1}</td><td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td><td style="border:1px solid #eee;padding:8px">${dept}</td><td style="border:1px solid #eee;padding:8px">${pin}</td><td style="border:1px solid #eee;padding:8px">${pout}</td><td style="border:1px solid #eee;padding:8px">${wh}</td><td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td></tr>`;
+      tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
+        <td style="border:1px solid #eee;padding:8px">${i+1}</td>
+        <td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td>
+        <td style="border:1px solid #eee;padding:8px">${dept}</td>
+        <td style="border:1px solid #eee;padding:8px">${pin}</td>
+        <td style="border:1px solid #eee;padding:8px">${pout}</td>
+        <td style="border:1px solid #eee;padding:8px">${wh}</td>
+        <td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td>
+      </tr>`;
     });
     
     const totalPresent = presentUserIds.size;
@@ -144,7 +152,7 @@ const reportGenerators = {
       targetUsers = users.filter(u => u.id === filters.user.id);
     }
     
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;"><thead><tr style="background: #e5e7eb; color: #111827;"><th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
+    let tableHtml = `<thead><tr style="background: #e5e7eb; color: #111827;"><th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     for (let d = 1; d <= daysInMonth; d++) tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
     tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">Tot</th></tr></thead><tbody>`;
     targetUsers.forEach((user, idx) => {
@@ -160,7 +168,7 @@ const reportGenerators = {
       tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${presentCount}</td></tr>`;
       totalPresentSum += presentCount;
     });
-    tableHtml += `</tbody></table>`;
+    tableHtml += `</tbody>`;
     const totalPossible = targetUsers.length * daysInMonth;
     const attendancePercentage = totalPossible > 0 ? Math.round((totalPresentSum / totalPossible) * 100) : 0;
     const totalAbsent = totalPossible - totalPresentSum;
@@ -238,7 +246,8 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
   
   if (!config.user || !config.pass) throw new Error('SMTP credentials not found.');
 
-  if (ruleId) {
+  // If html is provided, we skip the rule-based rendering (consolidation)
+  if (ruleId && !html) {
     const { data: rule } = await supabase.from('email_schedule_rules').select('*').eq('id', ruleId).single();
     if (!rule) throw new Error('Rule not found');
     
@@ -336,7 +345,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Attendance Management System</div><div style="font-size: 16px; font-weight: 600;">{reportDate}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Monthly Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Total Punches</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Active Staff</div><div style="font-size: 28px; font-weight: 800; color: #1e293b;">{totalEmployees}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Attendance Grid</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
 
 
-    const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .attendance-table { font-size: 8px !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">${reportType.replace(/_/g, ' ')}</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Report Overview</h3></div><div style="overflow-x: auto;" class="attendance-table">{table}</div></div></div></div></body></html>`;
+    const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .attendance-table { font-size: 8px !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">${reportType.replace(/_/g, ' ')}</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Report Overview</h3></div><div style="overflow-x: auto;" class="attendance-table"><table style="width: 100%; border-collapse: collapse;"><thead><tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;"><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">S.No</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Employee Name</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Department</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Check In</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Check Out</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Duration</th><th style="padding: 12px 8px; text-align: left; font-size: 12px; color: #64748b; font-weight: 600;">Status</th></tr></thead><tbody>{table}</tbody></table></div></div></div></div></body></html>`;
 
     html = render(reportTypeKey === 'attendance_monthly' ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate(), reportData);
   }
@@ -355,37 +364,41 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
   const fromEmail = (config.fromEmail || config.smtpFromEmail || config.user || config.smtpUser || '').toLowerCase();
   
-  const mailOptions: any = {
-    from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${fromEmail}>`,
-    to: toAddresses.join(', '),
-    subject, 
-    html, 
-    replyTo: config.replyTo || config.smtpReplyTo || fromEmail
-  };
-  if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
+  // INDIVIDUAL SENDING: Loop through recipients to ensure privacy and individual inbox delivery
+  const results = [];
+  for (const recipient of toAddresses) {
+    const mailOptions: any = {
+      from: `"${config.fromName || config.smtpFromName || 'Paradigm FMS'}" <${fromEmail}>`,
+      to: recipient,
+      subject, 
+      html, 
+      replyTo: config.replyTo || config.smtpReplyTo || fromEmail
+    };
+    if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
 
-  const info = await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    results.push(info);
 
-  // Log successful delivery - Removing trigger_type column (missing in DB) and using metadata instead
-  try {
-    await Promise.all(toAddresses.map(email => 
-      supabase.from('email_logs').insert({
-        recipient_email: email, 
+    // Log each successful delivery
+    try {
+      await supabase.from('email_logs').insert({
+        recipient_email: recipient, 
         subject, 
         status: 'sent', 
         rule_id: ruleId || null, 
         metadata: { 
           trigger_type: triggerType || 'manual',
-          vercel_env: process.env.VERCEL_ENV || 'development'
+          vercel_env: process.env.VERCEL_ENV || 'development',
+          individual_send: true
         },
         created_at: new Date().toISOString()
-      })
-    ));
-  } catch (logLog) {
-    console.error('[send-email] Logging failed but email was likely sent:', logLog);
+      });
+    } catch (logLog) {
+      console.error(`[send-email] Logging failed for ${recipient} but email was likely sent:`, logLog);
+    }
   }
-  
-  return info;
+
+  return results[0]; // Return first info for backwards compatibility
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

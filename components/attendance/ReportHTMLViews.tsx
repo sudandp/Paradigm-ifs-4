@@ -87,30 +87,32 @@ export const BasicReportView: React.FC<{
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
                         <tr className="bg-gray-100">
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">Employee</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Date</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">S.No</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">Employee Name</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">Department</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Punch In</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Punch Out</th>
+                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Work Hours</th>
                             <th className="px-3 py-2 border border-gray-300 font-bold text-center">Status</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Check In</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Check Out</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Duration</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                <td className="px-3 py-1.5 border border-gray-200 text-left">{idx + 1}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 font-medium text-left">{row.userName}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.date}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-left">{row.department || row.dept || 'Staff'}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkIn || row.pin || '—'}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkOut || row.pout || '—'}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.duration || row.wh || '—'}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center font-bold">
                                     <span className={
-                                        row.status === 'P' ? 'text-green-600' :
-                                        row.status === 'A' ? 'text-red-500' :
+                                        row.status === 'P' || row.status === 'Present' ? 'text-green-600' :
+                                        row.status === 'A' || row.status === 'Absent' ? 'text-red-500' :
                                         row.status.includes('P') ? 'text-green-600' :
                                         'text-blue-500'
                                     }>{row.status}</span>
                                 </td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkIn}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkOut}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.duration}</td>
                             </tr>
                         ))}
                     </tbody>

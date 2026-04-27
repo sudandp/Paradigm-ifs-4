@@ -69,62 +69,47 @@ export const reportGenerators = {
     const inactiveCount = Math.max(0, filteredUsers.length - recentlyActiveUserIds.size);
     const totalAbsent = Math.max(0, filteredUsers.length - totalPresent - onLeaveCount - inactiveCount);
 
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; border: 1px solid #ddd;">
-      <thead>
-        <tr style="background: #f3f4f6; color: #374151;">
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Employee</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Date</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Status</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Check In</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Check Out</th>
-          <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Duration</th>
-        </tr>
-      </thead>
-      <tbody>`;
+    let tableHtml = '';
     filteredUsers.forEach((user: any, i: number) => {
+      let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
+      dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
       let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
       if (presentUserIds.has(user.id)) {
         const inTs = userFirstPunches[user.id];
         if (inTs) {
           const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
-          pin = format(inDate, 'HH:mm');
+          pin = format(inDate, 'hh:mm a');
           const inTime = `${String(inDate.getUTCHours()).padStart(2, '0')}:${String(inDate.getUTCMinutes()).padStart(2, '0')}`;
           if (inTime > configStartTime) { status = 'Late'; color = '#d97706'; }
-        } else {
-          pin = '—';
         }
 
         const lastOut = todayEvents.filter((e: any) => e.user_id === user.id && (e.type === 'punch-out' || e.type === 'check_out')).pop();
         if (lastOut) {
-          pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'HH:mm');
+          pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
           if (inTs) {
             const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
             wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
-          } else {
-            wh = '—';
           }
         }
       } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
       else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
       else { status = 'Inactive'; color = '#9ca3af'; }
 
-      let displayStatus = status === 'Absent' || status === 'Inactive' ? 'A' : status;
-
       tableHtml += `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
-        <td style="border:1px solid #ddd;padding:8px;font-weight:500">${user.name}</td>
-        <td style="border:1px solid #ddd;padding:8px">${format(nowIST, 'dd MMM yyyy')}</td>
-        <td style="border:1px solid #ddd;padding:8px;color:${color};font-weight:600;text-align:center;">${displayStatus}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center;">${pin}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center;">${pout}</td>
-        <td style="border:1px solid #ddd;padding:8px;text-align:center;">${wh}</td>
+        <td style="border:1px solid #eee;padding:8px">${i+1}</td>
+        <td style="border:1px solid #eee;padding:8px;font-weight:500">${user.name}</td>
+        <td style="border:1px solid #eee;padding:8px">${dept}</td>
+        <td style="border:1px solid #eee;padding:8px">${pin}</td>
+        <td style="border:1px solid #eee;padding:8px">${pout}</td>
+        <td style="border:1px solid #eee;padding:8px">${wh}</td>
+        <td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td>
       </tr>`;
     });
 
-    tableHtml += '</tbody></table>';
-
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+      reportDate: format(nowIST, 'dd MMM yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
@@ -163,8 +148,7 @@ export const reportGenerators = {
     const holidays = (holidaysRes.data || []) as any[];
     const recurringHolidays = (recurringHolidaysRes.data || []) as any[];
 
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 9px; border: 1px solid #ddd;">
-      <thead>
+    let tableHtml = `<thead>
         <tr style="background: #e5e7eb; color: #111827;">
           <th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     
@@ -380,7 +364,7 @@ export const reportGenerators = {
       </tr>`;
     });
 
-    tableHtml += `</tbody></table>`;
+    tableHtml += `</tbody>`;
 
     return {
       date: monthStr,
@@ -406,8 +390,7 @@ export const reportGenerators = {
     const users = (usersRes.data || []) as any[];
     const events = (eventsRes.data || []) as any[];
 
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 8px; border: 1px solid #999;">
-      <thead>
+    let tableHtml = `<thead>
         <tr style="background: #111827; color: #fff;">
           <th style="border: 1px solid #555; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     
@@ -444,7 +427,7 @@ export const reportGenerators = {
       </tr>`;
     });
 
-    tableHtml += `</tbody></table>`;
+    tableHtml += `</tbody>`;
 
     return {
       date: monthStr,
