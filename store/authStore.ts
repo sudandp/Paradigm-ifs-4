@@ -102,6 +102,7 @@ interface AuthState {
     lastBreakOutTime: string | null;
     totalBreakDurationToday: number;
     totalWorkingDurationToday: number;
+    breakIntervals: { start: string; end: string | null; duration: number }[];
     isOnBreak: boolean;
     loginWithEmail: (email: string, password: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     signUp: (name: string, email: string, password: string) => Promise<{ error: { message: string } | null }>;
@@ -162,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
         lastBreakOutTime: null,
         totalBreakDurationToday: 0,
         totalWorkingDurationToday: 0,
+        breakIntervals: [],
         isOnBreak: false,
         error: null,
         loading: false,
@@ -199,6 +201,7 @@ export const useAuthStore = create<AuthState>()(
             lastBreakOutTime: null,
             totalBreakDurationToday: 0,
             totalWorkingDurationToday: 0,
+            breakIntervals: [],
             isOnBreak: false,
             isLoginAnimationPending: false,
             dailyPunchCount: 0,
@@ -585,7 +588,7 @@ export const useAuthStore = create<AuthState>()(
                     return;
                 }
 
-                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours, dailyPunchCount: processedDailyPunchCount } = processDailyEvents(events, new Date());
+                const { checkIn, checkOut, firstBreakIn, lastBreakIn, breakOut, breakHours, workingHours, dailyPunchCount: processedDailyPunchCount, breakIntervals } = processDailyEvents(events, new Date());
                 const lastEvent = events[events.length - 1];
                 
                 // --- INDEPENDENT FLOW LOGIC ---
@@ -626,6 +629,7 @@ export const useAuthStore = create<AuthState>()(
                     lastBreakOutTime: breakOut,
                     totalBreakDurationToday: breakHours,
                     totalWorkingDurationToday: workingHours,
+                    breakIntervals: breakIntervals,
                     isAttendanceLoading: false,
                     dailyPunchCount,
                     approvedUnlockCount,

@@ -25,7 +25,8 @@ export function calculateWorkingHours(
   workingHours: number; 
   firstBreakIn: string | null;
   lastBreakIn: string | null; 
-  lastBreakOut: string | null 
+  lastBreakOut: string | null;
+  breakIntervals: { start: string; end: string | null; duration: number }[];
 } {
   // 1. Sort events chronologically to process intervals accurately
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -43,6 +44,9 @@ export function calculateWorkingHours(
   let isAtSite = false;
   let isOnBreak = false;
   let lastEventTime: Date | null = null;
+
+  let breakIntervals: { start: string; end: string | null; duration: number }[] = [];
+  let activeBreakStart: string | null = null;
 
   // 2. Process intervals between events
   sortedEvents.forEach(event => {
@@ -83,6 +87,11 @@ export function calculateWorkingHours(
         }
         break;
       case 'punch-out':
+        if (isOnBreak && activeBreakStart) {
+          const duration = differenceInMinutes(eventTime, new Date(activeBreakStart)) / 60;
+          breakIntervals.push({ start: activeBreakStart, end: event.timestamp, duration });
+          activeBreakStart = null;
+        }
         if (event.workType === 'field' || event.workType === 'site') {
           isAtSite = false;
           isOnBreak = false; // Primary logout closes all active sub-sessions
@@ -96,17 +105,28 @@ export function calculateWorkingHours(
         isAtSite = true;
         break;
       case 'site-ot-out':
+        if (isOnBreak && activeBreakStart) {
+          const duration = differenceInMinutes(eventTime, new Date(activeBreakStart)) / 60;
+          breakIntervals.push({ start: activeBreakStart, end: event.timestamp, duration });
+          activeBreakStart = null;
+        }
         isAtSite = false;
         isOnBreak = false;
         break;
       case 'break-in':
         isOnBreak = true;
+        activeBreakStart = event.timestamp;
         if (!firstBreakIn) firstBreakIn = event.timestamp;
         lastBreakIn = event.timestamp;
         lastBreakOut = null;
         break;
       case 'break-out':
+        if (isOnBreak && activeBreakStart) {
+          const duration = differenceInMinutes(eventTime, new Date(activeBreakStart)) / 60;
+          breakIntervals.push({ start: activeBreakStart, end: event.timestamp, duration });
+        }
         isOnBreak = false;
+        activeBreakStart = null;
         lastBreakOut = event.timestamp;
         break;
     }
@@ -141,6 +161,10 @@ export function calculateWorkingHours(
     }
     if (isOnBreak) {
       totalBreakMinutes += validElapsed;
+      if (activeBreakStart) {
+        const duration = differenceInMinutes(now, new Date(activeBreakStart)) / 60;
+        breakIntervals.push({ start: activeBreakStart, end: null, duration });
+      }
     }
     if (isCurrentlyPunchedIn) {
       grossWorkMinutes += validElapsed;
@@ -153,7 +177,8 @@ export function calculateWorkingHours(
     workingHours: netWorkMinutes / 60,
     firstBreakIn,
     lastBreakIn,
-    lastBreakOut
+    lastBreakOut,
+    breakIntervals
   };
 }
 
@@ -283,6 +308,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   breakHours: number;
   workingHours: number;
   dailyPunchCount: number;
+  breakIntervals: { start: string; end: string | null; duration: number }[];
 } {
   if (events.length === 0) {
     return {
@@ -295,6 +321,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
       breakHours: 0,
       workingHours: 0,
       dailyPunchCount: 0,
+      breakIntervals: [],
     };
   }
 
@@ -335,6 +362,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
     breakHours: result.breakHours,
     workingHours: result.workingHours,
     dailyPunchCount,
+    breakIntervals: result.breakIntervals,
   };
 }
 

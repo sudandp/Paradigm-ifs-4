@@ -44,52 +44,54 @@ export async function getDeviceLimits(roleId: string): Promise<DeviceLimitsConfi
     
     const attendanceSettings = api.toCamelCase(settings?.attendance_settings || {});
     
-    // Map role to staff category
+    // Map role to staff category (aligned with AttendanceSettings.tsx and authStore.ts)
     const normalizedRole = (roleId || '').toLowerCase();
     
-    // Check for Admin
-    if (normalizedRole === 'admin' || normalizedRole === 'developer') {
+    // 1. Check for Admin
+    const adminRoles = ['admin', 'developer', 'hr', 'hr_admin', 'super_admin'];
+    if (adminRoles.includes(normalizedRole)) {
       const adminRules = attendanceSettings.admin;
       if (adminRules && adminRules.deviceLimits) {
         return adminRules.deviceLimits;
       }
-      // Fallback for admin if not configured yet
       return { web: 5, android: 5, ios: 5 };
     }
 
-    // Check for Management
-    if (['management', 'hr_ops', 'finance_manager', 'gm', 'ceo', 'director'].includes(normalizedRole)) {
+    // 2. Check for Management
+    const managementRoles = ['management', 'hr_ops', 'finance_manager', 'gm', 'ceo', 'director', 'manager'];
+    if (managementRoles.includes(normalizedRole) || normalizedRole.includes('director')) {
       const managementRules = attendanceSettings.management;
       if (managementRules && managementRules.deviceLimits) {
         return managementRules.deviceLimits;
       }
-      // Fallback for management if not configured yet
       return { web: 5, android: 5, ios: 5 };
     }
     
-    // Check for Field Staff
-    if (['field_staff', 'field_manager', 'field_executive'].includes(normalizedRole)) {
+    // 3. Check for Field Staff
+    const fieldRoles = ['field', 'field_staff', 'field_manager', 'field_executive', 'operation_manager', 'technical_reliever'];
+    if (fieldRoles.includes(normalizedRole) || normalizedRole.startsWith('field_')) {
        const fieldRules = attendanceSettings.field;
        if (fieldRules && fieldRules.deviceLimits) {
          return fieldRules.deviceLimits;
        }
     }
 
-    // Check for Site Staff
-    if (['site_staff', 'site_manager', 'security_guard'].includes(normalizedRole)) {
+    // 4. Check for Site Staff
+    const siteRoles = ['site', 'site_staff', 'site_manager', 'security_guard', 'supervisor', 'warden'];
+    if (siteRoles.includes(normalizedRole) || normalizedRole.startsWith('site_')) {
        const siteRules = attendanceSettings.site;
        if (siteRules && siteRules.deviceLimits) {
          return siteRules.deviceLimits;
        }
     }
     
-    // Check for Office Staff
+    // 5. Fallback to Office Staff
     const officeRules = attendanceSettings.office;
     if (officeRules && officeRules.deviceLimits) {
       return officeRules.deviceLimits;
     }
 
-    // Default for everyone else if nothing configured
+    // Default fallback for everyone else
     return { web: 1, android: 1, ios: 1 };
   } catch (error) {
     console.error('Error getting device limits:', error);

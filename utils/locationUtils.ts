@@ -35,11 +35,38 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
     if (!res.ok) return fallback;
     const data = await res.json();
     if (data.address) {
-      const { road, suburb, city, village, town, state, country } = data.address;
-      // Prioritize a concise address: Road, Suburb, and City/Village/Town
-      const shortAddress = [road, suburb, city || village || town, state]
-        .filter(Boolean)
-        .join(', ');
+      const { 
+        hotel, school, university, college, 
+        apartment, apartments, mall, supermarket,
+        bus_stop, fuel, petrol_pump,
+        hospital, clinic, doctors,
+        cinema, theatre, museum, 
+        attraction, tourism, historic,
+        building, amenity, shop, office, 
+        park, garden,
+        road, suburb, city, village, town, state, postcode 
+      } = data.address;
+      
+      // Get the most descriptive "name" of the place first
+      const poiName = hotel || school || university || college || 
+                      apartment || apartments || mall || supermarket ||
+                      bus_stop || fuel || petrol_pump ||
+                      hospital || clinic || doctors ||
+                      cinema || theatre || museum || 
+                      attraction || tourism || historic ||
+                      building || amenity || shop || office || 
+                      park || garden;
+      
+      const parts = [road, suburb, city || village || town, state, postcode]
+        .filter(Boolean);
+      
+      const shortAddress = parts.join(', ');
+      
+      if (poiName) {
+        // If poiName is just a generic category and shortAddress already contains it, don't duplicate
+        // But usually Nominatim provides the specific name of the building here.
+        return `${poiName} - ${shortAddress || data.display_name}`;
+      }
       
       if (shortAddress) return shortAddress;
     }

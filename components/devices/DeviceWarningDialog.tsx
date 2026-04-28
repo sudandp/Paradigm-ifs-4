@@ -74,6 +74,10 @@ const DeviceWarningDialog: React.FC<DeviceWarningDialogProps> = ({
     try {
       await revokeDevice(id);
       await loadUserDevices();
+      // Auto-trigger re-check after successful removal
+      if (onTryAgain) {
+        onTryAgain();
+      }
     } catch (e) {
       alert('Failed to remove device');
     }
@@ -93,13 +97,17 @@ const DeviceWarningDialog: React.FC<DeviceWarningDialogProps> = ({
           description: customMessage || `You have reached your limit of authorized ${deviceType} sessions. You can remove an older device below to continue, or request a limit increase from your manager.`,
           actionText: 'Request Access',
           showRequestButton: true,
+          showTryAgainButton: true,
         };
       case 'pending':
+        const currentLimit = limits[deviceType as keyof typeof limits] || 1;
         return {
           title: 'Approval Pending',
           description: customMessage || (
             <>
-              You have a limit of 2 devices only. Use if you need to add one more device then remove one and continue with your limit or wait for management approval.
+              You have a limit of {currentLimit} {deviceType} device{currentLimit !== 1 ? 's' : ''} only. 
+              If you need to add this new device, please remove one of your active devices below and click "Try Again", 
+              or wait for management approval.
               <br /><br />
               If more devices need to be added, an administrator needs to give permission.
             </>

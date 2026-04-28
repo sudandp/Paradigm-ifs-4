@@ -490,6 +490,44 @@ const App: React.FC = () => {
     };
   }, [navigate]);
 
+  // 3. Handle Silent Tracking Pings (Admin triggered "Find")
+  useEffect(() => {
+    const handleSilentTrackingPing = async (e: any) => {
+      const { user } = useAuthStore.getState();
+      if (!user) return;
+      
+      const requestId = e.detail?.requestId;
+      console.log(`[App] Received silent tracking ping (${requestId || 'no-id'}), recording position...`);
+      try {
+        const { routeTrackingService } = await import('./services/routeTrackingService');
+        await routeTrackingService.recordPosition(user.id, requestId);
+      } catch (err) {
+        console.warn('[App] Failed to handle silent tracking ping:', err);
+      }
+    };
+
+    // 1. Listen for CustomEvent (from pushNotificationService for foreground messages)
+    window.addEventListener('silent-tracking-ping', handleSilentTrackingPing);
+
+    // 2. Listen for Service Worker messages (for background web messages)
+    const handleSWMessage = (event: MessageEvent) => {
+      console.log('[App] Received message from Service Worker:', event.data?.type, event.data?.data);
+      if (event.data && event.data.type === 'SILENT_TRACKING_PING') {
+        handleSilentTrackingPing({ detail: event.data.data });
+      }
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
+    }
+
+    return () => {
+      window.removeEventListener('silent-tracking-ping', handleSilentTrackingPing);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
+    };
+  }, []);
+
   // Handle Local Notification Actions (e.g., Break Reminders)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;

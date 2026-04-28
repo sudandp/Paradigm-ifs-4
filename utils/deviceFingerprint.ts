@@ -289,8 +289,11 @@ export async function generateDeviceIdentifier(): Promise<string> {
       console.error('Error getting native ID:', e);
     }
     // If native ID fails for some reason, don't just generate a generic web fingerprint
-    // that might collide with another similar phone. Use a timestamp-based unique one.
+    // that might collide with another similar phone. Use a persistent unique one.
     const urgentId = `mob-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    try {
+      await Preferences.set({ key: PERSISTENT_ID_KEY, value: urgentId });
+    } catch (e) {}
     return urgentId;
   }
 

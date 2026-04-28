@@ -24,6 +24,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BadgeHelperPlugin.class);
         registerPlugin(RingtonePlugin.class);
         registerPlugin(BreakAlarmPlugin.class);
+        registerPlugin(TrackingPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();
     }

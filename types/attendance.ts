@@ -38,6 +38,13 @@ export interface AttendanceEvent {
   isOt?: boolean;
   /** Auto-detected shift ID for site staff (e.g. 'shift_a', 'shift_c'). Populated on punch-in. */
   detectedShiftId?: string;
+  // Device Metadata
+  batteryLevel?: number;
+  deviceName?: string;
+  ipAddress?: string;
+  networkType?: string;
+  networkProvider?: string;
+  source?: string;
 }
 
 export interface RoutePoint {
@@ -49,6 +56,13 @@ export interface RoutePoint {
   accuracy?: number;
   speed?: number;
   heading?: number;
+  // Device Metadata
+  batteryLevel?: number;
+  deviceName?: string;
+  ipAddress?: string;
+  networkType?: string;
+  networkProvider?: string;
+  source?: string;
 }
 
 // -----------------------------------------------------------------------------

@@ -13,10 +13,13 @@ interface ProfilePlaceholderProps {
 export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ className, photoUrl, seed }) => {
     const { user } = useAuthStore();
     const [imgError, setImgError] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Reset error state if the URL changes so we can try loading the new one
+    // Reset states if the URL changes
     React.useEffect(() => {
         setImgError(false);
+        if (photoUrl) setIsLoading(true);
+        else setIsLoading(false);
     }, [photoUrl]);
 
     const resolvedPhotoUrl = useMemo(() => {
@@ -48,28 +51,47 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
         }
     }, [photoUrl]);
 
-    // Pre-load image to handle errors
+    // Pre-load image to handle errors and loading state
     React.useEffect(() => {
-        if (!resolvedPhotoUrl) return;
+        if (!resolvedPhotoUrl) {
+            setIsLoading(false);
+            return;
+        }
         
         const img = new Image();
         img.src = resolvedPhotoUrl;
-        img.onload = () => setImgError(false);
-        img.onerror = () => setImgError(true);
+        img.onload = () => {
+            setImgError(false);
+            setIsLoading(false);
+        };
+        img.onerror = () => {
+            setImgError(true);
+            setIsLoading(false);
+        };
     }, [resolvedPhotoUrl]);
 
     // Show the user's photo if we have one and it loaded successfully
-    if (resolvedPhotoUrl && !imgError) {
+    if (resolvedPhotoUrl && !imgError && !isLoading) {
+        // Escape URL for CSS
+        const escapedUrl = resolvedPhotoUrl.replace(/'/g, "\\'");
         return (
             <div 
-                className={`w-full h-full bg-cover bg-center bg-no-repeat ${className || ''}`}
-                style={{ backgroundImage: `url(${resolvedPhotoUrl})` }}
+                className={`flex-shrink-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300 ${className || 'w-full h-full'}`}
+                style={{ backgroundImage: `url('${escapedUrl}')` }}
                 aria-label="Profile"
             />
         );
     }
 
-    // No photo (or broken photo): always show the Paradigm default avatar
+    // While loading or on error/no photo, show the DefaultAvatar
+    // We can add a subtle pulse effect while loading
     const DefaultAvatar = Avatars[0];
-    return <DefaultAvatar className={className || ''} />;
+    return (
+        <div className={`relative ${className || 'w-full h-full'}`}>
+            <DefaultAvatar className="w-full h-full" />
+            {isLoading && (
+                <div className="absolute inset-0 bg-white/10 animate-pulse rounded-inherit" />
+            )}
+        </div>
+    );
 };

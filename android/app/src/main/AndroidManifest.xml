@@ -43,6 +43,22 @@
         <!-- Receiver for Classic Break Alarms -->
         <receiver android:name=".BreakAlarmReceiver" android:exported="false" />
 
+        <!-- Foreground Service for Continuous Tracking -->
+        <service 
+            android:name=".TrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- FCM Service: handles background/killed-state push messages (e.g. SILENT_TRACKING_PING) -->
+        <service
+            android:name=".ParadigmFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
     </application>
 
     <!-- Permissions -->

@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "13.3.0",
+  "version": "13.8.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -103,6 +103,7 @@
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
+    "google-auth-library": "^9.4.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^8.0.4",
     "puppeteer": "^24.30.0",

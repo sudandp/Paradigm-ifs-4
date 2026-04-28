@@ -31,6 +31,12 @@ export const pushNotificationService = {
         const data = notification.data || {};
         const count = data.notification_count || data.badge;
 
+        if (data.type === 'SILENT_TRACKING_PING') {
+          console.log('[Push] Silent tracking ping received on native');
+          window.dispatchEvent(new CustomEvent('silent-tracking-ping', { detail: data }));
+          return;
+        }
+
         if (count) {
           try {
             const { Badge } = await import('@capawesome/capacitor-badge');
@@ -78,6 +84,14 @@ export const pushNotificationService = {
       PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
         console.log('[Push] Native notification action performed:', action);
         const data = action.notification?.data || {};
+
+        // Handle tracking ping that came in while app was in background and user tapped it
+        if (data.type === 'SILENT_TRACKING_PING') {
+          console.log('[Push] Silent tracking ping (via action tap), dispatching...');
+          window.dispatchEvent(new CustomEvent('silent-tracking-ping', { detail: data }));
+          return;
+        }
+
         // Route to the target page if a link is provided in the notification payload
         if (data.link) {
           window.dispatchEvent(new CustomEvent('push-deeplink', { detail: { url: data.link } }));
@@ -86,6 +100,13 @@ export const pushNotificationService = {
     } else if (messaging) {
       onMessage(messaging, (payload) => {
         console.log('[Push] Web message received:', payload);
+        
+        if (payload.data?.type === 'SILENT_TRACKING_PING') {
+          console.log('[Push] Silent tracking ping received on web');
+          window.dispatchEvent(new CustomEvent('silent-tracking-ping', { detail: payload.data }));
+          return;
+        }
+
         // Show browser notification for foreground messages
         if (Notification.permission === 'granted') {
           const title = payload.notification?.title || payload.data?.title || 'Paradigm Office';

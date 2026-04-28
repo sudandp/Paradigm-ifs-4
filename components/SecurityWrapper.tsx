@@ -117,12 +117,13 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                     setDeviceMessage(result.message || 'Unable to register device. Please try again.');
                 }
 
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Device validation failed:', error);
-                // On error, we might want to fail open or closed?
-                // Fail open for now to avoid locking out due to network glitch
-                setDeviceStatus('authorized'); 
-                lastCheckedUserId.current = user.id;
+                // FAIL CLOSED: Show error instead of letting them in.
+                setDeviceStatus('revoked');
+                setDeviceMessage(`Device security check failed: ${error?.message || 'Network error'}. Please try again.`);
+                // Reset check state to allow trying again
+                lastCheckedUserId.current = null;
             }
         };
 
@@ -192,12 +193,11 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         );
     }
     
-    // While checking device status, we proceed to render children to avoid a double-splash effect.
-    // The component will re-render and block access if the check finds an issue.
+    // While checking device status, show a loading screen to prevent "not restructing user" issue
     if (user && deviceStatus === 'checking' && user.role !== 'developer') {
-         // Silently wait for the check to complete
+         return <LoadingScreen message="Verifying device security..." />;
     }
-
+    
     // Otherwise, render children normally
     return <>{children}</>;
 };

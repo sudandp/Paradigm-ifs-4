@@ -309,6 +309,13 @@ const TeamMemberProfile: React.FC = () => {
           <div className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => navigate(-1)}
+                  className="p-2 hover:bg-accent/5 rounded-xl transition-all group flex items-center justify-center border border-transparent hover:border-accent/10 active:scale-95"
+                  title="Go Back"
+                >
+                  <ArrowLeft className="w-6 h-6 text-muted group-hover:text-accent transition-colors" />
+                </button>
                 <div className="flex items-center gap-3">
                   <ProfilePlaceholder photoUrl={member.photoUrl} seed={member.id} className="w-12 h-12 rounded-full border-2 border-accent/20" />
                   <div className="flex flex-col">

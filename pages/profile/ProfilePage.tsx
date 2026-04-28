@@ -12,7 +12,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2 } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
@@ -58,7 +58,8 @@ const ProfilePage: React.FC = () => {
         dailyPunchCount,
         isFieldCheckedIn,
         isFieldCheckedOut,
-        isSiteOtCheckedIn
+        isSiteOtCheckedIn,
+        breakIntervals
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
@@ -579,14 +580,23 @@ const ProfilePage: React.FC = () => {
 
                                 <div className="flex-1 space-y-6">
                                     {/* Temporal Nodes */}
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                                         <div className="space-y-1">
-                                            <p className="text-[10px] font-black text-emerald-500/70 uppercase">First Entry</p>
+                                            <p className="text-[10px] font-black text-emerald-500/70 uppercase tracking-widest">First Entry</p>
                                             <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckInTime)}</p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] font-black text-rose-500/70 uppercase">Last Exit</p>
+                                        <div className="space-y-1 text-right">
+                                            <p className="text-[10px] font-black text-rose-500/70 uppercase tracking-widest">Last Exit</p>
                                             <p className="text-2xl font-black text-white tracking-tighter tabular-nums">{formatTime(lastCheckOutTime)}</p>
+                                        </div>
+                                        
+                                        <div className="space-y-1 border-t border-white/5 pt-4">
+                                            <p className="text-[10px] font-black text-blue-500/70 uppercase tracking-widest">First B-In</p>
+                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">{formatTime(firstBreakInTime)}</p>
+                                        </div>
+                                        <div className="space-y-1 text-right border-t border-white/5 pt-4">
+                                            <p className="text-[10px] font-black text-amber-500/70 uppercase tracking-widest">Last B-Out</p>
+                                            <p className="text-xl font-black text-white/90 tracking-tighter tabular-nums">{formatTime(lastBreakOutTime)}</p>
                                         </div>
                                     </div>
 
@@ -605,7 +615,7 @@ const ProfilePage: React.FC = () => {
                                          </div>
                                          <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <Clock className="h-3 w-3 text-blue-400" />
+                                                <Zap className="h-3 w-3 text-rose-400" />
                                                 <span className="text-[9px] font-bold text-gray-400 uppercase">Break Vol.</span>
                                             </div>
                                             <p className="text-xl font-bold text-white tabular-nums">

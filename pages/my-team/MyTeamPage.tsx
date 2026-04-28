@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle, Globe, Map as MapIcon } from 'lucide-react';
 import { formatDistanceToNow, isToday } from 'date-fns';
 import { Link } from 'react-router-dom';
+import 'leaflet/dist/leaflet.css';
 import { api } from '../../services/api';
+import { supabase } from '../../services/supabase';
 import { NativeBridge } from '../../utils/nativeBridge';
 import { useDevice } from '../../hooks/useDevice';
+import MapSkeleton from '../../components/ui/MapSkeleton';
 
 // ... existing imports
 
@@ -18,6 +19,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { User, AttendanceEvent, AttendanceUnlockRequest } from '../../types';
 import Button from '../../components/ui/Button';
 import Pagination from '../../components/ui/Pagination';
+import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 
 // Custom Marker CSS
 const markerStyles = `
@@ -90,11 +92,14 @@ const MyTeamPage: React.FC = () => {
   const [trackingInterval, setTrackingInterval] = useState<number>(15);
   const [isUpdatingInterval, setIsUpdatingInterval] = useState(false);
   const [unlockRequests, setUnlockRequests] = useState<AttendanceUnlockRequest[]>([]);
-  
-  const mapRef = useRef<L.Map | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets');
+  const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const markersRef = useRef<L.LayerGroup>(L.layerGroup());
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const markersRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
+  const LRef = useRef<any>(null);
+  const hasInitiallyFitted = useRef(false);
 
   useEffect(() => {
     // Inject custom marker styles
@@ -267,43 +272,103 @@ const MyTeamPage: React.FC = () => {
     }
   };
 
-  // 1. Initialize Map Object & Initial Tiles
+  // 1. Initialize Map Object & Initial Tiles (Dynamic Load)
   useEffect(() => {
-    if (mapContainerRef.current && !mapRef.current) {
-      const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      const map = L.map(mapContainerRef.current, {
-        zoomControl: false,
-        attributionControl: false,
-        fadeAnimation: false // Disable to see if it helps with gray screen
-      }).setView([12.9716, 77.5946], 12); // Bangalore
-      
-      mapRef.current = map;
-      
-      // Add Tile Layer
-      tileLayerRef.current = L.tileLayer(tileUrl, { 
-        maxZoom: 19,
-        zIndex: 1
-      }).addTo(map);
+    const initMap = async () => {
+      if (mapContainerRef.current && !mapRef.current) {
+        // Load Leaflet dynamically to prevent blocking main bundle
+        const L = await import('leaflet');
+        LRef.current = L;
+        
+        const isDark = theme === 'dark';
+        const tileUrl = mapStyle === 'satellite'
+          ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          : (isDark 
+              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        
+        const map = L.map(mapContainerRef.current, {
+          zoomControl: false,
+          attributionControl: false,
+          fadeAnimation: true,
+          markerZoomAnimation: true,
+          maxZoom: 22
+        }).setView([12.9716, 77.5946], 12); // Bangalore
+        
+        mapRef.current = map;
+        
+        // Add Tile Layer
+        const tiles = L.tileLayer(tileUrl, { 
+          maxZoom: 18,
+          maxNativeZoom: 18,
+          zIndex: 1,
+          detectRetina: true,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
+        
+        tileLayerRef.current = tiles;
 
-      // Add other layers
-      markersRef.current.addTo(map);
-      L.control.zoom({ position: 'bottomright' }).addTo(map);
+        // Initialize markers layer group
+        markersRef.current = L.layerGroup().addTo(map);
+        
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Initial size invalidation
-      setTimeout(() => {
-        map.invalidateSize();
-        setTimeout(() => map.invalidateSize(), 500);
-      }, 200);
-    }
+        // Only fade out skeleton once tiles are actually loaded for a "butter smooth" transition
+        tiles.once('load', () => {
+          setTimeout(() => setMapLoaded(true), 200);
+        });
+
+        // Fallback: If tiles take too long (e.g., 3s), show the map anyway
+        setTimeout(() => setMapLoaded(true), 3000);
+
+        // Aggressive size invalidation for proper rendering
+        const invalidate = () => {
+          if (mapRef.current) mapRef.current.invalidateSize();
+        };
+        
+        setTimeout(invalidate, 100);
+        setTimeout(invalidate, 500);
+      }
+    };
+
+    initMap();
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
   }, []);
 
-  // 2. Manage Tile Layer Updates (Theme change only)
+  // 1.5 Handle Resize invalidation
   useEffect(() => {
-    if (!mapRef.current) return;
+    const handleResize = () => {
+      if (mapRef.current) mapRef.current.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 2. Manage Tile Layer Updates (Theme & Style change)
+  useEffect(() => {
+    if (!mapRef.current || !tileLayerRef.current) return;
     
-    // Refresh size when theme changes
+    let tileUrl = '';
+    if (mapStyle === 'satellite') {
+      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    } else {
+      const isDark = theme === 'dark';
+      tileUrl = isDark 
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+      
+    tileLayerRef.current.setUrl(tileUrl);
+    
+    // Refresh size when theme/style changes
     setTimeout(() => mapRef.current?.invalidateSize(), 100);
-  }, [theme]);
+  }, [theme, mapStyle]);
 
   const filteredMembers = useMemo(() => {
     return teamMembers.filter(m => {
@@ -331,10 +396,11 @@ const MyTeamPage: React.FC = () => {
 
   // Update Markers
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !markersRef.current || !LRef.current) return;
+    const L = LRef.current;
     markersRef.current.clearLayers();
 
-    const markerInstances: L.Marker[] = [];
+    const markerInstances: any[] = [];
 
     filteredMembers.forEach(member => {
       const loc = latestLocations[member.id];
@@ -344,12 +410,25 @@ const MyTeamPage: React.FC = () => {
         const isActiveToday = loc && isToday(new Date(loc.timestamp));
         const indicatorColor = isActiveToday ? '#10b981' : '#ef4444';
 
-        const isValidPhoto = member.photoUrl && (member.photoUrl.startsWith('http') || member.photoUrl.startsWith('data:'));
+        // Resolve photo URL (handle Supabase paths)
+        let resolvedPhotoUrl = member.photoUrl;
+        if (resolvedPhotoUrl && !resolvedPhotoUrl.startsWith('http') && !resolvedPhotoUrl.startsWith('data:') && !resolvedPhotoUrl.startsWith('/')) {
+            const isAvatar = resolvedPhotoUrl.startsWith('avatars/');
+            const bucket = isAvatar ? 'avatars' : 'onboarding-documents';
+            const path = isAvatar ? resolvedPhotoUrl.replace('avatars/', '') : resolvedPhotoUrl;
+            try {
+                const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+                resolvedPhotoUrl = data.publicUrl;
+            } catch (e) {
+                console.error('Failed to resolve marker photo:', e);
+            }
+        }
+
+        const isValidPhoto = resolvedPhotoUrl && (resolvedPhotoUrl.startsWith('http') || resolvedPhotoUrl.startsWith('data:'));
 
         const mapHtml = `
-          <div class="custom-user-marker" style="border-color: ${indicatorColor}; overflow: hidden;">
-            <div class="user-marker-initials" style="color: ${indicatorColor}">${initials}</div>
-            ${isValidPhoto ? `<img src="${member.photoUrl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 10;" onerror="this.style.display='none'" />` : ''}
+          <div class="surgical-marker">
+            <div class="marker-avatar" style="background-image: url(${resolvedPhotoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=random`}); border-color: ${indicatorColor}"></div>
           </div>
         `;
 
@@ -357,8 +436,8 @@ const MyTeamPage: React.FC = () => {
           className: '',
           html: mapHtml,
           iconSize: [48, 48],
-          iconAnchor: [24, 58],
-          popupAnchor: [0, -58]
+          iconAnchor: [24, 48],
+          popupAnchor: [0, -48]
         });
 
         const marker = L.marker([loc.latitude, loc.longitude], { icon: customIcon });
@@ -367,6 +446,12 @@ const MyTeamPage: React.FC = () => {
           <div class="marker-popup-content">
             <p class="marker-popup-name">${member.name}</p>
             <p class="marker-popup-status">Last active ${formatDistanceToNow(new Date(loc.timestamp))} ago</p>
+            ${member.phone ? `
+              <a href="https://wa.me/91${member.phone.replace(/\D/g,'')}" target="_blank" class="mt-2 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all no-underline">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                WhatsApp
+              </a>
+            ` : ''}
           </div>
         `;
         
@@ -376,11 +461,19 @@ const MyTeamPage: React.FC = () => {
       }
     });
 
-    if (markerInstances.length > 0) {
+    if (markerInstances.length > 0 && !hasInitiallyFitted.current) {
       const group = L.featureGroup(markerInstances);
-      mapRef.current.fitBounds(group.getBounds().pad(0.3));
+      mapRef.current.fitBounds(group.getBounds().pad(0.3), {
+        animate: true,
+        duration: 2.5, // Slower, more majestic entrance
+        easeLinearity: 0.1
+      });
+      hasInitiallyFitted.current = true;
+    } else if (markerInstances.length > 0) {
+      // For subsequent updates, be much faster or don't move camera at all
+      // mapRef.current.fitBounds(group.getBounds().pad(0.3), { animate: true, duration: 0.5 });
     }
-  }, [filteredMembers, latestLocations]);
+  }, [filteredMembers, latestLocations, mapLoaded]);
 
   return (
     <div className={`flex flex-col h-full bg-background overflow-hidden ${isTablet ? 'p-2' : 'p-6 md:p-8'} space-y-6`}>
@@ -524,8 +617,45 @@ const MyTeamPage: React.FC = () => {
         )}
       </div>
       {/* Map View */}
-      <div className={`relative rounded-2xl overflow-hidden border border-border shadow-sm bg-card transition-all duration-300 ${isMobile ? 'h-72' : 'h-[400px]'}`}>
-        <div ref={mapContainerRef} className="w-full h-full z-0" />
+      <div className={`relative rounded-2xl overflow-hidden border border-border shadow-sm bg-card transition-all duration-500 ${isMobile ? 'h-72' : 'h-[400px]'}`}>
+        {/* Style Toggle */}
+        <div className="absolute top-4 right-4 z-20 flex bg-card/80 backdrop-blur-md rounded-xl border border-border p-1 shadow-lg">
+          <button
+            onClick={() => setMapStyle('streets')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              mapStyle === 'streets' 
+                ? 'bg-emerald-600 text-white shadow-sm' 
+                : 'text-muted hover:bg-accent/10'
+            }`}
+          >
+            <MapIcon className="w-3.5 h-3.5" />
+            MAP
+          </button>
+          <button
+            onClick={() => setMapStyle('satellite')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              mapStyle === 'satellite' 
+                ? 'bg-emerald-600 text-white shadow-sm' 
+                : 'text-muted hover:bg-accent/10'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            SATELLITE
+          </button>
+        </div>
+
+        {/* Real Leaflet Map Container */}
+        <div 
+          ref={mapContainerRef} 
+          className="w-full h-full z-0 will-change-transform" 
+        />
+        
+        {/* Skeleton Overlay - Fades out when map is ready */}
+        <div 
+          className={`absolute inset-0 z-10 transition-all duration-[1200ms] ease-in-out bg-background will-change-opacity ${mapLoaded ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'}`}
+        >
+          <MapSkeleton />
+        </div>
       </div>
 
       {/* Team List Header */}
@@ -566,17 +696,11 @@ const MyTeamPage: React.FC = () => {
                   <div className="flex items-start gap-4">
                     <div className="relative">
                       <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-bold text-lg ring-2 ring-background overflow-hidden relative">
-                        {member.name.charAt(0)}
-                        {member.photoUrl && (
-                          <img 
-                            src={member.photoUrl} 
-                            alt={member.name}
-                            className="absolute inset-0 w-full h-full object-cover z-10"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        )}
+                        <ProfilePlaceholder 
+                          photoUrl={member.photoUrl} 
+                          seed={member.name}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
                       </div>
                       <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-card z-20 ${
                         loc && isToday(new Date(loc.timestamp))
