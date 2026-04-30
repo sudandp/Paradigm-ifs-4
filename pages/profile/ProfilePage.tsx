@@ -12,7 +12,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
@@ -59,7 +59,9 @@ const ProfilePage: React.FC = () => {
         isFieldCheckedIn,
         isFieldCheckedOut,
         isSiteOtCheckedIn,
-        breakIntervals
+        breakIntervals,
+        hasPreviousDayOpenSession,
+        previousDaySessionInfo
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
@@ -108,6 +110,8 @@ const ProfilePage: React.FC = () => {
     const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn;
     // Is the next unlock request for OT? (1st request = duty, 2nd+ = OT)
     const isNextRequestOT = dailyUnlockRequestCount >= 1;
+    // Technical Reliever: has an open session from a previous day
+    const isTechnicalReliever = user?.role?.toLowerCase() === 'technical_reliever';
 
     const punchHintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const breakHintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -633,6 +637,61 @@ const ProfilePage: React.FC = () => {
                     {/* ═══ COMMAND CENTER ═══ */}
                     {user.role !== 'management' && (
                         <section className="flex flex-col items-center justify-center py-8 relative">
+                            {/* ── Previous Day Open Session Banner (Technical Reliever) ── */}
+                            {hasPreviousDayOpenSession && previousDaySessionInfo && (
+                                <div className="w-full max-w-sm mb-6 px-4">
+                                    <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-900/40 to-orange-900/30 backdrop-blur-xl p-4 shadow-lg">
+                                        <div className="absolute inset-0 bg-amber-500/5 animate-pulse" />
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">Open Session Detected</h4>
+                                            </div>
+                                            <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
+                                                You have an unclosed session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
+                                                Last activity: <span className="font-semibold text-amber-100">{previousDaySessionInfo.lastEventType.replace(/-/g, ' ')} at {previousDaySessionInfo.lastEventTime}</span>
+                                            </p>
+                                            <p className="text-[10px] text-amber-300/60 mb-3 uppercase tracking-widest font-bold">
+                                                Close session below or apply for correction
+                                            </p>
+                                            <div className="flex gap-2">
+                                                {isSiteOtCheckedIn && (
+                                                    <button
+                                                        onClick={() => {
+                                                            triggerHaptic(ImpactStyle.Medium);
+                                                            navigate('/attendance/check-out?workType=field&forcedType=site-ot-out');
+                                                        }}
+                                                        className="flex-1 py-2 px-3 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <Clock className="w-3.5 h-3.5" /> Site OT Out
+                                                    </button>
+                                                )}
+                                                {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
+                                                    <button
+                                                        onClick={() => {
+                                                            triggerHaptic(ImpactStyle.Medium);
+                                                            const wt = isFieldCheckedIn ? 'field' : 'office';
+                                                            navigate(`/attendance/check-out?workType=${wt}`);
+                                                        }}
+                                                        className="flex-1 py-2 px-3 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <LogOut className="w-3.5 h-3.5" /> Punch Out
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        triggerHaptic(ImpactStyle.Light);
+                                                        navigate('/leaves/apply');
+                                                    }}
+                                                    className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-xs font-bold transition-all border border-amber-500/20 flex items-center justify-center gap-1.5"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5" /> Correction
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {/* ── The Punch Orb ── */}
                             {isAttendanceLoading ? (
                                 <div className="w-40 h-40 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
@@ -679,7 +738,7 @@ const ProfilePage: React.FC = () => {
                                             if (isCheckedIn) navigate('/attendance/check-out?workType=office');
                                             else navigate('/attendance/check-in?workType=office');
                                         }}
-                                        disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending')}
+                                        disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
                                         className={`
                                             relative w-40 h-40 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl overflow-hidden
                                             ${isOnBreak || isSubmittingAttendance ? 'opacity-50 grayscale cursor-not-allowed' : ''}
@@ -778,7 +837,7 @@ const ProfilePage: React.FC = () => {
                                                     }`}
                                             >
                                                 <MapPin className="h-3.5 w-3.5" />
-                                                Site In
+                                                Site Check In
                                             </button>
                                             <button
                                                 onClick={() => { triggerHaptic(); navigate('/attendance/check-out?workType=field'); }}
@@ -790,7 +849,7 @@ const ProfilePage: React.FC = () => {
                                                     }`}
                                             >
                                                 <MapPin className="h-3.5 w-3.5" />
-                                                Site Out
+                                                Site Check Out
                                             </button>
                                         </div>
                                     )}
@@ -1174,6 +1233,33 @@ const ProfilePage: React.FC = () => {
                                     <div className="flex items-center justify-center h-[56px] md:h-[40px] bg-gray-50 rounded-xl"><Loader2 className="h-6 w-6 md:h-4 md:w-4 animate-spin text-gray-400" /></div>
                                 ) : (
                                     <div className="space-y-6 md:space-y-3">
+                                            {/* Desktop: Previous Day Open Session Warning */}
+                                            {hasPreviousDayOpenSession && previousDaySessionInfo && (
+                                                <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 mb-2">
+                                                    <div className="flex items-start gap-2">
+                                                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                                        <div className="flex-1">
+                                                            <p className="text-xs font-bold text-amber-800">Open Session from {new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                                                            <p className="text-[10px] text-amber-700 mt-0.5">Last: {previousDaySessionInfo.lastEventType.replace(/-/g, ' ')} at {previousDaySessionInfo.lastEventTime}. Close session or apply for correction.</p>
+                                                            <div className="flex gap-1.5 mt-2">
+                                                                {isSiteOtCheckedIn && (
+                                                                    <Button onClick={() => navigate('/attendance/check-out?workType=field&forcedType=site-ot-out')} variant="primary" className="!h-7 !text-[10px] !px-2.5 !bg-indigo-600 hover:!bg-indigo-700">
+                                                                        Site OT Out
+                                                                    </Button>
+                                                                )}
+                                                                {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
+                                                                    <Button onClick={() => navigate(`/attendance/check-out?workType=${isFieldCheckedIn ? 'field' : 'office'}`)} variant="danger" className="!h-7 !text-[10px] !px-2.5">
+                                                                        Punch Out
+                                                                    </Button>
+                                                                )}
+                                                                <Button onClick={() => navigate('/leaves/apply')} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
+                                                                    Apply Correction
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="flex flex-col space-y-3 md:space-y-1.5">
                                                 <div className="flex items-center gap-2 px-0.5">
                                                     <button 
@@ -1208,8 +1294,8 @@ const ProfilePage: React.FC = () => {
                                                            variant="primary"
                                                            className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${
                                                                isPunchBlocked ? '!bg-amber-600 !text-white' : '!bg-emerald-600 hover:!bg-emerald-700 '
-                                                           } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                           disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
+                                                           } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                           disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
                                                        >
                                                           {isPunchBlocked ? (
                                                                unlockRequestStatus === 'pending' 

@@ -4941,7 +4941,12 @@ export const api = {
                     date: dateStr,
                     status: details.status,
                     reason: 'Automatic update from Correction Request approval',
-                    correctionRequestId: id
+                    correctionRequestId: id,
+                    segments: {
+                        main: { in: details.punchIn, out: details.punchOut },
+                        break: details.includeBreak ? { in: details.breakIn, out: details.breakOut } : null,
+                        siteOt: details.includeSiteOt ? { in: details.siteOtIn, out: details.siteOtOut } : null
+                    }
                 }
             }]);
         }

@@ -87,25 +87,33 @@ export const BasicReportView: React.FC<{
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
                         <tr className="bg-gray-100">
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">S.No</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">Employee Name</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-left">Department</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Punch In</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Punch Out</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Work Hours</th>
-                            <th className="px-3 py-2 border border-gray-300 font-bold text-center">Status</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">S.No</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">Employee Name</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-left text-[11px]">Dept</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">In</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Out</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">B.In</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">B.Out</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">OT.In</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">OT.Out</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Dur</th>
+                            <th className="px-2 py-2 border border-gray-300 font-bold text-center text-[11px]">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-1.5 border border-gray-200 text-left">{idx + 1}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 font-medium text-left">{row.userName}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-left">{row.department || row.dept || 'Staff'}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkIn || row.pin || '—'}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.checkOut || row.pout || '—'}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.duration || row.wh || '—'}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center font-bold">
+                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px]">{idx + 1}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px]">{row.userName}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px]">{row.department || row.dept || 'Staff'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkIn || row.pin || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkOut || row.pout || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-orange-600">{row.breakIn || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-orange-600">{row.breakOut || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-teal-600">{row.siteOtIn || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-teal-600">{row.siteOtOut || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.duration || row.wh || '—'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-center font-bold text-[11px]">
                                     <span className={
                                         row.status === 'P' || row.status === 'Present' ? 'text-green-600' :
                                         row.status === 'A' || row.status === 'Absent' ? 'text-red-500' :

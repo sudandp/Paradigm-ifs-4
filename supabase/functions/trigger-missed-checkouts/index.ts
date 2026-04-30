@@ -128,11 +128,11 @@ Deno.serve(async (req: Request) => {
       } else {
         // Default Role Logic (with robust fallbacks)
         if (group === 'office') {
-          ['admin', 'hr', 'finance', 'developer', 'operation_manager', 'super_admin', 'superadmin'].forEach(r => rolesToProcessSet.add(r));
+          ['admin', 'hr', 'finance', 'developer', 'operation_manager', 'super_admin', 'superadmin', 'back_office_staff', 'hr_ops', 'management'].forEach(r => rolesToProcessSet.add(r));
         } else if (group === 'field') {
-          ['field_staff', 'field_officer'].forEach(r => rolesToProcessSet.add(r));
+          ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager'].forEach(r => rolesToProcessSet.add(r));
         } else if (group === 'site') {
-          ['site_manager', 'security_guard', 'supervisor'].forEach(r => rolesToProcessSet.add(r));
+          ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'].forEach(r => rolesToProcessSet.add(r));
         }
       }
 
@@ -178,6 +178,54 @@ Deno.serve(async (req: Request) => {
         if (lastEvent.type !== 'punch-out') {
             const eventDate = new Date(lastEvent.timestamp);
             const hoursDiff = (now.getTime() - eventDate.getTime()) / (1000 * 60 * 60);
+
+            // TECHNICAL RELIEVER: Skip auto-checkout entirely.
+            // They work extended/cross-day OT shifts and must close sessions manually.
+            // If they forget, they must apply for correction via the app.
+            const userRole = user.role_id?.toLowerCase();
+            if (userRole === 'technical_reliever') {
+                console.log(`[${group}] Skipped auto-checkout for ${user.name} (technical_reliever) — session left open for manual close or correction.`);
+                
+                // Notify employee about open session
+                await supabaseClient.from('notifications').insert({
+                    user_id: user.id,
+                    message: `⚠️ You have an open attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. Please close it (Site OT Out → Punch Out) or apply for a correction.`,
+                    type: 'warning',
+                    is_read: false
+                });
+
+                // Notify reporting manager
+                const { data: userData } = await supabaseClient
+                    .from('users')
+                    .select('reporting_manager_id, name')
+                    .eq('id', user.id)
+                    .single();
+
+                if (userData?.reporting_manager_id) {
+                    await supabaseClient.from('notifications').insert({
+                        user_id: userData.reporting_manager_id,
+                        message: `⚠️ ${userData.name} (Technical Reliever) has an unclosed attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. They need to close it or submit a correction.`,
+                        type: 'warning',
+                        is_read: false
+                    });
+                }
+
+                // Audit log
+                await supabaseClient.from('attendance_audit_logs').insert({
+                    action: 'TECHNICAL_RELIEVER_OPEN_SESSION',
+                    performed_by: null,
+                    target_user_id: user.id,
+                    details: {
+                        message: `Auto-checkout skipped for ${user.name} (technical_reliever). Session still open.`,
+                        original_event: lastEvent.type,
+                        original_timestamp: lastEvent.timestamp,
+                        hours_open: hoursDiff.toFixed(1)
+                    }
+                });
+
+                groupProcessedUsers.push(`${user.name} (SKIPPED - technical_reliever)`);
+                continue; // Skip auto-checkout for this user
+            }
 
             // If checked in within last 24 hours
             if (hoursDiff < 24) {

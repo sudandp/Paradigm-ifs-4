@@ -104,10 +104,16 @@ const ApplyLeave: React.FC = () => {
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [toast, setToast] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
-    const { attendance: { office: { sickLeaveCertificateThreshold } } } = useSettingsStore();
+    const { attendance } = useSettingsStore();
+    const sickLeaveCertificateThreshold = attendance.office.sickLeaveCertificateThreshold;
 
     const validationSchema = useMemo(() => getLeaveValidationSchema(sickLeaveCertificateThreshold), [sickLeaveCertificateThreshold]);
-    const userCategory = useMemo(() => getStaffCategory(user?.role), [user?.role]);
+    const userCategory = useMemo(() => getStaffCategory(user?.role, user?.societyId, attendance), [user?.role, user?.societyId, attendance]);
+    const rules = useMemo(() => {
+        if (!attendance || !userCategory) return null;
+        return (attendance as any)[userCategory] as StaffAttendanceRules;
+    }, [attendance, userCategory]);
+
     const [searchParams] = useSearchParams();
     const editId = searchParams.get('edit');
     const isEditMode = !!editId;
@@ -202,7 +208,7 @@ const ApplyLeave: React.FC = () => {
     // Auto-fetch attendance logs for Correction type
     React.useEffect(() => {
         const fetchLogs = async () => {
-            if (watchLeaveType !== 'Correction' || !watchStartDate || !user || isInitialLoading) return;
+            if (!['Correction', 'Permission'].includes(watchLeaveType) || !watchStartDate || !user || isInitialLoading) return;
             
             setIsFetchingLogs(true);
             try {
@@ -275,8 +281,33 @@ const ApplyLeave: React.FC = () => {
                             setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
                         }
                     }
+                } else {
+                    // FALLBACK: If no events found, pre-fill with configured office hours from rules
+                    if (rules?.fixedOfficeHours) {
+                        setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
+                        setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
+                        
+                        // Fill Breaks if configured
+                        if (rules.fixedOfficeHours.breakInTime) {
+                            setValue('includeBreak', true);
+                            setValue('breakIn', rules.fixedOfficeHours.breakInTime, { shouldValidate: true });
+                        }
+                        if (rules.fixedOfficeHours.breakOutTime) {
+                            setValue('includeBreak', true);
+                            setValue('breakOut', rules.fixedOfficeHours.breakOutTime, { shouldValidate: true });
+                        }
+
+                        // Fill OT if configured
+                        if (rules.fixedOfficeHours.siteOtInTime) {
+                            setValue('includeSiteOt', true);
+                            setValue('siteOtIn', rules.fixedOfficeHours.siteOtInTime, { shouldValidate: true });
+                        }
+                        if (rules.fixedOfficeHours.siteOtOutTime) {
+                            setValue('includeSiteOt', true);
+                            setValue('siteOtOut', rules.fixedOfficeHours.siteOtOutTime, { shouldValidate: true });
+                        }
+                    }
                 }
-                // No else block - keeping existing values if no events found as requested
             } catch (err) {
                 console.error('Failed to fetch attendance logs:', err);
                 // Non-blocking error, just keep as is or log it
@@ -404,9 +435,6 @@ const ApplyLeave: React.FC = () => {
             
             // Check Limits for Permission
             if (formData.leaveType === 'Permission') {
-                const { attendance } = useSettingsStore.getState();
-                const rules = (attendance as any)[userCategory] as StaffAttendanceRules;
-                
                 if (!rules?.enablePermission) {
                     setToast({ message: 'Permissions are currently disabled by the administrator.', type: 'error' });
                     setIsSubmitting(false);
@@ -453,9 +481,6 @@ const ApplyLeave: React.FC = () => {
             
             // Check Limits for Correction
             if (formData.leaveType === 'Correction') {
-                const { attendance } = useSettingsStore.getState();
-                const rules = (attendance as any)[userCategory] as StaffAttendanceRules;
-                
                 if (rules?.enableCorrectionLimits) {
                     // Verify duration
                     const getMinutes = (timeStr: string) => {
@@ -626,7 +651,9 @@ const ApplyLeave: React.FC = () => {
                                         {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
                                         <option value="WFH">Work From Home (WFH)</option>
                                         <option value="Correction">Request for Correction</option>
-                                        <option value="Permission">Request for Permission</option>
+                                        {(rules?.enablePermission || rules?.enablePermission === undefined) && (
+                                            <option value="Permission">Request for Permission</option>
+                                        )}
                                     </Select>
                                 )} 
                             />

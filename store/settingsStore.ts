@@ -90,6 +90,12 @@ const initialAttendance: AttendanceSettings = {
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     weeklyOffDays: [0], // Sunday
     enableMaternityChildCare: true,
+    enablePermission: true,
+    maxPermissionDurationHours: 2,
+    maxPermissionsPerMonth: 3,
+    enableCorrectionLimits: true,
+    maxCorrectionDurationHours: 2,
+    maxCorrectionsPerMonth: 3,
   },
   field: {
     minimumHoursFullDay: 9,
@@ -121,6 +127,12 @@ const initialAttendance: AttendanceSettings = {
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     enableMaternityChildCare: true,
+    enablePermission: true,
+    maxPermissionDurationHours: 2,
+    maxPermissionsPerMonth: 3,
+    enableCorrectionLimits: true,
+    maxCorrectionDurationHours: 2,
+    maxCorrectionsPerMonth: 3,
   },
   site: {
     minimumHoursFullDay: 9,
@@ -148,6 +160,12 @@ const initialAttendance: AttendanceSettings = {
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     enableMaternityChildCare: true,
     weeklyOffDays: [0], // Sunday
+    enablePermission: true,
+    maxPermissionDurationHours: 2,
+    maxPermissionsPerMonth: 3,
+    enableCorrectionLimits: true,
+    maxCorrectionDurationHours: 2,
+    maxCorrectionsPerMonth: 3,
     // Shift Management defaults (disabled until admin enables)
     enableShiftManagement: false,
     siteShifts: [

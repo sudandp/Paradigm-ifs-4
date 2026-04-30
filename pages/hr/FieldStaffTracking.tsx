@@ -21,8 +21,8 @@ import { isAdmin } from '../../utils/auth';
 const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): string => {
     if (workType === 'field' || workType === 'site') {
         const fieldLabels: Record<string, string> = {
-            'punch-in': 'Check-In',
-            'punch-out': 'Check-Out',
+            'punch-in': 'Site Check In',
+            'punch-out': 'Site Check Out',
             'site-in': 'Site Entry',
             'site-out': 'Site Exit',
             'site-ot-in': 'Site OT Start',

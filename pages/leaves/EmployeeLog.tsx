@@ -309,8 +309,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                             event.type === 'break-in' ? 'text-amber-900' :
                                                             'text-sky-900'
                                                         }`}>
-                                                            {event.type === 'punch-in' ? (event.workType === 'field' ? 'Check In' : 'Punch In') :
-                                                             event.type === 'punch-out' ? (event.workType === 'field' ? 'Check Out' : 'Punch Out') :
+                                                            {event.type === 'punch-in' ? (event.workType === 'field' ? 'Site Check In' : 'Punch In') :
+                                                             event.type === 'punch-out' ? (event.workType === 'field' ? 'Site Check Out' : 'Punch Out') :
                                                              event.type.replace('-', ' ')}
                                                         </div>
                                                         <div className={`text-sm font-medium ${

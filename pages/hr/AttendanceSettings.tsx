@@ -810,6 +810,34 @@ const AttendanceSettings: React.FC = () => {
                                 onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, checkOutTime: e.target.value })}
                             />
                             <Input
+                                label="Lunch Break Start"
+                                id="breakInTime"
+                                type="time"
+                                value={currentRules.fixedOfficeHours?.breakInTime || '13:00'}
+                                onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, breakInTime: e.target.value })}
+                            />
+                            <Input
+                                label="Lunch Break End"
+                                id="breakOutTime"
+                                type="time"
+                                value={currentRules.fixedOfficeHours?.breakOutTime || '14:00'}
+                                onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, breakOutTime: e.target.value })}
+                            />
+                            <Input
+                                label="Default Site OT In"
+                                id="siteOtInTime"
+                                type="time"
+                                value={currentRules.fixedOfficeHours?.siteOtInTime || '18:00'}
+                                onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, siteOtInTime: e.target.value })}
+                            />
+                            <Input
+                                label="Default Site OT Out"
+                                id="siteOtOutTime"
+                                type="time"
+                                value={currentRules.fixedOfficeHours?.siteOtOutTime || '20:00'}
+                                onChange={(e) => handleSettingChange('fixedOfficeHours', { ...currentRules.fixedOfficeHours, siteOtOutTime: e.target.value })}
+                            />
+                            <Input
                                 label="Min Daily Hours"
                                 id="minDailyHours"
                                 type="number"

@@ -41,6 +41,7 @@ import {
     startOfYear,
     endOfYear,
     subDays,
+    subMonths,
     startOfWeek,
     isAfter,
     isBefore,
@@ -583,6 +584,7 @@ const AttendanceDashboard: React.FC = () => {
         setReportPageSize(pendingReportPageSize);
         
         setIsFiltersDirty(false);
+        setIsDatePickerOpen(false);
         setToast({ message: 'Filters applied successfully', type: 'success' });
     };
 
@@ -1111,6 +1113,12 @@ const AttendanceDashboard: React.FC = () => {
             startDate = subDays(today, 6);
         } else if (filter === 'Last 30 Days') {
             startDate = subDays(today, 29);
+        } else if (filter === 'Last 3 Months') {
+            startDate = startOfMonth(subMonths(today, 2));
+            endDate = endOfMonth(today);
+        } else if (filter === 'Last 6 Months') {
+            startDate = startOfMonth(subMonths(today, 5));
+            endDate = endOfMonth(today);
         }
 
         if (endDate > today) {
@@ -1121,9 +1129,15 @@ const AttendanceDashboard: React.FC = () => {
     };
 
     const handleCustomDateChange = (item: RangeKeyDict) => {
-        setPendingDateRange(item.selection);
+        const { selection } = item;
+        setPendingDateRange(selection);
         setPendingActiveDateFilter('Custom');
-        setIsDatePickerOpen(false);
+        
+        // Automatically close the selector only after a full range (start and end) has been picked.
+        // If startDate and endDate are different, it indicates the second click of a range selection.
+        if (selection.startDate && selection.endDate && selection.startDate.getTime() !== selection.endDate.getTime()) {
+            setIsDatePickerOpen(false);
+        }
     };
 
     // Use memoized array for DateRangePicker
@@ -2451,7 +2465,7 @@ const AttendanceDashboard: React.FC = () => {
                 {/* Date Pills - Scrollable on mobile, with date picker outside scroll container to prevent clipping */}
                 <div className="relative" ref={datePickerRef}>
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
-                        {['Today', 'Last 7 Days', 'This Month'].map(filter => (
+                        {['Today', 'Last 7 Days', 'This Month', 'Last 3 Months', 'Last 6 Months'].map(filter => (
                             <Button
                                 key={filter}
                                 type="button"
@@ -2486,7 +2500,7 @@ const AttendanceDashboard: React.FC = () => {
                         <div className="absolute top-full right-0 mt-2 z-50 bg-[#0b291a] md:bg-card border border-[#1a3d2c] md:border-border rounded-xl shadow-xl p-2 min-w-[300px]">
                             <DateRangePicker
                                 onChange={handleCustomDateChange}
-                                months={1}
+                                months={isSmallScreen ? 1 : 2}
                                 ranges={pendingDateRangeArray}
                                 direction="horizontal"
                                 maxDate={new Date()}

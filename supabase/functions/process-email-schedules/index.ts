@@ -327,9 +327,14 @@ serve(async (req: Request) => {
       const render = (text: string, data: Record<string, string>) => {
         if (!text) return '';
         return text.replace(/\{(\w+)\}/g, (match, key) => {
-          const dataKey = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
+          // Flexible key matching: case-insensitive and ignoring underscores/dashes
+          const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+          const dataKey = Object.keys(data).find(k => {
+              const cleanK = k.toLowerCase().replace(/[_-]/g, '');
+              return cleanK === cleanKey;
+          });
+          
           if (dataKey) {
-              console.log(`    Replacing {${key}} -> ${data[dataKey]}`);
               return data[dataKey];
           }
           return match;
@@ -346,9 +351,10 @@ serve(async (req: Request) => {
           greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
       }
 
+      // Check for template-specific custom message override
       if (template?.variables && Array.isArray(template.variables)) {
         const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
-        if (customMsgObj && customMsgObj.description) {
+        if (customMsgObj && customMsgObj.description && customMsgObj.description.trim()) {
             // First evaluate conditionals in the custom message
             let evaluatedMsg = evaluateConditionals(customMsgObj.description, reportData || {});
             
@@ -357,12 +363,25 @@ serve(async (req: Request) => {
         }
       }
       
+      // CRITICAL: Render the greeting message itself with available reportData 
+      // This ensures nested placeholders like {attendancePercentage} are replaced
+      greetingMessage = render(greetingMessage, reportData || {});
+      
       // Inject the greeting into reportData so it can be evaluated in the template
+      // Providing multiple common keys for maximum template compatibility
       reportData.greetingMessage = greetingMessage;
       reportData.customGreeting = greetingMessage;
+      reportData.greeting_message = greetingMessage;
+      reportData.custom_greeting = greetingMessage;
+      reportData.summary = greetingMessage;
 
-      // Force inject greeting if the user has a custom HTML body but didn't include either placeholder
-      const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
+      // Force inject greeting if the user has a custom HTML body but didn't include a placeholder
+      const hasGreetingPlaceholder = html.includes('{greetingMessage}') || 
+                                     html.includes('{customGreeting}') || 
+                                     html.includes('{greeting_message}') || 
+                                     html.includes('{custom_greeting}') ||
+                                     html.includes('{summary}');
+                                     
       if (template?.body_template && !hasGreetingPlaceholder) {
           const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  {greetingMessage}\n</div>\n`;
           if (html.match(/<body[^>]*>/i)) {
@@ -530,7 +549,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
       attendancePercentage: '0',
       onLeaveCount: '0',
       inactiveCount: '0',
-      table: `<tr><td colspan="7" style="padding: 24px; text-align: center; color: #64748b; background: #f8fafc;">
+      table: `<tr><td colspan="11" style="padding: 24px; text-align: center; color: #64748b; background: #f8fafc;">
         <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">No Attendance Activity Today</div>
         <div style="font-size: 12px; opacity: 0.8;">This could be due to a public holiday, weekend, or a sync issue with biometric devices.</div>
       </td></tr>`
@@ -542,18 +561,32 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     let dept = (Array.isArray(user.role) ? user.role[0]?.display_name : user.role?.display_name) || 'Staff';
     dept = dept.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-    let status = 'Present', color = '#16a34a', pin = '—', pout = '—', wh = '—';
+    let status = 'Present', color = '#16a34a', pin = '—', pout = '—', bin = '—', bout = '—', otin = '—', otout = '—', wh = '—';
     if (presentUserIds.has(user.id)) {
+      const userEvents = todayEvents.filter((e: AttendanceEvent) => e.user_id === user.id);
       const inTs = userFirstPunches[user.id];
       const inDate = new Date(new Date(inTs).getTime() + IST_OFFSET);
       pin = format(inDate, 'hh:mm a');
       if (format(inDate, 'HH:mm') > configStartTime) { status = 'Late'; color = '#d97706'; }
-      const lastOut = todayEvents.filter((e: AttendanceEvent) => e.user_id === user.id && e.type === 'punch-out').pop();
+      
+      const lastOut = userEvents.filter((e: AttendanceEvent) => e.type === 'punch-out').pop();
       if (lastOut) {
         pout = format(new Date(new Date(lastOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
         const diff = new Date(lastOut.timestamp).getTime() - new Date(inTs).getTime();
         wh = `${Math.floor(diff/3600000)}h ${Math.floor((diff%3600000)/60000)}m`;
       }
+
+      // Fetch Breaks
+      const firstBIn = userEvents.find((e: AttendanceEvent) => e.type === 'break-in');
+      const lastBOut = userEvents.filter((e: AttendanceEvent) => e.type === 'break-out').pop();
+      if (firstBIn) bin = format(new Date(new Date(firstBIn.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      if (lastBOut) bout = format(new Date(new Date(lastBOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+
+      // Fetch Site OT
+      const firstOTIn = userEvents.find((e: AttendanceEvent) => e.type === 'site-ot-in');
+      const lastOTOut = userEvents.filter((e: AttendanceEvent) => e.type === 'site-ot-out').pop();
+      if (firstOTIn) otin = format(new Date(new Date(firstOTIn.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+      if (lastOTOut) otout = format(new Date(new Date(lastOTOut.timestamp).getTime() + IST_OFFSET), 'hh:mm a');
     } else if (onLeaveUserIds.has(user.id)) { status = 'On Leave'; color = '#2563eb'; }
     else if (recentlyActiveUserIds.has(user.id)) { status = 'Absent'; color = '#dc2626'; }
     else { status = 'Inactive'; color = '#9ca3af'; }
@@ -564,6 +597,10 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
       <td style="border:1px solid #eee;padding:8px">${dept}</td>
       <td style="border:1px solid #eee;padding:8px">${pin}</td>
       <td style="border:1px solid #eee;padding:8px">${pout}</td>
+      <td style="border:1px solid #eee;padding:8px">${bin}</td>
+      <td style="border:1px solid #eee;padding:8px">${bout}</td>
+      <td style="border:1px solid #eee;padding:8px">${otin}</td>
+      <td style="border:1px solid #eee;padding:8px">${otout}</td>
       <td style="border:1px solid #eee;padding:8px">${wh}</td>
       <td style="border:1px solid #eee;padding:8px;color:${color};font-weight:600">${status}</td>
     </tr>`;
@@ -581,7 +618,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     onLeaveCount: String(onLeaveCount),
     inactiveCount: String(inactiveCount),
     logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
-    table: tableHtml || '<tr><td colspan="7">No data</td></tr>'
+    table: tableHtml || '<tr><td colspan="11">No data</td></tr>'
   };
 }
 
@@ -619,35 +656,44 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
   let totalAbsentCount = 0;
   let totalLateCount = 0;
 
-  let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 10px; border: 1px solid #ddd;">
+    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 10px; border: 1px solid #e2e8f0;">
     <thead>
-      <tr style="background: #f3f4f6; color: #111827; border-bottom: 2px solid #374151;">
-        <th style="border: 1px solid #ccc; padding: 6px 4px; text-align: left; width: 140px;">Employee Name</th>`;
+      <tr style="background: #f8fafc; color: #1e293b; border-bottom: 2px solid #e2e8f0;">
+        <th style="border: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; min-width: 140px; font-weight: 700;">Employee Name</th>`;
   
   for (let d = 1; d <= daysInMonth; d++) {
-    tableHtml += `<th style="border: 1px solid #ccc; padding: 2px; text-align: center; width: 22px; font-size: 9px;">${d}</th>`;
+    tableHtml += `<th style="border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; width: 22px; font-size: 9px; font-weight: 600;">${d}</th>`;
   }
   tableHtml += `
-        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #dcfce7; color: #166534; width: 30px;">P</th>
-        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fee2e2; color: #991b1b; width: 30px;">A</th>
-        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #f3f4f6; color: #4b5563; width: 30px;">W/O</th>
-        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #fef9c3; color: #854d0e; width: 30px;">H</th>
-        <th style="border: 1px solid #ccc; padding: 4px; text-align: center; background: #374151; color: #fff; width: 40px; font-weight: bold;">Pay</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0fdf4; color: #166534; width: 25px; font-weight: 700;">P</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">1/2P</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0f9ff; color: #075985; width: 25px; font-weight: 700;">OT</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fdf2f8; color: #9d174d; width: 25px; font-weight: 700;">C/O</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f5f3ff; color: #5b21b6; width: 25px; font-weight: 700;">E/L</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fff1f2; color: #9f1239; width: 25px; font-weight: 700;">S/L</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fef2f2; color: #991b1b; width: 25px; font-weight: 700;">A</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f9fafb; color: #4b5563; width: 30px; font-weight: 700;">W/O</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #854d0e; width: 25px; font-weight: 700;">H</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #ecfdf5; color: #065f46; width: 35px; font-weight: 800; border-left: 2px solid #10b981;">Pay</th>
       </tr>
     </thead>
     <tbody>`;
 
   const configStartTime = attendanceSettings?.office?.fixedOfficeHours?.checkInTime || '09:30';
 
-  users.forEach((user, idx) => {
-    tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f9fafb'};">
-      <td style="border: 1px solid #ddd; padding: 6px 4px; font-weight: 500; font-size: 11px;">${user.name}</td>`;
+    users.forEach((user, idx) => {
+    tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+      <td style="border: 1px solid #e2e8f0; padding: 8px 6px; font-weight: 600; font-size: 11px; color: #334155;">${user.name}</td>`;
     
-    let userPresent = 0;
-    let userHalfDay = 0;
-    let userAbsent = 0;
-    let userWeeklyOff = 0;
-    let userHoliday = 0;
+    let countP = 0;
+    let countHalfP = 0;
+    let countOT = 0;
+    let countCO = 0;
+    let countEL = 0;
+    let countSL = 0;
+    let countA = 0;
+    let countWO = 0;
+    let countH = 0;
     let userPaidLeave = 0;
 
     let daysPresentInWeek = 0;
@@ -686,7 +732,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
       const isSunday = currentDate.getDay() === 0;
       
       if (isFuture) {
-        tableHtml += `<td style="border: 1px solid #eee; padding: 2px; text-align: center; color: #ccc;">—</td>`;
+        tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: #ccc; font-size: 8px;">—</td>`;
         continue;
       }
 
@@ -695,8 +741,8 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
       const isPublicHoliday = holidays.find(h => h.date === dateStr);
       
       let status = '';
-      let color = '#ccc';
-      let bgColor = 'transparent';
+      let color = '#64748b';
+      let cellBg = 'transparent';
 
       const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
       const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
@@ -708,83 +754,81 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         if (punchInTime !== '—' && punchInTime > configStartTime) totalLateCount++;
 
         if (durationHours >= 5 || (!punchOut && punchIn)) {
-          status = 'P';
-          color = '#16a34a';
-          userPresent++;
-          totalPresentCount++;
+          status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
         } else if (durationHours > 1) {
-          status = '1/2P';
-          color = '#d97706';
-          userHalfDay++;
-          totalPresentCount += 0.5;
+          status = '1/2P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
         } else {
-          // One punch or short duration
-          status = 'P';
-          color = '#16a34a';
-          userPresent++;
-          totalPresentCount++;
+          status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
         }
       } else if (dayLeave) {
         const isHalfDay = dayLeave.day_option === 'half';
         const leaveType = dayLeave.leave_type?.toLowerCase() || '';
-        
         if (leaveType === 'loss of pay' || leaveType === 'lop') {
-          status = isHalfDay ? '1/2A' : 'A';
-          color = '#dc2626';
-          userAbsent += isHalfDay ? 0.5 : 1;
-          totalAbsentCount += isHalfDay ? 0.5 : 1;
+          status = isHalfDay ? '1/2A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
         } else {
-          status = isHalfDay ? '1/2L' : 'L';
+          if (leaveType.includes('sick')) { status = isHalfDay ? '1/2SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
+          else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '1/2EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
+          else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '1/2CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
+          else { status = isHalfDay ? '1/2L' : 'L'; cellBg = '#eff6ff'; }
           color = '#2563eb';
           userPaidLeave += isHalfDay ? 0.5 : 1;
         }
       } else if (isPublicHoliday) {
-        status = 'H';
-        color = '#854d0e';
-        bgColor = '#fef9c3';
-        userHoliday++;
+        status = 'H'; color = '#854d0e'; cellBg = '#fef3c7'; countH++;
       } else if (isSunday) {
         if (daysPresentInWeek >= 3) {
-          status = 'WO';
-          color = '#6b7280';
-          userWeeklyOff++;
+          status = 'W/O'; color = '#64748b'; cellBg = '#f1f5f9'; countWO++;
         } else {
-          status = 'A';
-          color = '#dc2626';
-          userAbsent++;
-          totalAbsentCount++;
+          status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
         }
       } else {
-        status = 'A';
-        color = '#dc2626';
-        userAbsent++;
-        totalAbsentCount++;
+        status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
       }
 
-      if (['P', '1/2P', 'L', '1/2L', 'H'].some(s => status.includes(s))) {
+      if (['P', '1/2P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) {
         daysPresentInWeek++;
       }
       
-      let bgColor = 'transparent';
-      if (status === 'H') bgColor = '#fef9c3';
-      else if (status === 'WO') bgColor = '#f3f4f6';
-      else if (status === 'A') bgColor = '#fee2e2';
-
-      tableHtml += `<td style="border: 1px solid #ddd; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 9px;">${status || '—'}</td>`;
+      tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: ${color}; background: ${cellBg}; font-weight: 700; font-size: 8px;">${status || '—'}</td>`;
     }
 
-    const payableDays = userPresent + (userHalfDay * 0.5) + userWeeklyOff + userHoliday + userPaidLeave;
+    const payableDays = countP + (countHalfP * 0.5) + countWO + countH + userPaidLeave;
 
     tableHtml += `
-      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${userPresent + (userHalfDay*0.5)}</td>
-      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${userAbsent}</td>
-      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; color: #6b7280;">${userWeeklyOff}</td>
-      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; color: #854d0e;">${userHoliday}</td>
-      <td style="border: 1px solid #ddd; padding: 4px; text-align: center; font-weight: 800; background: #f3f4f6; color: #111827;">${payableDays}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #166534; background: #f0fdf4;">${countP}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #92400e; background: #fffbeb;">${countHalfP}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #075985; background: #f0f9ff;">${countOT}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9d174d; background: #fdf2f8;">${countCO}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #5b21b6; background: #f5f3ff;">${countEL}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9f1239; background: #fff1f2;">${countSL}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #991b1b; background: #fef2f2;">${countA}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #4b5563; background: #f9fafb;">${countWO}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #854d0e; background: #fffbeb;">${countH}</td>
+      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 800; background: #ecfdf5; color: #064e3b; border-left: 2px solid #10b981;">${payableDays}</td>
     </tr>`;
   });
 
   tableHtml += `</tbody></table>`;
+  
+  // Add Legend (matches Image 2)
+  tableHtml += `
+  <div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a; display: inline-block;"></span> <strong style="color: #166534;">P:</strong> PRESENT</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #dc2626; display: inline-block;"></span> <strong style="color: #991b1b;">A:</strong> ABSENT</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #991b1b; display: inline-block;"></span> <strong style="color: #991b1b;">LOP:</strong> LOSS OF PAY</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706; display: inline-block;"></span> <strong style="color: #92400e;">1/2P:</strong> HALF DAY</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0891b2; display: inline-block;"></span> <strong style="color: #155e75;">W/H:</strong> WFH</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0369a1; display: inline-block;"></span> <strong style="color: #0c4a6e;">W/P:</strong> WEEK OFF WORK</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #64748b; display: inline-block;"></span> <strong style="color: #475569;">W/O:</strong> WEEKLY OFF</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span> <strong style="color: #b45309;">H:</strong> HOLIDAY</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0ea5e9; display: inline-block;"></span> <strong style="color: #0369a1;">OT(P):</strong> OT / EXTRAP</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; display: inline-block;"></span> <strong style="color: #6d28d9;">S/L:</strong> SICK LEAVE</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #6366f1; display: inline-block;"></span> <strong style="color: #4338ca;">E/L:</strong> EARNED LEAVE</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ec4899; display: inline-block;"></span> <strong style="color: #be185d;">C/O:</strong> COMP OFF</div>
+    </div>
+    <div style="text-align: center; margin-top: 10px; font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Paradigm Services - Monthly Status Report</div>
+  </div>`;
 
   const totalEmployees = users.length;
   const daysSoFar = today.getDate();
@@ -801,7 +845,8 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
     lateCount: String(totalLateCount),
     attendancePercentage: attendancePercentage,
     logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
-    table: tableHtml
+    table: tableHtml,
+    generatedBy: 'Automated System'
   };
 }
 
@@ -987,7 +1032,9 @@ async function generateAuditLogReport(supabase: ReturnType<typeof createClient>,
 // ─── Evaluate Conditionals ──────────────────────────────────────────────────
 function evaluateConditionals(str: string, data: Record<string, string>) {
   return str.replace(/\{(\w+)\s*([><!=]=?)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, (_m, key, op, val2Str, t, f) => {
-    const v1 = parseFloat(data[Object.keys(data).find(k=>k.toLowerCase()===key.toLowerCase())||''] || '0');
+    const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+    const dataKey = Object.keys(data).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
+    const v1 = parseFloat(dataKey ? data[dataKey] : '0');
     const v2 = parseFloat(val2Str);
     let ok = false;
     if(op==='>')ok=v1>v2; else if(op==='<')ok=v1<v2; else if(op==='>=')ok=v1>=v2; else if(op==='<=')ok=v1<=v2; else if(op==='==')ok=v1==v2; else if(op==='!=')ok=v1!=v2;
@@ -1061,8 +1108,27 @@ function getDefaultPremiumTemplate() {
         <div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;">
           <h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3>
         </div>
-        <div style="overflow-x: auto;">
-          {table}
+        <div style="overflow-x: auto;" class="attendance-table">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">S.No</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Employee Name</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Dept</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">In</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Out</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">B.In</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">B.Out</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">OT.In</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">OT.Out</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Dur</th>
+                <th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1089,6 +1155,84 @@ function getDefaultPremiumTemplate() {
 }
 
 function getMonthlyReportPremiumTemplate() {
-  return getDefaultPremiumTemplate(); // Already premium now
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @media only screen and (max-width: 600px) {
+      .stats-container { display: block !important; }
+      .stat-card { margin-bottom: 12px !important; width: 100% !important; }
+      .header-content { display: block !important; text-align: center !important; }
+      .header-right { text-align: center !important; margin-top: 12px !important; }
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc;">
+  <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background-color: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);">
+    
+    <!-- Header (Image 2 Style) -->
+    <div style="padding: 40px; border-bottom: 1px solid #f1f5f9; background: #ffffff;">
+      <div style="display: flex; justify-content: space-between; align-items: center;" class="header-content">
+        <div>
+          <img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 50px; display: block; margin-bottom: 8px;">
+          <div style="font-size: 14px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px;">Paradigm Services</div>
+        </div>
+        <div style="text-align: right;" class="header-right">
+          <h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Monthly Attendance Report</h1>
+          <div style="font-size: 18px; font-weight: 600; color: #64748b; margin-top: 4px;">{date}</div>
+          <div style="font-size: 12px; color: #94a3b8; margin-top: 12px; font-weight: 500;">
+            Generated: {generatedTime} | By: {generatedBy}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div style="padding: 40px;">
+      <!-- Summary Cards -->
+      <div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;">
+        <div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Monthly Presence</div>
+          <div style="font-size: 42px; font-weight: 900; color: #065f46;">{attendancePercentage}%</div>
+        </div>
+        <div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #3b82f6;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Total Punches</div>
+          <div style="font-size: 42px; font-weight: 900; color: #1e40af;">{totalPresent}</div>
+        </div>
+        <div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #64748b;">
+          <div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Active Staff</div>
+          <div style="font-size: 42px; font-weight: 900; color: #334155;">{totalEmployees}</div>
+        </div>
+      </div>
+
+      <!-- Main Data Table -->
+      <div style="margin-bottom: 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Detailed Attendance Grid</h3>
+          <div style="font-size: 12px; color: #94a3b8; font-weight: 600;">Scroll horizontally if viewing on mobile</div>
+        </div>
+        <div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">
+          {table}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding-top: 40px; border-top: 1px solid #f1f5f9; text-align: center;">
+        <p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 13px; font-weight: 500;">
+          This is an official automated compliance report from the Paradigm Attendance Management System.
+        </p>
+        <div style="display: inline-flex; gap: 12px; justify-content: center;">
+          <a href="https://app.paradigmfms.com" style="color: #059669; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard</a>
+          <span style="color: #e2e8f0;">|</span>
+          <span style="color: #64748b; font-size: 13px; font-weight: 600;">Paradigm Facility Management Services</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 

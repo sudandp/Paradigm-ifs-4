@@ -801,6 +801,10 @@ export interface BasicReportDataRow {
   status: string;
   checkIn: string;
   checkOut: string;
+  breakIn?: string;
+  breakOut?: string;
+  siteOtIn?: string;
+  siteOtOut?: string;
   duration: string;
   locationName?: string;
   department?: string;
@@ -846,21 +850,29 @@ export const BasicReportDocument: React.FC<{
 
           <View style={styles.table}>
             <View style={[styles.tableRow, { backgroundColor: '#f2f2f2' }]}>
-              <View style={[styles.tableColHeader, { width: '25%' }]}><Text style={styles.tableCellHeader}>Employee Name</Text></View>
-              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Date</Text></View>
-              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Status</Text></View>
-              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Punch In</Text></View>
-              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Punch Out</Text></View>
-              <View style={[styles.tableColHeader, { width: '15%' }]}><Text style={styles.tableCellHeader}>Hours</Text></View>
+              <View style={[styles.tableColHeader, { width: '18%' }]}><Text style={styles.tableCellHeader}>Employee Name</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Status</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>In</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>Out</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>B.In</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>B.Out</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>OT.In</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>OT.Out</Text></View>
+              <View style={[styles.tableColHeader, { width: '9%' }]}><Text style={styles.tableCellHeader}>Hours</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%' }]}><Text style={styles.tableCellHeader}>Dept</Text></View>
             </View>
             {pageData.map((row, idx) => (
               <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
-                <View style={[styles.tableCol, { width: '25%' }]}><Text style={styles.tableCell}>{row.userName}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.date}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.status}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.checkIn || '-'}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.checkOut || '-'}</Text></View>
-                <View style={[styles.tableCol, { width: '15%' }]}><Text style={styles.tableCell}>{row.duration || '-'}</Text></View>
+                <View style={[styles.tableCol, { width: '18%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
+                <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.status}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.checkIn || row.pin || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.checkOut || row.pout || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.breakIn || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.breakOut || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.siteOtIn || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.siteOtOut || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '9%' }]}><Text style={styles.tableCell}>{row.duration || row.wh || '—'}</Text></View>
+                <View style={[styles.tableCol, { width: '10%' }]}><Text style={styles.tableCell}>{row.department || row.dept || 'Staff'}</Text></View>
               </View>
             ))}
           </View>

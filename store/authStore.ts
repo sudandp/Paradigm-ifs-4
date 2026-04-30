@@ -137,6 +137,10 @@ interface AuthState {
     isFieldCheckedIn: boolean;
     isFieldCheckedOut: boolean;
     isSiteOtCheckedIn: boolean;
+    /** True when a technical_reliever has an unclosed session from a previous day */
+    hasPreviousDayOpenSession: boolean;
+    /** Info about the open previous-day session (date, last event type) */
+    previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
     syncRouteTracking: () => Promise<void>;
@@ -177,6 +181,8 @@ export const useAuthStore = create<AuthState>()(
         isFieldCheckedIn: false,
         isFieldCheckedOut: false,
         isSiteOtCheckedIn: false,
+        hasPreviousDayOpenSession: false,
+        previousDaySessionInfo: null,
         forceLogout: async (reason) => {
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
             set({ error: reason || 'Your session has expired. Please log in again.', loading: false, user: null });
@@ -210,7 +216,9 @@ export const useAuthStore = create<AuthState>()(
             isPunchUnlocked: false,
             isFieldCheckedIn: false,
             isFieldCheckedOut: false,
-            isSiteOtCheckedIn: false
+            isSiteOtCheckedIn: false,
+            hasPreviousDayOpenSession: false,
+            previousDaySessionInfo: null
         }),
         setError: (error) => set({ error }),
 
@@ -544,6 +552,7 @@ export const useAuthStore = create<AuthState>()(
                 // (Admin UI → Attendance Rules → Staff Selections).
                 // Site staff roles need a 16-hour lookback to catch night-shift sessions
                 // that cross midnight. Office/Field staff always start from today midnight.
+                // Technical relievers get a 48-hour lookback to detect open sessions from previous days.
                 const { attendance: attendanceSettings } = useSettingsStore.getState();
                 const roleMapping = attendanceSettings.missedCheckoutConfig?.roleMapping || {
                     office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
@@ -555,7 +564,9 @@ export const useAuthStore = create<AuthState>()(
                 // Site staff = roles explicitly in site mapping AND not in office/field
                 const isSiteStaffRole = (roleMapping.site || []).includes(user.role) &&
                     !officeRoles.includes(user.role) && !fieldRoles.includes(user.role);
-                const siteShiftLookbackMs = isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0;
+                const isTechnicalReliever = user.role?.toLowerCase() === 'technical_reliever';
+                // Technical relievers need 48h lookback to detect unclosed previous-day sessions
+                const siteShiftLookbackMs = isTechnicalReliever ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
                     : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
@@ -619,6 +630,43 @@ export const useAuthStore = create<AuthState>()(
                 const extraPunchCyclesUsed = Math.max(0, dailyPunchCount - 1);
                 const isPunchUnlocked = approvedUnlockCount > extraPunchCyclesUsed;
 
+                // Technical Reliever: Detect open sessions from PREVIOUS days.
+                // If the last punch-in or site-ot-in is from a day before today and has no
+                // corresponding punch-out/site-ot-out, the session is considered "open from previous day".
+                let hasPreviousDayOpenSession = false;
+                let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
+
+                if (isTechnicalReliever && lastEvent) {
+                    const todayDateStr = today.toISOString().split('T')[0];
+                    const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
+                    
+                    if (isStillOpen) {
+                        // Like processDailyEvents, we only care about events after the last punch-out before today
+                        // to identify the start of the CURRENT session.
+                        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+                        let cutoffIndex = -1;
+                        for (let i = 0; i < events.length; i++) {
+                            if (new Date(events[i].timestamp) < startOfToday && events[i].type === 'punch-out') {
+                                cutoffIndex = i;
+                            }
+                        }
+                        const relevantEvents = cutoffIndex >= 0 ? events.slice(cutoffIndex + 1) : events;
+                        const firstActiveEvent = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
+                        
+                        if (firstActiveEvent) {
+                            const sessionDateStr = new Date(firstActiveEvent.timestamp).toISOString().split('T')[0];
+                            if (sessionDateStr < todayDateStr) {
+                                hasPreviousDayOpenSession = true;
+                                previousDaySessionInfo = {
+                                    date: sessionDateStr,
+                                    lastEventType: lastEvent.type,
+                                    lastEventTime: new Date(lastEvent.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                                };
+                            }
+                        }
+                    }
+                }
+
                 set({
                     isCheckedIn: currentlyCheckedIn,
                     isOnBreak: isOnBreak,
@@ -637,7 +685,9 @@ export const useAuthStore = create<AuthState>()(
                     isPunchUnlocked,
                     isFieldCheckedIn,
                     isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
-                    isSiteOtCheckedIn
+                    isSiteOtCheckedIn,
+                    hasPreviousDayOpenSession,
+                    previousDaySessionInfo
                 });
 
                 // If user is still on break and the app just resumed / reloaded,

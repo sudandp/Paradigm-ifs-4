@@ -122,6 +122,10 @@ export interface StaffAttendanceRules {
   fixedOfficeHours?: {
     checkInTime: string; // "09:00"
     checkOutTime: string; // "18:00"
+    breakInTime?: string; // "13:00"
+    breakOutTime?: string; // "14:00"
+    siteOtInTime?: string; // "18:00"
+    siteOtOutTime?: string; // "20:00"
   };
   dailyWorkingHours?: {
     min: number; // 7
@@ -412,6 +416,9 @@ export interface CorrectionDetails {
   breakIn?: string;
   breakOut?: string;
   locationName: string;
+  includeSiteOt?: boolean;
+  siteOtIn?: string;
+  siteOtOut?: string;
 }
 
 export interface LeaveRequest {

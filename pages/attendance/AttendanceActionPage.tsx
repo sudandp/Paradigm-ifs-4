@@ -38,7 +38,7 @@ const AttendanceActionPage: React.FC = () => {
     
     const actionParam = query.get('action');
     
-    let action = isCheckIn ? (workType === 'field' ? 'Check In' : 'Punch In') : (workType === 'field' ? 'Check Out' : 'Punch Out');
+    let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : 'Punch In') : (workType === 'field' ? 'Site Check Out' : 'Punch Out');
     if (isBreakIn) action = 'Break In';
     if (isBreakOut) action = 'Break Out';
     if (actionParam === 'site-ot-in') action = 'Site OT In';

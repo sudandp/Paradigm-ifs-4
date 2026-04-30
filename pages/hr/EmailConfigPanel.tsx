@@ -169,7 +169,11 @@ const EmailConfigPanel: React.FC = () => {
 
         let html = template.bodyTemplate || '';
         
-        const hasGreetingPlaceholder = html.includes('{greetingMessage}') || html.includes('{customGreeting}');
+        const hasGreetingPlaceholder = html.includes('{greetingMessage}') || 
+                                       html.includes('{customGreeting}') || 
+                                       html.includes('{greeting_message}') || 
+                                       html.includes('{custom_greeting}') ||
+                                       html.includes('{summary}');
 
         if (!html) {
             html = `<!DOCTYPE html>
@@ -233,6 +237,9 @@ const EmailConfigPanel: React.FC = () => {
         } else {
              html = html.replace(/\{greetingMessage\}/g, customGreeting);
              html = html.replace(/\{customGreeting\}/g, customGreeting);
+             html = html.replace(/\{greeting_message\}/g, customGreeting);
+             html = html.replace(/\{custom_greeting\}/g, customGreeting);
+             html = html.replace(/\{summary\}/g, customGreeting);
         }
 
         // Mock data replacement for standard variables
@@ -257,7 +264,8 @@ const EmailConfigPanel: React.FC = () => {
 
         // Evaluate plain text variable tags
         html = html.replace(/\{(\w+)\}/g, (match, key) => {
-            const dataKey = Object.keys(mockData).find(k => k.toLowerCase() === key.toLowerCase());
+            const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+            const dataKey = Object.keys(mockData).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
             return dataKey ? mockData[dataKey] : match;
         });
 
