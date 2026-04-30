@@ -803,6 +803,11 @@ export interface BasicReportDataRow {
   checkOut: string;
   duration: string;
   locationName?: string;
+  department?: string;
+  dept?: string;
+  pin?: string;
+  pout?: string;
+  wh?: string;
 }
 
 export const BasicReportDocument: React.FC<{ 
@@ -1579,6 +1584,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
     if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
+    if (s === 'W/H') return '#0D9488';
     return '#475569';
   };
 
@@ -1587,6 +1593,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
+    if (s === 'W/H') return '#F0FDFA';
     return '#FFFFFF';
   };
 

@@ -160,6 +160,7 @@ export const reportGenerators = {
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">OT (P)</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #cffafe; color: #0e7490;">C/O</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #e0e7ff; color: #3730a3;">E/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #fdf4ff; color: #701a75;">C/L</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #f3e8ff; color: #6b21a8;">S/L</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #fee2e2; color: #991b1b;">A</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">W/O</th>
@@ -182,6 +183,7 @@ export const reportGenerators = {
       let overtimeCount = 0;
       let sickLeaveCount = 0;
       let earnedLeaveCount = 0;
+      let casualLeaveCount = 0;
       let compOffCount = 0;
       let holidayCount = 0;
 
@@ -257,7 +259,7 @@ export const reportGenerators = {
             if (durationHours > 14) overtimeCount++;
             dayWorked = true;
           } else if (durationHours > 1) {
-            workStatus = '0.5P';
+            workStatus = '1/2P';
             workColor = '#d97706';
             dayWorked = true;
           } else if (punchIn || punchOut) {
@@ -286,6 +288,9 @@ export const reportGenerators = {
           } else if (lt.includes('comp') || lt === 'c/o') { 
               leaveStatus = 'C/O'; 
               leaveColor = '#0891b2'; 
+          } else if (lt === 'casual' || lt === 'c/l') { 
+              leaveStatus = 'C/L'; 
+              leaveColor = '#701a75'; 
           } else if (isLOP) { 
               leaveStatus = 'A'; 
               leaveColor = '#dc2626'; 
@@ -305,23 +310,25 @@ export const reportGenerators = {
             status = '0.5P';
             color = '#1d4ed8'; // blueish for half-day split
             halfDayCount++;
-            if (leaveStatus === 'S/L') sickLeaveCount += 0.5;
-            else if (leaveStatus === 'C/O') compOffCount += 0.5;
-            else if (leaveStatus === 'E/L') earnedLeaveCount += 0.5;
+            if (leaveStatus === 'S/L') { sickLeaveCount += 0.5; leaveCount += 0.5; }
+            else if (leaveStatus === 'C/O') { compOffCount += 0.5; leaveCount += 0.5; }
+            else if (leaveStatus === 'E/L') { earnedLeaveCount += 0.5; leaveCount += 0.5; }
+            else if (leaveStatus === 'C/L') { casualLeaveCount += 0.5; leaveCount += 0.5; }
             dayWorked = true;
         } else if (workStatus !== 'A') {
             status = workStatus;
             color = workColor;
             if (status === 'P' || status === 'WOP') presentCount++;
-            else if (status === '0.5P') halfDayCount++;
+            else if (status === '1/2P') halfDayCount++;
         } else if (dayLeave) {
             status = leaveStatus;
             color = leaveColor;
-            if (status === 'S/L') sickLeaveCount++;
-            else if (status === 'C/O') compOffCount++;
-            else if (status === 'E/L') earnedLeaveCount++;
+            if (status === 'S/L') { sickLeaveCount++; }
+            else if (status === 'C/O') { compOffCount++; }
+            else if (status === 'E/L') { earnedLeaveCount++; }
+            else if (status === 'C/L') { casualLeaveCount++; }
             else if (status === 'A') absentCount++;
-            else if (status === 'P') presentCount++; // From correction
+            else if (status === 'P') presentCount++;
             
             if (status !== 'A') dayWorked = true;
         } else if (isPublicHoliday) {
@@ -349,13 +356,14 @@ export const reportGenerators = {
         tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 8px;">${status}</td>`;
       }
 
-      const grandTotal = presentCount + (halfDayCount * 0.5) + leaveCount + weeklyOffCount + holidayCount + overtimeCount;
+      const grandTotal = presentCount + (halfDayCount * 0.5) + sickLeaveCount + earnedLeaveCount + casualLeaveCount + compOffCount + weeklyOffCount + holidayCount + overtimeCount;
 
       tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${presentCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #d97706;">${halfDayCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0d9488;">${overtimeCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0891b2;">${compOffCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #4f46e5;">${earnedLeaveCount}</td>
+        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #701a75;">${casualLeaveCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #7c3aed;">${sickLeaveCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${absentCount}</td>
         <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #6b7280;">${weeklyOffCount}</td>

@@ -2276,6 +2276,27 @@ export const api = {
     }
     return await offlineDb.getCache(`attendance_all_${start.split('T')[0]}`) || [];
   },
+  getAttendanceEventsForUsers: async (userIds: string[], start: string, end: string): Promise<AttendanceEvent[]> => {
+    if (!userIds || userIds.length === 0) return [];
+    const status = await Network.getStatus();
+    if (status.connected) {
+      try {
+        const query = supabase.from('attendance_events')
+          .select('*')
+          .in('user_id', userIds)
+          .gte('timestamp', start)
+          .lte('timestamp', end)
+          .order('timestamp', { ascending: true });
+
+        const data = await fetchAll<any>(query);
+        const formatted = (data || []).map(toCamelCase);
+        return formatted;
+      } catch (err) {
+        console.warn('Failed to fetch events for users, returning empty');
+      }
+    }
+    return [];
+  },
   getAttendanceDashboardData: async (startDate: Date, endDate: Date, currentDate: Date, timezone: string = 'UTC') => {
     const { data, error } = await supabase.rpc('get_attendance_dashboard_data', {
       start_date_iso: format(startDate, 'yyyy-MM-dd'),
@@ -3935,6 +3956,10 @@ export const api = {
     if (updateError) throw updateError;
   },
   cancelLeaveRequest: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('leave_requests').delete().eq('id', id);
+    if (error) throw error;
+  },
+  deleteLeaveRequest: async (id: string): Promise<void> => {
     const { error } = await supabase.from('leave_requests').delete().eq('id', id);
     if (error) throw error;
   },

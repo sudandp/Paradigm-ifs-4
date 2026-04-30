@@ -118,6 +118,8 @@ const ApplyLeave: React.FC = () => {
     const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
     const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
 
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
         defaultValues: { 
@@ -296,7 +298,7 @@ const ApplyLeave: React.FC = () => {
                 const requestToEdit = userRequests.find(r => r.id === editId);
                 
                 if (requestToEdit) {
-                    const editableStatuses: LeaveRequestStatus[] = ['pending_manager_approval', 'rejected', 'cancelled'];
+                    const editableStatuses: LeaveRequestStatus[] = ['pending_manager_approval', 'rejected', 'cancelled', 'withdrawn'];
                     if (!editableStatuses.includes(requestToEdit.status)) {
                         setToast({ message: 'This request cannot be edited in its current state.', type: 'error' });
                         setTimeout(() => navigate('/leaves/dashboard'), 1500);
@@ -322,7 +324,8 @@ const ApplyLeave: React.FC = () => {
     }, [editId, user, setValue, navigate]);
 
     const onSubmit: SubmitHandler<LeaveRequestFormData> = async (formData) => {
-        if (!user) return;
+        if (!user || isSubmitting) return;
+        setIsSubmitting(true);
         try {
             // --- DUPLICATE CHECK ---
             // Fetch any existing requests for this user that overlap with the selected dates
@@ -347,6 +350,7 @@ const ApplyLeave: React.FC = () => {
                     message: `Conflict Detected: You already have a ${typeName} request (${conflict.status.replace(/_/g, ' ')}) for these dates. Duplicate requests are not allowed.`, 
                     type: 'error' 
                 });
+                setIsSubmitting(false);
                 return;
             }
 
@@ -382,6 +386,7 @@ const ApplyLeave: React.FC = () => {
                 
                 if (isExpired) {
                     setToast({ message: `The ${formData.leaveType} allocation has expired and is no longer available for use.`, type: 'error' });
+                    setIsSubmitting(false);
                     return;
                 }
 
@@ -392,6 +397,7 @@ const ApplyLeave: React.FC = () => {
                 
                 if (available < duration) {
                     setToast({ message: `Insufficient ${formData.leaveType} balance. You have ${available.toFixed(1)} days available (including pending requests), but requested ${duration} days.`, type: 'error' });
+                    setIsSubmitting(false);
                     return;
                 }
             }
@@ -403,6 +409,7 @@ const ApplyLeave: React.FC = () => {
                 
                 if (!rules?.enablePermission) {
                     setToast({ message: 'Permissions are currently disabled by the administrator.', type: 'error' });
+                    setIsSubmitting(false);
                     return;
                 }
 
@@ -421,6 +428,7 @@ const ApplyLeave: React.FC = () => {
                 const maxHours = rules.maxPermissionDurationHours || 2;
                 if (durationHours > maxHours) {
                     setToast({ message: `Permission requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
+                    setIsSubmitting(false);
                     return;
                 }
 
@@ -437,6 +445,7 @@ const ApplyLeave: React.FC = () => {
                     const maxPerms = rules.maxPermissionsPerMonth || 3;
                     if (monthPerms.length >= maxPerms) {
                         setToast({ message: `You have reached the maximum allowed permissions (${maxPerms}) for this month.`, type: 'error' });
+                        setIsSubmitting(false);
                         return;
                     }
                 }
@@ -463,6 +472,7 @@ const ApplyLeave: React.FC = () => {
                     const maxHours = rules.maxCorrectionDurationHours || 2;
                     if (durationHours > maxHours) {
                         setToast({ message: `Correction requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
+                        setIsSubmitting(false);
                         return;
                     }
 
@@ -479,6 +489,7 @@ const ApplyLeave: React.FC = () => {
                         const maxCorrections = rules.maxCorrectionsPerMonth || 3;
                         if (monthCorrections.length >= maxCorrections) {
                             setToast({ message: `You have reached the maximum allowed corrections (${maxCorrections}) for this month.`, type: 'error' });
+                            setIsSubmitting(false);
                             return;
                         }
                     }
@@ -533,6 +544,7 @@ const ApplyLeave: React.FC = () => {
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
         } catch (err) {
             setToast({ message: isEditMode ? 'Failed to update leave request.' : 'Failed to submit leave request.', type: 'error' });
+            setIsSubmitting(false);
         }
     };
 
@@ -886,8 +898,8 @@ const ApplyLeave: React.FC = () => {
                         </div>
 
                         <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-6 justify-end'}`}>
-                            <Button type="button" variant="danger" onClick={() => navigate(-1)} className="flex-1 md:flex-none md:w-32">Cancel</Button>
-                            <Button type="submit" form="leave-form" className="flex-1 md:flex-none md:w-48">{isEditMode ? 'Update Request' : 'Submit'}</Button>
+                            <Button type="button" variant="danger" onClick={() => navigate(-1)} disabled={isSubmitting} className="flex-1 md:flex-none md:w-32">Cancel</Button>
+                            <Button type="submit" form="leave-form" isLoading={isSubmitting} className="flex-1 md:flex-none md:w-48">{isEditMode ? 'Update Request' : 'Submit'}</Button>
                         </div>
                     </form>
                 </div>

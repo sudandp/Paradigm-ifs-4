@@ -202,6 +202,8 @@ export const MonthlyStatusView: React.FC<{
         if (s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Indigo
         if (s.includes('C/O')) return 'text-[#0891B2]'; // Comp Cyan
         if (s.includes('OT')) return 'text-[#0D9488]'; // OT Teal
+        if (s === 'W/H') return 'text-[#0D9488]'; // WFH Teal
+        if (s === 'W/P') return 'text-[#2563EB]'; // WP Blue
         return 'text-gray-700';
     };
 
@@ -277,7 +279,10 @@ export const MonthlyStatusView: React.FC<{
             <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5 text-[8px] font-bold">
                 <span className="flex items-center gap-1 text-[#059669]"><span className="w-1.5 h-1.5 rounded-full bg-[#059669]" /> P: PRESENT</span>
                 <span className="flex items-center gap-1 text-[#DC2626]"><span className="w-1.5 h-1.5 rounded-full bg-[#DC2626]" /> A: ABSENT</span>
+                <span className="flex items-center gap-1 text-[#DC2626]"><span className="w-1.5 h-1.5 rounded-full bg-[#DC2626]" /> LOP: LOSS OF PAY</span>
                 <span className="flex items-center gap-1 text-[#2563EB]"><span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> 1/2P: HALF DAY</span>
+                <span className="flex items-center gap-1 text-[#0D9488]"><span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" /> W/H: WORK FROM HOME</span>
+                <span className="flex items-center gap-1 text-[#2563EB]"><span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> W/P: WORKED ON WEEK OFF</span>
                 <span className="flex items-center gap-1 text-[#6B7280]"><span className="w-1.5 h-1.5 rounded-full bg-[#6B7280]" /> W/O: WEEKLY OFF</span>
                 <span className="flex items-center gap-1 text-[#EA580C]"><span className="w-1.5 h-1.5 rounded-full bg-[#EA580C]" /> H: HOLIDAY</span>
                 <span className="flex items-center gap-1 text-[#0D9488]"><span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" /> OT (P): OT / EXTRAP</span>

@@ -385,6 +385,21 @@ const LeaveDashboard: React.FC = () => {
         }
     };
 
+    const handleDeleteRequest = async (id: string) => {
+        if (!window.confirm('Are you sure you want to permanently delete this record? This action cannot be undone.')) return;
+        
+        setActioningRequestId(id);
+        try {
+            await api.deleteLeaveRequest(id);
+            setToast({ message: 'Record deleted successfully.', type: 'success' });
+            fetchData();
+        } catch (error) {
+            setToast({ message: 'Failed to delete record.', type: 'error' });
+        } finally {
+            setActioningRequestId(null);
+        }
+    };
+
     if (isLoading) {
         return <LoadingScreen message="Establishing secure uplink..." />;
     }
@@ -710,7 +725,7 @@ const LeaveDashboard: React.FC = () => {
                                                         {format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}
                                                     </span>
                                                     <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">
-                                                        {differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1} Days
+                                                        {req.dayOption === 'half' ? '0.5' : differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), new Date(req.startDate.replace(/-/g, '/'))) + 1} Days
                                                     </span>
                                                 </div>
                                             </td>
@@ -723,7 +738,7 @@ const LeaveDashboard: React.FC = () => {
                                                 <LeaveStatusChip status={req.status} />
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
-                                                {['pending_manager_approval', 'rejected', 'cancelled'].includes(req.status) ? (
+                                                {['pending_manager_approval', 'rejected', 'cancelled', 'withdrawn'].includes(req.status) ? (
                                                     <div className="flex justify-end gap-1">
                                                         {actioningRequestId === req.id ? (
                                                             <Loader2 className="h-4 w-4 animate-spin text-accent" />
@@ -732,9 +747,15 @@ const LeaveDashboard: React.FC = () => {
                                                                 <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
                                                                     <Edit className="h-4 w-4" />
                                                                 </button>
-                                                                <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title={req.status === 'cancelled' ? "Delete Request" : "Cancel Request"}>
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </button>
+                                                                {req.status === 'pending_manager_approval' ? (
+                                                                    <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Withdraw Request">
+                                                                        <XCircle className="h-4 w-4" />
+                                                                    </button>
+                                                                ) : (
+                                                                    <button onClick={() => handleDeleteRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Delete Record">
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </button>
+                                                                )}
                                                             </>
                                                         )}
                                                     </div>

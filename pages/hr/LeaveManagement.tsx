@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2 } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -618,6 +618,22 @@ const LeaveManagement: React.FC = () => {
             return true;
         }) as Array<LeaveRequestStatus | 'all' | 'claims'>;
 
+    const handleDeleteLeave = async (id: string) => {
+        if (!window.confirm('Are you sure you want to permanently delete this leave record? This action cannot be undone.')) return;
+        
+        setActioningId(id);
+        try {
+            await api.deleteLeaveRequest(id);
+            setToast({ message: 'Leave record deleted successfully', type: 'success' });
+            // Refresh data
+            fetchData();
+        } catch (err: any) {
+            setToast({ message: err.message || 'Failed to delete record', type: 'error' });
+        } finally {
+            setActioningId(null);
+        }
+    };
+
     const ActionButtons: React.FC<{ request: LeaveRequest }> = ({ request }) => {
         if (!user) return null;
 
@@ -706,6 +722,19 @@ const LeaveManagement: React.FC = () => {
                             aria-label="Perform manual correction"
                         >
                             <PenTool className="h-4 w-4 text-indigo-600" />
+                        </Button>
+                    )}
+                    {/* Delete Action (Admin Only for Cleanup) */}
+                    {isSuperAdmin && ['rejected', 'cancelled', 'withdrawn'].includes(request.status) && (
+                        <Button 
+                            size="sm" 
+                            variant="icon" 
+                            onClick={() => handleDeleteLeave(request.id)} 
+                            disabled={actioningId === request.id} 
+                            title="Delete Record" 
+                            aria-label="Delete rejected/cancelled record"
+                        >
+                            <Trash2 className="h-4 w-4 text-rose-600" />
                         </Button>
                     )}
                 </div>

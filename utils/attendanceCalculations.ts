@@ -500,7 +500,7 @@ export function evaluateAttendanceStatus(params: {
       } catch (e) { return false; }
   });
 
-  isHoliday = isConfiguredHoliday || isPoolHoliday;
+  isHoliday = isConfiguredHoliday || isPoolHoliday || isRecurringHoliday;
 
   // 3. Resolve Leaves
   const approvedLeave = leaves?.find(l => {
@@ -537,10 +537,11 @@ export function evaluateAttendanceStatus(params: {
           return 'P';
       }
 
+      if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'W/H';
       if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
       if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
       if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
-      if (lType.includes('loss') || lType.includes('lop')) return prefix + 'A';
+      if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
       return prefix + 'E/L';
   };
 
@@ -584,20 +585,31 @@ export function evaluateAttendanceStatus(params: {
           } else if (hoursBasedFallback && workingHours !== undefined && workingHours > 0) {
               workStatus = resolveHoursStatus(workingHours);
           } else {
-              workStatus = hasPunchIn && (hasPunchOut || isToday) ? 'P' : 'A';
+              workStatus = hasPunchIn && (hasPunchOut || isToday || isWeekend || isHoliday) ? 'P' : 'A';
           }
       }
   }
 
+  const isCorrection = approvedLeave && (
+      String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase().includes('correction') ||
+      String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
+  );
+
   // B. Handle Combinations or pure status
   if (workStatus && workStatus !== 'A') {
-      const isCorrection = approvedLeave && (
-          String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase().includes('correction') ||
-          String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
-      );
-      
+      const lType = String(approvedLeave?.leaveType || (approvedLeave as any)?.type || '').toLowerCase();
+      const isWFH = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
+
       if (isCorrection) {
-          status = getLeaveCode(approvedLeave);
+          const code = getLeaveCode(approvedLeave);
+          if (code === 'P' || code === 'Present') {
+              if (isWFH) status = 'W/H';
+              else if (isHoliday) status = 'H/P';
+              else if (isWeekend) status = 'W/P';
+              else status = 'P';
+          } else {
+              status = code;
+          }
       } else {
           // If work is partial and there's a 1/2 day leave, combine them
           const isPartialWork = workStatus !== 'P';
@@ -607,10 +619,10 @@ export function evaluateAttendanceStatus(params: {
               // Instead of 1/2P+1/2E/L which breaks formatting, we represent half day present + half day leave as 0.5P
               status = '0.5P';
           } else {
-              // Pure work status
-              // Reservation: H/P only for explicit holidays (National/Manual). 
-              // Recurring holidays (like alternate Saturdays) just show 'P' if worked.
-              if (isHoliday) status = 'H/P';
+              if (isWFH) status = 'W/H';
+              // Priority 2: Explicit Holidays
+              else if (isHoliday) status = 'H/P';
+              // Priority 3: Weekend Work
               else if (isWeekend) status = 'W/P';
               else status = workStatus;
           }
@@ -623,13 +635,9 @@ export function evaluateAttendanceStatus(params: {
       const isCorrection = lStatus === 'correction_made' || lType.includes('correction');
       const isCompOff = lType.includes('comp') || lType === 'c/o' || lType === 'co';
       
-      if (isEligible || isCorrection || isCompOff) {
-          status = getLeaveCode(approvedLeave);
-      } else {
-          // If not eligible, even approved leaves become Absent/Loss of Pay
-          const lCode = getLeaveCode(approvedLeave);
-          status = lCode.includes('LOP') ? lCode : 'A';
-      }
+      // Approved leaves (Earned, Sick, etc.) are generally paid regardless of the previous week's activity threshold
+      // unless specifically marked as Loss of Pay.
+      status = getLeaveCode(approvedLeave);
   } else {
       if (isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
           status = isEligible ? 'H' : 'A';

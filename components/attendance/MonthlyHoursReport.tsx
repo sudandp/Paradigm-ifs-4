@@ -45,6 +45,7 @@ export interface EmployeeMonthlyData {
   quarterDays: number;
   sickLeaves: number;
   earnedLeaves: number;
+  casualLeaves: number;
   floatingHolidays: number;
   compOffs: number;
   lossOfPays: number;
@@ -148,23 +149,40 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       // Start fetching from the Monday at least 15 days before the month start to ensure clean weekly blocks
       const fetchStartDate = startOfWeek(subDays(startDate, 15), { weekStartsOn: 1 });
       
-      const allEvents = await api.getAllAttendanceEvents(
+      const targetUserIds = targetUsers.map(u => u.id);
+      const allEvents = await api.getAttendanceEventsForUsers(
+        targetUserIds,
         format(fetchStartDate, 'yyyy-MM-dd'), 
         format(endDate, 'yyyy-MM-dd HH:mm:ss')
       );
+
+      const eventsByUser = new Map<string, AttendanceEvent[]>();
+      allEvents.forEach(e => {
+          const uid = String(e.userId);
+          if (!eventsByUser.has(uid)) eventsByUser.set(uid, []);
+          eventsByUser.get(uid)!.push(e);
+      });
+
+      const leavesByUser = new Map<string, any[]>();
+      (leavesData || []).forEach((l: any) => {
+          const lUserId = String(l.userId || l.user_id);
+          const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+          const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
+          
+          if (isApproved) {
+              if (!leavesByUser.has(lUserId)) leavesByUser.set(lUserId, []);
+              leavesByUser.get(lUserId)!.push(l);
+          }
+      });
 
       if (userId === undefined || userId === 'all') {
         targetUsers = targetUsers.filter(u => u.role !== 'management');
       }
 
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
-        const userEvents = allEvents.filter(e => String(e.userId) === String(user.id));
-        const userLeaves = (leavesData || []).filter((l: any) => {
-            const lUserId = l.userId || l.user_id;
-            const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
-            const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
-            return String(lUserId) === String(user.id) && isApproved;
-        });
+        const uid = String(user.id);
+        const userEvents = eventsByUser.get(uid) || [];
+        const userLeaves = leavesByUser.get(uid) || [];
         return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, [], leavesData || []);
       });
 
@@ -192,7 +210,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0;
     let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
     let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
-    let sickLeaves = 0, earnedLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
+    let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
     
     const category = getStaffCategory(user.role);
     const rules = resolveUserRules(user);
@@ -231,6 +249,17 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             if (hasActivityCheck || isConfiguredHolidayCheck) {
                 daysPresentInCurrentWeek++;
             }
+        } else if (hasApprovedLeaveCheck) {
+            // WFH should count towards presence threshold for Sunday eligibility
+            const wfhLeave = allLeaves.find(l => 
+                String(l.userId) === String(user.id) &&
+                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh')
+            );
+            if (wfhLeave) {
+                daysActiveInCurrentWeek++;
+                daysPresentInCurrentWeek++;
+            }
         }
         checkDate = addDays(checkDate, 1);
     }
@@ -243,35 +272,40 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     const resolvePayableValue = (s: string): number => {
       if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-      if (['W/P', 'H/P'].includes(s)) return 1.5; // Double pay typically means +0.5 or +1. Adjusting to common rule.
-      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O'].includes(s)) return 1;
-      if (['1/2P', 'Half Day', '1/2S/L', '1/2E/L', '1/2C/L', '1/2C/O'].includes(s)) return 0.5;
+      if (['W/P', 'H/P'].includes(s)) return 1.5; 
+      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O', '0.5P', 'W/H'].includes(s)) return 1;
+      if (s.includes('S/L') || s.includes('E/L') || s.includes('C/L') || s.includes('C/O')) {
+          return s.startsWith('1/2') ? 0.5 : 1;
+      }
+      if (['1/2P', 'Half Day'].includes(s)) return 0.5;
       if (s === '3/4P') return 0.75;
       if (s === '1/4P') return 0.25;
       return 0;
     };
 
     const updateCounters = (s: string) => {
+      const isHalf = s.startsWith('1/2') || s === 'Half Day' || s === '0.5P';
+      const inc = isHalf ? 0.5 : 1;
+
       if (s === 'P') presentDays++;
       else if (s === 'W/P') { presentDays++; weekOffs++; weekendPresents++; }
       else if (s === '3/4P') threeQuarterDays++;
       else if (s === '1/2P' || s === 'Half Day') halfDays++;
+      else if (s === '0.5P') { halfDays++; leavesCount += 0.5; }
       else if (s === '1/4P') quarterDays++;
       else if (s === 'A') absentDays++;
       else if (s === 'W/O') weekOffs++;
       else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
       else if (s === 'H') holidaysCount++;
       else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
-      else if (s.includes('S/L')) sickLeaves++;
-      else if (s.includes('E/L')) earnedLeaves++;
-      else if (s.includes('F/H')) floatingHolidays++;
-      else if (s.includes('C/O')) compOffs++;
-      else if (s.includes('LOP')) lossOfPay++;
-      else if (s.includes('WFH')) workFromHomeDays++;
-      
-      if (['S/L', '1/2S/L', 'E/L', '1/2E/L', 'C/L', '1/2C/L', 'C/O', '1/2C/O'].includes(s)) {
-          leavesCount++;
-      }
+      else if (s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
+      else if (s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
+      else if (s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
+      else if (s.includes('F/H')) floatingHolidays += inc;
+      else if (s.includes('C/O')) { compOffs += inc; leavesCount += inc; }
+      else if (s.includes('LOP')) lossOfPay += inc;
+      else if (s === 'W/H') workFromHomeDays += inc;
+      else if (s.includes('WFH')) workFromHomeDays += inc;
     };
 
     let statusToCounterActivity = false;
@@ -342,8 +376,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
       if (status === 'W/O' && hasActivity) status = 'WOP';
 
-      const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H';
-      const isApprovedLeave = status.includes('L') && !status.includes('LOP');
+      const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
+      const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H';
       
       if (isPresence || isApprovedLeave) {
         const val = (status.includes('1/2') || status === 'Half Day') ? 0.5 : 1;
@@ -377,7 +411,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
       totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT,
       presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
-      halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, floatingHolidays, compOffs,
+      halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,
       lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays,
       averageWorkingHrs: (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0,
       totalDurationPlusOT: totalNetWorkDuration + totalOT,
@@ -462,7 +496,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         
                         <div className="flex flex-wrap gap-2">
                             <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[11px] font-bold shadow-sm border border-emerald-200 flex items-center gap-1">
-                                Present <span className="bg-emerald-200 text-emerald-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.present}</span>
+                                Paid Days <span className="bg-emerald-200 text-emerald-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.present}</span>
                             </span>
                             {employee.halfDays > 0 && (
                                 <span className="px-2.5 py-1 bg-teal-100 text-teal-800 rounded-md text-[11px] font-bold shadow-sm border border-teal-200 flex items-center gap-1">
@@ -479,7 +513,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 Holiday <span className="bg-indigo-200 text-indigo-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.holidays}</span>
                             </span>
                             <span className="px-2.5 py-1 bg-violet-100 text-violet-800 rounded-md text-[11px] font-bold shadow-sm border border-violet-200 flex items-center gap-1">
-                                Leave <span className="bg-violet-200 text-violet-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.leaves}</span>
+                                Leave <span className="bg-violet-200 text-violet-900 px-1.5 rounded-sm text-[10px] ml-0.5">{Number(employee.leaves).toFixed(1).replace(/\.0$/, '')}</span>
                             </span>
                             {(employee.floatingHolidays > 0) && (
                                 <span className="px-2.5 py-1 bg-fuchsia-100 text-fuchsia-800 rounded-md text-[11px] font-bold shadow-sm border border-fuchsia-200 flex items-center gap-1">
@@ -489,6 +523,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                             {(employee.lossOfPays > 0) && (
                                 <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-[11px] font-bold shadow-sm border border-red-200 flex items-center gap-1">
                                     LOP <span className="bg-red-200 text-red-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.lossOfPays}</span>
+                                </span>
+                            )}
+                            {employee.workFromHomeDays > 0 && (
+                                <span className="px-2.5 py-1 bg-teal-100 text-teal-800 rounded-md text-[11px] font-bold shadow-sm border border-teal-200 flex items-center gap-1">
+                                    W/H <span className="bg-teal-200 text-teal-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.workFromHomeDays}</span>
                                 </span>
                             )}
                         </div>
@@ -529,7 +568,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 d.status === '0.5P' || d.status === '1/2P' ? 'bg-gradient-to-r from-emerald-100 to-blue-100 text-blue-800' :
                                 d.status === 'A' ? 'bg-rose-50 text-rose-600' :
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
+                                d.status === 'W/P' ? 'bg-blue-50 text-blue-700' :
                                 d.status === 'H' || d.status === 'H/P' ? 'bg-indigo-50 text-indigo-700' :
+                                d.status.includes('S/L') ? 'bg-purple-50 text-purple-700' :
+                                d.status.includes('E/L') ? 'bg-blue-50 text-blue-700' :
+                                d.status.includes('C/O') ? 'bg-teal-50 text-teal-700' :
+                                d.status.includes('LOP') ? 'bg-red-50 text-red-700' :
+                                d.status === 'W/H' ? 'bg-teal-50 text-teal-700' :
                                 'text-gray-500'
                             }`}>
                                 {d.status}

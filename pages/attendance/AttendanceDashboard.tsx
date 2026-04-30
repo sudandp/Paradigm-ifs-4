@@ -884,8 +884,8 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 4. Calculate Final Stats based on displayLogs
                 const present = displayLogs.reduce((acc, l) => {
-                    if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P') return acc + 1;
-                    if (l.status === '0.5P' || l.status.startsWith('1/2P')) return acc + 0.5;
+                    if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P' || l.status === '0.5P') return acc + 1;
+                    if (l.status.startsWith('1/2P')) return acc + 0.5;
                     return acc;
                 }, 0);
                 const absent = displayLogs.filter(l => (l.status === 'A' || l.status === '1/2A') && l.rawDate <= new Date()).length;
@@ -937,12 +937,11 @@ const AttendanceDashboard: React.FC = () => {
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
-                const queryStart = subDays(startDate, 15);
+                const queryStart = isBefore(subDays(startDate, 15), subDays(new Date(), 30)) ? subDays(startDate, 15) : subDays(new Date(), 30);
                 const queryEnd = endOfDay(endDate);
 
-                const [events, recentEvents, leavesResponse, holidaysResponse] = await Promise.all([
+                const [events, leavesResponse, holidaysResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
-                    api.getAllAttendanceEvents(subDays(new Date(), 30).toISOString(), endOfDay(new Date()).toISOString()),
                     api.getLeaveRequests({ 
                         startDate: queryStart.toISOString(), 
                         endDate: queryEnd.toISOString(), 
@@ -955,6 +954,14 @@ const AttendanceDashboard: React.FC = () => {
                 const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
+
+                // Optimize lookups: Group events by date string
+                const eventsByDate = new Map<string, AttendanceEvent[]>();
+                events.forEach(e => {
+                    const d = format(new Date(e.timestamp), 'yyyy-MM-dd');
+                    if (!eventsByDate.has(d)) eventsByDate.set(d, []);
+                    eventsByDate.get(d)!.push(e);
+                });
 
                 const fieldUsers = activeStaff.filter(u => !isOfficeUser(u.role));
                 const violationsMap: Record<string, FieldAttendanceViolation[]> = {};
@@ -990,7 +997,9 @@ const AttendanceDashboard: React.FC = () => {
 
                 days.forEach(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
-                    const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr && activeStaffIds.has(e.userId));
+                    const rawDayEvents = eventsByDate.get(dateStr) || [];
+                    const dayEvents = rawDayEvents.filter(e => activeStaffIds.has(e.userId));
+                    
                     const dayLeaves = leavesData.filter(l => {
                         const start = new Date(l.startDate);
                         const end = new Date(l.endDate);
@@ -1026,7 +1035,9 @@ const AttendanceDashboard: React.FC = () => {
                 const avgAbsent = Math.round(totalAbsentForRange / days.length);
 
                 const todayStr = format(today, 'yyyy-MM-dd');
-                const todayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === todayStr && activeStaffIds.has(e.userId));
+                const rawTodayEvents = eventsByDate.get(todayStr) || [];
+                const todayEvents = rawTodayEvents.filter(e => activeStaffIds.has(e.userId));
+                
                 const todayLeaves = leavesData.filter(l => {
                     const dStart = new Date(l.startDate);
                     const dEnd = new Date(l.endDate);
@@ -1035,7 +1046,13 @@ const AttendanceDashboard: React.FC = () => {
                 const presentToday = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId))]).size;
                 const onLeaveToday = new Set(todayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
 
-                const recentlyActiveIds = new Set(recentEvents.filter(e => activeStaffIds.has(e.userId)).map(e => e.userId));
+                const thirtyDaysAgo = subDays(new Date(), 30);
+                const recentlyActiveIds = new Set(
+                    events.filter(e => {
+                        const t = new Date(e.timestamp);
+                        return t >= thirtyDaysAgo && activeStaffIds.has(e.userId);
+                    }).map(e => e.userId)
+                );
                 setRecentlyActiveUserIds(recentlyActiveIds);
                 const inactiveCount = Math.max(0, activeStaff.length - recentlyActiveIds.size);
 
@@ -1238,8 +1255,12 @@ const AttendanceDashboard: React.FC = () => {
 
                     if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
                         daysActiveInWeek++;
-                        // Only physical presence or holidays count towards Sunday W/O
-                        if (hasActivityCheck || isConfiguredHolidayCheck) {
+                        // Only physical presence, holidays, or WFH count towards Sunday W/O
+                        const isWFH = userLeaves.some(l => 
+                            isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                            (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh')
+                        );
+                        if (hasActivityCheck || isConfiguredHolidayCheck || isWFH) {
                             daysPresentInWeek++;
                         }
                     }
@@ -1299,8 +1320,8 @@ const AttendanceDashboard: React.FC = () => {
                     fieldStatus: fStatus
                 });
 
-                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H';
-                const isApprovedLeave = status.includes('L') && !status.includes('LOP');
+                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
+                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H';
                 
                 if (isPresence || isApprovedLeave) {
                     const val = (status.includes('1/2') ? 0.5 : 1);
@@ -1322,7 +1343,16 @@ const AttendanceDashboard: React.FC = () => {
                     duration = `${hours}h ${minutes}m`;
                 }
 
-                data.push({ userName: user.name, date: displayDate, status, checkIn, checkOut, duration, locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office') });
+                data.push({ 
+                    userName: user.name, 
+                    date: displayDate, 
+                    status, 
+                    checkIn, 
+                    checkOut, 
+                    duration, 
+                    locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office'),
+                    department: (user as any).department || (user as any).role || 'Staff'
+                });
             });
         });
 
@@ -2243,8 +2273,10 @@ const AttendanceDashboard: React.FC = () => {
                         <div className="flex justify-between items-start mb-3">
                              <div className="font-bold text-white">{row.userName || 'Unknown'}</div>
                              <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                 row.status === 'P' || row.type === 'punch-in' ? 'bg-green-500/20 text-green-400' : 
-                                 row.status === 'A' || row.type === 'punch-out' ? 'bg-red-500/20 text-red-400' : 
+                                 row.status === 'P' || row.type === 'punch-in' ? 'bg-emerald-500/20 text-emerald-400' : 
+                                 row.status === 'A' || row.type === 'punch-out' ? 'bg-rose-500/20 text-rose-400' : 
+                                 row.status === 'W/H' ? 'bg-teal-500/20 text-teal-400' :
+                                 row.status === 'W/P' ? 'bg-blue-500/20 text-blue-400' :
                                  'bg-blue-500/20 text-blue-400'
                              }`}>
                                  {row.status || row.displayType || (row.type === 'punch-in' ? 'In' : row.type === 'punch-out' ? 'Out' : 'Log')}

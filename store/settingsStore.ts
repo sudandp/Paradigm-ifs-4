@@ -147,6 +147,7 @@ const initialAttendance: AttendanceSettings = {
     enableCustomHolidays: false,
     holidayPool: [...HOLIDAY_SELECTION_POOL],
     enableMaternityChildCare: true,
+    weeklyOffDays: [0], // Sunday
     // Shift Management defaults (disabled until admin enables)
     enableShiftManagement: false,
     siteShifts: [

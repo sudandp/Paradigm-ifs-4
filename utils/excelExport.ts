@@ -308,7 +308,7 @@ export const exportAttendanceToExcel = async (
                     } else if (statusVal === 'H') {
                         cell.font = { color: { argb: 'FF854D0E' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFef9C3' } };
-                    } else if (['L', 'S/L', 'E/L', 'C/O', 'F/H'].includes(statusVal as string)) {
+                    } else if (['L', 'S/L', 'E/L', 'C/O', 'F/H', 'W/H'].includes(statusVal as string)) {
                         cell.font = { color: { argb: 'FF1E40AF' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
                     }
@@ -607,7 +607,7 @@ export const exportMonthlyMatrixToExcel = async (
                     else if (s === 'A' || s === 'Absent') cell.font.color = { argb: 'FFDC2626' };
                     else if (s === 'W/O' || s === 'Weekly Off') cell.font.color = { argb: 'FF64748B' };
                     else if (s === 'H' || s === 'Holiday') cell.font.color = { argb: 'FF4F46E5' };
-                    else if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) cell.font.color = { argb: 'FF7C3AED' };
+                    else if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O') || s === 'W/H') cell.font.color = { argb: 'FF7C3AED' };
                     else cell.font.color = { argb: 'FF475569' };
                 }
             });
