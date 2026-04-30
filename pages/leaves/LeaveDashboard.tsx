@@ -12,7 +12,7 @@ import Select from '../../components/ui/Select';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays } from 'date-fns';
+import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
 import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
 import DatePicker from '../../components/ui/DatePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -410,6 +410,85 @@ const LeaveDashboard: React.FC = () => {
     const filterTabs: Array<LeaveRequestStatus | 'all'> = ['all', 'pending_manager_approval', 'pending_hr_confirmation', 'approved', 'rejected'];
     const isFemale = user?.gender?.toLowerCase() === 'female';
 
+    const isFloatingHolidayValidForViewingDate = () => {
+        if (!attendanceSettings || !user) return false;
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings);
+        const categorySettings = (attendanceSettings as any)?.[staffCategory];
+        if (!categorySettings) return false;
+        
+        if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
+            const monthIdx = viewingDate.getMonth();
+            return categorySettings.floatingHolidayMonths.includes(monthIdx);
+        }
+        
+        const viewingDateStr = format(viewingDate, 'yyyy-MM-dd');
+        const validFrom = categorySettings.floatingLeavesValidFrom;
+        const validTill = categorySettings.floatingLeavesExpiryDate;
+        if (validFrom && viewingDateStr < validFrom) return false;
+        if (validTill && viewingDateStr > validTill) return false;
+        return true;
+    };
+
+    const getBlueLeaveStatusForViewingDate = () => {
+        const isValid = isFloatingHolidayValidForViewingDate();
+        if (!isValid) return { total: 0, used: 0, pending: 0 };
+        
+        let total = 1;
+        if (attendanceSettings && user) {
+             const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings);
+             const categorySettings = (attendanceSettings as any)?.[staffCategory];
+             if (categorySettings && categorySettings.monthlyFloatingLeaves !== undefined) {
+                 total = categorySettings.monthlyFloatingLeaves;
+             }
+        }
+
+        let used = 0;
+        let pending = 0;
+
+        const monthStart = startOfMonth(viewingDate);
+        const monthEnd = endOfMonth(viewingDate);
+        
+        let thirdSaturday: Date | null = null;
+        const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+        let count = 0;
+        for (const day of daysInMonth) {
+            if (day.getDay() === 6) { 
+                count++;
+                if (count === 3) {
+                    thirdSaturday = day;
+                    break;
+                }
+            }
+        }
+
+        const today = new Date();
+        const isPast = thirdSaturday && startOfDay(thirdSaturday) <= startOfDay(today);
+        
+        const allRelevantLeaves = [...(yearlyData?.leaves || []), ...requests].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
+
+        allRelevantLeaves.forEach(req => {
+            const type = (req.leaveType || '').toLowerCase();
+            if (type.includes('floating') || type === 'fh' || type === 'blue leave' || type === 'blue') {
+                const reqStart = new Date(req.startDate.replace(/-/g, '/'));
+                if (reqStart >= monthStart && reqStart <= monthEnd) {
+                    let amount = req.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), reqStart) + 1);
+                    if (req.status === 'approved' || req.status === 'correction_made') used += amount;
+                    if (req.status === 'pending_manager_approval' || req.status === 'pending_hr_confirmation') pending += amount;
+                }
+            }
+        });
+
+        if (isPast && used === 0) {
+            used = 1;
+        }
+
+        if (used > total) used = total;
+        
+        return { total, used, pending };
+    };
+
+    const blueLeaveStatus = getBlueLeaveStatusForViewingDate();
+
     const balanceCards = balanceDataState ? [
         { 
             title: 'Earned Leave', 
@@ -424,6 +503,13 @@ const LeaveDashboard: React.FC = () => {
             description: `Total: ${parseFloat(balanceDataState.sickTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.sickTotal - balanceDataState.sickUsed - (balanceDataState.sickPending || 0)).toFixed(1))}d.${(balanceDataState.sickPending || 0) > 0 ? ` (Pending: ${balanceDataState.sickPending}d)` : ''}`,
             icon: HeartPulse,
             isExpired: balanceDataState.expiryStates?.sick
+        },
+        { 
+            title: 'Blue Leave', 
+            value: `${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))} / ${parseFloat(blueLeaveStatus.total.toFixed(1))}`, 
+            description: `Total: ${parseFloat(blueLeaveStatus.total.toFixed(1))}d. Available: ${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))}d.${blueLeaveStatus.pending > 0 ? ` (Pending: ${blueLeaveStatus.pending}d)` : ''}`,
+            icon: Plane,
+            isExpired: !isFloatingHolidayValidForViewingDate()
         },
         ...(isFemale ? [
             { 
@@ -464,7 +550,7 @@ const LeaveDashboard: React.FC = () => {
     ].filter(card => !card.isExpired) : [
         { title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true },
         { title: 'Sick Leave', value: '0 / 0', icon: HeartPulse, isLoading: true },
-        { title: '3rd Saturday Leave', value: '0 / 0', icon: Plane, isLoading: true },
+        { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
         { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },

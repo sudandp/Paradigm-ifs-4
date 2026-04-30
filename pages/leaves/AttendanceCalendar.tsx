@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, getDay, isAfter, startOfDay, endOfDay, startOfWeek, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, getDay, isAfter, isBefore, startOfDay, endOfDay, startOfWeek, subDays } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -57,15 +57,30 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
 
 
+    const isFloatingHolidayValid = (dateStr: string) => {
+        if (!settings || !user) return false;
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
+        const categorySettings = (settings as any)?.[staffCategory];
+        if (!categorySettings) return false;
+        
+        if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
+            const monthIdx = new Date(dateStr.replace(/-/g, '/')).getMonth();
+            return categorySettings.floatingHolidayMonths.includes(monthIdx);
+        }
+        
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const validFrom = categorySettings.floatingLeavesValidFrom;
+        const validTill = categorySettings.floatingLeavesExpiryDate;
+        if (validFrom && todayStr < validFrom) return false;
+        if (validTill && todayStr > validTill) return false;
+        return true;
+    };
+
     const recurringHolidayDates = useMemo(() => {
         const dates: Date[] = [];
         const start = startOfMonth(currentDate);
         const end = endOfMonth(currentDate);
         const days = eachDayOfInterval({ start, end });
-        
-        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-        const categorySettings = (settings as any)?.[staffCategory];
-        const expiryDate = categorySettings?.floating_leaves_expiry_date || categorySettings?.floatingLeavesExpiryDate;
 
         recurringRules.forEach(rule => {
             let count = 0;
@@ -75,7 +90,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     if (count === rule.n) {
                         // Check if this recurring holiday is expired (e.g. 3rd Saturday after Feb 1st)
                         const dateStr = format(day, 'yyyy-MM-dd');
-                        if (rule.day === 'Saturday' && expiryDate && dateStr > expiryDate) {
+                        if (rule.day === 'Saturday' && !isFloatingHolidayValid(dateStr)) {
                             // Expired - do not add to holiday dates
                         } else {
                             dates.push(day);
@@ -133,8 +148,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
 
             const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, day));
-            const floatingExpiryDate = (settings as any)?.[staffCategory]?.floatingLeavesExpiryDate;
-            const isFloatingExpired = floatingExpiryDate && dateStr > floatingExpiryDate;
+            const isFloatingExpired = !isFloatingHolidayValid(dateStr);
 
             const foundConfigured = holidays.find(h => {
                 const [y, m, d] = h.date.split('-').map(Number);
@@ -151,7 +165,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             const isCompanyHoliday = !!foundConfigured || !!foundFixed || !!foundPool;
             const isSunday = dayOfWeek === 0;
-            const holidayName = foundConfigured?.name || foundFixed?.name || foundPool?.holidayName || (isRecurringHoliday && !isFloatingExpired ? '3rd Saturday' : isSunday ? 'Sunday' : '');
+            const holidayName = foundConfigured?.name || foundFixed?.name || foundPool?.holidayName || (isRecurringHoliday && !isFloatingExpired ? 'Blue Leave' : isSunday ? 'Sunday' : '');
 
             const foundLeave = leaveRequests.find(req => {
                 if (req.status !== 'approved' && req.status !== 'pending_hr_confirmation' && req.status !== 'correction_made') return false;
@@ -164,6 +178,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             let finalStatus = 'neutral';
             let presenceVal = 0;
 
+            // For future dates, assume threshold is met for visual planning purposes
+            const isFuture = !isPast && !isToday;
+            const visuallyActivePrev = isFuture || isActiveInPreviousWeek;
+            const visuallyActiveCurr = isFuture || meetsThreshold;
+
             if (isDetailedPresent) {
                 if (isSunday || isCompanyHoliday || (isRecurringHoliday && !isFloatingExpired)) {
                     finalStatus = 'holiday-present';
@@ -173,11 +192,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isRecurringHoliday && !isFloatingExpired) {
-                finalStatus = isActiveInPreviousWeek ? 'floating-holiday' : (isPast ? 'absent' : 'neutral');
+                finalStatus = visuallyActivePrev ? 'floating-holiday' : (isPast ? 'absent' : 'neutral');
             } else if (isCompanyHoliday) {
-                finalStatus = isActiveInPreviousWeek ? 'company-holiday' : (isPast ? 'absent' : 'neutral');
+                finalStatus = visuallyActivePrev ? 'company-holiday' : (isPast ? 'absent' : 'neutral');
             } else if (isSunday) {
-                finalStatus = meetsThreshold ? 'sunday' : (isPast ? 'absent' : 'neutral');
+                finalStatus = visuallyActiveCurr ? 'sunday' : (isPast ? 'absent' : 'neutral');
             } else if (isPast) {
                 finalStatus = 'absent';
             }
@@ -231,7 +250,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const today = startOfDay(new Date());
 
         daysInMonth.forEach(date => {
-            if (isAfter(startOfDay(date), today)) return;
+            if (!isBefore(startOfDay(date), today)) return; // Only count days that have fully passed
 
             const res = getDayStatus(date);
             const status = res.status;
@@ -388,11 +407,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         case 'Maternity': overlayText = 'ML'; break;
                                         case 'Child Care': overlayText = 'CCL'; break;
                                         case 'Loss of Pay': overlayText = 'LOP'; break;
-                                        default: overlayText = 'L'; break;
+                                        default: overlayText = 'WH'; break;
                                     }
                                 }
                             } else {
-                                overlayText = 'L';
+                                overlayText = 'WH';
                             }
                         } else if (status === 'absent') {
                             overlayText = 'A';
@@ -427,7 +446,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-sky-400 rounded-full flex-shrink-0"></div> Holiday</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Float</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> C.O</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div> Leave</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div> WH</div>
             </div>
         </div>
     );

@@ -107,12 +107,20 @@ export interface StaffAttendanceRules {
   minimumHoursHalfDay: number;
   annualEarnedLeaves: number;
   earnedLeavesExpiryDate?: string; // ISO or YYYY-MM-DD
+  earnedLeavesValidFrom?: string; // ISO or YYYY-MM-DD
   annualSickLeaves: number;
   sickLeavesExpiryDate?: string; // ISO or YYYY-MM-DD
+  sickLeavesValidFrom?: string; // ISO or YYYY-MM-DD
   monthlyFloatingLeaves: number;
   floatingLeavesExpiryDate?: string; // ISO or YYYY-MM-DD
+  floatingLeavesValidFrom?: string; // ISO or YYYY-MM-DD
+  floatingHolidayMonths?: number[];
+  floatingHolidayYearType?: 'calendar' | 'financial';
   annualCompOffLeaves: number;
   compOffLeavesExpiryDate?: string; // ISO or YYYY-MM-DD
+  compOffLeavesValidFrom?: string; // ISO or YYYY-MM-DD
+  childCareLeavesExpiryDate?: string; // ISO or YYYY-MM-DD
+  childCareLeavesValidFrom?: string; // ISO or YYYY-MM-DD
   enableAttendanceNotifications: boolean;
   sickLeaveCertificateThreshold: number;
   geofencingEnabled?: boolean;
@@ -385,6 +393,8 @@ export interface LeaveBalance {
   pinkTotal: number;
   pinkUsed: number;
   pinkPending: number;
+  earnedThisMonth?: number;
+  earnedPreviousMonth?: number;
   otHoursThisMonth: number;
   expiryStates?: {
     earned: boolean;
@@ -401,6 +411,8 @@ export interface LeaveBalance {
     officeRules?: boolean;
     fieldRules?: boolean;
     earnedRule?: any;
+    earnedThisMonth?: number;
+    earnedPreviousMonth?: number;
     openingDate?: string;
     asOfDate?: string;
     processedLeaves?: any[];

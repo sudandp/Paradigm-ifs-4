@@ -246,7 +246,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                                 borderRadius: 4,
                             },
                             {
-                                label: 'LEAVES',
+                                label: 'WH',
                                 data: stats.monthlyLeaves,
                                 backgroundColor: '#8b5cf6', // Violet 500
                                 stack: 'payable',
@@ -373,7 +373,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 <div className="flex justify-between items-center opacity-80 text-[10px]">
                     <span title="Worked + Leaves + Holidays + Week Offs">
                         (W: {stats.monthlyWorked.reduce((a, b) => a + b, 0)} + 
-                         L: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 
+                         WH: {stats.monthlyLeaves.reduce((a, b) => a + b, 0)} + 
                          H: {stats.monthlyHolidays.reduce((a, b) => a + b, 0)} + 
                          WO: {stats.monthlySundays.reduce((a, b) => a + b, 0)})
                     </span>

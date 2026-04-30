@@ -2060,22 +2060,24 @@ const AttendanceDashboard: React.FC = () => {
                     const balance = await api.getLeaveBalancesForUser(u.id);
                     return {
                         userName: u.name,
-                        earnedTotal: balance.earnedTotal || 0,
-                        earnedUsed: balance.earnedUsed || 0,
-                        sickTotal: balance.sickTotal || 0,
-                        sickUsed: balance.sickUsed || 0,
-                        floatingTotal: balance.floatingTotal || 0,
-                        floatingUsed: balance.floatingUsed || 0,
-                        compOffTotal: balance.compOffTotal || 0,
-                        compOffUsed: balance.compOffUsed || 0,
-                        maternityTotal: balance.maternityTotal || 0,
-                        maternityUsed: balance.maternityUsed || 0,
-                        childCareTotal: balance.childCareTotal || 0,
-                        childCareUsed: balance.childCareUsed || 0,
-                        totalBalance: (balance.earnedTotal - balance.earnedUsed) + 
+                        earnedTotal: Number((balance.earnedTotal || 0).toFixed(2)),
+                        earnedUsed: Number((balance.earnedUsed || 0).toFixed(2)),
+                        earnedThisMonth: Number((balance.earnedThisMonth || 0).toFixed(2)),
+                        earnedPreviousMonth: Number((balance.earnedPreviousMonth || 0).toFixed(2)),
+                        sickTotal: Number((balance.sickTotal || 0).toFixed(2)),
+                        sickUsed: Number((balance.sickUsed || 0).toFixed(2)),
+                        floatingTotal: Number((balance.floatingTotal || 0).toFixed(2)),
+                        floatingUsed: Number((balance.floatingUsed || 0).toFixed(2)),
+                        compOffTotal: Number((balance.compOffTotal || 0).toFixed(2)),
+                        compOffUsed: Number((balance.compOffUsed || 0).toFixed(2)),
+                        maternityTotal: Number((balance.maternityTotal || 0).toFixed(2)),
+                        maternityUsed: Number((balance.maternityUsed || 0).toFixed(2)),
+                        childCareTotal: Number((balance.childCareTotal || 0).toFixed(2)),
+                        childCareUsed: Number((balance.childCareUsed || 0).toFixed(2)),
+                        totalBalance: Number(((balance.earnedTotal - balance.earnedUsed) + 
                                        (balance.sickTotal - balance.sickUsed) + 
                                        (balance.floatingTotal - balance.floatingUsed) + 
-                                       (balance.compOffTotal - balance.compOffUsed)
+                                       (balance.compOffTotal - balance.compOffUsed)).toFixed(2))
                     } as LeaveBalanceRow;
                 } catch (e) {
                     console.error(`Failed to fetch balance for ${u.name}`, e);

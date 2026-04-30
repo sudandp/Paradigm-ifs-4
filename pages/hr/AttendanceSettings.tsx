@@ -1104,19 +1104,33 @@ const AttendanceSettings: React.FC = () => {
                                 onChange={(e) => handleSettingChange('annualEarnedLeaves', parseInt(e.target.value, 10) || 0)}
                                 description="Base annual quota if dynamic accrual is disabled."
                             />
-                            <div className="mt-4">
+                            <div className="mt-4 space-y-4">
+                                <DatePicker
+                                    label="Valid From"
+                                    id="earnedLeavesValidFrom"
+                                    value={currentRules.earnedLeavesValidFrom || ''}
+                                    onChange={(date) => handleSettingChange('earnedLeavesValidFrom', date)}
+                                />
                                 <DatePicker
                                     label="Valid Till"
                                     id="earnedLeavesExpiryDate"
                                     value={currentRules.earnedLeavesExpiryDate || ''}
                                     onChange={(date) => handleSettingChange('earnedLeavesExpiryDate', date)}
                                 />
-                                {!currentRules.earnedLeavesExpiryDate ? (
-                                    <p className="text-xs text-gray-400 mt-1">No Validity</p>
-                                ) : new Date(currentRules.earnedLeavesExpiryDate) < new Date(new Date().toISOString().split('T')[0]) ? (
-                                    <p className="text-xs text-amber-500 mt-1">⚠ Expired - Not Applicable</p>
+                                {(!currentRules.earnedLeavesValidFrom && !currentRules.earnedLeavesExpiryDate) ? (
+                                    <p className="text-xs text-gray-400 mt-1">No Validity Range</p>
                                 ) : (
-                                    <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                    (() => {
+                                        const now = new Date().toISOString().split('T')[0];
+                                        const from = currentRules.earnedLeavesValidFrom;
+                                        const till = currentRules.earnedLeavesExpiryDate;
+                                        const isInvalid = (from && now < from) || (till && now > till);
+                                        return isInvalid ? (
+                                            <p className="text-xs text-amber-500 mt-1">⚠ Invalid - Outside Range</p>
+                                        ) : (
+                                            <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                        );
+                                    })()
                                 )}
                             </div>
                         </div>
@@ -1128,19 +1142,33 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.annualSickLeaves}
                                 onChange={(e) => handleSettingChange('annualSickLeaves', parseInt(e.target.value, 10) || 0)}
                             />
-                            <div className="mt-4">
+                            <div className="mt-4 space-y-4">
+                                <DatePicker
+                                    label="Valid From"
+                                    id="sickLeavesValidFrom"
+                                    value={currentRules.sickLeavesValidFrom || ''}
+                                    onChange={(date) => handleSettingChange('sickLeavesValidFrom', date)}
+                                />
                                 <DatePicker
                                     label="Valid Till"
                                     id="sickLeavesExpiryDate"
                                     value={currentRules.sickLeavesExpiryDate || ''}
                                     onChange={(date) => handleSettingChange('sickLeavesExpiryDate', date)}
                                 />
-                                {!currentRules.sickLeavesExpiryDate ? (
-                                    <p className="text-xs text-gray-400 mt-1">No Validity</p>
-                                ) : new Date(currentRules.sickLeavesExpiryDate) < new Date(new Date().toISOString().split('T')[0]) ? (
-                                    <p className="text-xs text-amber-500 mt-1">⚠ Expired - Not Applicable</p>
+                                {(!currentRules.sickLeavesValidFrom && !currentRules.sickLeavesExpiryDate) ? (
+                                    <p className="text-xs text-gray-400 mt-1">No Validity Range</p>
                                 ) : (
-                                    <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                    (() => {
+                                        const now = new Date().toISOString().split('T')[0];
+                                        const from = currentRules.sickLeavesValidFrom;
+                                        const till = currentRules.sickLeavesExpiryDate;
+                                        const isInvalid = (from && now < from) || (till && now > till);
+                                        return isInvalid ? (
+                                            <p className="text-xs text-amber-500 mt-1">⚠ Invalid - Outside Range</p>
+                                        ) : (
+                                            <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                        );
+                                    })()
                                 )}
                             </div>
                         </div>
@@ -1152,20 +1180,50 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.monthlyFloatingLeaves}
                                 onChange={(e) => handleSettingChange('monthlyFloatingLeaves', parseInt(e.target.value, 10) || 0)}
                             />
-                            <div className="mt-4">
-                                <DatePicker
-                                    label="Valid Till"
-                                    id="floatingLeavesExpiryDate"
-                                    value={currentRules.floatingLeavesExpiryDate || ''}
-                                    onChange={(date) => handleSettingChange('floatingLeavesExpiryDate', date)}
-                                />
-                                {!currentRules.floatingLeavesExpiryDate ? (
-                                    <p className="text-xs text-gray-400 mt-1">No Validity</p>
-                                ) : new Date(currentRules.floatingLeavesExpiryDate) < new Date(new Date().toISOString().split('T')[0]) ? (
-                                    <p className="text-xs text-amber-500 mt-1">⚠ Expired - Not Applicable</p>
-                                ) : (
-                                    <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
-                                )}
+                            <div className="mt-4 space-y-4">
+                                <Select
+                                    label="Year Type"
+                                    id="floatingHolidayYearType"
+                                    value={currentRules.floatingHolidayYearType || 'calendar'}
+                                    onChange={(e) => handleSettingChange('floatingHolidayYearType', e.target.value)}
+                                >
+                                    <option value="calendar">Calendar Year (Jan - Dec)</option>
+                                    <option value="financial">Financial Year (Apr - Mar)</option>
+                                </Select>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-primary-text mb-2">Applicable Months</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(currentRules.floatingHolidayYearType === 'financial' 
+                                            ? [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2] // Apr to Mar
+                                            : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] // Jan to Dec
+                                        ).map((monthIdx) => {
+                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                            const selectedMonths = currentRules.floatingHolidayMonths || [];
+                                            const isActive = selectedMonths.includes(monthIdx);
+                                            return (
+                                                <button
+                                                    key={monthIdx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const updated = isActive
+                                                            ? selectedMonths.filter(m => m !== monthIdx)
+                                                            : [...selectedMonths, monthIdx].sort((a, b) => a - b);
+                                                        handleSettingChange('floatingHolidayMonths', updated);
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                                        isActive
+                                                            ? 'bg-accent/20 border-accent text-accent-dark shadow-sm'
+                                                            : 'bg-page border-border/50 text-muted hover:border-accent/50'
+                                                    }`}
+                                                >
+                                                    {monthNames[monthIdx]}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-xs text-muted mt-1.5">Months without floating holidays will be normal working days.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1281,6 +1339,39 @@ const AttendanceSettings: React.FC = () => {
                                 disabled={!currentRules.enableMaternityChildCare}
                             />
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 p-4 bg-white/5 rounded-lg">
+                            <DatePicker
+                                label="Child Care Valid From"
+                                id="childCareLeavesValidFrom"
+                                value={currentRules.childCareLeavesValidFrom || ''}
+                                onChange={(date) => handleSettingChange('childCareLeavesValidFrom', date)}
+                                disabled={!currentRules.enableMaternityChildCare}
+                            />
+                            <DatePicker
+                                label="Child Care Valid Till"
+                                id="childCareLeavesExpiryDate"
+                                value={currentRules.childCareLeavesExpiryDate || ''}
+                                onChange={(date) => handleSettingChange('childCareLeavesExpiryDate', date)}
+                                disabled={!currentRules.enableMaternityChildCare}
+                            />
+                            <div className="flex items-end pb-2">
+                                {(!currentRules.childCareLeavesValidFrom && !currentRules.childCareLeavesExpiryDate) ? (
+                                    <p className="text-xs text-gray-400">No Validity Range</p>
+                                ) : (
+                                    (() => {
+                                        const now = new Date().toISOString().split('T')[0];
+                                        const from = currentRules.childCareLeavesValidFrom;
+                                        const till = currentRules.childCareLeavesExpiryDate;
+                                        const isInvalid = (from && now < from) || (till && now > till);
+                                        return isInvalid ? (
+                                            <p className="text-xs text-amber-500">⚠ Invalid - Outside Range</p>
+                                        ) : (
+                                            <p className="text-xs text-emerald-500">✓ Valid</p>
+                                        );
+                                    })()
+                                )}
+                            </div>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
                         <div className="flex flex-col">
@@ -1291,19 +1382,33 @@ const AttendanceSettings: React.FC = () => {
                                 value={currentRules.annualCompOffLeaves}
                                 onChange={(e) => handleSettingChange('annualCompOffLeaves', parseInt(e.target.value, 10) || 0)}
                             />
-                            <div className="mt-4">
+                            <div className="mt-4 space-y-4">
+                                <DatePicker
+                                    label="Valid From"
+                                    id="compOffLeavesValidFrom"
+                                    value={currentRules.compOffLeavesValidFrom || ''}
+                                    onChange={(date) => handleSettingChange('compOffLeavesValidFrom', date)}
+                                />
                                 <DatePicker
                                     label="Valid Till"
                                     id="compOffLeavesExpiryDate"
                                     value={currentRules.compOffLeavesExpiryDate || ''}
                                     onChange={(date) => handleSettingChange('compOffLeavesExpiryDate', date)}
                                 />
-                                {!currentRules.compOffLeavesExpiryDate ? (
-                                    <p className="text-xs text-gray-400 mt-1">No Validity</p>
-                                ) : new Date(currentRules.compOffLeavesExpiryDate) < new Date(new Date().toISOString().split('T')[0]) ? (
-                                    <p className="text-xs text-amber-500 mt-1">⚠ Expired - Not Applicable</p>
+                                {(!currentRules.compOffLeavesValidFrom && !currentRules.compOffLeavesExpiryDate) ? (
+                                    <p className="text-xs text-gray-400 mt-1">No Validity Range</p>
                                 ) : (
-                                    <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                    (() => {
+                                        const now = new Date().toISOString().split('T')[0];
+                                        const from = currentRules.compOffLeavesValidFrom;
+                                        const till = currentRules.compOffLeavesExpiryDate;
+                                        const isInvalid = (from && now < from) || (till && now > till);
+                                        return isInvalid ? (
+                                            <p className="text-xs text-amber-500 mt-1">⚠ Invalid - Outside Range</p>
+                                        ) : (
+                                            <p className="text-xs text-emerald-500 mt-1">✓ Valid</p>
+                                        );
+                                    })()
                                 )}
                             </div>
                         </div>
