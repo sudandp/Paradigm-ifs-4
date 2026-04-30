@@ -5,7 +5,7 @@ import { CostAnalysisDocument } from '../attendance/PDFReports';
 import type { SubmissionCostBreakdown, VerificationCosts, VerificationCostSetting } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { DateRangePicker, type Range, type RangeKeyDict } from 'react-date-range';
-import { format, startOfToday, subDays } from 'date-fns';
+import { format, startOfToday, subDays, addDays } from 'date-fns';
 import { Loader2, Download, IndianRupee, Users, Settings, Save, ChevronDown, FileText, Plus, Trash2, Calendar } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import StatCard from '../../components/ui/StatCard';
@@ -278,7 +278,8 @@ const CostAnalysis: React.FC = () => {
                                     <DateRangePicker
                                         onChange={handleCustomDateChange}
                                         ranges={dateRange}
-                                        maxDate={new Date()}
+                                        maxDate={addDays(new Date(), 1)}
+                                        shownDate={dateRange[0].startDate || new Date()}
                                         direction="horizontal"
                                     />
                                 </div>

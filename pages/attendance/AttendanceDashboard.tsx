@@ -1100,29 +1100,43 @@ const AttendanceDashboard: React.FC = () => {
     const handleSetDateFilter = (filter: string) => {
         setPendingActiveDateFilter(filter);
         const today = new Date();
-        let startDate = startOfToday();
-        let endDate = endOfToday();
+        let startDate = startOfDay(today);
+        let endDate = endOfDay(today);
 
-        if (filter === 'This Month') {
-            startDate = startOfMonth(today);
-            endDate = endOfMonth(today);
-        } else if (filter === 'This Year') {
-            startDate = startOfYear(today);
-            endDate = endOfYear(today);
+        if (filter === 'Today') {
+            startDate = startOfDay(today);
+            endDate = endOfDay(today);
+        } else if (filter === 'Yesterday') {
+            const yesterday = subDays(today, 1);
+            startDate = startOfDay(yesterday);
+            endDate = endOfDay(yesterday);
         } else if (filter === 'Last 7 Days') {
-            startDate = subDays(today, 6);
+            startDate = startOfDay(subDays(today, 6));
+            endDate = endOfDay(today);
         } else if (filter === 'Last 30 Days') {
-            startDate = subDays(today, 29);
+            startDate = startOfDay(subDays(today, 29));
+            endDate = endOfDay(today);
+        } else if (filter === 'This Month') {
+            startDate = startOfMonth(today);
+            endDate = endOfDay(today); // Standard for 'This Month' is up to today
+        } else if (filter === 'Last Month') {
+            const lastMonth = subMonths(today, 1);
+            startDate = startOfMonth(lastMonth);
+            endDate = endOfMonth(lastMonth);
         } else if (filter === 'Last 3 Months') {
             startDate = startOfMonth(subMonths(today, 2));
-            endDate = endOfMonth(today);
+            endDate = endOfDay(today);
         } else if (filter === 'Last 6 Months') {
             startDate = startOfMonth(subMonths(today, 5));
-            endDate = endOfMonth(today);
+            endDate = endOfToday();
+        } else if (filter === 'This Year') {
+            startDate = startOfYear(today);
+            endDate = endOfDay(today);
         }
 
+        // Cap to today for future-reaching ranges
         if (endDate > today) {
-            endDate = today;
+            endDate = endOfDay(today);
         }
 
         setPendingDateRange({ startDate, endDate, key: 'selection' });
@@ -2467,7 +2481,7 @@ const AttendanceDashboard: React.FC = () => {
                 {/* Date Pills - Scrollable on mobile, with date picker outside scroll container to prevent clipping */}
                 <div className="relative" ref={datePickerRef}>
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
-                        {['Today', 'Last 7 Days', 'This Month', 'Last 3 Months', 'Last 6 Months'].map(filter => (
+                        {['Today', 'Yesterday', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => (
                             <Button
                                 key={filter}
                                 type="button"
@@ -2505,7 +2519,9 @@ const AttendanceDashboard: React.FC = () => {
                                 months={isSmallScreen ? 1 : 2}
                                 ranges={pendingDateRangeArray}
                                 direction="horizontal"
-                                maxDate={new Date()}
+                                maxDate={addDays(new Date(), 1)} // Allow selecting today even if timezone is tricky
+                                shownDate={pendingDateRange.startDate || new Date()}
+                                moveRangeOnFirstSelection={false}
                             />
                         </div>
                     )}

@@ -753,23 +753,50 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         
         if (punchInTime !== '—' && punchInTime > configStartTime) totalLateCount++;
 
+        let baseStatus = '';
         if (durationHours >= 5 || (!punchOut && punchIn)) {
-          status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
-        } else if (durationHours > 1) {
-          status = '1/2P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
+          baseStatus = 'P';
         } else {
-          status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
+          baseStatus = '0.5P';
+        }
+
+        const isHalfDayLeave = dayLeave && dayLeave.day_option === 'half';
+        
+        if (baseStatus === '0.5P' && isHalfDayLeave) {
+          const leaveType = dayLeave.leave_type?.toLowerCase() || '';
+          let code = 'EL';
+          if (leaveType.includes('sick')) code = 'SL';
+          else if (leaveType.includes('comp') || leaveType.includes('c/o')) code = 'CO';
+          else if (leaveType.includes('casual')) code = 'CL';
+          
+          status = `0.5P+0.5 ${code}`;
+          color = '#2563eb';
+          cellBg = '#f5f3ff';
+          countHalfP++;
+          totalPresentCount += 0.5;
+          userPaidLeave += 0.5;
+        } else {
+          status = baseStatus;
+          color = baseStatus === 'P' ? '#16a34a' : '#d97706';
+          cellBg = baseStatus === 'P' ? '#f0fdf4' : '#fffbeb';
+          if (baseStatus === 'P') {
+            countP++;
+            totalPresentCount++;
+          } else {
+            countHalfP++;
+            totalPresentCount += 0.5;
+          }
         }
       } else if (dayLeave) {
         const isHalfDay = dayLeave.day_option === 'half';
         const leaveType = dayLeave.leave_type?.toLowerCase() || '';
         if (leaveType === 'loss of pay' || leaveType === 'lop') {
-          status = isHalfDay ? '1/2A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
+          status = isHalfDay ? '0.5A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
         } else {
-          if (leaveType.includes('sick')) { status = isHalfDay ? '1/2SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
-          else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '1/2EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
-          else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '1/2CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
-          else { status = isHalfDay ? '1/2L' : 'L'; cellBg = '#eff6ff'; }
+          if (leaveType.includes('sick')) { status = isHalfDay ? '0.5SL' : 'SL'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
+          else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '0.5EL' : 'EL'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
+          else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '0.5CO' : 'CO'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
+          else { status = isHalfDay ? '0.5L' : 'L'; cellBg = '#eff6ff'; }
           color = '#2563eb';
           userPaidLeave += isHalfDay ? 0.5 : 1;
         }

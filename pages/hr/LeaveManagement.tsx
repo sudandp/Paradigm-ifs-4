@@ -6,7 +6,7 @@ import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft,
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { format, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
+import { format, startOfDay, endOfDay, subDays, subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import Select from '../../components/ui/Select';
@@ -416,30 +416,30 @@ const LeaveManagement: React.FC = () => {
     const handleApplyPreset = (preset: string) => {
         setActivePreset(preset);
         const today = new Date();
-        let start: Date | null = null;
-        let end: Date | null = new Date();
+        let start: Date | null = startOfDay(today);
+        let end: Date | null = endOfDay(today);
 
         switch (preset) {
             case 'Today':
-                start = today;
-                end = today;
+                start = startOfDay(today);
+                end = endOfDay(today);
                 break;
             case 'Yesterday':
-                start = subDays(today, 1);
-                end = subDays(today, 1);
+                start = startOfDay(subDays(today, 1));
+                end = endOfDay(subDays(today, 1));
                 break;
             case 'This Month':
                 start = startOfMonth(today);
-                end = endOfMonth(today);
+                end = endOfDay(today);
                 break;
             case 'Last Month':
-                const lastMonth = subDays(startOfMonth(today), 1);
+                const lastMonth = subMonths(today, 1);
                 start = startOfMonth(lastMonth);
                 end = endOfMonth(lastMonth);
                 break;
             case 'This Year':
                 start = startOfYear(today);
-                end = endOfYear(today);
+                end = endOfDay(today);
                 break;
             case 'All Time':
                 start = null;
@@ -449,8 +449,8 @@ const LeaveManagement: React.FC = () => {
                 return;
         }
 
-        setStartDate(start ? format(start, 'yyyy-MM-dd') : '');
-        setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
+        setStartDate(start ? start.toISOString() : '');
+        setEndDate(end ? end.toISOString() : '');
     };
 
     const fetchAllForExport = async (statusFilter: LeaveRequestStatus | 'all'): Promise<LeaveRequest[]> => {

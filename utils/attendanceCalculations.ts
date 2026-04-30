@@ -538,11 +538,11 @@ export function evaluateAttendanceStatus(params: {
       }
 
       if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'W/H';
-      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
-      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
-      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
+      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'SL';
+      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'CO';
+      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'CL';
       if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
-      return prefix + 'E/L';
+      return prefix + 'EL';
   };
 
   // 4. Status Determination logic
@@ -616,8 +616,8 @@ export function evaluateAttendanceStatus(params: {
           const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
           
           if (isPartialWork && isHalfDayLeave) {
-              // Instead of 1/2P+1/2E/L which breaks formatting, we represent half day present + half day leave as 0.5P
-              status = '0.5P';
+              const code = getLeaveCode(approvedLeave).replace('1/2', ''); 
+              status = `0.5P+0.5 ${code}`;
           } else {
               if (isWFH) status = 'W/H';
               // Priority 2: Explicit Holidays

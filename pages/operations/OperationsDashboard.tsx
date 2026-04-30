@@ -129,6 +129,8 @@ const OperationsDashboard: React.FC = () => {
                                     months={1}
                                     ranges={dateRange}
                                     direction="horizontal"
+                                    maxDate={addDays(new Date(), 1)}
+                                    shownDate={dateRange[0].startDate || new Date()}
                                 />
                             </div>
                         )}
