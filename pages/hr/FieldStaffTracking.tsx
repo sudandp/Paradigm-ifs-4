@@ -23,6 +23,10 @@ const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): st
         const fieldLabels: Record<string, string> = {
             'punch-in': 'Check-In',
             'punch-out': 'Check-Out',
+            'site-in': 'Site Entry',
+            'site-out': 'Site Exit',
+            'site-ot-in': 'Site OT Start',
+            'site-ot-out': 'Site OT End',
             'break-in': 'Break-In',
             'break-out': 'Break-Out',
         };
@@ -40,8 +44,12 @@ const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): st
 const getEventColor = (type: string) => {
     switch (type) {
         case 'punch-in': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
-        case 'punch-out': return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
-        case 'break-in': return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+        case 'punch-out': return 'text-rose-500 bg-rose-500/10 border-rose-500/20';
+        case 'site-in': return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+        case 'site-out': return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
+        case 'site-ot-in': return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+        case 'site-ot-out': return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
+        case 'break-in': return 'text-sky-500 bg-sky-500/10 border-sky-500/20';
         case 'break-out': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
         default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
@@ -417,25 +425,33 @@ const MapView: React.FC<{
             style={{ height: '600px', borderRadius: '4px' }}
         >
             <div ref={mapContainerRef} className="h-full w-full grayscale-[0.2] contrast-[1.1]" />
-            <div className="absolute top-4 left-4 z-[400] bg-slate-900/80 backdrop-blur-md px-3 py-1.5 border border-white/10 flex items-center gap-2">
+            <div className="absolute top-4 right-4 z-[400] bg-slate-900/80 backdrop-blur-md px-3 py-1.5 border border-white/10 flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-[10px] font-bold text-white tracking-widest uppercase">Live Oversight Active</span>
             </div>
 
-            <div className="absolute bottom-4 right-4 z-[400] bg-slate-900/80 backdrop-blur-md p-3 border border-white/10 rounded-sm flex flex-col gap-2">
+            <div className="absolute bottom-4 right-4 z-[400] bg-slate-900/80 backdrop-blur-md p-3 border border-white/10 rounded-sm flex flex-col gap-2 min-w-[140px]">
                 <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Active Check-In</span>
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Punch In</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-amber-500" />
-                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Late Signal</span>
+                    <div className="h-2 w-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
+                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Punch Out</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Site Entry</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                    <span className="text-[9px] font-bold text-white uppercase tracking-widest">Site OT</span>
                 </div>
             </div>
 
-            {/* Floating Detailed Metadata Card (Top Right Overlay) */}
+            {/* Floating Detailed Metadata Card (Top Left Overlay) */}
             {selectedUser !== 'all' && (
-                <div className="absolute top-4 right-4 z-[1000] w-80 pointer-events-none">
+                <div className="absolute top-4 left-4 z-[1000] w-80 pointer-events-none">
                     <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200 rounded-sm shadow-2xl pointer-events-auto">
                         <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
                             <div className="flex flex-col">
@@ -770,7 +786,13 @@ const RouteView: React.FC<{
 
         userEvents.forEach((e) => {
             const pos: L.LatLngTuple = [e.latitude as number, e.longitude as number];
-            const color = e.type === 'punch-in' ? '#10B981' : e.type === 'punch-out' ? '#EF4444' : '#F59E0B';
+            const color = e.type === 'punch-in' ? '#10B981' 
+                        : e.type === 'punch-out' ? '#EF4444' 
+                        : e.type === 'site-in' ? '#3B82F6' 
+                        : e.type === 'site-out' ? '#64748B'
+                        : e.type === 'site-ot-in' ? '#F59E0B'
+                        : e.type === 'site-ot-out' ? '#EA580C'
+                        : '#94A3B8';
             const icon = L.divIcon({
                 className: '',
                 html: `<div class="w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center" style="background-color: ${color}; color: white">
@@ -827,9 +849,9 @@ const RouteView: React.FC<{
                 </div>
             )}
 
-            {/* Floating Detailed Metadata Card (Top Right Overlay) */}
+            {/* Floating Detailed Metadata Card (Top Left Overlay) */}
             {selectedUser !== 'all' && (
-                <div className="absolute top-4 right-4 z-[1000] w-80 pointer-events-none">
+                <div className="absolute top-4 left-4 z-[1000] w-80 pointer-events-none">
                     <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200 rounded-sm shadow-2xl pointer-events-auto">
                         <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
                             <div className="flex flex-col">
@@ -948,9 +970,9 @@ const RouteView: React.FC<{
                 </div>
             )}
 
-            <div className="absolute bottom-4 left-4 z-[400] bg-slate-900/90 backdrop-blur-md p-3 border border-white/10 rounded-sm shadow-2xl min-w-[150px]">
+            <div className="absolute bottom-4 left-4 z-[400] bg-slate-900/90 backdrop-blur-md p-3 border border-white/10 rounded-sm shadow-2xl min-w-[160px]">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 border-b border-white/5 pb-1">Signal Protocol</p>
-                <div className="space-y-2.5">
+                <div className="grid grid-cols-1 gap-2.5">
                     <div className="flex items-center gap-3">
                         <div className="h-3 w-3 rounded-full bg-emerald-500 border-2 border-white shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Punch In</span>
@@ -960,12 +982,16 @@ const RouteView: React.FC<{
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Punch Out</span>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="h-1 w-6 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
-                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Movement Path</span>
+                        <div className="h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Site In/Out</span>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="h-3 w-3 rounded-full bg-amber-500 border-2 border-white shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
-                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Misc Signal</span>
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Site OT</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="h-1 w-6 bg-indigo-500/50 rounded-full border border-indigo-400/30" />
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Movement Path</span>
                     </div>
                 </div>
             </div>
