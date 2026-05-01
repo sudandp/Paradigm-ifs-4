@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { format, startOfDay } from 'date-fns';
+import { FIXED_HOLIDAYS } from './constants';
 
 const IST_OFFSET = 5.5 * 60 * 60 * 1000;
 
@@ -231,7 +232,7 @@ export const reportGenerators = {
         const dateStr = getISTDateString(currentDate);
         const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(new Date(e.timestamp)) === dateStr);
         const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
-        const isPublicHoliday = holidays.find(h => h.date === dateStr);
+        const isPublicHoliday = holidays.find(h => h.date === dateStr) || FIXED_HOLIDAYS.some(fh => dateStr.endsWith('-' + fh.date));
 
         let status = 'A';
         let color = '#dc2626';

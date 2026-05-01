@@ -3,6 +3,7 @@
 import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter } from 'date-fns';
 import type { AttendanceEvent, DailyAttendanceStatus } from '../types';
 import { getFieldStaffStatus } from './fieldStaffTracking';
+import { FIXED_HOLIDAYS } from './constants';
 
 /**
  * Calculate total hours between two timestamps
@@ -500,7 +501,13 @@ export function evaluateAttendanceStatus(params: {
       } catch (e) { return false; }
   });
 
-  isHoliday = isConfiguredHoliday || isPoolHoliday || isRecurringHoliday;
+  // Fixed Holidays (National/Fixed dates)
+  const isFixedHoliday = (FIXED_HOLIDAYS || []).some(h => {
+      const compareMMDD = format(day, 'MM-dd');
+      return h.date === compareMMDD;
+  });
+
+  isHoliday = isConfiguredHoliday || isPoolHoliday || isRecurringHoliday || isFixedHoliday;
 
   // 3. Resolve Leaves
   const approvedLeave = leaves?.find(l => {
@@ -639,8 +646,8 @@ export function evaluateAttendanceStatus(params: {
       // unless specifically marked as Loss of Pay.
       status = getLeaveCode(approvedLeave);
   } else {
-      if (isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
-          status = isEligible ? 'H' : 'A';
+      if (isHoliday) {
+          status = (isEligible || isFixedHoliday) ? 'H' : 'A';
       } else if (isWeekend && isEligible) {
           status = 'W/O';
       } else {

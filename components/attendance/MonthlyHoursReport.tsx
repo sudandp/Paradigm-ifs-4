@@ -236,7 +236,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const isConfiguredHolidayCheck = (category === 'field' ? (rules?.fieldHolidays || []) : (rules?.officeHolidays || [])).some((h: any) => {
             const hVal = String(h.date).split(' ')[0].split('T')[0];
             return hVal === dateStrStr;
-        });
+        }) || FIXED_HOLIDAYS.some(fh => dateStrStr.endsWith('-' + fh.date));
         const hasApprovedLeaveCheck = allLeaves.some(l => 
             String(l.userId) === String(user.id) &&
             isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
