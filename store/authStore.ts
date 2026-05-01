@@ -91,6 +91,30 @@ const getActionTextForType = (type: string, workType?: string): string => {
     }
 };
 
+const TECHNICAL_ROLE_KEYWORDS = [
+    'technical',
+    'technician',
+    'reliever',
+    'electrician',
+    'plumber',
+    'carpenter',
+    'hvac',
+    'multitech',
+    'maintenance'
+];
+
+const isTechnicalAttendanceRole = (role?: string | null) => {
+    const normalized = (role || '').toLowerCase();
+    return TECHNICAL_ROLE_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
+
+const getLocalDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 interface AuthState {
     user: User | null;
     isCheckedIn: boolean;
@@ -564,9 +588,9 @@ export const useAuthStore = create<AuthState>()(
                 // Site staff = roles explicitly in site mapping AND not in office/field
                 const isSiteStaffRole = (roleMapping.site || []).includes(user.role) &&
                     !officeRoles.includes(user.role) && !fieldRoles.includes(user.role);
-                const isTechnicalReliever = user.role?.toLowerCase() === 'technical_reliever';
-                // Technical relievers need 48h lookback to detect unclosed previous-day sessions
-                const siteShiftLookbackMs = isTechnicalReliever ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
+                const isTechnicalRole = isTechnicalAttendanceRole(user.role) || isTechnicalAttendanceRole(user.roleId);
+                // Technical roles need a longer lookback because OT/site work can cross midnight.
+                const siteShiftLookbackMs = isTechnicalRole ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
                     : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
@@ -636,8 +660,8 @@ export const useAuthStore = create<AuthState>()(
                 let hasPreviousDayOpenSession = false;
                 let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
 
-                if (isTechnicalReliever && lastEvent) {
-                    const todayDateStr = today.toISOString().split('T')[0];
+                if (isTechnicalRole && lastEvent) {
+                    const todayDateStr = getLocalDateKey(today);
                     const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
                     
                     if (isStillOpen) {
@@ -654,7 +678,7 @@ export const useAuthStore = create<AuthState>()(
                         const firstActiveEvent = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
                         
                         if (firstActiveEvent) {
-                            const sessionDateStr = new Date(firstActiveEvent.timestamp).toISOString().split('T')[0];
+                            const sessionDateStr = getLocalDateKey(new Date(firstActiveEvent.timestamp));
                             if (sessionDateStr < todayDateStr) {
                                 hasPreviousDayOpenSession = true;
                                 previousDaySessionInfo = {
@@ -668,7 +692,7 @@ export const useAuthStore = create<AuthState>()(
                 }
 
                 set({
-                    isCheckedIn: currentlyCheckedIn,
+                    isCheckedIn: currentlyCheckedIn || (isTechnicalRole && isSiteOtCheckedIn),
                     isOnBreak: isOnBreak,
                     lastCheckInTime: checkIn,
                     lastCheckOutTime: lastEvent?.type === 'punch-out' ? checkOut : null,

@@ -406,8 +406,8 @@ const App: React.FC = () => {
       if (canGoBack) {
         window.history.back();
       } else {
-        const { isCheckedIn, isFieldCheckedIn } = useAuthStore.getState();
-        if (isCheckedIn || isFieldCheckedIn) {
+        const { isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore.getState();
+        if (isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn) {
           const proceed = window.confirm(
             "⚠️ IMPORTANT WARNING ⚠️\n\n" +
             "You are currently clocked in. For accurate attendance and salary calculation, the app must remain open in the background.\n\n" +
@@ -430,8 +430,8 @@ const App: React.FC = () => {
     if (!Capacitor.isNativePlatform()) return;
     const handler = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
-        const { isCheckedIn, isFieldCheckedIn } = useAuthStore.getState();
-        if (isCheckedIn || isFieldCheckedIn) {
+        const { isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore.getState();
+        if (isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn) {
           try {
             const { Geolocation } = await import('@capacitor/geolocation');
             const permissions = await Geolocation.checkPermissions();

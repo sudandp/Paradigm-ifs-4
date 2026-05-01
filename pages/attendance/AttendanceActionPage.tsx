@@ -36,7 +36,7 @@ const AttendanceActionPage: React.FC = () => {
     const isBreakIn = location.pathname.includes('break-in');
     const isBreakOut = location.pathname.includes('break-out');
     
-    const actionParam = query.get('action');
+    const actionParam = query.get('action') || query.get('forcedType');
     
     let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : 'Punch In') : (workType === 'field' ? 'Site Check Out' : 'Punch Out');
     if (isBreakIn) action = 'Break In';
@@ -65,7 +65,7 @@ const AttendanceActionPage: React.FC = () => {
             // Use cached geofencing settings for immediate response
             const settings = geofencingSettings || { enabled: false };
             
-            if (!isCheckIn && !isBreakIn && !isBreakOut && settings.enabled) {
+            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled) {
                 // If checking out and geofencing is enabled, open the report modal first
                 setIsReportModalOpen(true);
                 setIsSubmitting(false);

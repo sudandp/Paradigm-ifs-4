@@ -6,6 +6,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const TECHNICAL_ROLE_KEYWORDS = [
+  'technical',
+  'technician',
+  'reliever',
+  'electrician',
+  'plumber',
+  'carpenter',
+  'hvac',
+  'multitech',
+  'maintenance',
+];
+
+const isTechnicalAttendanceRole = (role?: string | null) => {
+  const normalized = (role || '').toLowerCase();
+  return TECHNICAL_ROLE_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -179,17 +196,16 @@ Deno.serve(async (req: Request) => {
             const eventDate = new Date(lastEvent.timestamp);
             const hoursDiff = (now.getTime() - eventDate.getTime()) / (1000 * 60 * 60);
 
-            // TECHNICAL RELIEVER: Skip auto-checkout entirely.
-            // They work extended/cross-day OT shifts and must close sessions manually.
+            // Technical roles work extended/cross-day OT shifts and must close sessions manually.
             // If they forget, they must apply for correction via the app.
             const userRole = user.role_id?.toLowerCase();
-            if (userRole === 'technical_reliever') {
-                console.log(`[${group}] Skipped auto-checkout for ${user.name} (technical_reliever) — session left open for manual close or correction.`);
+            if (isTechnicalAttendanceRole(userRole)) {
+                console.log(`[${group}] Skipped auto-checkout for ${user.name} (${userRole}) - session left open for manual close or correction.`);
                 
                 // Notify employee about open session
                 await supabaseClient.from('notifications').insert({
                     user_id: user.id,
-                    message: `⚠️ You have an open attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. Please close it (Site OT Out → Punch Out) or apply for a correction.`,
+                    message: `You have an open attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. Please close it (Site OT Out -> Punch Out) or apply for a correction.`,
                     type: 'warning',
                     is_read: false
                 });
@@ -204,7 +220,7 @@ Deno.serve(async (req: Request) => {
                 if (userData?.reporting_manager_id) {
                     await supabaseClient.from('notifications').insert({
                         user_id: userData.reporting_manager_id,
-                        message: `⚠️ ${userData.name} (Technical Reliever) has an unclosed attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. They need to close it or submit a correction.`,
+                        message: `${userData.name} (${userRole}) has an unclosed attendance session from ${new Date(lastEvent.timestamp).toLocaleDateString('en-IN')}. They need to close it or submit a correction.`,
                         type: 'warning',
                         is_read: false
                     });
@@ -216,14 +232,14 @@ Deno.serve(async (req: Request) => {
                     performed_by: null,
                     target_user_id: user.id,
                     details: {
-                        message: `Auto-checkout skipped for ${user.name} (technical_reliever). Session still open.`,
+                        message: `Auto-checkout skipped for ${user.name} (${userRole}). Session still open.`,
                         original_event: lastEvent.type,
                         original_timestamp: lastEvent.timestamp,
                         hours_open: hoursDiff.toFixed(1)
                     }
                 });
 
-                groupProcessedUsers.push(`${user.name} (SKIPPED - technical_reliever)`);
+                groupProcessedUsers.push(`${user.name} (SKIPPED - ${userRole})`);
                 continue; // Skip auto-checkout for this user
             }
 

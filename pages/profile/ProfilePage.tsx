@@ -36,6 +36,22 @@ const profileValidationSchema = yup.object({
 
 type ProfileFormData = Pick<User, 'name' | 'email' | 'phone' | 'gender'>;
 
+const TECHNICAL_ROLE_KEYWORDS = [
+    'technical',
+    'technician',
+    'reliever',
+    'electrician',
+    'plumber',
+    'carpenter',
+    'hvac',
+    'multitech',
+    'maintenance'
+];
+
+const isTechnicalAttendanceRole = (role?: string | null) => {
+    const normalized = (role || '').toLowerCase();
+    return TECHNICAL_ROLE_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
 
 // --- Main Component ---
 const ProfilePage: React.FC = () => {
@@ -105,13 +121,13 @@ const ProfilePage: React.FC = () => {
     const approvedUnlockCount = useAuthStore(s => s.approvedUnlockCount);
     
     // Blocked if: Punched Today AND Not Currently Checked In (office or field) AND Not Unlocked
-    const isPunchBlocked = hasPunchedToday && !isCheckedIn && !isFieldCheckedIn && !isPunchUnlocked;
+    const isPunchBlocked = hasPunchedToday && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
     // Combined check-in state: true if user is checked in via either office or field
-    const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn;
+    const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
     // Is the next unlock request for OT? (1st request = duty, 2nd+ = OT)
     const isNextRequestOT = dailyUnlockRequestCount >= 1;
-    // Technical Reliever: has an open session from a previous day
-    const isTechnicalReliever = user?.role?.toLowerCase() === 'technical_reliever';
+    // Technical roles can carry OT/site sessions across midnight.
+    const isTechnicalReliever = isTechnicalAttendanceRole(user?.role) || isTechnicalAttendanceRole(user?.roleId);
 
     const punchHintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const breakHintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -127,7 +143,7 @@ const ProfilePage: React.FC = () => {
         ]
     };
     
-    const isSiteStaffRole = (roleMapping.site || []).includes(user?.role || '') || user?.role === 'technical_reliever';
+    const isSiteStaffRole = (roleMapping.site || []).includes(user?.role || '') || isTechnicalReliever;
     const isFieldStaffRole = (roleMapping.field || []).includes(user?.role || '');
     const isOfficeStaffRole = (roleMapping.office || []).includes(user?.role || '');
 
