@@ -22,6 +22,7 @@ interface AttendanceCalendarProps {
     recurringHolidays: RecurringHolidayRule[];
     isLoading?: boolean;
     onMonthPaydaysChange?: (payDays: number) => void;
+    onSiteOtDaysChange?: (otDays: number) => void;
 }
 
 const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ 
@@ -33,7 +34,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     settings,
     recurringHolidays,
     isLoading = false,
-    onMonthPaydaysChange
+    onMonthPaydaysChange,
+    onSiteOtDaysChange
 }) => {
     const { user } = useAuthStore();
 
@@ -117,11 +119,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     // PRE-CALCULATE STATUS MAP FOR THE MONTH (WITH BUFFER)
     const dayStatusMap = useMemo(() => {
-        const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number }>();
+        const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number; isSiteOtPresent: boolean }>();
         if (!settings || !user) return statusMap;
 
         const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
-        const threshold = (settings as any)?.[staffCategory]?.weekendPresentThreshold ?? 3;
+        const threshold = (settings as any)?.[staffCategory]?.weekendPresentThreshold ?? 2;
         
         // Start buffer to seed counters
         const bufferStart = startOfWeek(subDays(startOfMonth(currentDate), 15), { weekStartsOn: 1 });
@@ -150,11 +152,18 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             }
 
             const dayEvents = eventsByGroup[dateStr] || [];
-            const hasCheckIn = dayEvents.some(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'));
-            const hasCheckOut = dayEvents.some(e => e.type.toLowerCase().includes('out'));
+            const hasCheckIn = dayEvents.some(e => ['punch-in', 'site-in', 'check-in'].includes(e.type.toLowerCase()));
+            const hasCheckOut = dayEvents.some(e => ['punch-out', 'site-out', 'check-out'].includes(e.type.toLowerCase()));
+            const hasOtPunchIn = dayEvents.some(e => e.type === 'site-ot-in');
+            const hasOtPunchOut = dayEvents.some(e => e.type === 'site-ot-out');
+            
             const isToday = isSameDay(day, startOfDay(new Date()));
             const isPast = isAfter(startOfDay(new Date()), startOfDay(day));
+            
+            // Normal Duty Status
             const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
+            // Site OT Status
+            const isSiteOtPresent = hasOtPunchIn && (hasOtPunchOut || isToday);
 
             const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, day));
             const isFloatingExpired = !isFloatingHolidayValid(dateStr);
@@ -187,17 +196,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             let finalStatus = 'neutral';
             let presenceVal = 0;
 
-            // For future dates, assume threshold is met for visual planning purposes
-            const isFuture = !isPast && !isToday;
-            const visuallyActivePrev = isFuture || isActiveInPreviousWeek;
-            const visuallyActiveCurr = isFuture || meetsThreshold;
+            // Remove future assumptions - strictly follow activity threshold
+            const visuallyActivePrev = (daysPresentInPreviousWeek >= threshold);
+            const visuallyActiveCurr = (daysActiveInWeek >= threshold);
 
             if (isDetailedPresent) {
-                if (isSunday || isCompanyHoliday || (isRecurringHoliday && !isFloatingExpired)) {
-                    finalStatus = 'holiday-present';
-                } else {
-                    finalStatus = 'present';
-                }
+                // User requested: if worked, show as P (present) even on Sundays/Holidays
+                finalStatus = 'present';
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isRecurringHoliday && !isFloatingExpired) {
@@ -205,7 +210,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (isCompanyHoliday) {
                 finalStatus = visuallyActivePrev ? 'company-holiday' : (isPast ? 'absent' : 'neutral');
             } else if (isSunday) {
-                finalStatus = visuallyActiveCurr ? 'sunday' : (isPast ? 'absent' : 'neutral');
+                finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
             } else if (isPast) {
                 finalStatus = 'absent';
             }
@@ -226,7 +231,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 }
             }
 
-            statusMap.set(dateStr, { status: finalStatus, holidayName, presenceVal });
+            statusMap.set(dateStr, { status: finalStatus, holidayName, presenceVal, isSiteOtPresent });
         });
 
         return statusMap;
@@ -234,7 +239,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const getDayStatus = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '' };
+        return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '', presenceVal: 0, isSiteOtPresent: false };
     };
 
     const getStatusColor = (status: string) => {
@@ -253,23 +258,26 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const startDay = getDay(startOfMonth(currentDate)); // 0-6
 
-    // Calculate Payable days for the current month view
-    const monthlyPaydaysCount = useMemo(() => {
+    // Calculate Payable days and Site OT days for the current month view
+    const { monthlyPaydaysCount, monthlySiteOtCount } = useMemo(() => {
         let count = 0;
+        let otCount = 0;
         const today = startOfDay(new Date());
 
         daysInMonth.forEach(date => {
-            if (!isBefore(startOfDay(date), today)) return; // Only count days that have fully passed
+            if (!isBefore(startOfDay(date), today)) return; 
 
+            const dateKey = format(date, 'yyyy-MM-dd');
+            const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+            const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
+            
+            // Normal Duty Check
             const res = getDayStatus(date);
             const status = res.status;
             
+            let normalPay = 0;
             if (['present', 'holiday-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
-                // For 'present', we should still check if it's a half day in actual events
                 if (status === 'present') {
-                    const dateKey = format(date, 'yyyy-MM-dd');
-                    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
-                    const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
                     const { workingHours } = calculateWorkingHours(dayEvents, date);
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
@@ -282,41 +290,54 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     });
 
                     if (relevantLeave && relevantLeave.leaveType === 'Correction') {
-                        count += 1;
+                        normalPay = 1;
                     } else if (relevantLeave && relevantLeave.dayOption === 'half') {
-                        count += 1; // Half leave + present half = 1 day
+                        normalPay = 1; 
                     } else {
-                        count += (workingHours >= shiftThreshold) ? 1 : 0.5;
+                        normalPay = (workingHours >= shiftThreshold) ? 1 : 0.5;
                     }
                 } else {
-                    count += 1;
+                    normalPay = 1;
                 }
             } else if (status === 'leave') {
-                const dateStr = format(date, 'yyyy-MM-dd');
                 const leaveReq = leaveRequests?.find(req => {
                     return date >= startOfDay(new Date(req.startDate.replace(/-/g, '/'))) && date <= endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                 });
                 
                 if (leaveReq && leaveReq.leaveType === 'Correction' && leaveReq.status === 'correction_made') {
-                    count += 1;
+                    normalPay = 1;
                 } else if (leaveReq && leaveReq.leaveType !== 'Loss of Pay') {
-                    count += (leaveReq.dayOption === 'half') ? 0.5 : 1;
-                    // If half day leave, check if they worked the other half
+                    normalPay = (leaveReq.dayOption === 'half') ? 0.5 : 1;
                     if (leaveReq.dayOption === 'half') {
-                        const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
-                        if (dayEvents.length > 0) count += 0.5;
+                        const hasWork = dayEvents.some(e => ['punch-in', 'site-in', 'check-in'].includes(e.type.toLowerCase()));
+                        if (hasWork) normalPay += 0.5;
                     }
                 }
             }
+
+            // Site OT Check
+            const hasOtIn = dayEvents.some(e => e.type === 'site-ot-in');
+            const hasOtOut = dayEvents.some(e => e.type === 'site-ot-out');
+            const isToday = isSameDay(date, startOfDay(new Date()));
+            const isSiteOt = hasOtIn && (hasOtOut || isToday);
+            
+            if (isSiteOt) {
+                otCount += 1;
+            }
+
+            count += normalPay + (isSiteOt ? 1 : 0);
         });
-        return count;
+        return { monthlyPaydaysCount: count, monthlySiteOtCount: otCount };
     }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests]);
 
     useEffect(() => {
         if (onMonthPaydaysChange) {
             onMonthPaydaysChange(monthlyPaydaysCount);
         }
-    }, [monthlyPaydaysCount, onMonthPaydaysChange]);
+        if (onSiteOtDaysChange) {
+            onSiteOtDaysChange(monthlySiteOtCount);
+        }
+    }, [monthlyPaydaysCount, monthlySiteOtCount, onMonthPaydaysChange, onSiteOtDaysChange]);
 
 
     return (
@@ -344,6 +365,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         const holidayInfo = getDayStatus(date);
                         const status = typeof holidayInfo === 'string' ? holidayInfo : holidayInfo.status;
                         const holidayName = typeof holidayInfo === 'string' ? '' : holidayInfo.holidayName;
+                        const isSiteOtPresent = typeof holidayInfo === 'string' ? false : holidayInfo.isSiteOtPresent;
                         const colorClass = getStatusColor(status);
                         
                         const isToday = isSameDay(date, startOfDay(new Date()));
@@ -435,10 +457,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 <span className={`font-bold leading-none ${overlayText ? 'text-[11px] mb-[2px]' : 'text-xs'}`}>
                                     {format(date, 'd')}
                                 </span>
-                                {overlayText && (
+                                 {overlayText && (
                                     <span className={`text-[9px] font-black leading-none text-white drop-shadow-md`}>
                                         {overlayText}
                                     </span>
+                                )}
+                                {isSiteOtPresent && (
+                                    <div className="absolute top-[2px] right-[2px] w-[11px] h-[11px] bg-amber-400 rounded-full border border-white shadow-sm flex items-center justify-center overflow-hidden z-20" title="Site OT Performed">
+                                        <span className="text-[6px] text-white font-black leading-none">OT</span>
+                                    </div>
                                 )}
                                 {holidayName && (
                                     <div className="absolute bottom-[-35px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-lg">
@@ -460,6 +487,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Float</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> C.O</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div> WH</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-400 rounded-full border border-white/20 shadow-sm flex-shrink-0"></div> Site OT</div>
             </div>
         </div>
     );

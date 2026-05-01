@@ -43,19 +43,25 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
 
     /** Calculate hours-based OT (working > threshold in a day, subtracting breaks) */
     const getDailyOT = (date: Date) => {
-        const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+        const dateKey = format(date, 'yyyy-MM-dd');
+        const dayEvents = events.filter(e => {
+            const eDate = new Date(e.timestamp);
+            return isSameDay(eDate, date);
+        });
 
-        if (dayEvents.length === 0) return { hoursOT: 0, hasOtPunch: false };
+        if (dayEvents.length === 0) return { hoursOT: 0, hasOtPunch: false, isSiteOt: false };
 
         const { workingHours } = calculateWorkingHours(dayEvents, date);
         const hasOtPunch = dayEvents.some(e => e.type === 'punch-in' && e.isOt);
+        const isSiteOt = dayEvents.some(e => e.type === 'site-ot-in') && (dayEvents.some(e => e.type === 'site-ot-out') || isSameDay(date, new Date()));
 
         const otMinutes = Math.max(0, (workingHours * 60) - (threshold * 60));
         
         return { 
             hoursOT: Math.floor(otMinutes / 60), 
             minutesOT: Math.round(otMinutes % 60), 
-            hasOtPunch 
+            hasOtPunch,
+            isSiteOt
         };
     };
 
@@ -69,13 +75,15 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
     // Calculate monthly summary from events to ensure UI consistency
     const monthlySummary = useMemo(() => {
         let totalMins = 0;
+        let siteOtDays = 0;
         const processedDays = new Set<string>();
 
         events.forEach(event => {
             const dateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
             if (!processedDays.has(dateStr)) {
-                const { hoursOT, minutesOT } = getDailyOT(new Date(event.timestamp));
+                const { hoursOT, minutesOT, isSiteOt } = getDailyOT(new Date(event.timestamp));
                 totalMins += (hoursOT * 60) + minutesOT;
+                if (isSiteOt) siteOtDays += 1;
                 processedDays.add(dateStr);
             }
         });
@@ -83,7 +91,8 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
         return {
             h: Math.floor(totalMins / 60),
             m: totalMins % 60,
-            totalMins
+            totalMins,
+            siteOtDays
         };
     }, [events, threshold]);
 
@@ -114,33 +123,41 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                         <div key={`empty-${i}`} className="h-7" />
                     ))}
                     {daysInMonth.map(date => {
-                        const { hoursOT, minutesOT, hasOtPunch } = getDailyOT(date);
+                        const { hoursOT, minutesOT, hasOtPunch, isSiteOt } = getDailyOT(date);
                         const hasHoursOT = hoursOT + minutesOT > 0;
 
-                        const bgClass = hasOtPunch 
+                        const bgClass = isSiteOt
                             ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-                            : hasHoursOT 
-                                ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                                : 'bg-gray-50 text-gray-400 border-gray-100';
+                            : hasOtPunch 
+                                ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
+                                : hasHoursOT 
+                                    ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
+                                    : 'bg-gray-50 text-gray-400 border-gray-100';
 
                         return (
                             <div key={date.toISOString()} className={`h-7 rounded flex flex-col items-center justify-center transition-colors ${bgClass}`}>
                                 <span className="text-[10px] font-bold">{format(date, 'd')}</span>
-                                {hoursOT + minutesOT > 0 && (
+                                {hasHoursOT && (
                                     <span className="text-[8px] font-bold">
                                         {formatOT(hoursOT, minutesOT)}
                                     </span>
                                 )}
-                                {hasOtPunch && !hasHoursOT && <span className="text-[7px] font-bold">OT</span>}
+                                {(hasOtPunch || isSiteOt) && !hasHoursOT && <span className="text-[7px] font-bold">P</span>}
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between flex-shrink-0">
-                <span className="text-[10px] text-muted font-medium">Monthly Total</span>
-                <span className="text-xs font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>
+            <div className="mt-4 pt-3 border-t border-border flex flex-col gap-1 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted font-medium">Monthly Total</span>
+                    <span className="text-xs font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>
+                </div>
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted font-medium">Site OT Days</span>
+                    <span className="text-xs font-bold text-accent-dark">{monthlySummary.siteOtDays} Days</span>
+                </div>
             </div>
         </div>
     );

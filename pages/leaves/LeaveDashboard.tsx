@@ -13,7 +13,7 @@ import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
-import { calculateWorkingHours, getStaffCategory } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalculations';
 import DatePicker from '../../components/ui/DatePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -184,6 +184,12 @@ const LeaveDashboard: React.FC = () => {
                         catRules.enableCustomHolidays = true;
                         needsUpdate = true;
                     }
+
+                    // Enforce 2-day activity rule for Week Offs
+                    if (catRules.weekendPresentThreshold !== 2) {
+                        catRules.weekendPresentThreshold = 2;
+                        needsUpdate = true;
+                    }
                 });
 
                 if (needsUpdate) {
@@ -205,6 +211,7 @@ const LeaveDashboard: React.FC = () => {
     const [viewingDate, setViewingDate] = useState(new Date());
     const [threshold, setThreshold] = useState(8);
     const [monthlyPaydays, setMonthlyPaydays] = useState<number | null>(null);
+    const [siteOtDays, setSiteOtDays] = useState(0);
     const currentYear = viewingDate.getFullYear();
 
     const formatPreciseHours = (hours: number) => {
@@ -240,8 +247,8 @@ const LeaveDashboard: React.FC = () => {
 
             // Fetch base data points
             const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData] = await Promise.all([
-                // Always use today's date for balance calculation so cross-month approved leaves are counted
-                api.getLeaveBalancesForUser(user.id, format(new Date(), 'yyyy-MM-dd')),
+                // Use the selected calendar month for balance calculation
+                api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')),
                 api.getLeaveRequests({
                     userId: user.id,
                     status: filter === 'all' ? undefined : filter
@@ -512,7 +519,8 @@ const LeaveDashboard: React.FC = () => {
             value: `${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))} / ${parseFloat(blueLeaveStatus.total.toFixed(1))}`, 
             description: `Total: ${parseFloat(blueLeaveStatus.total.toFixed(1))}d. Available: ${parseFloat((blueLeaveStatus.total - blueLeaveStatus.used - blueLeaveStatus.pending).toFixed(1))}d.${blueLeaveStatus.pending > 0 ? ` (Pending: ${blueLeaveStatus.pending}d)` : ''}`,
             icon: Plane,
-            isExpired: !isFloatingHolidayValidForViewingDate()
+            isExpired: !isFloatingHolidayValidForViewingDate(),
+            isHidden: isFemale
         },
         ...(isFemale ? [
             { 
@@ -524,8 +532,8 @@ const LeaveDashboard: React.FC = () => {
             },
             ...(userChildren.length > 0 ? [{
                 title: 'Child Care Leave',
-                value: `${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(0))} / ${parseFloat(balanceDataState.childCareTotal.toFixed(0))}`,
-                description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(0))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
+                value: `${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.childCareTotal.toFixed(1))}`,
+                description: `Available: ${parseFloat((balanceDataState.childCareTotal - balanceDataState.childCareUsed - (balanceDataState.childCarePending || 0)).toFixed(1))} days for child care.${(balanceDataState.childCarePending || 0) > 0 ? ` (Pending: ${balanceDataState.childCarePending}d)` : ''}`,
                 icon: Baby, 
             }] : [])
         ] : []),
@@ -534,7 +542,8 @@ const LeaveDashboard: React.FC = () => {
             value: `${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}`, 
             description: `Total: ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
             icon: CalendarClock,
-            isExpired: balanceDataState.expiryStates?.compOff
+            isExpired: balanceDataState.expiryStates?.compOff,
+            isHidden: isTechnicalRole(user?.role)
         },
         {
             title: 'Monthly Pay Days',
@@ -543,6 +552,13 @@ const LeaveDashboard: React.FC = () => {
             icon: Calculator,
             isExpired: false
         },
+        ...(isTechnicalRole(user?.role) ? [{
+            title: 'Site OT Days',
+            value: `${siteOtDays || (balanceDataState?.siteOtDaysThisMonth || 0)}`,
+            description: `Total Site OT shifts performed in ${format(viewingDate, 'MMMM yyyy')}.`,
+            icon: Clock,
+            isExpired: false
+        }] : []),
         ...(isShortfallEnabled ? [{
             title: 'Monthly Shortfall',
             value: formatPreciseHours(calculatedShortfallMins / 60),
@@ -550,12 +566,12 @@ const LeaveDashboard: React.FC = () => {
             icon: Clock,
             isExpired: false
         }] : [])
-    ].filter(card => !card.isExpired) : [
+    ].filter(card => !card.isExpired && !card.isHidden) : [
         { title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true },
         { title: 'Sick Leave', value: '0 / 0', icon: HeartPulse, isLoading: true },
         { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
-        { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
+        ...(user?.role !== 'technical_reliever' ? [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }] : []),
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
     ];
 
@@ -698,6 +714,7 @@ const LeaveDashboard: React.FC = () => {
                     recurringHolidays={recurringHolidays}
                     isLoading={isLoading}
                     onMonthPaydaysChange={setMonthlyPaydays}
+                    onSiteOtDaysChange={setSiteOtDays}
                 />
                 <CompOffCalendar 
                     logs={compOffLogs} 
@@ -719,7 +736,7 @@ const LeaveDashboard: React.FC = () => {
                     data={yearlyData}
                     isLoading={isLoading}
                 />
-                {isOtConversionEnabled && (
+                {(isOtConversionEnabled || isTechnicalRole(user?.role)) && (
                     <OTCalendar 
                         viewingDate={viewingDate}
                         onDateChange={setViewingDate}

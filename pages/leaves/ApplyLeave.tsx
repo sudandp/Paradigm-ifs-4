@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getStaffCategory } from '../../utils/attendanceCalculations';
+import { getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
@@ -385,6 +385,13 @@ const ApplyLeave: React.FC = () => {
                 return;
             }
 
+            // Block Comp Off requests for specific roles
+            if (formData.leaveType === 'Comp Off' && isTechnicalRole(user.role)) {
+                setToast({ message: 'Compensatory Off is not applicable for your role.', type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+
             // Check balance before submitting (only for new requests)
             // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
             if (!isEditMode && !['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
@@ -645,7 +652,7 @@ const ApplyLeave: React.FC = () => {
                                         <option value="Earned">Earned</option>
                                         <option value="Sick">Sick</option>
                                         <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
-                                        <option value="Comp Off">Comp Off</option>
+                                        {!isTechnicalRole(user?.role) && <option value="Comp Off">Comp Off</option>}
                                         <option value="Loss of Pay">Loss of Pay</option>
                                         {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                         {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}

@@ -99,6 +99,9 @@ export interface User {
   floatingLeaveOpeningDate?: string; // YYYY-MM-DD
   otHoursBank?: number;
   monthlyOtHours?: number;
+  childCareLeaveOpeningBalance?: number;
+  childCareLeaveOpeningDate?: string; // YYYY-MM-DD
+  joiningDate?: string; // YYYY-MM-DD
   /**
    * Optional human-readable location name for proximity logic.
    */

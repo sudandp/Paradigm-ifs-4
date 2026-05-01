@@ -42,6 +42,9 @@ const createUserSchema = yup.object({
   compOffOpeningDate: yup.string().optional().nullable(),
   floatingLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
   floatingLeaveOpeningDate: yup.string().optional().nullable(),
+  childCareLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
+  childCareLeaveOpeningDate: yup.string().optional().nullable(),
+  joiningDate: yup.string().optional().nullable(),
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
@@ -71,6 +74,9 @@ const editUserSchema = yup.object({
   compOffOpeningDate: yup.string().optional().nullable(),
   floatingLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
   floatingLeaveOpeningDate: yup.string().optional().nullable(),
+  childCareLeaveOpeningBalance: yup.number().optional().nullable().transform((value) => (isNaN(value) ? 0 : value)).default(0),
+  childCareLeaveOpeningDate: yup.string().optional().nullable(),
+  joiningDate: yup.string().optional().nullable(),
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
@@ -733,6 +739,21 @@ const AddUserPage: React.FC = () => {
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
+              {/* Joining Date */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg inline-block text-sm">Joining Details</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input 
+                    label="Joining Date" 
+                    type="date" 
+                    registration={register('joiningDate')} 
+                    error={errors.joiningDate?.message}
+                    description="Company joining date."
+                  />
+                  <div className="hidden md:block" />
+                </div>
+              </div>
+
               {/* Earned Leave */}
               <div className="space-y-4">
                 <h4 className="font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg inline-block text-sm">Earned Leave</h4>
@@ -816,6 +837,28 @@ const AddUserPage: React.FC = () => {
                     type="date" 
                     registration={register('floatingLeaveOpeningDate')} 
                     error={errors.floatingLeaveOpeningDate?.message}
+                    description="Start date."
+                  />
+                </div>
+              </div>
+
+              {/* Child Care Leave */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg inline-block text-sm">Child Care Leave</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input 
+                    label="Opening Balance (Days)" 
+                    type="number" 
+                    step="0.5" 
+                    registration={register('childCareLeaveOpeningBalance')} 
+                    error={errors.childCareLeaveOpeningBalance?.message}
+                    description="Initial balance."
+                  />
+                  <Input 
+                    label="Opening Date" 
+                    type="date" 
+                    registration={register('childCareLeaveOpeningDate')} 
+                    error={errors.childCareLeaveOpeningDate?.message}
                     description="Start date."
                   />
                 </div>
