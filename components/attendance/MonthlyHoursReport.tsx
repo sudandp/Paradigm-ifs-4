@@ -8,6 +8,7 @@ import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, FieldAtt
 import Button from '../ui/Button';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 
 export interface DailyData {
   date: number;
@@ -153,7 +154,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const allEvents = await api.getAttendanceEventsForUsers(
         targetUserIds,
         format(fetchStartDate, 'yyyy-MM-dd'), 
-        format(endDate, 'yyyy-MM-dd HH:mm:ss')
+        // Expand 12 hours forward to catch night shift ends
+        format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
       );
 
       const eventsByUser = new Map<string, AttendanceEvent[]>();
@@ -310,6 +312,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     let statusToCounterActivity = false;
 
+    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+    const eventsByGroup: Record<string, AttendanceEvent[]> = {};
+    events.forEach(e => {
+        const key = dayKeyMap[e.id];
+        if (!eventsByGroup[key]) eventsByGroup[key] = [];
+        eventsByGroup[key].push(e);
+    });
+
     for (let day = 1; day <= daysInPeriod; day++) {
       const currentDate = new Date(year, month - 1, day);
       if (currentDate.getDay() === 1) {
@@ -322,7 +332,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       let netHours = 0, grossHours = 0, breakHours = 0;
       let fieldResultStatus = '';
       const dateStr = format(currentDate, 'yyyy-MM-dd');
-      const dayEvents = events.filter(e => e.timestamp.startsWith(dateStr));
+      const dayEvents = eventsByGroup[dateStr] || [];
       const hasActivity = dayEvents.length > 0;
       const isFuture = isAfter(currentDate, startOfDay(new Date()));
 

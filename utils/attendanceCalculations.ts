@@ -1,9 +1,30 @@
 // Attendance calculation utilities for hours-based attendance tracking
 
-import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter } from 'date-fns';
+import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter, subDays } from 'date-fns';
 import type { AttendanceEvent, DailyAttendanceStatus } from '../types';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
+
+/**
+ * Robust check for roles that require night-shift/field-style session anchoring.
+ * Includes all relievers, technicians, and maintenance staff.
+ */
+export function isTechnicalRole(role?: string | null): boolean {
+  if (!role) return false;
+  const normalized = role.toLowerCase();
+  const technicalKeywords = [
+    'technical',
+    'technician',
+    'reliever',
+    'electrician',
+    'plumber',
+    'carpenter',
+    'hvac',
+    'multitech',
+    'maintenance'
+  ];
+  return technicalKeywords.some(keyword => normalized.includes(keyword));
+}
 
 /**
  * Calculate total hours between two timestamps
@@ -136,19 +157,21 @@ export function calculateWorkingHours(
   });
 
   // 4. Handle ongoing session (from last event to 'now')
-  // CRITICAL FIX: Only calculate ongoing duration if processing today's date.
-  // Otherwise, historical days with missing punch-outs would aggregate time incorrectly.
   const now = new Date();
-  const isToday = !processingDate || (
-    now.getFullYear() === processingDate.getFullYear() &&
-    now.getMonth() === processingDate.getMonth() &&
-    now.getDate() === processingDate.getDate()
-  );
+  
+  // A session is "Active" if it's today's calendar day 
+  // OR if it's an open session from yesterday (Night Shift).
+  const isCalendarToday = !processingDate || isSameDay(now, processingDate);
+  const isOpenNightShift = processingDate && 
+                           isSameDay(subDays(now, 1), processingDate) && 
+                           (isMainPunchedIn || isAtSite);
+                           
+  const isLiveAccumulationRequired = isCalendarToday || isOpenNightShift;
 
   const MAX_SESSION_HOURS = 16;
   const MAX_SESSION_MINUTES = MAX_SESSION_HOURS * 60;
   
-  if (lastEventTime && isToday) {
+  if (lastEventTime && isLiveAccumulationRequired) {
     const elapsed = differenceInMinutes(now, lastEventTime);
     let validElapsed = elapsed;
     if (elapsed > MAX_SESSION_MINUTES) {
@@ -346,8 +369,8 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   
   const relevantEvents = cutoffIndex >= 0 ? sortedEvents.slice(cutoffIndex + 1) : sortedEvents;
 
-  const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in');
-  const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out');
+  const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
+  const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-ot-out');
   
   const result = calculateWorkingHours(relevantEvents, processingDate);
   
@@ -388,7 +411,7 @@ export function getStaffCategory(
   // RULE: Explicit role mapping ALWAYS takes priority over society-based classification.
   // This ensures Admin/HR/Management stay as office staff even if assigned to a society.
   if (mapping.office?.includes(roleId)) return 'office';
-  if (mapping.field?.includes(roleId)) return 'field';
+  if (mapping.field?.includes(roleId) || isTechnicalRole(roleId)) return 'field';
   if (mapping.site?.includes(roleId)) return 'site';
   
   // FALLBACK: If role not in any explicit mapping, use society-based classification
@@ -627,9 +650,9 @@ export function evaluateAttendanceStatus(params: {
               status = `0.5P+0.5 ${code}`;
           } else {
               if (isWFH) status = 'W/H';
-              // Priority 2: Explicit Holidays
+              // Priority 2: Explicit Holidays - credit H/P for ANY work on a holiday
               else if (isHoliday) status = 'H/P';
-              // Priority 3: Weekend Work
+              // Priority 3: Weekend Work - credit W/P for ANY work on a weekend
               else if (isWeekend) status = 'W/P';
               else status = workStatus;
           }

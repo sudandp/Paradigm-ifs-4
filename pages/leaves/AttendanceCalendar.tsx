@@ -9,6 +9,7 @@ import type { AttendanceEvent, UserHoliday, LeaveRequest, AttendanceSettings, Re
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 
 
 interface AttendanceCalendarProps {
@@ -130,6 +131,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         let daysActiveInWeek = 0;
         let daysPresentInPreviousWeek = 0;
 
+        const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+        const eventsByGroup: Record<string, AttendanceEvent[]> = {};
+        events.forEach(e => {
+            const key = dayKeyMap[e.id];
+            if (!eventsByGroup[key]) eventsByGroup[key] = [];
+            eventsByGroup[key].push(e);
+        });
+
         intervalDays.forEach(day => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const dayOfWeek = day.getDay();
@@ -140,7 +149,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 daysActiveInWeek = 0;
             }
 
-            const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), day));
+            const dayEvents = eventsByGroup[dateStr] || [];
             const hasCheckIn = dayEvents.some(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'));
             const hasCheckOut = dayEvents.some(e => e.type.toLowerCase().includes('out'));
             const isToday = isSameDay(day, startOfDay(new Date()));
@@ -258,7 +267,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             if (['present', 'holiday-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 // For 'present', we should still check if it's a half day in actual events
                 if (status === 'present') {
-                    const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                    const dateKey = format(date, 'yyyy-MM-dd');
+                    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+                    const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
                     const { workingHours } = calculateWorkingHours(dayEvents, date);
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
@@ -342,7 +353,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         let customStyle: React.CSSProperties = {};
 
                         if (status === 'present' || status === 'holiday-present') {
-                            const dayEvents = events.filter(e => isSameDay(new Date(e.timestamp), date));
+                            const dateKey = format(date, 'yyyy-MM-dd');
+                            const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+                            const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
                             const { workingHours } = calculateWorkingHours(dayEvents, date);
                             const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;

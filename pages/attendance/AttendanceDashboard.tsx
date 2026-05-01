@@ -7,6 +7,7 @@ import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { pdf } from '@react-pdf/renderer';
 import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import type {
@@ -766,7 +767,8 @@ const AttendanceDashboard: React.FC = () => {
                 // Start buffer at the Monday at least 15 days before to ensure two full blocks for calculation
                 const bufferStartDate = startOfWeek(subDays(dateRange.startDate, 15), { weekStartsOn: 1 });
                 const startStr = bufferStartDate.toISOString();
-                const endStr = dateRange.endDate.toISOString();
+                // Add 12-hour lookahead to capture night shift completions
+                const endStr = new Date(dateRange.endDate.getTime() + 12 * 60 * 60 * 1000).toISOString();
 
                 const [events, compOffs, userHolidays, userLeaves] = await Promise.all([
                     api.getAttendanceEvents(user.id, startStr, endStr),
@@ -808,7 +810,9 @@ const AttendanceDashboard: React.FC = () => {
                     
                     const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
 
-                    const dayEvents = events.filter(e => format(new Date(e.timestamp), 'yyyy-MM-dd') === dateStr);
+                    // Use session-aware grouping instead of raw calendar date
+                    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+                    const dayEvents = events.filter(e => dayKeyMap[e.id] === dateStr);
                     const { workingHours } = calculateWorkingHours(dayEvents, day);
                     let fStatus = '';
                     const uCat = userCategory as string;
@@ -940,7 +944,8 @@ const AttendanceDashboard: React.FC = () => {
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
                 const queryStart = isBefore(subDays(startDate, 15), subDays(new Date(), 30)) ? subDays(startDate, 15) : subDays(new Date(), 30);
-                const queryEnd = endOfDay(endDate);
+                // Add 12-hour lookahead to capture night shift completions
+                const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
 
                 const [events, leavesResponse, holidaysResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
@@ -957,10 +962,12 @@ const AttendanceDashboard: React.FC = () => {
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
 
-                // Optimize lookups: Group events by date string
+                // Optimize lookups: Group events by session-aware business day
+                const dayKeyMap = buildAttendanceDayKeyByEventId(events);
                 const eventsByDate = new Map<string, AttendanceEvent[]>();
                 events.forEach(e => {
-                    const d = format(new Date(e.timestamp), 'yyyy-MM-dd');
+                    const d = dayKeyMap[e.id];
+                    if (!d) return;
                     if (!eventsByDate.has(d)) eventsByDate.set(d, []);
                     eventsByDate.get(d)!.push(e);
                 });
@@ -1199,11 +1206,12 @@ const AttendanceDashboard: React.FC = () => {
 
         const targetUsers = filteredUsers;
 
-        // PRE-INDEX: Group events by userId and date for O(1) lookup
+        // PRE-INDEX: Group events by userId and session-anchored business day for O(1) lookup
+        const dayKeyMapGlobal = buildAttendanceDayKeyByEventId(attendanceEvents);
         const eventsByUserAndDate = new Map<string, Map<string, AttendanceEvent[]>>();
         attendanceEvents.forEach(e => {
             const userId = String(e.userId);
-            const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
+            const dateStr = dayKeyMapGlobal[e.id];
             if (!eventsByUserAndDate.has(userId)) {
                 eventsByUserAndDate.set(userId, new Map());
             }
@@ -1318,6 +1326,7 @@ const AttendanceDashboard: React.FC = () => {
                 let checkIn = '-';
                 let checkOut = '-';
                 let duration = '-';
+                const rowExtra: any = {};
 
                 const { workingHours } = calculateWorkingHours(dayEvents, day);
                 let fStatus = '';
@@ -1361,14 +1370,44 @@ const AttendanceDashboard: React.FC = () => {
 
                 if (dayEvents.length > 0) {
                     const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    const checkInEvent = sortedEvents.find(e => e.type === 'punch-in');
-                    const checkOutEvent = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
-                    if (checkInEvent) checkIn = format(new Date(checkInEvent.timestamp), 'HH:mm');
-                    if (checkOutEvent) checkOut = format(new Date(checkOutEvent.timestamp), 'HH:mm');
+                    
+                    // Smarter In/Out: Use punch-in/out if present, otherwise use earliest/latest activity
+                    const punchIn = sortedEvents.find(e => e.type === 'punch-in');
+                    const punchOut = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
+                    const earliest = sortedEvents[0];
+                    const latest = sortedEvents[sortedEvents.length - 1];
+
+                    checkIn = format(new Date(punchIn?.timestamp || earliest.timestamp), 'HH:mm');
+                    // Only show checkout if it's a real checkout event OR if it's the last event of a completed session
+                    // For active night shifts, we might want to show '-' for checkout if not yet punched out
+                    if (punchOut) {
+                        checkOut = format(new Date(punchOut.timestamp), 'HH:mm');
+                    } else if (!isSameDay(day, new Date())) {
+                        // If it's a past day and we have activity, show the last activity as checkout
+                        checkOut = format(new Date(latest.timestamp), 'HH:mm');
+                    }
+
+                    // Extra fields for Basic Report (Matches BasicReportDataRow type)
+                    const bIn = sortedEvents.find(e => e.type === 'break-in');
+                    const bOut = [...sortedEvents].reverse().find(e => e.type === 'break-out');
+                    const otIn = sortedEvents.find(e => e.type === 'site-ot-in');
+                    const otOut = [...sortedEvents].reverse().find(e => e.type === 'site-ot-out');
+
+                    const breakInStr = bIn ? format(new Date(bIn.timestamp), 'HH:mm') : '-';
+                    const breakOutStr = bOut ? format(new Date(bOut.timestamp), 'HH:mm') : '-';
+                    const siteOtInStr = otIn ? format(new Date(otIn.timestamp), 'HH:mm') : '-';
+                    const siteOtOutStr = otOut ? format(new Date(otOut.timestamp), 'HH:mm') : '-';
+
                     const { workingHours } = calculateWorkingHours(dayEvents, day);
                     const hours = Math.floor(workingHours);
                     const minutes = Math.round((workingHours - hours) * 60);
                     duration = `${hours}h ${minutes}m`;
+
+                    // Assign to local variables for push
+                    (rowExtra as any).breakIn = breakInStr;
+                    (rowExtra as any).breakOut = breakOutStr;
+                    (rowExtra as any).siteOtIn = siteOtInStr;
+                    (rowExtra as any).siteOtOut = siteOtOutStr;
                 }
 
                 data.push({ 
@@ -1378,6 +1417,10 @@ const AttendanceDashboard: React.FC = () => {
                     checkIn, 
                     checkOut, 
                     duration, 
+                    breakIn: rowExtra.breakIn || '-',
+                    breakOut: rowExtra.breakOut || '-',
+                    siteOtIn: rowExtra.siteOtIn || '-',
+                    siteOtOut: rowExtra.siteOtOut || '-',
                     locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office'),
                     department: (user as any).department || (user as any).role || 'Staff'
                 });
@@ -1434,6 +1477,7 @@ const AttendanceDashboard: React.FC = () => {
 
         // PRE-INDEX: Users Map for O(1) lookup
         const usersMap = new Map(users.map(u => [u.id, u]));
+        const dayKeyMapLogs = buildAttendanceDayKeyByEventId(attendanceEvents);
 
         return attendanceEvents
             .filter(e => targetUserIds.has(e.userId))
@@ -1449,9 +1493,13 @@ const AttendanceDashboard: React.FC = () => {
                     else if (e.type === 'punch-out') displayType = 'Site Check Out';
                 }
 
+                // Use session-anchored date for night shifts
+                const sessionDateStr = dayKeyMapLogs[e.id];
+                const displayDate = format(new Date(sessionDateStr), 'dd MMM yyyy');
+
                 return {
                     userName: user?.name || 'Unknown',
-                    date: format(new Date(e.timestamp), 'dd MMM yyyy'),
+                    date: displayDate,
                     time: format(new Date(e.timestamp), 'HH:mm:ss'),
                     type: displayType,
                     locationName: location,

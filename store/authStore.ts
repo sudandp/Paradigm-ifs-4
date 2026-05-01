@@ -1,6 +1,7 @@
 
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { authService } from '../services/authService';
@@ -15,7 +16,7 @@ import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
 import { calculateDistanceMeters, reverseGeocode, getPrecisePosition } from '../utils/locationUtils';
-import { processDailyEvents } from '../utils/attendanceCalculations';
+import { processDailyEvents, isTechnicalRole } from '../utils/attendanceCalculations';
 import { useSettingsStore } from './settingsStore';
 import { dispatchNotificationFromRules } from '../services/notificationService';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -91,23 +92,6 @@ const getActionTextForType = (type: string, workType?: string): string => {
     }
 };
 
-const TECHNICAL_ROLE_KEYWORDS = [
-    'technical',
-    'technician',
-    'reliever',
-    'electrician',
-    'plumber',
-    'carpenter',
-    'hvac',
-    'multitech',
-    'maintenance'
-];
-
-const isTechnicalAttendanceRole = (role?: string | null) => {
-    const normalized = (role || '').toLowerCase();
-    return TECHNICAL_ROLE_KEYWORDS.some(keyword => normalized.includes(keyword));
-};
-
 const getLocalDateKey = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -138,7 +122,7 @@ interface AuthState {
     setInitialized: (initialized: boolean) => void;
     resetAttendance: () => void;
     updateUserProfile: (updates: Partial<User>) => void;
-    checkAttendanceStatus: () => Promise<void>;
+    checkAttendanceStatus: (isSilent?: boolean) => Promise<void>;
     toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number) => Promise<{ success: boolean; message: string }>;
     subscribeToAttendance: () => (() => void) | void;
     error: string | null;
@@ -179,7 +163,8 @@ const getTimeBasedGreeting = () => {
 };
 
 export const useAuthStore = create<AuthState>()(
-    (set, get) => ({
+    persist(
+        (set, get) => ({
         user: null,
         isInitialized: false,
         isCheckedIn: false,
@@ -560,13 +545,17 @@ export const useAuthStore = create<AuthState>()(
             }
         },
 
-        checkAttendanceStatus: async () => {
+        checkAttendanceStatus: async (isSilent = false) => {
             const { user } = get();
             if (!user) {
                 set({ isAttendanceLoading: false });
                 return;
             }
-            set({ isAttendanceLoading: true });
+            
+            // Only show spinner on initial load or if explicitly requested
+            if (!isSilent) {
+                set({ isAttendanceLoading: true });
+            }
             
             try {
                 const today = new Date();
@@ -588,9 +577,9 @@ export const useAuthStore = create<AuthState>()(
                 // Site staff = roles explicitly in site mapping AND not in office/field
                 const isSiteStaffRole = (roleMapping.site || []).includes(user.role) &&
                     !officeRoles.includes(user.role) && !fieldRoles.includes(user.role);
-                const isTechnicalRole = isTechnicalAttendanceRole(user.role) || isTechnicalAttendanceRole(user.roleId);
+                const isTechnicalRoleUser = isTechnicalRole(user.role) || isTechnicalRole(user.roleId);
                 // Technical roles need a longer lookback because OT/site work can cross midnight.
-                const siteShiftLookbackMs = isTechnicalRole ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
+                const siteShiftLookbackMs = isTechnicalRoleUser ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
                     : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
@@ -660,7 +649,7 @@ export const useAuthStore = create<AuthState>()(
                 let hasPreviousDayOpenSession = false;
                 let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
 
-                if (isTechnicalRole && lastEvent) {
+                if (isTechnicalRoleUser && lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
                     const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
                     
@@ -692,7 +681,7 @@ export const useAuthStore = create<AuthState>()(
                 }
 
                 set({
-                    isCheckedIn: currentlyCheckedIn || (isTechnicalRole && isSiteOtCheckedIn),
+                    isCheckedIn: currentlyCheckedIn || (isTechnicalRoleUser && isSiteOtCheckedIn),
                     isOnBreak: isOnBreak,
                     lastCheckInTime: checkIn,
                     lastCheckOutTime: lastEvent?.type === 'punch-out' ? checkOut : null,
@@ -1117,5 +1106,28 @@ export const useAuthStore = create<AuthState>()(
                 supabase.removeChannel(unlockChannel);
             };
         },
-    })
+    }),
+    {
+        name: 'paradigm-auth-storage',
+        storage: createJSONStorage(() => localStorage),
+        partialize: (state) => ({
+            isCheckedIn: state.isCheckedIn,
+            lastCheckInTime: state.lastCheckInTime,
+            lastCheckOutTime: state.lastCheckOutTime,
+            firstBreakInTime: state.firstBreakInTime,
+            lastBreakInTime: state.lastBreakInTime,
+            lastBreakOutTime: state.lastBreakOutTime,
+            totalBreakDurationToday: state.totalBreakDurationToday,
+            totalWorkingDurationToday: state.totalWorkingDurationToday,
+            breakIntervals: state.breakIntervals,
+            isOnBreak: state.isOnBreak,
+            dailyPunchCount: state.dailyPunchCount,
+            isFieldCheckedIn: state.isFieldCheckedIn,
+            isFieldCheckedOut: state.isFieldCheckedOut,
+            isSiteOtCheckedIn: state.isSiteOtCheckedIn,
+            geofencingSettings: state.geofencingSettings,
+            breakLimit: state.breakLimit,
+        }),
+    }
+)
 );

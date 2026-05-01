@@ -90,7 +90,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         general: false,
         violations: false,
         inactive: false,
-        team: true
+        team: false
     });
     const [expandedDetails, setExpandedDetails] = React.useState<Record<string, boolean>>({});
 

@@ -161,9 +161,9 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
-                <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Earned</div>
-                <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Taken</div>
+            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Earned</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Taken</div>
             </div>
         </div>
     );

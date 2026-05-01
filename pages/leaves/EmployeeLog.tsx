@@ -7,6 +7,7 @@ import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, end
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 
 
 type TimeRange = 'day' | 'week' | 'month';
@@ -40,16 +41,19 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
         switch (selectedRange) {
             case 'day':
-                startDate = startOfDay(selectedDate);
-                endDate = endOfDay(selectedDate);
+                // Expand 12 hours back to catch night shift starts, 12 hours forward to catch ends
+                startDate = new Date(startOfDay(selectedDate).getTime() - 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfDay(selectedDate).getTime() + 12 * 60 * 60 * 1000);
                 break;
             case 'week':
-                startDate = startOfWeek(selectedDate, { weekStartsOn: 1 }); // Monday
-                endDate = endOfWeek(selectedDate, { weekStartsOn: 1 });
+                // Expand 12 hours back/forward for the week range
+                startDate = new Date(startOfWeek(selectedDate, { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfWeek(selectedDate, { weekStartsOn: 1 }).getTime() + 12 * 60 * 60 * 1000);
                 break;
             case 'month':
-                startDate = startOfMonth(selectedDate);
-                endDate = endOfMonth(selectedDate);
+                // Expand 12 hours back/forward for the month range
+                startDate = new Date(startOfMonth(selectedDate).getTime() - 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfMonth(selectedDate).getTime() + 12 * 60 * 60 * 1000);
                 break;
         }
 
@@ -92,9 +96,10 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
     const groupedByDate = useMemo(() => {
         const groups: Record<string, GroupedAttendance> = {};
+        const dayKeyById = buildAttendanceDayKeyByEventId(events);
 
         events.forEach((event) => {
-            const dateKey = format(new Date(event.timestamp), 'yyyy-MM-dd');
+            const dateKey = dayKeyById[event.id] || format(new Date(event.timestamp), 'yyyy-MM-dd');
             if (!groups[dateKey]) {
                 groups[dateKey] = {
                     date: dateKey,
@@ -112,7 +117,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                 groups[dateKey].checkOuts.push(event);
             }
         });
-
+        
         // Calculate total worked time and break time for each day
         Object.values(groups).forEach((group) => {
             const { totalHours, breakHours } = processDailyEvents(group.events, new Date(group.date));
@@ -121,8 +126,35 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
             group.totalBreakMinutes = breakHours * 60;
         });
 
-        return Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
-    }, [events]);
+        // Filter groups to only show those that fall within the selected range's BUSINESS day(s)
+        const finalGroups = Object.values(groups).filter(group => {
+            const groupDate = new Date(group.date);
+            let filterStart: Date;
+            let filterEnd: Date;
+
+            switch (selectedRange) {
+                case 'day':
+                    filterStart = startOfDay(selectedDate);
+                    filterEnd = endOfDay(selectedDate);
+                    break;
+                case 'week':
+                    filterStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+                    filterEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+                    break;
+                case 'month':
+                    filterStart = startOfMonth(selectedDate);
+                    filterEnd = endOfMonth(selectedDate);
+                    break;
+                default:
+                    return true;
+            }
+
+            // A group is included if its start date is within the selected range
+            return groupDate >= filterStart && groupDate <= filterEnd;
+        });
+
+        return finalGroups.sort((a, b) => b.date.localeCompare(a.date));
+    }, [events, selectedRange, selectedDate]);
 
     const formatDuration = (minutes: number) => {
         const roundedMins = Math.round(minutes);

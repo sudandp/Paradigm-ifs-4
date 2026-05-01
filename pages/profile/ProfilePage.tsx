@@ -106,6 +106,9 @@ const ProfilePage: React.FC = () => {
     // Employee Scores State
     const [employeeScores, setEmployeeScores] = useState<EmployeeScore | null>(null);
     const [isScoresLoading, setIsScoresLoading] = useState(true);
+    
+    // Work Mode Selection State
+    const [siteWorkMode, setSiteWorkMode] = useState<'duty' | 'ot'>('duty');
 
     // Children State (for female employees)
     const [children, setChildren] = useState<UserChild[]>([]);
@@ -309,6 +312,13 @@ const ProfilePage: React.FC = () => {
             });
         }
     }, [user, reset]);
+
+    // Initial load and background sync for attendance
+    useEffect(() => {
+        checkAttendanceStatus();
+        const interval = setInterval(() => checkAttendanceStatus(true), 60000); // silent refresh every minute
+        return () => clearInterval(interval);
+    }, [checkAttendanceStatus]);
 
     const handlePhotoChange = async (file: UploadedFile | null) => {
         if (!user) return;
@@ -582,9 +592,17 @@ const ProfilePage: React.FC = () => {
                     {user.role !== 'management' && (
                         <section className="relative">
                             <div className="flex items-center justify-between mb-6 px-2">
-                                <h3 className="text-lg font-black text-white/90 uppercase tracking-widest flex items-center gap-2">
-                                    <Clock className="h-5 w-5 text-emerald-500" /> TIMELINE
-                                </h3>
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-lg font-black text-white/90 uppercase tracking-widest flex items-center gap-2">
+                                        <Clock className="h-5 w-5 text-emerald-500" /> TIMELINE
+                                    </h3>
+                                    {hasPreviousDayOpenSession && (
+                                        <div className="px-2 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center gap-1.5 animate-pulse">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                            <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest">Started Yesterday</span>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
                                     {format(new Date(), 'dd MMM yyyy')}
                                 </div>
@@ -699,7 +717,7 @@ const ProfilePage: React.FC = () => {
                                                         triggerHaptic(ImpactStyle.Light);
                                                         navigate('/leaves/apply');
                                                     }}
-                                                    className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-xs font-bold transition-all border border-amber-500/20 flex items-center justify-center gap-1.5"
+                                                    className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-[13px] font-bold transition-all border border-amber-500/20 flex items-center justify-center gap-1.5"
                                                 >
                                                     <FileText className="w-3.5 h-3.5" /> Correction
                                                 </button>
@@ -709,7 +727,7 @@ const ProfilePage: React.FC = () => {
                                 </div>
                             )}
                             {/* ── The Punch Orb ── */}
-                            {isAttendanceLoading ? (
+                            {(isAttendanceLoading && !lastCheckInTime && !lastCheckOutTime) ? (
                                 <div className="w-40 h-40 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
                                     <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
                                 </div>
@@ -782,19 +800,19 @@ const ProfilePage: React.FC = () => {
                                                 {effectivelyCheckedIn ? (
                                                     <>
                                                         <LogOut className="h-9 w-9 text-rose-500 mb-1 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-                                                        <span className="text-base font-black text-white tracking-widest">PUNCH OUT</span>
+                                                        <span className="text-lg font-black text-white tracking-widest">PUNCH OUT</span>
                                                     </>
                                                 ) : isPunchBlocked ? (
                                                     <>
                                                         {unlockRequestStatus === 'pending' ? <Clock className="h-9 w-9 text-amber-400 mb-1" /> : <Lock className="h-9 w-9 text-white mb-1" />}
-                                                        <span className="text-xs font-black text-white tracking-tight leading-tight px-4">
+                                                        <span className="text-[13.5px] font-black text-white tracking-tight leading-tight px-4">
                                                             {unlockRequestStatus === 'pending' ? 'PENDING' : 'REQUEST ACCESS'}
                                                         </span>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <LogIn className="h-10 w-10 text-[#dcfce7] mb-1 drop-shadow-[0_0_12px_rgba(220,252,231,0.5)] animate-pulse" />
-                                                        <span className="text-lg font-black text-white tracking-widest">PUNCH IN</span>
+                                                        <span className="text-xl font-black text-white tracking-widest">PUNCH IN</span>
                                                     </>
                                                 )}
                                             </motion.div>
@@ -805,111 +823,121 @@ const ProfilePage: React.FC = () => {
                             )}
 
                             {/* ── Action Grid: Break / Site / Site OT ── */}
-                            {isCheckedIn && !isPunchBlocked && (
+                            {effectivelyCheckedIn && !isPunchBlocked && (
                                 <motion.div 
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.15 }}
-                                    className="w-full mt-8 px-2 space-y-3"
+                                    className="w-full mt-8 px-2 space-y-4"
                                 >
-                                    {/* Break Row */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            onClick={() => { triggerHaptic(); navigate('/attendance/break-in'); }}
-                                            disabled={isOnBreak || isSubmittingAttendance}
-                                            className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                ${isOnBreak 
-                                                    ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
-                                                    : 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20'
-                                                }`}
+                                    {/* ── 1. Duty Mode Selector ── */}
+                                    {(isFieldStaffRole || isSiteStaffRole) && !(isFieldCheckedIn || isSiteOtCheckedIn) && (
+                                        <div className={`flex bg-black/40 p-1 rounded-xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+                                            <button 
+                                                onClick={() => { triggerHaptic(); setSiteWorkMode('duty'); }}
+                                                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${siteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                            >
+                                                Regular Duty
+                                            </button>
+                                            <button 
+                                                onClick={() => { triggerHaptic(); setSiteWorkMode('ot'); }}
+                                                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${siteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                            >
+                                                Overtime (OT)
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* ── 2. Unified Action Grid (Site / Break) ── */}
+                                    <div className="grid grid-cols-2 gap-3 w-full">
+                                        {/* Site Toggle Card */}
+                                        {(isFieldStaffRole || isSiteStaffRole) && (
+                                            <motion.button
+                                                whileTap={isOnBreak ? {} : { scale: 0.95 }}
+                                                disabled={isOnBreak}
+                                                onClick={() => {
+                                                    triggerHaptic();
+                                                    if (isFieldCheckedIn || isSiteOtCheckedIn) {
+                                                        navigate(`/attendance/check-out?workType=${siteWorkMode === 'ot' ? 'site-ot' : 'field'}`);
+                                                    } else {
+                                                        navigate(`/attendance/check-in?workType=${siteWorkMode === 'ot' ? 'site-ot' : 'field'}`);
+                                                    }
+                                                }}
+                                                className={`
+                                                    relative overflow-hidden p-4 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2
+                                                    ${isOnBreak 
+                                                        ? 'bg-white/5 border-white/10 text-gray-500 opacity-40 grayscale' 
+                                                        : (isFieldCheckedIn || isSiteOtCheckedIn
+                                                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' 
+                                                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400')}
+                                                    backdrop-blur-xl shadow-lg shadow-black/20
+                                                `}
+                                            >
+                                                <div className={`p-2 rounded-xl ${isOnBreak ? 'bg-white/5' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'bg-rose-500/20' : 'bg-emerald-500/20')}`}>
+                                                    {isOnBreak ? <Lock className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
+                                                </div>
+                                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
+                                                    {isOnBreak ? 'Site Locked' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'Site Out' : 'Site In')}
+                                                </span>
+                                                {/* Status Indicator */}
+                                                {(isFieldCheckedIn || isSiteOtCheckedIn) && (
+                                                    <div className="absolute top-2 right-2">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+                                                    </div>
+                                                )}
+                                            </motion.button>
+                                        )}
+
+                                        {/* Break Toggle Card */}
+                                        <motion.button
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => {
+                                                triggerHaptic();
+                                                if (isOnBreak) navigate('/attendance/break-out');
+                                                else navigate('/attendance/break-in');
+                                            }}
+                                            className={`
+                                                relative overflow-hidden p-4 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2
+                                                ${isOnBreak
+                                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
+                                                    : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}
+                                                backdrop-blur-xl shadow-lg shadow-black/20
+                                                ${(isFieldStaffRole || isSiteStaffRole) ? '' : 'col-span-2'}
+                                            `}
                                         >
-                                            <Clock className="h-3.5 w-3.5" />
-                                            Break In
-                                        </button>
-                                        <button
-                                            onClick={() => { triggerHaptic(); navigate('/attendance/break-out'); }}
-                                            disabled={!isOnBreak || isSubmittingAttendance}
-                                            className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                ${isOnBreak 
-                                                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20' 
-                                                    : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
-                                                }`}
-                                        >
-                                            <CheckCircle className="h-3.5 w-3.5" />
-                                            Break Out
-                                        </button>
+                                            <div className={`p-2 rounded-xl ${isOnBreak ? 'bg-amber-500/20' : 'bg-blue-500/20'}`}>
+                                                <Coffee className="h-5 w-5" />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
+                                                {isOnBreak ? 'Resume Work' : 'Take Break'}
+                                            </span>
+                                            {/* Status Indicator */}
+                                            {isOnBreak && (
+                                                <div className="absolute top-2 right-2">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                                                </div>
+                                            )}
+                                        </motion.button>
                                     </div>
 
-                                    {/* Site In/Out Row — for field & site staff */}
-                                    {(isFieldStaffRole || isSiteStaffRole) && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-in?workType=field'); }}
-                                                disabled={isFieldCheckedIn || isOnBreak || isSubmittingAttendance || isSiteOtCheckedIn}
-                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                    ${isFieldCheckedIn || isOnBreak || isSiteOtCheckedIn 
-                                                        ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
-                                                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                                                    }`}
-                                            >
-                                                <MapPin className="h-3.5 w-3.5" />
-                                                Site Check In
-                                            </button>
-                                            <button
-                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-out?workType=field'); }}
-                                                disabled={!isFieldCheckedIn || isOnBreak || isSubmittingAttendance || isSiteOtCheckedIn}
-                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                    ${isFieldCheckedIn && !isOnBreak && !isSiteOtCheckedIn
-                                                        ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
-                                                        : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
-                                                    }`}
-                                            >
-                                                <MapPin className="h-3.5 w-3.5" />
-                                                Site Check Out
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {/* Site OT Row — for site staff only */}
-                                    {isSiteStaffRole && (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-in?action=site-ot-in'); }}
-                                                disabled={isSiteOtCheckedIn || isOnBreak || isSubmittingAttendance || isFieldCheckedIn}
-                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                    ${isSiteOtCheckedIn || isOnBreak || isFieldCheckedIn
-                                                        ? 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed' 
-                                                        : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20'
-                                                    }`}
-                                            >
-                                                <Zap className="h-3.5 w-3.5" />
-                                                Site OT In
-                                            </button>
-                                            <button
-                                                onClick={() => { triggerHaptic(); navigate('/attendance/check-out?action=site-ot-out'); }}
-                                                disabled={!isSiteOtCheckedIn || isOnBreak || isSubmittingAttendance || isFieldCheckedIn}
-                                                className={`py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2
-                                                    ${isSiteOtCheckedIn && !isOnBreak && !isFieldCheckedIn
-                                                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' 
-                                                        : 'bg-gray-800/50 border-white/5 text-gray-600 cursor-not-allowed'
-                                                    }`}
-                                            >
-                                                <CheckCircle className="h-3.5 w-3.5" />
-                                                Site OT Out
-                                            </button>
-                                        </div>
-                                    )}
+                                    {/* ── 3. Active Session Hint ── */}
+                                    <div className="flex items-center justify-center gap-2 pt-2">
+                                        <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em]">
+                                            Active Session Running
+                                        </span>
+                                    </div>
                                 </motion.div>
                             )}
 
                             {/* Hint Zone */}
                             <div className="mt-6 px-8 text-center min-h-[32px]">
                                 {isCheckedIn ? (
-                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[9px] text-emerald-200 uppercase tracking-[0.15em] font-black leading-relaxed">
+                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[10px] text-emerald-200 uppercase tracking-[0.15em] font-black leading-relaxed">
                                         active session · remember to punch out
                                     </motion.p>
                                 ) : (
-                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[9px] text-gray-500 uppercase tracking-[0.15em] font-black leading-relaxed">
+                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[10px] text-gray-500 uppercase tracking-[0.15em] font-black leading-relaxed">
                                         tap the orb to register presence
                                     </motion.p>
                                 )}
@@ -921,7 +949,7 @@ const ProfilePage: React.FC = () => {
 
                     {/* Glass Fragment Account Actions */}
                     <section className="space-y-3 px-2">
-                        <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Core Utilities</h3>
+                        <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Core Utilities</h3>
                         
                         <div className="grid grid-cols-1 gap-2">
                              <button 
@@ -1276,145 +1304,128 @@ const ProfilePage: React.FC = () => {
                                                     </div>
                                                 </div>
                                             )}
-                                            <div className="flex flex-col space-y-3 md:space-y-1.5">
-                                                <div className="flex items-center gap-2 px-0.5">
-                                                    <button 
-                                                        onClick={() => handleToggleHint('punch')}
-                                                        className="focus:outline-none hover:scale-110 transition-all active:scale-95 !bg-transparent !border-none !p-0 !shadow-none !ring-0 flex items-center justify-center"
-                                                        title="Click for hint"
+                                             {/* ── 1. Primary Session Toggle (Punch In/Out) ── */}
+                                             <div className="w-full">
+                                                {!isCheckedIn ? (
+                                                    <div className="relative group">
+                                                        <Button
+                                                            onClick={() => {
+                                                                if (isPunchBlocked) {
+                                                                    if (unlockRequestStatus === 'pending') return;
+                                                                    navigate('/attendance/request-unlock');
+                                                                    return;
+                                                                }
+                                                                if (user?.role === 'field_staff' || user?.role === 'operation_manager') {
+                                                                    navigate('/attendance/check-in?workType=office');
+                                                                } else {
+                                                                    navigate('/attendance/check-in');
+                                                                }
+                                                            }}
+                                                            variant="primary"
+                                                            className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-emerald-900/20 ${
+                                                                isPunchBlocked ? '!bg-amber-600' : '!bg-emerald-600 hover:!bg-emerald-700 '
+                                                            } ${isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                            disabled={isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
+                                                        >
+                                                           {isPunchBlocked ? (
+                                                                unlockRequestStatus === 'pending' 
+                                                                  ? <Clock className="mr-2 h-4 w-4" /> 
+                                                                  : <Lock className="mr-2 h-4 w-4" />
+                                                           ) : <LogIn className="mr-2 h-4 w-4 animate-pulse" />}
+                                                           {isPunchBlocked 
+                                                               ? (unlockRequestStatus === 'pending' ? 'Pending Approval' : 'Request Punch In') 
+                                                               : 'Punch In'}
+                                                        </Button>
+                                                        {!isPunchBlocked && !isOnBreak && !isActionInProgress && (
+                                                            <div className="absolute -top-1 -right-1 flex h-3 w-3">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <Button
+                                                        onClick={() => navigate('/attendance/check-out?workType=office')}
+                                                        variant="danger"
+                                                        className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                        disabled={isOnBreak || isActionInProgress || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut)}
                                                     >
-                                                        <Info className="h-5 w-5 md:h-3.5 md:w-3.5 text-emerald-600" />
-                                                    </button>
-                                                    {showPunchHint && (
-                                                        <span className="text-base md:text-xs italic text-emerald-700 font-medium animate-in fade-in slide-in-from-left-2 duration-300">
-                                                            Punch in is required when starting the day, and Punch out when the day ends
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            <div className="grid grid-cols-2 gap-4 md:gap-3">
-                                                <div className="relative group">
-                                                       <Button
-                                                           onClick={() => {
-                                                               if (isPunchBlocked) {
-                                                                   if (unlockRequestStatus === 'pending') return;
-                                                                   navigate('/attendance/request-unlock');
-                                                                   
-                                                                   return;
-                                                               }
-                                                               if (user?.role === 'field_staff' || user?.role === 'operation_manager') {
-                                                                   navigate('/attendance/check-in?workType=office');
-                                                               } else {
-                                                                   navigate('/attendance/check-in');
-                                                               }
-                                                           }}
-                                                           variant="primary"
-                                                           className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${
-                                                               isPunchBlocked ? '!bg-amber-600 !text-white' : '!bg-emerald-600 hover:!bg-emerald-700 '
-                                                           } ${isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                           disabled={isCheckedIn || isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
-                                                       >
-                                                          {isPunchBlocked ? (
-                                                               unlockRequestStatus === 'pending' 
-                                                                 ? <Clock className="mr-2 h-4 w-4" /> 
-                                                                 : <Lock className="mr-2 h-4 w-4" />
-                                                          ) : <LogIn className={`mr-2 h-4 w-4 ${!isCheckedIn ? 'animate-pulse' : ''}`} />}
-                                                          {isPunchBlocked 
-                                                              ? (unlockRequestStatus === 'pending' 
-                                                                  ? 'Pending' 
-                                                                  : 'Request Punch In') 
-                                                              : 'Punch In'}
-                                                       </Button>
-                                                </div>
-                                                 <Button
-                                                     onClick={() => navigate('/attendance/check-out?workType=office')}
-                                                     variant="danger"
-                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all !bg-rose-600 hover:!bg-rose-700 !text-white shadow-sm ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                     disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) || isActionInProgress || isPunchBlocked}
-                                                 >
-                                                     <LogOut className="mr-2 h-4 w-4" /> Punch Out
-                                                 </Button>
-                                            </div>
-
-                                            {/* Field Staff & Site Staff Buttons */}
-                                            {(isFieldStaffRole || isSiteStaffRole) && (
-                                                <div className="grid grid-cols-2 gap-4 mt-4">
-                                                     <Button
-                                                         onClick={() => navigate('/attendance/check-in?workType=field')}
-                                                         variant="primary"
-                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-sm'}`}
-                                                         disabled={!isCheckedIn || isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
-                                                     >
-                                                         <MapPin className="mr-2 h-4 w-4" /> Site In
-                                                     </Button>
-                                                     <Button
-                                                         onClick={() => navigate('/attendance/check-out?workType=field')}
-                                                         variant="secondary"
-                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isFieldCheckedIn || isOnBreak || isPunchBlocked || isSiteOtCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
-                                                         disabled={!isFieldCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isSiteOtCheckedIn}
-                                                     >
-                                                         <MapPin className="mr-2 h-4 w-4" /> Site Out
-                                                     </Button>
-                                                </div>
-                                            )}
-
-                                            {/* Site OT Buttons for Site Staff */}
-                                            {isSiteStaffRole && (
-                                                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
-                                                     <Button
-                                                         onClick={() => navigate('/attendance/check-in?action=site-ot-in')}
-                                                         variant="primary"
-                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-indigo-600 hover:!bg-indigo-700 !text-white shadow-sm'}`}
-                                                         disabled={!isCheckedIn || isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
-                                                     >
-                                                         <Clock className="mr-2 h-4 w-4" /> Site OT In
-                                                     </Button>
-                                                     <Button
-                                                         onClick={() => navigate('/attendance/check-out?action=site-ot-out')}
-                                                         variant="secondary"
-                                                         className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isSiteOtCheckedIn || isOnBreak || isPunchBlocked || isFieldCheckedIn) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-indigo-50 !border-indigo-600 !text-indigo-700'}`}
-                                                         disabled={!isSiteOtCheckedIn || isOnBreak || isActionInProgress || isPunchBlocked || isFieldCheckedIn}
-                                                     >
-                                                         <CheckCircle className="mr-2 h-4 w-4" /> Site OT Out
-                                                     </Button>
-                                                </div>
-                                            )}
-                                        </div>
-
-
-                                        <div className="flex flex-col space-y-3 md:space-y-1.5">
-                                            <div className="flex items-center gap-2 px-0.5">
-                                                <button 
-                                                    onClick={() => handleToggleHint('break')}
-                                                    className="focus:outline-none hover:scale-110 transition-all active:scale-95 !bg-transparent !border-none !p-0 !shadow-none !ring-0 flex items-center justify-center"
-                                                    title="Click for hint"
-                                                >
-                                                    <Info className="h-5 w-5 md:h-3.5 md:w-3.5 text-blue-600" />
-                                                </button>
-                                                {showBreakHint && (
-                                                    <span className="text-base md:text-xs italic text-blue-700 font-medium animate-in fade-in slide-in-from-left-2 duration-300">
-                                                        Break in when user goes for lunch is mandatory, or it will be a violation
-                                                    </span>
+                                                        <LogOut className="mr-2 h-4 w-4" /> Punch Out
+                                                    </Button>
                                                 )}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                 <Button
-                                                     onClick={() => navigate('/attendance/break-in')}
-                                                     variant="secondary"
-                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
-                                                     disabled={((isFieldStaffRole || isSiteStaffRole) ? !isFieldCheckedIn : !isCheckedIn) || isOnBreak || isActionInProgress || isPunchBlocked}
-                                                 >
-                                                     <CheckCircle className="mr-2 h-4 w-4" /> Break In
-                                                 </Button>
-                                                 <Button
-                                                     onClick={() => navigate('/attendance/break-out')}
-                                                     variant="secondary"
-                                                     className={`attendance-action-btn md:!h-9 md:!py-0 md:!text-sm md:!rounded-lg transition-all ${(!isOnBreak || isActionInProgress || isPunchBlocked) ? '!bg-gray-100 !text-gray-600 !border-gray-200 pointer-events-none shadow-none' : '!bg-transparent hover:!bg-emerald-50 !border-emerald-600 !text-emerald-700'}`}
-                                                     disabled={!isOnBreak || isActionInProgress || isPunchBlocked}
-                                                 >
-                                                     <CheckCircle className="mr-2 h-4 w-4" /> Break Out
-                                                 </Button>
-                                            </div>
-                                        </div>
+                                             </div>
+
+                                             {/* ── 2. Site Context Section (Consolidated Mode Selector) ── */}
+                                             {(isFieldStaffRole || isSiteStaffRole) && effectivelyCheckedIn && (
+                                                 <div className="mt-6 pt-6 border-t border-gray-100/50 space-y-4">
+                                                     {!(isFieldCheckedIn || isSiteOtCheckedIn) ? (
+                                                         <div className="space-y-3">
+                                                            <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-200/50 shadow-inner">
+                                                                <button 
+                                                                    onClick={() => setSiteWorkMode('duty')}
+                                                                    className={`flex-1 py-2 text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all ${siteWorkMode === 'duty' ? 'bg-white text-emerald-600 shadow-md border border-emerald-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                >
+                                                                    Regular Duty
+                                                                </button>
+                                                                {isSiteStaffRole && (
+                                                                    <button 
+                                                                        onClick={() => setSiteWorkMode('ot')}
+                                                                        className={`flex-1 py-2 text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all ${siteWorkMode === 'ot' ? 'bg-white text-indigo-600 shadow-md border border-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                    >
+                                                                        Overtime (OT)
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <Button
+                                                                onClick={() => navigate(siteWorkMode === 'duty' ? '/attendance/check-in?workType=field' : '/attendance/check-in?action=site-ot-in')}
+                                                                className={`w-full !h-11 !rounded-2xl transition-all font-bold uppercase tracking-widest text-[12px] shadow-lg ${siteWorkMode === 'duty' ? '!bg-emerald-600 shadow-emerald-900/10' : '!bg-indigo-600 shadow-indigo-900/10'} ${isOnBreak || isActionInProgress || isPunchBlocked ? 'opacity-50 pointer-events-none' : ''}`}
+                                                                disabled={isOnBreak || isActionInProgress || isPunchBlocked}
+                                                            >
+                                                                <MapPin className="mr-2 h-4 w-4" /> Check In to Site
+                                                            </Button>
+                                                         </div>
+                                                     ) : (
+                                                         <Button
+                                                             onClick={() => navigate(isFieldCheckedIn ? '/attendance/check-out?workType=field' : '/attendance/check-out?action=site-ot-out')}
+                                                             variant="secondary"
+                                                             className="w-full !h-11 !rounded-2xl !bg-red-50 !border-red-100 !text-red-700 font-bold uppercase tracking-widest text-[12px] hover:!bg-red-100"
+                                                             disabled={isOnBreak || isActionInProgress || isPunchBlocked}
+                                                         >
+                                                             <LogOut className="mr-2 h-4 w-4" /> 
+                                                             {isFieldCheckedIn ? 'Check Out (Duty Site)' : 'Check Out (Site OT)'}
+                                                         </Button>
+                                                     )}
+                                                 </div>
+                                             )}
+
+                                             {/* ── 3. Break Session (Dynamic Toggle) ── */}
+                                             {effectivelyCheckedIn && (
+                                                <div className={`mt-6 pt-6 border-t border-gray-100/50 space-y-3`}>
+                                                     <div className="flex items-center gap-2 px-0.5">
+                                                        <button 
+                                                            onClick={() => handleToggleHint('break')}
+                                                            className="focus:outline-none hover:scale-110 transition-all active:scale-95 !bg-transparent !border-none !p-0 !shadow-none !ring-0 flex items-center justify-center"
+                                                            title="Click for hint"
+                                                        >
+                                                            <Info className="h-5 w-5 md:h-3.5 md:w-3.5 text-blue-600" />
+                                                        </button>
+                                                        {showBreakHint && (
+                                                            <span className="text-base md:text-xs italic text-blue-700 font-medium animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                Break in when user goes for lunch is mandatory, or it will be a violation
+                                                            </span>
+                                                        )}
+                                                     </div>
+                                                     <Button
+                                                         onClick={() => navigate(isOnBreak ? '/attendance/break-out' : '/attendance/break-in')}
+                                                         variant="secondary"
+                                                         className={`w-full !h-11 !rounded-2xl transition-all font-bold uppercase tracking-widest text-[12px] ${isOnBreak ? '!bg-amber-500 !text-white border-transparent shadow-lg shadow-amber-900/20' : '!bg-blue-50/50 !text-blue-700 !border-blue-100 hover:!bg-blue-100'} ${isActionInProgress || isPunchBlocked ? 'opacity-50 pointer-events-none' : ''}`}
+                                                         disabled={isActionInProgress || isPunchBlocked}
+                                                     >
+                                                         {isOnBreak ? <Coffee className="mr-2 h-4 w-4" /> : <Clock className="mr-2 h-4 w-4" />}
+                                                         {isOnBreak ? 'End My Break' : 'Start My Break'}
+                                                     </Button>
+                                                </div>
+                                             )}
                                     </div>
                                 )}
                             </div>

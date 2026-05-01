@@ -23,6 +23,7 @@ import CompOffCalendar from './CompOffCalendar';
 import OTCalendar from './OTCalendar';
 import YearlyAttendanceChart from './YearlyAttendanceChart';
 import EmployeeLog from './EmployeeLog';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import Modal from '../../components/ui/Modal';
 import HolidayCalendar from './HolidayCalendar';
 import ShortfallCalendar from './ShortfallCalendar';
@@ -230,8 +231,9 @@ const LeaveDashboard: React.FC = () => {
         try {
             const dateStr = format(viewingDate, 'yyyy-MM-dd');
             const startOfMonthDate = startOfMonth(viewingDate);
-            const startStr = startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).toISOString();
-            const endStr = endOfMonth(viewingDate).toISOString();
+            // Expand range to catch night shifts at the start and end of the month
+            const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
+            const endStr = new Date(endOfMonth(viewingDate).getTime() + 12 * 60 * 60 * 1000).toISOString();
 
             const startOfYearStr = startOfYear(viewingDate).toISOString();
             const endOfYearStr = endOfYear(viewingDate).toISOString();
@@ -307,12 +309,13 @@ const LeaveDashboard: React.FC = () => {
             const shiftThreshold = userRules?.dailyWorkingHours?.max || 8;
             setThreshold(shiftThreshold);
 
-            // Group events by day and calculate OT using normalized logic
+            // Group events by "Business Day" using normalized logic
+            const dayKeyMap = buildAttendanceDayKeyByEventId(eventsData);
             const dayLogs: Record<string, AttendanceEvent[]> = {};
             eventsData.forEach(e => {
-                const d = format(new Date(e.timestamp), 'yyyy-MM-dd');
-                if (!dayLogs[d]) dayLogs[d] = [];
-                dayLogs[d].push(e);
+                const key = dayKeyMap[e.id];
+                if (!dayLogs[key]) dayLogs[key] = [];
+                dayLogs[key].push(e);
             });
 
             let totalOTHours = 0;

@@ -55,7 +55,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'fixed': return 'bg-emerald-600 text-white border-emerald-700 shadow-sm'; // Green for Common
+            case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
             case 'user': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Purple for User
             default: return 'bg-emerald-500/5 text-muted/40 border-emerald-500/10'; // Neutral
@@ -68,7 +68,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className="rounded-xl w-full flex flex-col h-full space-y-4">
+        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-sm font-semibold text-primary-text">Holidays</h3>
                 <div className="flex items-center gap-1">
@@ -95,7 +95,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                             <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent hover:border-border/50`}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
                                 {holidayInfo.status !== 'neutral' && (
-                                    <div className="absolute bottom-[-30px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transition-opacity">
+                                    <div className="absolute bottom-[-30px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
                                         {holidayInfo.name || (holidayInfo.status === 'fixed' ? 'Common Holiday' : holidayInfo.status === 'admin' ? 'Admin Allocated' : 'User Selected')}
                                     </div>
                                 )}
@@ -105,10 +105,10 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
-                <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-emerald-600 rounded-full flex-shrink-0"></div> Gov</div>
-                <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
-                <div className="flex items-center gap-1.5 justify-center"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>
+            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Gov</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>
             </div>
         </div>
     );
