@@ -519,20 +519,22 @@ const AttendanceDashboard: React.FC = () => {
     
     // Dynamic lists derived from users (only show companies/sites that have users)
     const activeOrganizations = useMemo(() => {
+        if (isAdmin(user?.role)) return organizations.sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
         if (!users || users.length === 0) return [];
         const orgIds = new Set(users.map(u => u.organizationId).filter(Boolean));
         return organizations
             .filter(org => orgIds.has(org.id))
             .sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
-    }, [users, organizations]);
+    }, [users, organizations, user]);
 
     const activeSocieties = useMemo(() => {
+        if (isAdmin(user?.role)) return societies.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         if (!users || users.length === 0) return [];
         const socIds = new Set(users.map(u => u.societyId).filter(Boolean));
         return societies
             .filter(soc => socIds.has(soc.id))
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, societies]);
+    }, [users, societies, user]);
     
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
@@ -1384,7 +1386,7 @@ const AttendanceDashboard: React.FC = () => {
                 });
 
                 const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
-                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H';
+                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status.includes('P/M');
                 
                 if (isPresence || isApprovedLeave) {
                     const val = (status.includes('1/2') ? 0.5 : 1);
@@ -2669,28 +2671,30 @@ const AttendanceDashboard: React.FC = () => {
 
                 {/* Dropdowns Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-x-3 gap-y-4">
-                    {!isEmployeeView && (
-                        <>
-                            <div className="col-span-1">
-                                <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
-                                <select
-                                    id={reportTypeId}
-                                    name="reportType"
-                                    className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                                    value={pendingReportType}
-                                    onChange={(e) => setPendingReportType(e.target.value as any)}
-                                >
-                                    <option value="basic">Basic Report</option>
-                                    <option value="monthly">Monthly Summary</option>
-                                    <option value="log">Attendance Logs</option>
-                                    <option value="site_ot">Site OT Report</option>
-                                    <option value="work_hours">Work Hours Report</option>
-                                    {isAdmin(user?.role) && <option value="audit">Audit Logs</option>}
-                                </select>
-                            </div>
-
+                    <div className="col-span-1">
+                        <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
+                        <select
+                            id={reportTypeId}
+                            name="reportType"
+                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
+                            value={pendingReportType}
+                            onChange={(e) => setPendingReportType(e.target.value as any)}
+                        >
+                            <option value="basic">Basic Report</option>
+                            <option value="monthly">Monthly Summary</option>
+                            <option value="work_hours">Work Hours Report</option>
                             {isAdmin(user?.role) && (
                                 <>
+                                    <option value="log">Attendance Logs</option>
+                                    <option value="site_ot">Site OT Report</option>
+                                    <option value="audit">Audit Logs</option>
+                                </>
+                            )}
+                        </select>
+                    </div>
+
+                    {!isEmployeeView && isAdmin(user?.role) && (
+                        <>
                                     <div className="col-span-1">
                                         <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
                                         <select
@@ -2748,8 +2752,6 @@ const AttendanceDashboard: React.FC = () => {
                                     </div>
                                 </>
                             )}
-                        </>
-                    )}
 
                     {(isAdmin(user?.role) || isReportingManager) && (
                         <div className="col-span-1">
@@ -2795,6 +2797,10 @@ const AttendanceDashboard: React.FC = () => {
                             <option value="E/L">Earned Leave (E/L)</option>
                             <option value="F/H">Floating Holiday (F/H)</option>
                             <option value="C/O">Comp Off (C/O)</option>
+                            <option value="M/L">Maternity Leave (M/L)</option>
+                            <option value="C/C">Child Care Leave (C/C)</option>
+                            <option value="P/L">Pink Leave (P/L)</option>
+                            <option value="P/M">Permission (P/M)</option>
                             <option value="LOP">Loss of Pay (LOP)</option>
                             <option value="W/H">Work From Home (W/H)</option>
                             <option value="W/O">Week Off (W/O)</option>

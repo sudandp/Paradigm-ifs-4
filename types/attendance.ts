@@ -239,7 +239,7 @@ export interface Holiday {
   id: string;
   date: string; // YYYY-MM-DD
   name: string;
-  type: 'office' | 'field' | 'site' | 'admin' | 'management';
+  type: 'office' | 'field' | 'site' | 'admin' | 'management' | 'pool';
 }
 
 export interface AttendanceViolation {

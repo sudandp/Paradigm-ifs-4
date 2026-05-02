@@ -43,12 +43,19 @@ interface ChangeLogEntry {
   created_at: string;
 }
 
-const TemplatesHub: React.FC = () => {
+interface TemplatesHubProps {
+  initialTemplateId?: string;
+  restrictToTemplateId?: string;
+}
+
+const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrictToTemplateId }) => {
   const { user } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
-  const [activeTemplate, setActiveTemplate] = useState<TemplateDefinition | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<TemplateDefinition | null>(
+    initialTemplateId ? TEMPLATE_DEFINITIONS.find(t => t.id === initialTemplateId) || null : null
+  );
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
@@ -108,10 +115,11 @@ const TemplatesHub: React.FC = () => {
   }, [isPreparing, isActualDone, isMasterMode]);
 
   // Filter templates by search
-  const filteredTemplates = TEMPLATE_DEFINITIONS.filter(t =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredTemplates = TEMPLATE_DEFINITIONS.filter(t => {
+    if (restrictToTemplateId && t.id !== restrictToTemplateId) return false;
+    return t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           t.description.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const handleDownload = useCallback(async (template: TemplateDefinition) => {
     if (isPreparing) return;
@@ -120,7 +128,34 @@ const TemplatesHub: React.FC = () => {
     setIsActualDone(false);
 
     try {
-      await downloadTemplate(template);
+      let dynamicOptions: Record<string, string[]> | undefined;
+      
+      // For attendance templates, fetch the list of active employees and their sites for dropdowns/autofill
+      if (template.id === 'attendance_monthly_bulk' || template.id === 'attendance_bulk') {
+        const { data: users } = await supabase
+          .from('users')
+          .select(`
+            employee_code, 
+            name, 
+            organizations (
+              short_name
+            )
+          `)
+          .eq('status', 'active')
+          .order('name');
+          
+        if (users && users.length > 0) {
+          // Special handling for Employee dropdown with Linked Data (ID and Site)
+          // We'll pass the mapping so the generator can create VLOOKUP formulas
+          dynamicOptions = {
+            employee_name: Array.from(new Set(users.map(u => u.name).filter(Boolean))),
+            employee_id_mapping: users.map(u => u.employee_code).filter(Boolean),
+            site_name_mapping: users.map(u => (u.organizations as any)?.short_name || '').filter(Boolean)
+          };
+        }
+      }
+
+      await downloadTemplate(template, dynamicOptions);
       setIsActualDone(true);
       
       // Wait for animation to hit 100% or close to it
@@ -138,7 +173,8 @@ const TemplatesHub: React.FC = () => {
 
       setToast({ message: `${template.name} template downloaded successfully!`, type: 'success' });
       logAction(template, 'download', 0, 0, 0, 0, null);
-    } catch {
+    } catch (err) {
+      console.error('Download template error:', err);
       setToast({ message: 'Failed to generate template. Please try again.', type: 'error' });
     } finally {
       setIsPreparing(false);
@@ -519,6 +555,162 @@ const TemplatesHub: React.FC = () => {
               continue;
             }
 
+            if (template.id === 'attendance_bulk') {
+              const employeeId = row.data['employee_id'];
+              const providedName = row.data['employee_name']?.toString().trim();
+              const { data: userData } = await supabase.from('users').select('id, name').eq('employee_code', employeeId).maybeSingle();
+              
+              if (!userData) {
+                console.warn(`[Attendance Bulk] User not found for employee code: ${employeeId}`);
+                totalFailed++;
+                continue;
+              }
+
+              // Validate Name Match
+              if (providedName && userData.name.toLowerCase() !== providedName.toLowerCase()) {
+                console.warn(`[Attendance Bulk] Name mismatch for ${employeeId}. Expected: ${userData.name}, Provided: ${providedName}`);
+                totalFailed++;
+                continue;
+              }
+
+              const date = row.data['date'];
+              const punchIn = row.data['punch_in'];
+              const punchOut = row.data['punch_out'];
+              const siteName = row.data['site_name'];
+              const workType = row.data['work_type'];
+
+              // Insert punch-in
+              if (punchIn) {
+                const timestampIn = `${date}T${punchIn}:00`;
+                const { error } = await supabase.from('attendance_events').insert({
+                  user_id: userData.id,
+                  timestamp: new Date(timestampIn).toISOString(),
+                  type: 'punch-in',
+                  location_name: siteName,
+                  work_type: workType,
+                  is_manual: true
+                });
+                if (!error) created++; else totalFailed++;
+              }
+
+              // Insert punch-out
+              if (punchOut) {
+                const timestampOut = `${date}T${punchOut}:00`;
+                const { error } = await supabase.from('attendance_events').insert({
+                  user_id: userData.id,
+                  timestamp: new Date(timestampOut).toISOString(),
+                  type: 'punch-out',
+                  location_name: siteName,
+                  work_type: workType,
+                  is_manual: true
+                });
+                if (!error) created++; else totalFailed++;
+              }
+              continue;
+            }
+
+            if (template.id === 'attendance_monthly_bulk') {
+              const employeeId = row.data['employee_id'];
+              const providedName = row.data['employee_name']?.toString().trim();
+              const { data: userData } = await supabase.from('users').select('id, name').eq('employee_code', employeeId).maybeSingle();
+              
+              if (!userData) {
+                totalFailed++;
+                continue;
+              }
+
+              // Validate Name Match
+              if (providedName && userData.name.toLowerCase() !== providedName.toLowerCase()) {
+                console.warn(`[Attendance Monthly] Name mismatch for ${employeeId}. Expected: ${userData.name}, Provided: ${providedName}`);
+                totalFailed++;
+                continue;
+              }
+
+              const monthYear = row.data['month_year']; // YYYY-MM
+              const siteName = row.data['site_name'];
+
+              for (let i = 1; i <= 31; i++) {
+                const status = row.data[`day_${i}`]?.toString().toUpperCase().trim();
+                if (!status) continue;
+
+                const dayStr = i.toString().padStart(2, '0');
+                const dateStr = `${monthYear}-${dayStr}`;
+                
+                // Validate if date exists for the month (e.g. avoid Feb 30)
+                const dateObj = new Date(dateStr);
+                if (isNaN(dateObj.getTime()) || dateObj.getDate() !== i) continue;
+
+                // Duration mapping for fractional notations
+                const durationMap: Record<string, { in: string; out: string }> = {
+                  'P': { in: '09:00', out: '18:00' },
+                  'PRESENT': { in: '09:00', out: '18:00' },
+                  '1/2P': { in: '09:00', out: '13:30' },
+                  '1/4P': { in: '09:00', out: '11:15' },
+                  '3/4P': { in: '09:00', out: '15:45' },
+                  'W/H': { in: '09:00', out: '17:00' },
+                  'WFH': { in: '09:00', out: '17:00' },
+                  '0.5P EL': { in: '09:00', out: '13:30' },
+                  '0.5P SL': { in: '09:00', out: '13:30' },
+                  '0.5P CL': { in: '09:00', out: '13:30' },
+                  '0.5P LOP': { in: '09:00', out: '13:30' },
+                  '0.5P+0.5 EL': { in: '09:00', out: '13:30' },
+                  '0.5P+0.5 SL': { in: '09:00', out: '13:30' },
+                  '0.5P+0.5 CL': { in: '09:00', out: '13:30' },
+                  '0.5P+0.5 LOP': { in: '09:00', out: '13:30' },
+                  'W/P': { in: '09:00', out: '18:00' },
+                  'H/P': { in: '09:00', out: '18:00' },
+                };
+
+                const punchTimes = durationMap[status];
+
+                if (punchTimes) {
+                  const location = (status === 'W/H' || status === 'WFH') ? 'Work From Home' : siteName;
+                  const { error } = await supabase.from('attendance_events').insert([
+                    {
+                      user_id: userData.id,
+                      timestamp: new Date(`${dateStr}T${punchTimes.in}:00`).toISOString(),
+                      type: 'punch-in',
+                      location_name: location,
+                      is_manual: true
+                    },
+                    {
+                      user_id: userData.id,
+                      timestamp: new Date(`${dateStr}T${punchTimes.out}:00`).toISOString(),
+                      type: 'punch-out',
+                      location_name: location,
+                      is_manual: true
+                    }
+                  ]);
+                  if (!error) created += 2; else totalFailed += 2;
+                }
+                
+                // Handle Leave portion
+                if (['LOP', 'A', 'ABSENT', 'S', 'SL', 'SICK', 'E', 'EL', 'EARNED', 'C', 'CL', 'CASUAL', 'C/O', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP'].includes(status)) {
+                  let leaveType: any = 'Loss of Pay';
+                  if (status.includes('S')) leaveType = 'Sick';
+                  else if (status.includes('E')) leaveType = 'Earned';
+                  else if (status === 'C/O') leaveType = 'Comp Off';
+                  else if (status.includes('C')) leaveType = 'Casual';
+                  
+                  const isHalfDay = status.startsWith('0.5P');
+                  
+                  const { error } = await supabase.from('leave_requests').insert({
+                    id: crypto.randomUUID(),
+                    user_id: userData.id,
+                    leave_type: leaveType,
+                    start_date: dateStr,
+                    end_date: dateStr,
+                    reason: 'Bulk Monthly Feed Update',
+                    status: 'approved',
+                    day_option: isHalfDay ? 'half_afternoon' : 'full',
+                    approval_history: []
+                  });
+                  if (!error) created++; else totalFailed++;
+                }
+              }
+              continue;
+            }
+
             // Generic logic for other templates with foreign key resolution
             const matchValue = row.data[template.matchKey];
             if (!matchValue) { failed++; continue; }
@@ -714,35 +906,46 @@ const TemplatesHub: React.FC = () => {
 
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-primary-text">Client Management</h2>
+          <h2 className="text-2xl font-bold text-primary-text">
+            {restrictToTemplateId ? (activeTemplate?.name || 'Bulk Template') : 'Client Management'}
+          </h2>
           <p className="text-sm text-muted mt-1">
             Download pre-formatted Excel templates, fill in data, and upload to bulk-manage client records.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={handleMasterDownload} disabled={isPreparing} className="border-blue-200 text-blue-600 hover:bg-blue-50">
-            <Download className="mr-2 h-4 w-4" /> Master Template
-          </Button>
-          <Button variant="outline" onClick={handleMasterUploadClick} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
-            <Upload className="mr-2 h-4 w-4" /> Upload Master
-          </Button>
-          <div className="h-8 w-px bg-border mx-1" />
+        {!restrictToTemplateId && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={handleMasterDownload} disabled={isPreparing} className="border-blue-200 text-blue-600 hover:bg-blue-50">
+              <Download className="mr-2 h-4 w-4" /> Master Template
+            </Button>
+            <Button variant="outline" onClick={handleMasterUploadClick} className="border-emerald-200 text-emerald-600 hover:bg-emerald-50">
+              <Upload className="mr-2 h-4 w-4" /> Upload Master
+            </Button>
+            <div className="h-8 w-px bg-border mx-1" />
+            <Button variant="outline" onClick={toggleChangeLogs} className="border-slate-200 hover:border-[#006b3f] hover:text-[#006b3f]">
+              <History className="mr-2 h-4 w-4" /> {showChangeLogs ? 'Hide Logs' : 'Change Logs'}
+            </Button>
+          </div>
+        )}
+        {restrictToTemplateId && (
           <Button variant="outline" onClick={toggleChangeLogs} className="border-slate-200 hover:border-[#006b3f] hover:text-[#006b3f]">
             <History className="mr-2 h-4 w-4" /> {showChangeLogs ? 'Hide Logs' : 'Change Logs'}
           </Button>
-        </div>
+        )}
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-        <input
-          type="text"
-          placeholder="Search templates..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="form-input !pl-10 w-full text-sm"
-        />
-      </div>
+      {!restrictToTemplateId && (
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <input
+            type="text"
+            placeholder="Search templates..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="form-input !pl-10 w-full text-sm"
+          />
+        </div>
+      )}
 
       {showChangeLogs && (
         <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden animate-in slide-in-from-top-2 duration-300">
@@ -841,8 +1044,8 @@ const TemplatesHub: React.FC = () => {
       </div>
 
       {showPreview && ((parseResult && activeTemplate) || (isMasterMode && masterResult)) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { setShowPreview(false); setParseResult(null); setMasterResult(null); }}>
-          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col m-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => { setShowPreview(false); setParseResult(null); setMasterResult(null); }}>
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-[95vw] xl:max-w-[85vw] max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <div>
                 <h3 className="text-lg font-bold text-primary-text flex items-center gap-2">
@@ -882,8 +1085,8 @@ const TemplatesHub: React.FC = () => {
                   <div className="flex items-center gap-2 text-emerald-600"><CheckCircle2 className="h-4 w-4" /><span className="font-medium">{parseResult.validCount} valid</span></div>
                   {parseResult.errorCount > 0 && <div className="flex items-center gap-2 text-red-500"><AlertTriangle className="h-4 w-4" /><span className="font-medium">{parseResult.errorCount} with errors</span></div>}
                 </div>
-                <div className="flex-1 overflow-auto">
-                  <table className="w-full text-left border-collapse min-w-max">
+                <div className="flex-1 overflow-auto bg-page/10">
+                  <table className="w-full text-left border-collapse min-w-full">
                     <thead className="sticky top-0 bg-page shadow-sm z-10 text-[11px] uppercase tracking-wider font-bold text-muted border-b border-border">
                       <tr><th className="px-6 py-3">#</th>{parseResult.headers.map(h => <th key={h} className="px-6 py-3">{h}</th>)}<th className="px-6 py-3">Status</th></tr>
                     </thead>
@@ -892,7 +1095,22 @@ const TemplatesHub: React.FC = () => {
                         <tr key={idx} className={`hover:bg-page/50 transition-colors ${!row.isValid ? 'bg-red-50/30' : ''}`}>
                           <td className="px-6 py-3 text-xs text-muted">{row.rowIndex}</td>
                           {activeTemplate.columns.map(col => (<td key={col.key} className={`px-6 py-3 text-xs ${row.errors.find(e => e.column === col.header) ? 'text-red-600 font-medium' : 'text-primary-text'}`}>{row.data[col.key] || <span className="text-muted/40">—</span>}</td>))}
-                          <td className="px-6 py-3">{row.isValid ? <span className="inline-flex items-center text-emerald-600 text-xs font-medium"><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Valid</span> : <span className="inline-flex items-center text-red-500 text-xs font-medium" title={row.errors.map(e => e.message).join('\n')}><AlertTriangle className="h-3.5 w-3.5 mr-1" /> Error</span>}</td>
+                          <td className="px-6 py-3">
+                            {row.isValid ? (
+                              <span className="inline-flex items-center text-emerald-600 text-xs font-medium">
+                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Valid
+                              </span>
+                            ) : (
+                              <div className="flex flex-col" title={row.errors.map(e => e.message).join('\n')}>
+                                <span className="inline-flex items-center text-red-500 text-xs font-medium">
+                                  <AlertTriangle className="h-3.5 w-3.5 mr-1" /> Error
+                                </span>
+                                <span className="text-[10px] text-red-400 mt-0.5 max-w-[200px] whitespace-normal leading-tight">
+                                  {row.errors[0]?.message}
+                                </span>
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

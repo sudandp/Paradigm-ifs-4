@@ -425,12 +425,14 @@ const LeaveDashboard: React.FC = () => {
         const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings);
         const categorySettings = (attendanceSettings as any)?.[staffCategory];
         if (!categorySettings) return false;
-        
+
+        // PRIORITY 1: If floatingHolidayMonths array is set → it is the SOLE gate.
         if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
             const monthIdx = viewingDate.getMonth();
             return categorySettings.floatingHolidayMonths.includes(monthIdx);
         }
-        
+
+        // PRIORITY 2 (fallback): No month array → use validFrom/validTill.
         const viewingDateStr = format(viewingDate, 'yyyy-MM-dd');
         const validFrom = categorySettings.floatingLeavesValidFrom;
         const validTill = categorySettings.floatingLeavesExpiryDate;
@@ -819,7 +821,7 @@ const LeaveDashboard: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <p className="font-bold text-primary-text text-sm">
-                                                            {req.leaveType === 'Floating' ? '3rd Saturday Leave' : req.leaveType}
+                                                            {req.leaveType === 'Floating' ? 'Blue Leave' : req.leaveType}
                                                         </p>
                                                         {req.dayOption === 'half' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Half Day</span>}
                                                     </div>

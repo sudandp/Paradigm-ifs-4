@@ -67,42 +67,9 @@ export const BasicReportView: React.FC<{
 
     if (!data.length) return <EmptyState message="No attendance data found for this period." />;
 
-    const totalEmployees = data.length;
-    const presentCount = data.filter(r => r.status === 'P' || r.status.includes('P')).length;
-    const attendancePercentage = totalEmployees > 0 ? Math.round((presentCount / totalEmployees) * 100) : 0;
-    const lateCount = data.filter(r => r.status === 'Late' || r.status.includes('L')).length;
-
     return (
         <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
-            
-            {/* Summary Box */}
-            <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Daily Summary</h3>
-                <p className="text-sm text-gray-600 leading-relaxed max-w-3xl">
-                    Dear Team,<br /><br />
-                    Today's attendance stands at <strong>{attendancePercentage}%</strong>. 
-                    A total of <strong>{totalEmployees - presentCount}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br /><br />
-                    Attendance requires attention.
-                </p>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Staff Presence</span>
-                    <div className="text-2xl font-black text-green-600">{attendancePercentage}%</div>
-                </div>
-                <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Total Present</span>
-                    <div className="text-2xl font-black text-blue-600">{presentCount}</div>
-                </div>
-                <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Total Late</span>
-                    <div className="text-2xl font-black text-orange-500">{lateCount}</div>
-                </div>
-            </div>
-
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>

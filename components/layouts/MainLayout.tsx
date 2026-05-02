@@ -82,6 +82,8 @@ export const allNavLinks: NavLinkConfig[] = [
 
     // Templates Hub
     { to: '/hr/entity-management?tab=templates_hub', label: 'Client Management', icon: FileSpreadsheet, permission: 'view_entity_management', category: 'Templates Hub' },
+    { to: '/hr/entity-management?tab=attendance_bulk', label: 'Attendance Bulk Feed', icon: BarChart, permission: 'view_entity_management', category: 'Templates Hub' },
+    { to: '/hr/entity-management?tab=attendance_monthly_bulk', label: 'Monthly Attendance Feed', icon: CalendarDays, permission: 'view_entity_management', category: 'Templates Hub' },
 
     // Site Management
     { to: '/admin/sites', label: 'Site Management', icon: Building, permission: 'manage_sites', category: 'Site Management' },

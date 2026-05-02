@@ -93,6 +93,8 @@ const subcategories = [
     { key: 'onboard_reject_reason', label: 'Onboarding Rejection Reasons', icon: UserX },
     { key: 'salary_template', label: 'Salary Breakup', icon: IndianRupee },
     { key: 'salary_line_item', label: 'Salary Line Item', icon: IndianRupee },
+    { key: 'attendance_bulk', label: 'Attendance Bulk Feed', icon: BarChart },
+    { key: 'attendance_monthly_bulk', label: 'Monthly Attendance Feed', icon: CalendarDays },
 ];
 
 const EntityManagement: React.FC = () => {
@@ -854,6 +856,8 @@ const EntityManagement: React.FC = () => {
             case 'onboard_reject_reason': return <OnboardRejectReasonConfig />;
             case 'salary_template': return <SalaryTemplateConfig />;
             case 'salary_line_item': return <SalaryLineItemConfig />;
+            case 'attendance_bulk': return <TemplatesHub restrictToTemplateId="attendance_bulk" initialTemplateId="attendance_bulk" />;
+            case 'attendance_monthly_bulk': return <TemplatesHub restrictToTemplateId="attendance_monthly_bulk" initialTemplateId="attendance_monthly_bulk" />;
             case 'templates_hub': return <TemplatesHub />;
             default:
                 const activeItem = subcategories.find(sc => sc.key === activeSubcategory);

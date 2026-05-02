@@ -51,9 +51,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
         const isMale = (user?.gender || '').toLowerCase() === 'male';
         return recurringHolidays.filter(rule => {
-            if ((rule.type || 'office') !== roleType) return false;
+            const ruleRoleType = rule.roleType || rule.type || 'office';
+            if (ruleRoleType !== roleType) return false;
+            
             // 3rd Saturday holiday applies ONLY to users EXPLICITLY marked as MALE (per HR policy)
-            if (rule.day === 'Saturday' && !isMale) return false;
+            const ruleDay = String(rule.day || '').toLowerCase();
+            const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
+            if (ruleDay === 'saturday' && ruleOccurrence === 3) {
+                if (user?.roleId !== 'admin' && user?.role !== 'admin' && !isMale) return false;
+            }
             return true;
         });
     }, [user, recurringHolidays, settings]);
@@ -65,17 +71,18 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
         const categorySettings = (settings as any)?.[staffCategory];
         if (!categorySettings) return false;
-        
+
+        // PRIORITY 1: If floatingHolidayMonths array is set → it is the SOLE gate.
         if (categorySettings.floatingHolidayMonths && categorySettings.floatingHolidayMonths.length > 0) {
             const monthIdx = new Date(dateStr.replace(/-/g, '/')).getMonth();
             return categorySettings.floatingHolidayMonths.includes(monthIdx);
         }
-        
-        const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+        // PRIORITY 2 (fallback): No month array → use validFrom/validTill against the specific date.
         const validFrom = categorySettings.floatingLeavesValidFrom;
         const validTill = categorySettings.floatingLeavesExpiryDate;
-        if (validFrom && todayStr < validFrom) return false;
-        if (validTill && todayStr > validTill) return false;
+        if (validFrom && dateStr < validFrom) return false;
+        if (validTill && dateStr > validTill) return false;
         return true;
     };
 
@@ -90,10 +97,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             for (const day of days) {
                 if (format(day, 'EEEE').toLowerCase() === rule.day.toLowerCase()) {
                     count++;
-                    if (count === rule.n) {
+                    const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
+                    if (count === ruleOccurrence) {
                         // Check if this recurring holiday is expired (e.g. 3rd Saturday after Feb 1st)
                         const dateStr = format(day, 'yyyy-MM-dd');
-                        if (rule.day === 'Saturday' && !isFloatingHolidayValid(dateStr)) {
+                        if (String(rule.day).toLowerCase() === 'saturday' && !isFloatingHolidayValid(dateStr)) {
                             // Expired - do not add to holiday dates
                         } else {
                             dates.push(day);
@@ -176,8 +184,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 const [m, d] = fh.date.split('-').map(Number);
                 return isSameDay(new Date(day.getFullYear(), m - 1, d), day);
             });
-            const foundPool = userHolidays.find(uh => {
-                const [y, m, d] = uh.holidayDate.split('-').map(Number);
+            const foundPool = (userHolidays || []).find(uh => {
+                const uhDate = uh.holidayDate || (uh as any).holiday_date;
+                if (!uhDate) return false;
+                const [y, m, d] = String(uhDate).substring(0, 10).split('-').map(Number);
                 return isSameDay(new Date(y, m - 1, d), day);
             });
 
@@ -206,9 +216,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isRecurringHoliday && !isFloatingExpired) {
-                finalStatus = visuallyActivePrev ? 'floating-holiday' : (isPast ? 'absent' : 'neutral');
+                // Always show FLOAT color — it's a designated Blue Leave day regardless of threshold
+                finalStatus = 'floating-holiday';
             } else if (isCompanyHoliday) {
-                finalStatus = visuallyActivePrev ? 'company-holiday' : (isPast ? 'absent' : 'neutral');
+                // Always show HOLIDAY color — it's a designated company holiday
+                finalStatus = 'company-holiday';
             } else if (isSunday) {
                 finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
             } else if (isPast) {

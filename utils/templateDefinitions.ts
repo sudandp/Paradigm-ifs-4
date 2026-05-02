@@ -21,6 +21,7 @@ export interface TemplateDefinition {
   icon: string;
   table: string;
   matchKey: string; // Column used to match existing records for updates
+  instructions?: string[];
   columns: TemplateColumn[];
   sampleData: Record<string, any>[];
 }
@@ -205,6 +206,73 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     ],
     sampleData: [
       { site_name: 'Prestige Lakeside', shift_name: 'Day Shift', start_time: '08:00', end_time: '20:00', grace_period_minutes: 15, auto_punch_out: 'Yes' },
+    ],
+  },
+  {
+    id: 'attendance_bulk',
+    name: 'Bulk Attendance Feed',
+    description: 'Bulk upload employee attendance events (Check-in/Check-out)',
+    icon: 'BarChart',
+    table: 'attendance_events',
+    matchKey: 'date',
+    columns: [
+      { key: 'employee_id', header: 'Employee ID', required: true, type: 'string', width: 20, description: 'Unique Employee Code' },
+      { key: 'employee_name', header: 'Employee Name', required: true, type: 'string', width: 25, description: 'Full name of the employee' },
+      { key: 'date', header: 'Date', required: true, type: 'date', width: 15, description: 'Attendance Date (YYYY-MM-DD)' },
+      { key: 'punch_in', header: 'Punch In Time', required: false, type: 'string', width: 15, description: 'HH:MM format (e.g., 09:00)' },
+      { key: 'punch_out', header: 'Punch Out Time', required: false, type: 'string', width: 15, description: 'HH:MM format (e.g., 18:00)' },
+      { key: 'site_name', header: 'Site Name', required: true, type: 'string', width: 25, description: 'Name of the site/society' },
+      { key: 'work_type', header: 'Work Type', required: true, type: 'enum', enumValues: ['office', 'field', 'site'], width: 15, description: 'Category of work' },
+    ],
+    sampleData: [
+      { employee_id: 'EMP001', employee_name: 'John Doe', date: '2026-05-01', punch_in: '09:00', punch_out: '18:00', site_name: 'Prestige Lakeside', work_type: 'office' },
+    ],
+  },
+  {
+    id: 'attendance_monthly_bulk',
+    name: 'Monthly Attendance Status Feed',
+    description: 'Bulk upload monthly attendance statuses (P, A, LOP, etc.) for all days',
+    icon: 'CalendarDays',
+    table: 'attendance_events',
+    matchKey: 'month_year',
+    instructions: [
+      '1. DO NOT change the header row or column order.',
+      '2. Employee ID must match the unique code in the system.',
+      '3. Month & Year should be in YYYY-MM format (e.g., 2026-04).',
+      '4. Allowed Notations for Days 1-31:',
+      '   - P: Present (Full Day)',
+      '   - 1/2P: Half Day Work (4.5 hours)',
+      '   - 1/4P: Quarter Day Work (2.25 hours)',
+      '   - 3/4P: Three-Quarter Day Work (6.75 hours)',
+      '   - EL / SL / CL: Approved Leaves (Full Day)',
+      '   - 0.5P+0.5 EL / 0.5P+0.5 SL / 0.5P+0.5 CL: Half Day Work + Half Day Leave',
+      '   - LOP / A: Loss of Pay / Absent',
+      '   - W/H: Work From Home',
+      '   - W/O / H: Week Off / Holiday',
+      '   - C/O: Comp Off (Paid Leave)',
+      '   - C/D: Compensatory Day Off (Unpaid/Weekly Off)',
+      '   - W/P: Work-Related Present',
+      '   - H/P: Holiday-Related Present',
+      '5. **CRITICAL**: Employee Name must EXACTLY match the name in our system for the given Employee ID.',
+      '6. This sheet is password protected to ensure data integrity.',
+    ],
+    columns: [
+      { key: 'employee_id', header: 'Employee ID', required: true, type: 'string', width: 20, description: 'Unique Employee Code' },
+      { key: 'employee_name', header: 'Employee Name', required: true, type: 'string', width: 25, description: 'Full name of the employee' },
+      { key: 'month_year', header: 'Month & Year', required: true, type: 'string', width: 15, description: 'YYYY-MM format (e.g., 2026-04)' },
+      { key: 'site_name', header: 'Site Name', required: true, type: 'string', width: 25, description: 'Primary site name' },
+      ...Array.from({ length: 31 }, (_, i) => ({
+        key: `day_${i + 1}`,
+        header: (i + 1).toString(),
+        required: false,
+        type: 'enum' as const,
+        enumValues: ['P', 'A', '1/4P', '1/2P', '3/4P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O'],
+        width: 10,
+        description: 'Select from allowed notations only'
+      }))
+    ],
+    sampleData: [
+      { employee_id: 'EMP001', employee_name: 'John Doe', month_year: '2026-04', site_name: 'Prestige Lakeside', day_1: 'P', day_2: '1/2P', day_3: 'W/O', day_4: '0.5P+0.5 EL', day_5: 'A' },
     ],
   },
 ];

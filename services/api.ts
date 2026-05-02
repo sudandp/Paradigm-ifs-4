@@ -3502,13 +3502,17 @@ export const api = {
         return false;
     };
 
-    // Helper for floating holiday validity based on selected months
+    // Helper for floating holiday validity
+    // PRIORITY 1: If floatingHolidayMonths is configured, it is the SOLE gate (validFrom/validTill ignored).
+    // PRIORITY 2 (fallback): No month array → use validFrom/validTill dates.
     const isFloatingHolidayValid = (dateToCheck: string) => {
         if (rules.floatingHolidayMonths && rules.floatingHolidayMonths.length > 0) {
             const monthIdx = new Date(dateToCheck.replace(/-/g, '/')).getMonth();
             return rules.floatingHolidayMonths.includes(monthIdx);
         }
-        return !isNotValid(rules.floatingLeavesValidFrom, rules.floatingLeavesExpiryDate);
+        if (rules.floatingLeavesValidFrom && dateToCheck < rules.floatingLeavesValidFrom) return false;
+        if (rules.floatingLeavesExpiryDate && dateToCheck > rules.floatingLeavesExpiryDate) return false;
+        return true;
     };
 
     const now = new Date();

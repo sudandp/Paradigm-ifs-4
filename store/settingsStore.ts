@@ -15,6 +15,7 @@ interface SettingsState {
   officeHolidays: Holiday[];
   fieldHolidays: Holiday[];
   siteHolidays: Holiday[];
+  userHolidays: Holiday[];
   gmcPolicy: GmcPolicySettings;
   perfiosApi: PerfiosApiSettings;
   geminiApi: GeminiApiSettings;
@@ -257,6 +258,7 @@ export const useSettingsStore = create<SettingsState>()(
       officeHolidays: [],
       fieldHolidays: [],
       siteHolidays: [],
+      userHolidays: [],
       recurringHolidays: [],
       gmcPolicy: initialGmcPolicy,
       perfiosApi: initialPerfiosApi,
@@ -281,6 +283,7 @@ export const useSettingsStore = create<SettingsState>()(
             officeHolidays: office, 
             fieldHolidays: field, 
             siteHolidays: site, 
+            userHolidays: holidays.filter(h => h.type === 'pool'),
             attendance: attendanceSettings, 
             recurringHolidays: recurringHolidays || [],
             apiSettings: apiSettings ? { ...initialApiSettings, ...apiSettings } : initialApiSettings,

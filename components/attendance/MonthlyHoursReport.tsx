@@ -237,10 +237,44 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
         const dateStrStr = format(checkDate, 'yyyy-MM-dd');
         const checkDayName = format(checkDate, 'EEEE');
+        // 1. Configured & Fixed Holidays
         const isConfiguredHolidayCheck = (category === 'field' ? (rules?.fieldHolidays || []) : (rules?.officeHolidays || [])).some((h: any) => {
             const hVal = String(h.date).split(' ')[0].split('T')[0];
             return hVal === dateStrStr;
         }) || FIXED_HOLIDAYS.some(fh => dateStrStr.endsWith('-' + fh.date));
+
+        // 2. Pool Holidays
+        const isPoolHolidayCheck = (userHolidays || []).some((uh: any) => {
+            const uhUserId = String(uh.userId || uh.user_id || '').trim().toLowerCase();
+            const targetUserId = String(user.id).trim().toLowerCase();
+            if (uhUserId !== targetUserId) return false;
+            const uhDateRaw = String(uh.holidayDate || uh.holiday_date || '').trim();
+            return uhDateRaw.includes(dateStrStr);
+        });
+
+        // 3. Recurring Holidays (Blue Leave)
+        const checkDayOfMonth = checkDate.getDate();
+        const isRecurringCheck = (recurringHolidays || []).some(rule => {
+            const ruleDay = String(rule.day || '').toLowerCase();
+            if (!rule || ruleDay !== checkDayName.toLowerCase()) return false;
+            const occurrence = Math.ceil(checkDayOfMonth / 7);
+            const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
+            const ruleType = rule.roleType || rule.type || 'office';
+            if (ruleType !== category) return false;
+            
+            // 3rd Saturday Blue Leave applies only to males
+            if (ruleDay === 'saturday' && ruleOccurrence === 3) {
+                if (user.role !== 'admin' && (user.gender || '').toLowerCase() !== 'male') return false;
+            }
+
+            // Apply month gating
+            const months = rules?.floatingHolidayMonths || [];
+            if (months.length > 0 && !months.includes(checkDate.getMonth())) return false;
+            
+            return ruleOccurrence === occurrence;
+        });
+
+        const isHolidayCheck = isConfiguredHolidayCheck || isPoolHolidayCheck || isRecurringCheck;
         const hasApprovedLeaveCheck = allLeaves.some(l => 
             String(l.userId) === String(user.id) &&
             isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
@@ -248,9 +282,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         );
         const hasActivityCheck = events.some(e => e.timestamp.startsWith(dateStrStr));
 
-        if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
+        if (hasActivityCheck || hasApprovedLeaveCheck || isHolidayCheck) {
             daysActiveInCurrentWeek++;
-            if (hasActivityCheck || isConfiguredHolidayCheck) {
+            if (hasActivityCheck || isHolidayCheck) {
                 daysPresentInCurrentWeek++;
             }
         } else if (hasApprovedLeaveCheck) {
@@ -383,7 +417,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
           isActiveInPreviousWeek,
           workingHours: netHours,
-          fieldStatus: fieldResultStatus
+          fieldStatus: fieldResultStatus,
+          floatingHolidayMonths: rules?.floatingHolidayMonths,
+          userGender: user.gender
       });
 
       // Only mark WOP if there's an actual punch-in on this day, not just stray events
@@ -481,10 +517,17 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           <div className="bg-white p-8">
             {/* Header matching image exactly */}
             <div className="mb-6">
-                <h3 className="text-[17px] font-normal text-gray-900 leading-tight">
-                    <span className="font-bold">Employee:</span> <span className="font-bold">{employee.employeeName}</span> 
-                    <span className="ml-4 font-normal text-gray-500">Role: <span className="font-medium text-gray-700 capitalize">{employee.role?.replace(/_/g, ' ')}</span></span>
-                </h3>
+                <div className="flex flex-col gap-1.5">
+                    <h3 className="text-[17px] font-normal text-gray-900 leading-tight">
+                        <span className="font-bold">Name :</span> <span className="font-bold">{employee.employeeName}</span> 
+                    </h3>
+                    <div className="text-[15px]">
+                        <span className="font-normal text-gray-500">Role:</span> <span className="font-medium text-gray-700 capitalize ml-1">{employee.role ? employee.role.replace(/_/g, ' ') : 'Unverified'}</span>
+                    </div>
+                    <div className="text-[15px]">
+                        <span className="font-normal text-gray-500">Billing Cycle:</span> <span className="font-medium text-gray-700 ml-1">{format(new Date(year, month - 1, 1), 'do MMMM')} to {format(endOfMonth(new Date(year, month - 1, 1)), 'do MMMM')}</span>
+                    </div>
+                </div>
                 <div className="mt-5 mb-6 flex flex-wrap xl:flex-nowrap gap-4">
                     {/* Key Time Metrics - Cards */}
                     <div className="flex flex-wrap md:flex-nowrap gap-3">

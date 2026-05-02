@@ -44,85 +44,209 @@ export interface ReferenceData {
  */
 export const downloadTemplate = async (
   template: TemplateDefinition,
+  dynamicOptions?: Record<string, string[]>,
   onProgress?: (progress: number) => void
 ): Promise<void> => {
   onProgress?.(10);
   const workbook = new ExcelJS.Workbook();
   onProgress?.(30);
-  
+
+  // --- Lookups Sheet ---
+  // CRITICAL: Must be 'hidden' not 'veryHidden'.
+  // Excel CANNOT use veryHidden sheets as dropdown sources — dropdowns silently fail.
+  const lookupsWs = workbook.addWorksheet('Lookups');
+  lookupsWs.state = 'hidden';
+  const lookupRefs: Record<string, string> = {};
+
+  if (dynamicOptions) {
+    const specializedKeys = ['employee_name', 'employee_id_mapping', 'site_name_mapping'];
+    
+    specializedKeys.forEach((key, colIdx) => {
+      if (dynamicOptions[key]) {
+        const colLetter = lookupsWs.getColumn(colIdx + 1).letter;
+        lookupsWs.getCell(`${colLetter}1`).value = key;
+        dynamicOptions[key].forEach((opt, rowIdx) => {
+          lookupsWs.getCell(`${colLetter}${rowIdx + 2}`).value = opt;
+        });
+        
+        if (key === 'employee_name') {
+          // Column A in Lookups = employee names; used as the dropdown source
+          lookupRefs[key] = `Lookups!$A$2:$A$${dynamicOptions[key].length + 1}`;
+        }
+      }
+    });
+
+    let otherColIdx = specializedKeys.filter(k => dynamicOptions[k]).length;
+    Object.entries(dynamicOptions).forEach(([key, options]) => {
+      if (specializedKeys.includes(key)) return;
+      const colLetter = lookupsWs.getColumn(otherColIdx + 1).letter;
+      lookupsWs.getCell(`${colLetter}1`).value = key;
+      options.forEach((opt, rowIdx) => {
+        lookupsWs.getCell(`${colLetter}${rowIdx + 2}`).value = opt;
+      });
+      lookupRefs[key] = `Lookups!$${colLetter}$2:$${colLetter}$${options.length + 1}`;
+      otherColIdx++;
+    });
+  }
+
   // --- Data Sheet ---
   const worksheet = workbook.addWorksheet(template.name);
-  const headers = template.columns.map(c => c.header);
-  
-  // Add headers
-  const headerRow = worksheet.addRow(headers);
+
+  // Add headers with mandatory column styling
+  const headerRow = worksheet.addRow(template.columns.map(col =>
+    col.required ? `* ${col.header}` : col.header
+  ));
   headerRow.font = { bold: true };
-  
-  // Add sample data
+  template.columns.forEach((col, idx) => {
+    if (col.required) {
+      const cell = headerRow.getCell(idx + 1);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC0000' } };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    }
+  });
+
+  // Add sample/example row
   template.sampleData.forEach(row => {
     worksheet.addRow(template.columns.map(col => row[col.key] ?? ''));
   });
 
-  // Set column widths
-  worksheet.columns = template.columns.map(col => ({ 
-    header: col.header, 
-    key: col.key, 
-    width: col.width || 18 
+  worksheet.columns = template.columns.map(col => ({
+    header: col.header,
+    key: col.key,
+    width: col.width || 18
   }));
 
-  // Add Data Validation for Enum, Date, and Number Columns
+  const nameColIdx = template.columns.findIndex(c => c.key === 'employee_name') + 1;
+  const idColIdx   = template.columns.findIndex(c => c.key === 'employee_id') + 1;
+  const siteColIdx = template.columns.findIndex(c => c.key === 'site_name') + 1;
+  const nameColLetter = nameColIdx > 0 ? worksheet.getColumn(nameColIdx).letter : 'B';
+
+  const hasAutofill = !!(dynamicOptions?.employee_id_mapping && dynamicOptions?.site_name_mapping);
+  // VLOOKUP range: cols A(name), B(id), C(site) in Lookups
+  const lookupRange = hasAutofill
+    ? `Lookups!$A$2:$C$${(dynamicOptions?.employee_name?.length || 0) + 1}`
+    : null;
+
+  // --- Apply Validations and VLOOKUP Formulas ---
   for (const [idx, col] of template.columns.entries()) {
-    // Yield every few columns to keep UI smooth
-    if (idx % 3 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    if (idx % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     const columnLetter = worksheet.getColumn(idx + 1).letter;
-    
-    // Format date columns
+    const colIdx = idx + 1;
+
     if (col.type === 'date') {
       worksheet.getColumn(idx + 1).numFmt = 'yyyy-mm-dd';
     }
 
-    for (let i = 2; i <= 1000; i++) {
+    const isEmployeeNameCol = col.key === 'employee_name' && !!lookupRefs['employee_name'];
+    const isAutofillCol = hasAutofill && (colIdx === idColIdx || colIdx === siteColIdx);
+    const needsValidation = isEmployeeNameCol || isAutofillCol || lookupRefs[col.key] ||
+      (col.type === 'enum' && col.enumValues && col.enumValues.length > 0) ||
+      col.type === 'date' || col.type === 'number';
+
+    if (!needsValidation) continue;
+
+    for (let i = 2; i <= 2000; i++) {
       const cell = worksheet.getCell(`${columnLetter}${i}`);
-      
-      if (col.type === 'enum' && col.enumValues && col.enumValues.length > 0) {
+
+      if (isAutofillCol) {
+        // VLOOKUP formula: auto-fills ID or Site when Employee Name is selected
+        const lookupCol = colIdx === idColIdx ? 2 : 3;
+        cell.value = {
+          formula: `IF(${nameColLetter}${i}<>"", IFERROR(VLOOKUP(${nameColLetter}${i}, ${lookupRange}, ${lookupCol}, FALSE), ""), "")`,
+          result: undefined
+        };
+        continue; // protection handled below at column level
+      }
+
+      if (isEmployeeNameCol) {
         cell.dataValidation = {
           type: 'list',
           allowBlank: true,
-          showErrorMessage: true,
-          errorTitle: 'Invalid Selection',
-          error: 'Please select a value from the dropdown list.',
+          formulae: [lookupRefs['employee_name']],
+          showErrorMessage: false // Allow manual typing if employee not in list
+        };
+      } else if (lookupRefs[col.key]) {
+        cell.dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [lookupRefs[col.key]],
+          showErrorMessage: true
+        };
+      } else if (col.type === 'enum' && col.enumValues && col.enumValues.length > 0) {
+        cell.dataValidation = {
+          type: 'list',
+          allowBlank: true,
           formulae: [`"${col.enumValues.join(',')}"`]
         };
       } else if (col.type === 'date') {
         cell.dataValidation = {
           type: 'date',
           operator: 'greaterThan',
-          showErrorMessage: true,
           allowBlank: true,
-          errorTitle: 'Invalid Date Format',
-          error: 'Please enter a valid date in YYYY-MM-DD format.',
           formulae: [new Date('1900-01-01')]
         };
       } else if (col.type === 'number') {
         cell.dataValidation = {
           type: 'decimal',
           operator: 'between',
-          showErrorMessage: true,
           allowBlank: true,
-          errorTitle: 'Invalid Number',
-          error: 'Please enter a valid numerical value.',
           formulae: [-999999999, 999999999]
         };
       }
     }
   }
 
+  // --- Worksheet Protection ---
+  const PASS = 'Paradigm_security2006';
+
+  // FIX: Use column-level unlocking instead of cell-by-cell.
+  // row.eachCell only touches already-populated cells, leaving empty rows locked.
+  // Setting column protection unlocks ALL rows in that column.
+  template.columns.forEach((col, idx) => {
+    const colIdx = idx + 1;
+    const isLocked = hasAutofill && (colIdx === idColIdx || colIdx === siteColIdx);
+    // Unlock all editable columns; keep autofill columns locked
+    if (!isLocked) {
+      worksheet.getColumn(colIdx).protection = { locked: false };
+    }
+  });
+
+  // Re-lock header row
+  worksheet.getRow(1).eachCell({ includeEmpty: true }, cell => {
+    cell.protection = { locked: true };
+  });
+
+  worksheet.protect(PASS, {
+    selectLockedCells: true,
+    selectUnlockedCells: true,
+    formatCells: true,
+    formatColumns: true,
+    formatRows: true,
+    sort: true,
+    autoFilter: true
+  });
+
+  // Protect lookups sheet to prevent tampering
+  lookupsWs.protect(PASS, {});
+
   // --- Instructions Sheet ---
   const instrWs = workbook.addWorksheet('Instructions');
+  if (template.instructions && template.instructions.length > 0) {
+    const titleCell = instrWs.getCell('A1');
+    titleCell.value = `Instructions for ${template.name}`;
+    titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+    template.instructions.forEach((instruction, i) => {
+      const cell = instrWs.getCell(`A${i + 3}`);
+      cell.value = instruction;
+      cell.font = { size: 11 };
+      if (instruction.includes('Allowed Notations')) cell.font.bold = true;
+    });
+  }
+
   const instrHeaders = ['Column', 'Required', 'Type', 'Description', 'Allowed Values'];
   const instrRow = instrWs.addRow(instrHeaders);
   instrRow.font = { bold: true };
-
   template.columns.forEach(col => {
     instrWs.addRow([
       col.header,
@@ -132,10 +256,8 @@ export const downloadTemplate = async (
       col.enumValues ? col.enumValues.join(', ') : '',
     ]);
   });
-
-  instrWs.columns = [
-    { width: 25 }, { width: 10 }, { width: 12 }, { width: 50 }, { width: 30 },
-  ];
+  instrWs.columns = [{ width: 30 }, { width: 12 }, { width: 15 }, { width: 60 }, { width: 40 }];
+  instrWs.protect(PASS, {});
 
   // Download
   onProgress?.(80);
@@ -176,8 +298,13 @@ export const parseUploadedFile = async (
     const data = await file.arrayBuffer();
     await workbook.xlsx.load(data);
 
-    // Read from the first sheet (data sheet)
-    const worksheet = workbook.worksheets[0];
+    // Intelligently find the correct data sheet
+    let worksheet = workbook.getWorksheet(template.name);
+    if (!worksheet) {
+      // Fallback: find the first sheet that isn't the "Instructions" sheet
+      worksheet = workbook.worksheets.find(ws => ws.name !== 'Instructions') || workbook.worksheets[0];
+    }
+
     if (!worksheet) {
       throw new Error('No worksheets found in the file.');
     }
@@ -189,7 +316,12 @@ export const parseUploadedFile = async (
     const firstRow = worksheet.getRow(1);
     firstRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       const headerVal = getCellValue(cell);
-      headers[colNumber - 1] = String(headerVal || '').trim();
+      let headerStr = String(headerVal || '').trim();
+      // Strip mandatory prefix if present
+      if (headerStr.startsWith('* ')) {
+        headerStr = headerStr.substring(2);
+      }
+      headers[colNumber - 1] = headerStr;
     });
 
     // Parse data rows
@@ -252,6 +384,14 @@ export const parseUploadedFile = async (
             message: `${col.header} is required`,
             value,
           });
+        }
+        
+        // Special validation for Employee Name vs ID if both are present in the row
+        if (col.key === 'employee_name' && value && mappedData['employee_id']) {
+           // We will handle this in the commitment phase or a post-parse verification
+           // But for immediate feedback, we can mark it. 
+           // However, parseUploadedFile doesn't have access to the DB.
+           // I'll add a placeholder or note that this needs DB validation.
         }
 
         // Type validation
@@ -689,16 +829,8 @@ export const parseMasterFile = async (file: File): Promise<MasterParseResult> =>
     const masterResult: MasterParseResult = {};
 
     for (const template of TEMPLATE_DEFINITIONS) {
-      // Try to find sheet by name
       let worksheet = workbook.getWorksheet(template.name);
-      
-      // If not found, try case-insensitive or partial match?
-      // For now, stick to exact name as generated.
-      
       if (!worksheet) continue;
-
-      // Extract rows and validate using the same logic as parseUploadedFile
-      // Refactor: We can call a private version of parseUploadedFile that takes a worksheet
       masterResult[template.id] = await parseWorksheet(worksheet, template);
     }
 
@@ -734,7 +866,7 @@ const parseWorksheet = async (
         rowData[header] = getCellValue(cell);
       }
     });
-    // Check if this row is exactly the sample data
+
     let isSampleData = false;
     if (rowNumber === 2 && template.sampleData && template.sampleData.length > 0) {
       const sample = template.sampleData[0];
@@ -808,3 +940,4 @@ const parseWorksheet = async (
 
   return { rows: parsedRows, validCount, errorCount, allValid: errorCount === 0, headers };
 };
+

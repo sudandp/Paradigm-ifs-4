@@ -620,7 +620,7 @@ const ApplyLeave: React.FC = () => {
         switch (type) {
             case 'Earned': return 'Earned Leave';
             case 'Sick': return 'Sick Leave';
-            case 'Floating': return '3rd Saturday Leave';
+            case 'Floating': return 'Blue Leave';
             case 'Pink Leave': return 'Pink Leave';
             case 'Comp Off': return 'Comp Off';
             case 'Loss of Pay': return 'Loss of Pay';
@@ -687,7 +687,7 @@ const ApplyLeave: React.FC = () => {
                                     >
                                         <option value="Earned">Earned</option>
                                         <option value="Sick">Sick</option>
-                                        <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "3rd Saturday Leave"}</option>
+                                        <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
                                         {!isTechnicalRole(user?.role) && <option value="Comp Off">Comp Off</option>}
                                         <option value="Loss of Pay">Loss of Pay</option>
                                         {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}

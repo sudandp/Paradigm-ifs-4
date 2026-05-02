@@ -454,6 +454,8 @@ export function evaluateAttendanceStatus(params: {
   isActiveInPreviousWeek: boolean;
   workingHours?: number;
   fieldStatus?: string;
+  floatingHolidayMonths?: number[];
+  userGender?: string;
 }) {
   const { 
     day, userId, userCategory, userRole, userRules, dayEvents, 
@@ -462,7 +464,9 @@ export function evaluateAttendanceStatus(params: {
     daysPresentInWeek,
     isActiveInPreviousWeek,
     workingHours,
-    fieldStatus
+    fieldStatus,
+    floatingHolidayMonths,
+    userGender
   } = params;
 
   const dateStr = format(day, 'yyyy-MM-dd');
@@ -483,19 +487,41 @@ export function evaluateAttendanceStatus(params: {
 
   // Floating/Recurring Holiday
   isRecurringHoliday = (recurringHolidays || []).some(rule => {
-      if (!rule || rule.day.toLowerCase() !== dayName.toLowerCase()) return false;
+      const ruleDay = String(rule.day || '').toLowerCase();
+      if (!rule || ruleDay !== dayName.toLowerCase()) return false;
       const occurrence = Math.ceil(dayOfMonth / 7);
-      const ruleType = rule.type || 'office';
+      const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
+      const ruleType = rule.roleType || rule.type || 'office';
       
-      // Check for floating leave expiry if defined in rules
-      if (userRules?.floatingLeavesExpiryDate) {
-          try {
-              const expiryDate = new Date(userRules.floatingLeavesExpiryDate);
-              if (isAfter(day, expiryDate)) return false;
-          } catch (e) { /* ignore invalid dates */ }
+      // 3rd Saturday Blue Leave applies only to males
+      if (ruleDay === 'saturday' && ruleOccurrence === 3) {
+          if ((userRole || '').toLowerCase() !== 'admin') {
+              const gender = (params as any).userGender || '';
+              if (gender && gender.toLowerCase() !== 'male') return false;
+          }
       }
-      
-      return rule.n === occurrence && ruleType === userCategory;
+      // PRIORITY 1: If floatingHolidayMonths array is configured, it is the SOLE gate.
+      if (floatingHolidayMonths && floatingHolidayMonths.length > 0) {
+          if (!floatingHolidayMonths.includes(day.getMonth())) return false;
+      } else if (userRules?.floatingHolidayMonths && userRules.floatingHolidayMonths.length > 0) {
+          if (!userRules.floatingHolidayMonths.includes(day.getMonth())) return false;
+      } else {
+          // PRIORITY 2 (fallback): No month array configured — use validFrom/validTill dates.
+          if (userRules?.floatingLeavesValidFrom) {
+              try {
+                  const validFrom = new Date(userRules.floatingLeavesValidFrom.replace(/-/g, '/'));
+                  if (day < validFrom) return false;
+              } catch (e) { /* ignore invalid dates */ }
+          }
+          if (userRules?.floatingLeavesExpiryDate) {
+              try {
+                  const expiryDate = new Date(userRules.floatingLeavesExpiryDate);
+                  if (isAfter(day, expiryDate)) return false;
+              } catch (e) { /* ignore invalid dates */ }
+          }
+      }
+
+      return ruleOccurrence === occurrence && ruleType === userCategory;
   });
 
   // Configured Holidays (Manual additions)
@@ -580,11 +606,16 @@ export function evaluateAttendanceStatus(params: {
       }
 
       if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'W/H';
-      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'SL';
-      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'CO';
-      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'CL';
+      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
+      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
+      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
+      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'F/H';
+      if (lType.includes('maternity')) return prefix + 'M/L';
+      if (lType.includes('child care')) return prefix + 'C/C';
+      if (lType.includes('pink')) return prefix + 'P/L';
+      if (lType.includes('permission')) return prefix + 'P/M';
       if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
-      return prefix + 'EL';
+      return prefix + 'E/L';
   };
 
   // 4. Status Determination logic
@@ -682,7 +713,8 @@ export function evaluateAttendanceStatus(params: {
       status = getLeaveCode(approvedLeave);
   } else {
       if (isHoliday) {
-          status = (isEligible || isFixedHoliday) ? 'H' : 'A';
+          // Holidays (Fixed, Configured, Pool, Recurring) should always show as 'H'
+          status = 'H';
       } else if (isWeekend && isEligible) {
           status = 'W/O';
       } else {
