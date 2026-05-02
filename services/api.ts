@@ -3563,7 +3563,9 @@ export const api = {
 
     // Calculate Floating Holidays based on attendance on Recurring Holidays (e.g. 3rd Saturday)
     // AND Comp Offs based on attendance on Sundays or Public Holidays
-    const attendedDates = new Set((yearEvents || []).map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
+    const attendedDates = new Set((yearEvents || [])
+        .filter(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'))
+        .map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
     const holidayDates = new Set(holidays.map(h => format(new Date(h.date), 'yyyy-MM-dd')));
     
     // User requested refinement: Only count Sundays, Fixed (Gov) holidays, and SELECTED optional holidays.
