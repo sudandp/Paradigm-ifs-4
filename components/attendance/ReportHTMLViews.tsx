@@ -4,11 +4,28 @@ import { ClipboardList } from 'lucide-react';
 import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyReportRow, WorkHoursReportDataRow } from '../../pages/attendance/PDFReports';
 
 // --- SHARED ---
-const ReportHeader: React.FC<{ title: string; subtitle: string; logoUrl?: string; generatedBy?: string }> = ({ title, subtitle, logoUrl, generatedBy }) => (
+interface ReportHeaderProps {
+    title: string;
+    subtitle: string;
+    logoUrl?: string;
+    generatedBy?: string;
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}
+
+const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => (
     <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8">
         <div className="flex flex-col">
             {logoUrl && <img src={logoUrl} alt="Logo" className="h-14 w-auto mb-2 object-contain" />}
-            <span className="text-[11px] text-gray-400 font-bold uppercase tracking-[0.2em]">Paradigm Services</span>
+            {targetUserName && (
+                <div className="mt-2 flex flex-col">
+                    <span className="text-[12px] text-gray-900 font-bold leading-none">{targetUserName}</span>
+                    {targetUserRole && (
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">{targetUserRole.replace(/_/g, ' ')}</span>
+                    )}
+                </div>
+            )}
         </div>
         <div className="text-right">
             <h1 className="text-[28px] font-black tracking-tight text-gray-900 mb-1 leading-none">{title}</h1>
@@ -40,10 +57,13 @@ export const BasicReportView: React.FC<{
     dateRange: { startDate: Date; endDate: Date };
     logoUrl?: string;
     generatedBy?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy }) => {
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Period Not Specified';
+        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Period: Not Specified';
 
     if (!data.length) return <EmptyState message="No attendance data found for this period." />;
 
@@ -54,7 +74,7 @@ export const BasicReportView: React.FC<{
 
     return (
         <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
-            <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             
             {/* Summary Box */}
             <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-6">
@@ -137,16 +157,19 @@ export const AttendanceLogView: React.FC<{
     dateRange: { startDate: Date; endDate: Date };
     logoUrl?: string;
     generatedBy?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy }) => {
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Period Not Specified';
+        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Period: Not Specified';
 
     if (!data.length) return <EmptyState message="No log events recorded for this period." />;
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Detailed Attendance Log" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            <ReportHeader title="Detailed Attendance Log" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
@@ -187,10 +210,13 @@ export const MonthlyStatusView: React.FC<{
     logoUrl?: string;
     generatedBy?: string;
     days?: Date[];
-}> = ({ data, dateRange, logoUrl, generatedBy, days }) => {
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Period Not Specified';
+        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Period: Not Specified';
 
     const dayHeaders = data.length > 0
         ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1)
@@ -217,7 +243,7 @@ export const MonthlyStatusView: React.FC<{
 
     return (
         <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
-            <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -310,16 +336,19 @@ export const SiteOtReportView: React.FC<{
     dateRange: { startDate: Date; endDate: Date };
     logoUrl?: string;
     generatedBy?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy }) => {
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Period Not Specified';
+        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Period: Not Specified';
 
     if (!data.length) return <EmptyState message="No Site OT records found for this period." />;
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Site Overtime Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            <ReportHeader title="Site Overtime Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
@@ -357,16 +386,19 @@ export const WorkHoursReportView: React.FC<{
     dateRange: { startDate: Date; endDate: Date };
     logoUrl?: string;
     generatedBy?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy }) => {
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Period Not Specified';
+        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Period: Not Specified';
 
     if (!data.length) return <EmptyState message="No work hours data found for this period." />;
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Monthly Work Hours Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} />
+            <ReportHeader title="Monthly Work Hours Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>

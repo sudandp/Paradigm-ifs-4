@@ -251,9 +251,11 @@ export const reportGenerators = {
           const durationHours = (punchIn && punchOut) ? (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000 : 0;
           totalWorkHours += durationHours;
           if (isSunday) {
-            workStatus = 'WOP';
-            workColor = '#0d9488';
-            dayWorked = true;
+            if (punchIn) {
+              workStatus = 'WOP';
+              workColor = '#0d9488';
+              dayWorked = true;
+            }
           } else if (durationHours >= 5 || (!punchOut && punchIn)) {
             workStatus = 'P';
             workColor = '#16a34a';
@@ -263,7 +265,7 @@ export const reportGenerators = {
             workStatus = '1/2P';
             workColor = '#d97706';
             dayWorked = true;
-          } else if (punchIn || punchOut) {
+          } else if (punchIn) {
             workStatus = 'P';
             workColor = '#16a34a';
             dayWorked = true;

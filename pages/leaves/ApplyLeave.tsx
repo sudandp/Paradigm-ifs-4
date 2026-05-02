@@ -126,12 +126,15 @@ const ApplyLeave: React.FC = () => {
 
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+    const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || 'Earned';
+    const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
+
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
         resolver: yupResolver(validationSchema) as Resolver<LeaveRequestFormData>,
         defaultValues: { 
-            leaveType: 'Earned', 
-            startDate: format(new Date(), 'yyyy-MM-dd'), 
-            endDate: format(new Date(), 'yyyy-MM-dd'), 
+            leaveType: initialLeaveType, 
+            startDate: initialStartDate, 
+            endDate: initialStartDate, 
             dayOption: 'full',
             correctionStatus: 'Present',
             punchIn: '09:00',

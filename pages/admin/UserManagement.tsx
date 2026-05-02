@@ -60,7 +60,7 @@ const UserRow = React.memo(({
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-2 uppercase tracking-tight">Pending Approval</span>
             )}
         </td>
-        <td data-label="Site" className="px-6 py-4 text-base text-primary-text font-medium">
+        <td data-label="Company" className="px-6 py-4 text-base text-primary-text font-medium">
             {user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}
         </td>
         <td data-label="Biometric ID" className="px-6 py-4 text-base font-mono text-muted/80">
@@ -133,7 +133,7 @@ const UserCard = React.memo(({
         
         <div className="grid grid-cols-2 gap-2 text-sm mt-1 flex-grow">
             <div>
-                <span className="text-xs text-muted block">Site</span>
+                <span className="text-xs text-muted block">Company</span>
                 <span className="font-medium text-primary-text">{user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}</span>
             </div>
             <div>
@@ -589,7 +589,7 @@ const UserManagement: React.FC = () => {
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Name</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Email</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider min-w-[170px]">Role</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Site</th>
+                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Company</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Biometric ID</th>
                                     <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">
                                         <div className="flex items-center gap-2">

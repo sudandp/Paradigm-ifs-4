@@ -517,6 +517,23 @@ const AttendanceDashboard: React.FC = () => {
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [societies, setSocieties] = useState<any[]>([]);
     
+    // Dynamic lists derived from users (only show companies/sites that have users)
+    const activeOrganizations = useMemo(() => {
+        if (!users || users.length === 0) return [];
+        const orgIds = new Set(users.map(u => u.organizationId).filter(Boolean));
+        return organizations
+            .filter(org => orgIds.has(org.id))
+            .sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
+    }, [users, organizations]);
+
+    const activeSocieties = useMemo(() => {
+        if (!users || users.length === 0) return [];
+        const socIds = new Set(users.map(u => u.societyId).filter(Boolean));
+        return societies
+            .filter(soc => socIds.has(soc.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, societies]);
+    
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [isAssignLeaveModalOpen, setIsAssignLeaveModalOpen] = useState(false);
@@ -796,6 +813,16 @@ const AttendanceDashboard: React.FC = () => {
                 let daysActiveInWeek = 0;
                 let daysPresentInPreviousWeek = 0; // True evaluation strictly from DB buffer events
                 
+                // Pre-compute session-aware day grouping ONCE (not per-day)
+                const employeeDayKeyMap = buildAttendanceDayKeyByEventId(events);
+                const employeeEventsByDate = new Map<string, AttendanceEvent[]>();
+                events.forEach(e => {
+                    const key = employeeDayKeyMap[e.id];
+                    if (!key) return;
+                    if (!employeeEventsByDate.has(key)) employeeEventsByDate.set(key, []);
+                    employeeEventsByDate.get(key)!.push(e);
+                });
+
                 // Track week presence for the buffer period as well
                 const logs = extendedDays.map(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
@@ -810,9 +837,8 @@ const AttendanceDashboard: React.FC = () => {
                     
                     const isActiveInPreviousWeek = daysPresentInPreviousWeek >= (userRules?.weekendPresentThreshold ?? 3);
 
-                    // Use session-aware grouping instead of raw calendar date
-                    const dayKeyMap = buildAttendanceDayKeyByEventId(events);
-                    const dayEvents = events.filter(e => dayKeyMap[e.id] === dateStr);
+                    // Use pre-computed session-aware grouping
+                    const dayEvents = employeeEventsByDate.get(dateStr) || [];
                     const { workingHours } = calculateWorkingHours(dayEvents, day);
                     let fStatus = '';
                     const uCat = userCategory as string;
@@ -1371,9 +1397,9 @@ const AttendanceDashboard: React.FC = () => {
                 if (dayEvents.length > 0) {
                     const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                     
-                    // Smarter In/Out: Use punch-in/out if present, otherwise use earliest/latest activity
-                    const punchIn = sortedEvents.find(e => e.type === 'punch-in');
-                    const punchOut = [...sortedEvents].reverse().find(e => e.type === 'punch-out');
+                    // Smarter In/Out: Use punch-in/out or site-in/out if present, otherwise earliest/latest activity
+                    const punchIn = sortedEvents.find(e => e.type === 'punch-in' || e.type === 'site-in');
+                    const punchOut = [...sortedEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-out');
                     const earliest = sortedEvents[0];
                     const latest = sortedEvents[sortedEvents.length - 1];
 
@@ -1398,9 +1424,9 @@ const AttendanceDashboard: React.FC = () => {
                     const siteOtInStr = otIn ? format(new Date(otIn.timestamp), 'HH:mm') : '-';
                     const siteOtOutStr = otOut ? format(new Date(otOut.timestamp), 'HH:mm') : '-';
 
-                    const { workingHours } = calculateWorkingHours(dayEvents, day);
-                    const hours = Math.floor(workingHours);
-                    const minutes = Math.round((workingHours - hours) * 60);
+                    const { totalHours } = calculateWorkingHours(dayEvents, day);
+                    const hours = Math.floor(totalHours);
+                    const minutes = Math.round((totalHours - hours) * 60);
                     duration = `${hours}h ${minutes}m`;
 
                     // Assign to local variables for push
@@ -1614,9 +1640,14 @@ const AttendanceDashboard: React.FC = () => {
         const fallbackLogoUrl = logoBase64 || currentLogoUrl || pdfLogoLocalPath;
         const dr = { startDate: dateRange.startDate!, endDate: dateRange.endDate! };
 
+        // Identify target user for report attribution
+        const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+        const targetUserName = targetUserObj ? targetUserObj.name : (isPreview ? 'ALL EMPLOYEES' : undefined);
+        const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
+
         // For web preview: use standard HTML components (safe for DOM rendering)
         if (isPreview) {
-            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} />;
+            if (reportType === 'basic') return <BasicReportView data={basicReportData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
             if (reportType === 'monthly' || reportType === 'work_hours') {
                 const isWorkHours = reportType === 'work_hours';
                 const monthsInRange = dateRange.startDate && dateRange.endDate 
@@ -1682,6 +1713,9 @@ const AttendanceDashboard: React.FC = () => {
                                             dateRange={{ startDate: displayStart, endDate: displayEnd }} 
                                             logoUrl={fallbackLogoUrl} 
                                             generatedBy={user?.name}
+                                            generatedByRole={user?.role}
+                                            targetUserName={targetUserName}
+                                            targetUserRole={targetUserRole}
                                             days={eachDayOfInterval({ start: displayStart, end: displayEnd })}
                                         />
                                     ) : (
@@ -1717,14 +1751,14 @@ const AttendanceDashboard: React.FC = () => {
                     </div>
                 );
             }
-            if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-            if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
+            if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+            if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
             return null;
         }
 
         // For PDF generation: use react-pdf Document components (NOT safe for DOM rendering)
-        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
+        if (reportType === 'basic') return <BasicReportDocument data={basicReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+        if (reportType === 'log') return <AttendanceLogDocument data={attendanceLogData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
         if (reportType === 'monthly') {
             const mappedMap = Object.fromEntries(
                 Object.entries(monthlyDataMap).map(([k, v]) => [k, v.map(mapToMonthlyReportRow)])
@@ -1734,13 +1768,22 @@ const AttendanceDashboard: React.FC = () => {
                 globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                 logoUrl={logoBase64} 
                 generatedBy={user?.name} 
+                generatedByRole={user?.role}
             />;
         }
-        if (reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} />;
-        if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} />;
+        if (reportType === 'work_hours') return <MonthlyReportDocument data={exportedMonthlyData} dateRange={dr} days={eachDayOfInterval({ start: dateRange.startDate!, end: dateRange.endDate! })} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+        if (reportType === 'site_ot') return <SiteOtReportDocument data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+        if (reportType === 'audit') {
+            const mappedAuditLogs: AuditLogDataRow[] = auditLogs.map(log => ({
+                dateTime: format(new Date(log.created_at), 'dd MMM yyyy, HH:mm'),
+                action: log.action,
+                performer_name: log.performer_name || 'N/A',
+                target_name: log.target_name || 'N/A',
+                detailsStr: JSON.stringify(log.details)
+            }));
+            return <AuditLogDocument data={mappedAuditLogs} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+        }
         
-        return null;
         return null;
     }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedSite, selectedSociety, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData]);
 
@@ -1755,6 +1798,10 @@ const AttendanceDashboard: React.FC = () => {
             const logoBase64 = logoForPdf;
 
             const generatedBy = user?.name || 'Unknown User';
+            const generatedByRole = user?.role || undefined;
+            const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+            const targetUserName = targetUserObj ? targetUserObj.name : undefined;
+            const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
             const fileName = `Attendance_Report_${reportType}_${format(new Date(), 'yyyyMMdd')}.pdf`;
 
             let blob;
@@ -1764,6 +1811,9 @@ const AttendanceDashboard: React.FC = () => {
                         data={basicReportData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
@@ -1775,6 +1825,9 @@ const AttendanceDashboard: React.FC = () => {
                         monthlyData={mappedMap} 
                         globalDateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
@@ -1785,6 +1838,9 @@ const AttendanceDashboard: React.FC = () => {
                         data={exportedMonthlyData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                         days={days}
                     />).toBlob();
@@ -1795,6 +1851,9 @@ const AttendanceDashboard: React.FC = () => {
                         data={attendanceLogData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
@@ -1803,6 +1862,9 @@ const AttendanceDashboard: React.FC = () => {
                         data={site_otReportData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
@@ -1818,6 +1880,9 @@ const AttendanceDashboard: React.FC = () => {
                         data={auditLogData} 
                         dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                         generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                         logoUrl={logoBase64}
                     />).toBlob();
                     break;
@@ -1987,9 +2052,17 @@ const AttendanceDashboard: React.FC = () => {
 
                         // Metadata Header matching preview
                         csvContent += `"PARADIGM SERVICES",,,,,,,,,,,,,,,,"MONTHLY ATTENDANCE REPORT"\n`;
-                        csvContent += `,,,,,,,,,,,,,,,,,"${format(m, 'MMMM yyyy')}"\n`;
+                        csvContent += `,,,,,,,,,,,,,,,,,"Billing Period: ${format(m, 'MMMM yyyy')}"\n`;
                         csvContent += `,,,,,,,,,,,,,,,,,"Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}"\n`;
+                        
+                        const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+                        if (targetUserObj) {
+                            csvContent += `,,,,,,,,,,,,,,,,,"Report for: ${targetUserObj.name}"\n`;
+                            csvContent += `,,,,,,,,,,,,,,,,,"Target Role: ${targetUserObj.role.replace(/_/g, ' ')}"\n`;
+                        }
+
                         if (user?.name) csvContent += `,,,,,,,,,,,,,,,,,"By: ${user.name}"\n`;
+                        if (user?.role) csvContent += `,,,,,,,,,,,,,,,,,"Role: ${user.role.replace(/_/g, ' ')}"\n`;
                         csvContent += `\n`; // Empty row
                         
                         // Column Headers
@@ -2232,6 +2305,10 @@ const AttendanceDashboard: React.FC = () => {
             let pdfBlob: Blob | undefined;
             try {
                 const generatedBy = user?.name || 'Paradigm System';
+                const generatedByRole = user?.role || undefined;
+                const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
+                const targetUserName = targetUserObj ? targetUserObj.name : undefined;
+                const targetUserRole = targetUserObj ? targetUserObj.role : undefined;
                 const logoBase64 = ''; // You might want to pass the actual logo here if available
                 
                 switch (reportType) {
@@ -2240,6 +2317,9 @@ const AttendanceDashboard: React.FC = () => {
                             data={basicReportData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                         />).toBlob();
                         break;
@@ -2250,6 +2330,9 @@ const AttendanceDashboard: React.FC = () => {
                             data={exportedMonthlyData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                             days={days}
                         />).toBlob();
@@ -2260,6 +2343,9 @@ const AttendanceDashboard: React.FC = () => {
                             data={attendanceLogData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                         />).toBlob();
                         break;
@@ -2268,6 +2354,9 @@ const AttendanceDashboard: React.FC = () => {
                             data={site_otReportData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                         />).toBlob();
                         break;
@@ -2283,6 +2372,9 @@ const AttendanceDashboard: React.FC = () => {
                             data={auditData} 
                             dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
                             generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
                             logoUrl={logoBase64}
                         />).toBlob();
                         break;
@@ -2600,7 +2692,7 @@ const AttendanceDashboard: React.FC = () => {
                             {isAdmin(user?.role) && (
                                 <>
                                     <div className="col-span-1">
-                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
+                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
                                         <select
                                             className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
                                             value={pendingSelectedSite}
@@ -2609,14 +2701,14 @@ const AttendanceDashboard: React.FC = () => {
                                                 setPendingSelectedUser('all');
                                             }}
                                         >
-                                            <option value="all">All Sites</option>
-                                            {organizations.map(org => (
-                                                <option key={org.id} value={org.id}>{org.shortName}</option>
+                                            <option value="all">All Companies</option>
+                                            {activeOrganizations.map(org => (
+                                                <option key={org.id} value={org.id}>{org.fullName || org.shortName}</option>
                                             ))}
                                         </select>
                                     </div>
                                     <div className="col-span-1">
-                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Society</label>
+                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
                                         <select
                                             className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
                                             value={pendingSelectedSociety}
@@ -2625,8 +2717,8 @@ const AttendanceDashboard: React.FC = () => {
                                                 setPendingSelectedUser('all');
                                             }}
                                         >
-                                            <option value="all">All Societies</option>
-                                            {societies
+                                            <option value="all">All Sites</option>
+                                            {activeSocieties
                                                 .filter(s => pendingSelectedSite === 'all' || s.organizationId === pendingSelectedSite)
                                                 .map(soc => (
                                                     <option key={soc.id} value={soc.id}>{soc.name}</option>

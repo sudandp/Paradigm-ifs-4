@@ -61,7 +61,8 @@ export function calculateSiteTravelTime(
     // Update state for next interval
     switch (event.type) {
       case 'punch-in':
-        if (event.workType === 'field') {
+      case 'site-in':
+        if (event.workType === 'field' || event.type === 'site-in') {
           isAtSite = true;
           siteVisits++;
         } else {
@@ -69,7 +70,8 @@ export function calculateSiteTravelTime(
         }
         break;
       case 'punch-out':
-        if (event.workType === 'field') {
+      case 'site-out':
+        if (event.workType === 'field' || event.type === 'site-out') {
           isAtSite = false;
         } else {
           isDayActive = false;

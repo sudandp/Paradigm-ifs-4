@@ -658,9 +658,17 @@ export const useAuthStore = create<AuthState>()(
                         // to identify the start of the CURRENT session.
                         const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
                         let cutoffIndex = -1;
+                        let lastPunchInTime: Date | null = null;
+                        
                         for (let i = 0; i < events.length; i++) {
-                            if (new Date(events[i].timestamp) < startOfToday && events[i].type === 'punch-out') {
-                                cutoffIndex = i;
+                            const e = events[i];
+                            const eventTime = new Date(e.timestamp);
+                            if (e.type === 'punch-in' || e.type === 'site-ot-in') {
+                                lastPunchInTime = eventTime;
+                            } else if (e.type === 'punch-out' || e.type === 'site-ot-out') {
+                                if ((lastPunchInTime && lastPunchInTime < startOfToday) || (!lastPunchInTime && eventTime < startOfToday)) {
+                                    cutoffIndex = i;
+                                }
                             }
                         }
                         const relevantEvents = cutoffIndex >= 0 ? events.slice(cutoffIndex + 1) : events;

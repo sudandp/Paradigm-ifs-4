@@ -713,9 +713,20 @@ const ProfilePage: React.FC = () => {
                                                     </button>
                                                 )}
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         triggerHaptic(ImpactStyle.Light);
-                                                        navigate('/leaves/apply');
+                                                        // Force close the session so they can start today
+                                                        if (effectivelyCheckedIn) {
+                                                            const wt = isFieldCheckedIn ? 'field' : 'office';
+                                                            await toggleCheckInStatus(
+                                                                'Closed for correction', 
+                                                                null, 
+                                                                wt as any, 
+                                                                undefined, 
+                                                                isSiteOtCheckedIn ? 'site-ot-out' : undefined
+                                                            );
+                                                        }
+                                                        navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
                                                     }}
                                                     className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-[13px] font-bold transition-all border border-amber-500/20 flex items-center justify-center gap-1.5"
                                                 >

@@ -102,19 +102,21 @@ export function calculateWorkingHours(
     // 3. Update state for the NEXT interval
     switch (event.type) {
       case 'punch-in':
-        if (event.workType === 'field' || event.workType === 'site') {
+      case 'site-in':
+        if (event.workType === 'field' || event.workType === 'site' || event.type === 'site-in') {
           isAtSite = true;
         } else {
           isMainPunchedIn = true;
         }
         break;
       case 'punch-out':
+      case 'site-out':
         if (isOnBreak && activeBreakStart) {
           const duration = differenceInMinutes(eventTime, new Date(activeBreakStart)) / 60;
           breakIntervals.push({ start: activeBreakStart, end: event.timestamp, duration });
           activeBreakStart = null;
         }
-        if (event.workType === 'field' || event.workType === 'site') {
+        if (event.workType === 'field' || event.workType === 'site' || event.type === 'site-out') {
           isAtSite = false;
           isOnBreak = false; // Primary logout closes all active sub-sessions
         } else {
@@ -360,10 +362,20 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   const startOfTargetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0);
 
   let cutoffIndex = -1;
+  let lastPunchInTime: Date | null = null;
+
   for (let i = 0; i < sortedEvents.length; i++) {
-     const eventTime = new Date(sortedEvents[i].timestamp);
-     if (eventTime < startOfTargetDay && sortedEvents[i].type === 'punch-out') {
-         cutoffIndex = i;
+     const e = sortedEvents[i];
+     const eventTime = new Date(e.timestamp);
+     
+     if (e.type === 'punch-in' || e.type === 'site-ot-in' || e.type === 'site-in') {
+         lastPunchInTime = eventTime;
+     } else if (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') {
+         // If we have a punch-out that closes a shift which started BEFORE today,
+         // or if we somehow missed the punch-in (null) but it's a punch-out before today.
+         if ((lastPunchInTime && lastPunchInTime < startOfTargetDay) || (!lastPunchInTime && eventTime < startOfTargetDay)) {
+             cutoffIndex = i;
+         }
      }
   }
   
