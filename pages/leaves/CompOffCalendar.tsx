@@ -79,9 +79,6 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
         );
 
         if (hasCheckIn) {
-            // Check if it's a Sunday (weekly off)
-            const isSunday = getDay(date) === 0;
-
             // Check for FIXED holidays (like Republic Day on 26th)
             const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
                 const [m, d] = fh.date.split('-').map(Number);
@@ -104,8 +101,8 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 return isSameDay(new Date(y, m - 1, d), date);
             });
 
-            // If worked on any type of holiday/Sunday, it's earned comp-off
-            if (isSunday || isFixedHoliday || isPoolHoliday || isConfiguredHoliday) {
+            // If worked on any type of holiday, it's earned comp-off
+            if (isFixedHoliday || isPoolHoliday || isConfiguredHoliday) {
                 return 'earned';
             }
         }

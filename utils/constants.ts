@@ -1,12 +1,9 @@
 export const FIXED_HOLIDAYS = [
-    { name: 'New Year', date: '01-01', isFixed: true },
     { name: 'Republic Day', date: '01-26', isFixed: true },
-    { name: 'Ambedkar Jayanthi', date: '04-14', isFixed: true },
     { name: 'May Day', date: '05-01', isFixed: true },
     { name: 'Independence Day', date: '08-15', isFixed: true },
     { name: 'Gandhi Jayanti', date: '10-02', isFixed: true },
     { name: 'Karnataka Rajyotsava', date: '11-01', isFixed: true },
-    { name: 'Christmas', date: '12-25', isFixed: true },
 ];
 
 export const HOLIDAY_SELECTION_POOL = [
