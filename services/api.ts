@@ -3614,17 +3614,18 @@ export const api = {
     const floatingTotal = 0;
     let dynamicCompOffTotal = 0;
     
-    // 2. Comp Offs based on attendance on Public/Recurring Holidays (Earned via Work)
+    // 2. Comp Offs based on attendance on Sundays or Public/Recurring Holidays (Earned via Work)
     attendedDates.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
+        const dayName = format(date, 'EEEE');
         
         // Only count work within the CURRENT YEAR, up to the end of the viewed month
         const yearStartDate = new Date(yearStart.replace(/-/g, '/'));
         if (date < yearStartDate) return;
         if (date > endOfMonth(referenceDate)) return;
 
-        // Comp Off Accrual Check (Public/Recurring Holiday)
-        if (holidayDates.has(dateStr)) {
+        // Comp Off Accrual Check (Sunday or Public/Recurring Holiday)
+        if (dayName === 'Sunday' || holidayDates.has(dateStr)) {
             dynamicCompOffTotal += 1;
         }
     });
