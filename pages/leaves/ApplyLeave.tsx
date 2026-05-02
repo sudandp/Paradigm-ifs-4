@@ -392,13 +392,34 @@ const ApplyLeave: React.FC = () => {
                 return;
             }
 
-            // Check balance before submitting (only for new requests)
+            const startDateObj = new Date(formData.startDate.replace(/-/g, '/'));
+            const endDateObj = new Date(formData.endDate.replace(/-/g, '/'));
+            const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDateObj, startDateObj) + 1;
+
+            // Strict time check: Leaves must be applied before 9 AM on the start date
+            if (!['Correction', 'Permission'].includes(formData.leaveType)) {
+                const now = new Date();
+                const cutoffTime = new Date(startDateObj);
+                cutoffTime.setHours(9, 0, 0, 0);
+
+                if (now > cutoffTime) {
+                    setToast({ message: 'Leave must be applied before 9:00 AM on the start date. Past leaves are not allowed.', type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            // Earned Leave restriction: Cannot be 7 or more continuous days
+            if (formData.leaveType === 'Earned' && duration >= 7) {
+                setToast({ message: 'You cannot apply for Earned Leave for 7 or more continuous days.', type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+
+            // Check balance before submitting
             // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
-            if (!isEditMode && !['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
+            if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
                 const balance = await api.getLeaveBalancesForUser(user.id);
-                const startDate = new Date(formData.startDate.replace(/-/g, '/'));
-                const endDate = new Date(formData.endDate.replace(/-/g, '/'));
-                const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDate, startDate) + 1;
                 
                 const baseType = formData.leaveType.toLowerCase().replace(/\s/g, '');
                 let balanceKeyBase = baseType;
@@ -431,10 +452,22 @@ const ApplyLeave: React.FC = () => {
                 const total = (balance[typeKeyStr as keyof LeaveBalance] as number) || 0;
                 const used = (balance[usedKeyStr as keyof LeaveBalance] as number) || 0;
                 const pending = (balance[pendingKeyStr as keyof LeaveBalance] as number) || 0;
-                const available = total - used - pending;
+                let available = total - used - pending;
+
+                // Add back the old duration if we are editing the same leave type
+                if (isEditMode && editId) {
+                    const { data: allUserRequests } = await api.getLeaveRequests({ userId: user.id });
+                    const requestToEdit = allUserRequests.find((r: any) => r.id === editId);
+                    if (requestToEdit && requestToEdit.leaveType === formData.leaveType) {
+                        const oldStartDate = new Date(requestToEdit.startDate.replace(/-/g, '/'));
+                        const oldEndDate = new Date(requestToEdit.endDate.replace(/-/g, '/'));
+                        const oldDuration = requestToEdit.dayOption === 'half' ? 0.5 : differenceInCalendarDays(oldEndDate, oldStartDate) + 1;
+                        available += oldDuration;
+                    }
+                }
                 
                 if (available < duration) {
-                    setToast({ message: `Insufficient ${formData.leaveType} balance. You have ${available.toFixed(1)} days available (including pending requests), but requested ${duration} days.`, type: 'error' });
+                    setToast({ message: `Insufficient ${formData.leaveType} balance. You have ${available.toFixed(1)} days available, but requested ${duration} days.`, type: 'error' });
                     setIsSubmitting(false);
                     return;
                 }
