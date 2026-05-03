@@ -415,21 +415,41 @@ export function getStaffCategory(
   // PRIMARY: Use saved roleMapping from Admin UI → Attendance Rules → Staff Selections
   // FALLBACK: Use hardcoded defaults only if settings haven't loaded yet
   const mapping = settings?.missedCheckoutConfig?.roleMapping || settings?.roleMapping || {
-    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
+    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'accountant'],
     field: ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager'],
     site: ['site_manager', 'security_guard']
   };
 
+  const roleLower = String(roleId || '').toLowerCase();
+
   // RULE: Explicit role mapping ALWAYS takes priority over society-based classification.
-  // This ensures Admin/HR/Management stay as office staff even if assigned to a society.
-  if (mapping.office?.includes(roleId)) return 'office';
-  if (mapping.field?.includes(roleId) || isTechnicalRole(roleId)) return 'field';
-  if (mapping.site?.includes(roleId)) return 'site';
+  // We check for both exact matches and common slugs to handle display name vs ID scenarios.
+  const isOffice = mapping.office?.some((r: string) => r.toLowerCase() === roleLower) || 
+                   ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect'].includes(roleLower) ||
+                   roleLower.includes('admin') || roleLower.includes('management');
   
-  // FALLBACK: If role not in any explicit mapping, use society-based classification
-  if (societyId && !societyId.endsWith('_head_office')) return 'site';
+  if (isOffice) return 'office';
+
+  const isField = mapping.field?.some((r: string) => r.toLowerCase() === roleLower) || 
+                  isTechnicalRole(roleId) ||
+                  ['field_staff', 'field_officer', 'technical_reliever', 'operations_manager'].includes(roleLower);
+                  
+  if (isField) return 'field';
+
+  const isSite = mapping.site?.some((r: string) => r.toLowerCase() === roleLower) ||
+                 ['site_manager', 'security_guard', 'supervisor'].includes(roleLower);
+
+  if (isSite) return 'site';
   
-  return 'office';
+  const result = (() => {
+    // FALLBACK: If role not in any explicit mapping, use society-based classification
+    // If user is assigned to a society (Site), they are treated as site staff.
+    if (societyId && !societyId.endsWith('_head_office')) return 'site';
+    return 'office';
+  })();
+
+
+  return result;
 }
 
 
@@ -471,13 +491,14 @@ export function evaluateAttendanceStatus(params: {
 
   const dateStr = format(day, 'yyyy-MM-dd');
   const dayName = format(day, 'EEEE');
-  const dayOfWeek = day.getDay();
   const dayOfMonth = day.getDate();
+  const dayOfWeek = day.getDay();
   const threshold = (userRules as any)?.weekendPresentThreshold ?? 3;
 
   // 1. Initial State
   let status: string = 'A';
   let isHoliday = false;
+
   let isRecurringHoliday = false;
   let isWeekend = false;
 
@@ -525,48 +546,58 @@ export function evaluateAttendanceStatus(params: {
   });
 
   // Configured Holidays (Manual additions)
+  // Permissive check: Check the user's specific category list first, but fallback to ALL lists
+  // to ensure global holidays (like Good Friday) are caught even if not explicitly in every list.
   const categoryHolidays = userCategory === 'field' ? fieldHolidays : (userCategory === 'site' ? siteHolidays : officeHolidays);
-  let isConfiguredHoliday = (categoryHolidays || []).some(h => {
-      const hDateStr = String(h.date);
-      // STRICT MATCH: Only allow annual recurrence if date starts with '-'
-      if (hDateStr.startsWith('-')) {
-          const compareMMDD = format(day, '-MM-dd');
-          return dateStr.endsWith(hDateStr) || hDateStr.endsWith(compareMMDD);
-      }
-      // Otherwise must match full YYYY-MM-DD
-      return hDateStr.includes(dateStr);
-  });
+  
+  const hasHolidayMatch = (list: any) => {
+      if (!Array.isArray(list)) return false;
+      return list.some(h => {
+          if (!h || !h.date) return false;
+          const hDateStr = String(h.date);
+          // Handle annual recurrence (e.g. "-04-03")
+          if (hDateStr.startsWith('-')) {
+              const compareMMDD = format(day, '-MM-dd');
+              return dateStr.endsWith(hDateStr) || hDateStr.endsWith(compareMMDD);
+          }
+          // Handle ISO strings or YYYY-MM-DD
+          return hDateStr.includes(dateStr);
+      });
+  };
 
-  // Pool Holidays
-  let isPoolHoliday = userHolidaysPool.some(uh => {
-      try {
+  let isConfiguredHoliday = hasHolidayMatch(categoryHolidays) || 
+                            hasHolidayMatch(officeHolidays) || 
+                            hasHolidayMatch(fieldHolidays) || 
+                            hasHolidayMatch(siteHolidays);
+
+  // Fixed Holidays
+  const isFixedHoliday = FIXED_HOLIDAYS.some(fh => dateStr.endsWith('-' + fh.date));
+
+  // Pool Holidays (User-selected holidays)
+  let isPoolHoliday = false;
+  if (Array.isArray(userHolidaysPool)) {
+      isPoolHoliday = userHolidaysPool.some(uh => {
+          try {
           const uhUserId = String(uh.userId || (uh as any).user_id || '').trim().toLowerCase();
           const targetUserId = String(userId).trim().toLowerCase();
           if (uhUserId !== targetUserId) return false;
-          const uhDateRaw = String(uh.holidayDate || (uh as any).holiday_date || '').trim();
+
+          const uhDateRaw = String(uh.holidayDate || (uh as any).holiday_date || (uh as any).date || '').trim();
           const targetDateRaw = String(dateStr).trim();
           if (!uhDateRaw || !targetDateRaw) return false;
           
-          // STRICT MATCH for pool holidays - only match exact date
-          // unless it is specifically meant to be annual (starts with -)
-          if (uhDateRaw.startsWith('-')) {
-              const mmdd = format(day, '-MM-dd');
-              return uhDateRaw.endsWith(mmdd);
-          }
-
-          // Exact year-month-day match
+          // Match if normalized numbers match (YYYYMMDD)
           const d1 = uhDateRaw.replace(/[^0-9]/g, '');
           const d2 = targetDateRaw.replace(/[^0-9]/g, '');
-          if (d1.substring(0, 8) === d2.substring(0, 8)) return true;
-          return false;
+          
+          // Match first 8 digits (YYYYMMDD)
+          if (d1.length >= 8 && d2.length >= 8 && d1.substring(0, 8) === d2.substring(0, 8)) return true;
+          
+          // Fallback to substring check
+          return uhDateRaw.includes(targetDateRaw) || targetDateRaw.includes(uhDateRaw);
       } catch (e) { return false; }
-  });
-
-  // Fixed Holidays (National/Fixed dates)
-  const isFixedHoliday = (FIXED_HOLIDAYS || []).some(h => {
-      const compareMMDD = format(day, 'MM-dd');
-      return h.date === compareMMDD;
-  });
+      });
+  }
 
   isHoliday = isConfiguredHoliday || isPoolHoliday || isRecurringHoliday || isFixedHoliday;
 

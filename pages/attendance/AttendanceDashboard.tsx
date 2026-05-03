@@ -21,6 +21,7 @@ import type {
     Organization,
     CompOffLog,
     UserHoliday,
+    Role,
     StaffAttendanceRules,
     FieldAttendanceViolation,
     AttendanceReportType,
@@ -445,7 +446,7 @@ const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
     const currentUserRole = user?.role;
-    const { permissions } = usePermissionsStore();    const isOfficeUser = (role?: string) => getStaffCategory(role) === 'office';
+    const { permissions } = usePermissionsStore();    const isOfficeUser = (role?: string) => getStaffCategory(role, undefined, { attendance }) === 'office';
 
     const { attendance, recurringHolidays, officeHolidays, fieldHolidays, siteHolidays } = useSettingsStore();
 
@@ -458,6 +459,7 @@ const AttendanceDashboard: React.FC = () => {
     const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
     // Map of userId -> FieldAttendanceViolation[] for field staff
     const [fieldViolationsMap, setFieldViolationsMap] = useState<Record<string, FieldAttendanceViolation[]>>({});
+    const [allRoles, setAllRoles] = useState<Role[]>([]);
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
@@ -854,7 +856,7 @@ const AttendanceDashboard: React.FC = () => {
                         day,
                         userId: user.id,
                         userCategory: userCategory as any,
-                        userRole: user.role,
+                        userRole: user.role, // In this context (single user), role is likely already resolved or it's the current user's role
                         userRules: userRules,
                         dayEvents,
                         officeHolidays,
@@ -975,20 +977,22 @@ const AttendanceDashboard: React.FC = () => {
                 // Add 12-hour lookahead to capture night shift completions
                 const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
 
-                const [events, leavesResponse, holidaysResponse] = await Promise.all([
+                const [events, leavesResponse, holidaysResponse, rolesResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
                     api.getLeaveRequests({ 
                         startDate: queryStart.toISOString(), 
                         endDate: queryEnd.toISOString(), 
                         status: ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'] 
                     }),
-                    api.getAllUserHolidays()
+                    api.getAllUserHolidays(),
+                    api.getRoles()
                 ]);
 
                 setAttendanceEvents(events);
                 const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
+                setAllRoles(rolesResponse || []);
 
                 // Optimize lookups: Group events by session-aware business day
                 const dayKeyMap = buildAttendanceDayKeyByEventId(events);
@@ -1285,7 +1289,17 @@ const AttendanceDashboard: React.FC = () => {
             const userId = String(user.id);
             const userEventsMap = eventsByUserAndDate.get(userId);
             const userLeaves = approvedLeavesByUser.get(userId) || [];
-            const userCategory = getStaffCategory(user.role);
+            
+            // Resolve role name if it's a UUID
+            let resolvedRole = user.role;
+            if (user.role && user.role.length > 20 && allRoles.length > 0) {
+                const roleObj = allRoles.find(r => r.id === user.role);
+                if (roleObj) {
+                    resolvedRole = roleObj.displayName.toLowerCase().replace(/\s+/g, '_');
+                }
+            }
+
+            const userCategory = getStaffCategory(resolvedRole || user.role);
             const userRules = getRules(userId, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
 
@@ -1370,7 +1384,7 @@ const AttendanceDashboard: React.FC = () => {
                     day,
                     userId,
                     userCategory: userCategory as any,
-                    userRole: user.role,
+                    userRole: resolvedRole || user.role,
                     userRules,
                     dayEvents,
                     officeHolidays,

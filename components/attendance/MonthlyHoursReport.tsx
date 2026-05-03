@@ -4,7 +4,7 @@ import { Download } from 'lucide-react';
 import { api } from '../../services/api';
 import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
-import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, FieldAttendanceViolation } from '../../types';
+import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, Role, FieldAttendanceViolation, Holiday } from '../../types';
 import Button from '../ui/Button';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
@@ -92,10 +92,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const [, setLeaves] = useState<any[]>([]); 
   const { user: currentUser } = useAuthStore();
   const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
-  const { attendance, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays } = useSettingsStore();
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [masterHolidays, setMasterHolidays] = useState<Holiday[]>([]);
+  const { attendance, officeHolidays: storeOfficeHolidays, fieldHolidays: storeFieldHolidays, siteHolidays: storeSiteHolidays, recurringHolidays: storeRecurringHolidays } = useSettingsStore();
 
-  const resolveUserRules = (user: User) => {
-    const userCategory = getStaffCategory(user.role, user.organizationId, { 
+  const resolveUserRules = (user: User, resolvedRole?: string) => {
+    const userCategory = getStaffCategory(resolvedRole || user.role, user.organizationId, { 
       attendance, 
       missedCheckoutConfig: (attendance as any).missedCheckoutConfig 
     });
@@ -122,16 +124,22 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const loadReportData = async () => {
     setLoading(true);
     try {
-      const [usersData, leavesDataResponse, userHolidaysData] = await Promise.all([
+      const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes] = await Promise.all([
         externalUsers || api.getUsers(),
         api.getLeaveRequests(),
-        api.getAllUserHolidays()
+        api.getAllUserHolidays(),
+        api.getRoles(),
+        api.getInitialAppData() // Get full settings context including holidays
       ]);
 
       const leavesData = leavesDataResponse?.data || [];
       setUsers(usersData);
       setLeaves(leavesData || []);
       setUserHolidaysPool(userHolidaysData || []);
+      setAllRoles(rolesData || []);
+      if (globalHolidaysRes?.holidays) {
+        setMasterHolidays(globalHolidaysRes.holidays);
+      }
 
       let targetUsers = usersData;
       if (userId && userId !== 'all') {
@@ -183,11 +191,41 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         targetUsers = targetUsers.filter(u => u.role !== 'management');
       }
 
+      // Use local variables to avoid stale state issues during initial load
+      const currentMasterHolidays = globalHolidaysRes?.holidays || [];
+      const currentOfficeHolidays = (attendance as any)?.office || currentMasterHolidays.filter((h: any) => h.type === 'office');
+      const currentFieldHolidays = (attendance as any)?.field || currentMasterHolidays.filter((h: any) => h.type === 'field');
+      const currentSiteHolidays = (attendance as any)?.site || currentMasterHolidays.filter((h: any) => h.type === 'site');
+      const currentRecurringHolidays = (attendance as any)?.recurringHolidays || [];
+
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
         const uid = String(user.id);
         const userEvents = eventsByUser.get(uid) || [];
         const userLeaves = leavesByUser.get(uid) || [];
-        return processEmployeeMonth(user, userEvents, userLeaves, userHolidaysData || [], year, month, [], leavesData || []);
+        
+        // Resolve role name if it's a UUID
+        let resolvedRole = user.role;
+        if (user.role && user.role.length > 20 && rolesData.length > 0) {
+            const roleObj = rolesData.find((r: any) => r.id === user.role);
+            if (roleObj) {
+                resolvedRole = roleObj.displayName.toLowerCase().replace(/\s+/g, '_');
+            }
+        }
+
+        return processEmployeeMonth(
+          user, 
+          userEvents, 
+          userLeaves, 
+          userHolidaysData || [], 
+          year, 
+          month, 
+          currentOfficeHolidays, 
+          currentFieldHolidays, 
+          currentSiteHolidays, 
+          currentRecurringHolidays,
+          leavesData || [], 
+          resolvedRole
+        );
       });
 
       if (selectedStatus === 'ACTIVE_USERS') {
@@ -203,7 +241,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     }
   };
 
-  const processEmployeeMonth = (user: User, events: AttendanceEvent[], userLeaves: any[], userHolidays: any[], year: number, month: number, fieldViolations: FieldAttendanceViolation[] = [], allLeaves: any[] = []): EmployeeMonthlyData => {
+  const processEmployeeMonth = (
+    user: User, 
+    events: AttendanceEvent[], 
+    userLeaves: any[], 
+    userHolidays: any[], 
+    year: number, 
+    month: number, 
+    passedOfficeHolidays: any[],
+    passedFieldHolidays: any[],
+    passedSiteHolidays: any[],
+    passedRecurringHolidays: any[],
+    allLeaves: any[] = [], 
+    resolvedRole?: string
+  ): EmployeeMonthlyData => {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = endOfMonth(monthStart);
     const today = startOfToday();
@@ -216,9 +267,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
     let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
     
-    const category = getStaffCategory(user.role);
-    const rules = resolveUserRules(user);
+    const category = getStaffCategory(resolvedRole || user.role, user.organizationId || user.societyId, { attendance });
+    const rules = resolveUserRules(user, resolvedRole);
     const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
+
+    // Ensure we use the best available holiday lists (preferring passed ones to avoid stale state)
+    const activeOfficeHolidays = passedOfficeHolidays || masterHolidays.filter(h => h.type === 'office');
+    const activeFieldHolidays = passedFieldHolidays || masterHolidays.filter(h => h.type === 'field');
+    const activeSiteHolidays = passedSiteHolidays || masterHolidays.filter(h => h.type === 'site');
+    const activeRecurringHolidays = passedRecurringHolidays || [];
 
     // Organic initialization from buffer
     const bufferStart = subDays(monthStart, 15);
@@ -254,7 +311,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
         // 3. Recurring Holidays (Blue Leave)
         const checkDayOfMonth = checkDate.getDate();
-        const isRecurringCheck = (recurringHolidays || []).some(rule => {
+        const isRecurringCheck = (activeRecurringHolidays || []).some(rule => {
             const ruleDay = String(rule.day || '').toLowerCase();
             if (!rule || ruleDay !== checkDayName.toLowerCase()) return false;
             const occurrence = Math.ceil(checkDayOfMonth / 7);
@@ -412,8 +469,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
 
       let status = evaluateAttendanceStatus({
-          day: currentDate, userId: user.id, userCategory: category, userRole: user.role, userRules: rules,
-          dayEvents, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays,
+          day: currentDate, userId: user.id, userCategory: category, userRole: resolvedRole || user.role, userRules: rules,
+          dayEvents, 
+          officeHolidays: activeOfficeHolidays, 
+          fieldHolidays: activeFieldHolidays, 
+          siteHolidays: activeSiteHolidays, 
+          recurringHolidays: activeRecurringHolidays,
           userHolidaysPool: userHolidays, leaves: allLeaves, daysPresentInWeek: daysPresentInCurrentWeek,
           isActiveInPreviousWeek,
           workingHours: netHours,
