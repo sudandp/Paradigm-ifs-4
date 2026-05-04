@@ -514,6 +514,8 @@ export function evaluateAttendanceStatus(params: {
       const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
       const ruleType = rule.roleType || rule.type || 'office';
       
+
+
       // 3rd Saturday Blue Leave applies only to males
       if (ruleDay === 'saturday' && ruleOccurrence === 3) {
           if ((userRole || '').toLowerCase() !== 'admin') {
@@ -600,6 +602,8 @@ export function evaluateAttendanceStatus(params: {
   }
 
   isHoliday = isConfiguredHoliday || isPoolHoliday || isRecurringHoliday || isFixedHoliday;
+
+
 
   // 3. Resolve Leaves
   const approvedLeave = leaves?.find(l => {
@@ -752,6 +756,8 @@ export function evaluateAttendanceStatus(params: {
           status = 'A';
       }
   }
+
+
 
   return status;
 }

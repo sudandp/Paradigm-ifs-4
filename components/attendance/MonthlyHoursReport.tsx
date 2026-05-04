@@ -196,7 +196,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const currentOfficeHolidays = (attendance as any)?.office || currentMasterHolidays.filter((h: any) => h.type === 'office');
       const currentFieldHolidays = (attendance as any)?.field || currentMasterHolidays.filter((h: any) => h.type === 'field');
       const currentSiteHolidays = (attendance as any)?.site || currentMasterHolidays.filter((h: any) => h.type === 'site');
-      const currentRecurringHolidays = (attendance as any)?.recurringHolidays || [];
+      const currentRecurringHolidays = storeRecurringHolidays || [];
 
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
         const uid = String(user.id);
@@ -321,7 +321,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             
             // 3rd Saturday Blue Leave applies only to males
             if (ruleDay === 'saturday' && ruleOccurrence === 3) {
-                if (user.role !== 'admin' && (user.gender || '').toLowerCase() !== 'male') return false;
+                const userRoleLower = (user.role || '').toLowerCase();
+                if (userRoleLower !== 'admin' && (user.gender || '').toLowerCase() !== 'male') return false;
             }
 
             // Apply month gating

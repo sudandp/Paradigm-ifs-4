@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import {
   Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, X, ChevronDown,
   ChevronRight, Eye, Clock, User, Loader2, FileWarning, ClipboardList, Settings,
-  Calculator, Users, Badge, HeartPulse, Archive, Wrench, BarChart, History, Search
+  Calculator, Users, Badge, HeartPulse, Archive, Wrench, BarChart, History, Search, CalendarDays
 } from 'lucide-react';
 import Button from '../ui/Button';
 import Toast from '../ui/Toast';
@@ -25,7 +25,7 @@ import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 
 // Icon map for template cards
 const ICON_MAP: Record<string, React.ElementType> = {
-  ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, BarChart,
+  ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, BarChart, CalendarDays
 };
 
 // Change log entry type
@@ -72,6 +72,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
   const [displayProgress, setDisplayProgress] = useState(0);
   const [isActualDone, setIsActualDone] = useState(false);
   const [isRestoring, setIsRestoring] = useState<string | null>(null);
+  const [downloadMonthYear, setDownloadMonthYear] = useState<string>(format(new Date(), 'yyyy-MM'));
 
   // High-end smooth progress animation
   React.useEffect(() => {
@@ -129,7 +130,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
     setIsActualDone(false);
 
     try {
-      let dynamicOptions: Record<string, string[]> | undefined;
+      let dynamicOptions: any;
       
       // For attendance templates, fetch the list of active employees and their sites for dropdowns/autofill
       if (template.id === 'attendance_monthly_bulk' || template.id === 'attendance_bulk') {
@@ -142,10 +143,11 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
 
             dynamicOptions = {
               // Ensure arrays are exactly the same length, even if values are empty
-              employee_name: activeUsers.map((u: any) => `${u.name} (${u.employeeCode || u.employee_code || ''})`.trim()),
-              employee_id_mapping: activeUsers.map((u: any) => u.employeeCode || u.employee_code || ''),
-              site_name_mapping: activeUsers.map((u: any) => u.organizationName || u.organization_name || 'Office')
-            };
+               employee_name: activeUsers.map((u: any) => `${u.name} (${u.biometricId || 'N/A'})`.trim()),
+               employee_id_mapping: activeUsers.map((u: any) => u.biometricId || 'N/A'),
+               site_name_mapping: activeUsers.map((u: any) => u.organizationName || 'Office'),
+               selected_month: downloadMonthYear
+             };
           }
         } catch (error) {
           console.error('Error fetching users for template:', error);
@@ -177,7 +179,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
       setIsPreparing(false);
       setIsActualDone(false);
     }
-  }, [user, isPreparing]);
+  }, [user, isPreparing, downloadMonthYear]);
 
   const handleUploadClick = (template: TemplateDefinition) => {
     setIsMasterMode(false);
@@ -556,10 +558,19 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
               const employeeId = row.data['employee_id'];
               const providedNameRaw = row.data['employee_name']?.toString().trim();
               const providedName = providedNameRaw?.split(' (')[0]; // Handle Name (ID) format
-              const { data: userData } = await supabase.from('users').select('id, name').eq('employee_code', employeeId).maybeSingle();
+              // Prefer lookup by name as there is no employee_code column in the users table
+              let userQuery = supabase.from('users').select('id, name');
+              if (providedName) {
+                userQuery = userQuery.ilike('name', providedName);
+              } else {
+                totalFailed++;
+                continue;
+              }
+
+              const { data: userData } = await userQuery.maybeSingle();
               
               if (!userData) {
-                console.warn(`[Attendance Bulk] User not found for employee code: ${employeeId}`);
+                console.warn(`[Attendance Bulk] User not found for name: ${providedName}`);
                 totalFailed++;
                 continue;
               }
@@ -616,15 +627,22 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
 
               if (!employeeId && !providedName) { totalFailed++; continue; }
 
-              // Prefer lookup by employee_code; fallback to name if ID is empty
-              const { data: userData } = await supabase
+              // Prefer lookup by name as there is no employee_code column in the users table
+              let userQuery = supabase
                 .from('users')
-                .select('id, name, employee_code, organizations(short_name)')
-                .eq('employee_code', employeeId || '')
-                .maybeSingle();
+                .select('id, name, organization_name');
+              
+              if (providedName) {
+                userQuery = userQuery.ilike('name', providedName);
+              } else {
+                totalFailed++;
+                continue;
+              }
 
-              if (!userData) { 
-                console.warn(`[Monthly Bulk] User not found for code: ${employeeId}`);
+              const { data: userData, error: userErr } = await userQuery.maybeSingle();
+
+              if (userErr || !userData) { 
+                console.warn(`[Monthly Bulk] User lookup error or not found for name: ${providedName}`, userErr);
                 totalFailed++; 
                 continue; 
               }
@@ -632,7 +650,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
               const monthYear = row.data['month_year']?.toString().trim(); // YYYY-MM
               // Default location: use site_name from sheet, else employee's primary org
               const siteName = row.data['site_name']?.toString().trim()
-                || (userData.organizations as any)?.short_name
+                || userData.organization_name
                 || 'Office';
 
               if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
@@ -690,7 +708,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
                       timestamp: new Date(`${dateStr}T${punchTimes.in}:00`).toISOString(),
                       type: 'punch-in',
                       location_name: location,
-                      source: 'bulk_import',
+                      work_type: 'office',
                       is_manual: true
                     },
                     {
@@ -698,7 +716,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
                       timestamp: new Date(`${dateStr}T${punchTimes.out}:00`).toISOString(),
                       type: 'punch-out',
                       location_name: location,
-                      source: 'bulk_import',
+                      work_type: 'office',
                       is_manual: true
                     }
                   ]);
@@ -1054,6 +1072,22 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
                 ))}
                 {template.columns.filter(c => c.required).length > 4 && <span className="text-[10px] text-muted">+{template.columns.filter(c => c.required).length - 4} more</span>}
               </div>
+
+              {template.id === 'attendance_monthly_bulk' && (
+                <div className="mb-5 p-4 rounded-2xl bg-page border border-border group-hover:border-[#006b3f]/20 transition-all duration-300">
+                  <label className="text-[10px] uppercase font-bold text-muted mb-2.5 block tracking-widest">Target Month for Download</label>
+                  <div className="relative group/input">
+                    <input 
+                      type="month" 
+                      value={downloadMonthYear}
+                      onChange={(e) => setDownloadMonthYear(e.target.value)}
+                      className="form-input !text-xs w-full bg-white font-bold cursor-pointer hover:border-[#006b3f] transition-all pr-10 shadow-sm"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted mt-3 leading-relaxed opacity-80 italic">Template will automatically adjust to 28, 30, or 31 days for this month.</p>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="flex-1 border-[#006b3f]/20 text-[#006b3f] hover:bg-[#006b3f] hover:text-white hover:border-[#006b3f] transition-all" onClick={() => handleDownload(template)} disabled={isPreparing}>
                   <Download className="mr-1.5 h-3.5 w-3.5" /> Download

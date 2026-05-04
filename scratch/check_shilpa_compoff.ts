@@ -44,12 +44,14 @@ async function run() {
   console.log('Total Sundays Worked:', sundaysWorked)
 
   const { data: holidays } = await supabase.from('holidays').select('*')
-  const holidayDates = new Set(holidays.map(h => format(new Date(h.date), 'yyyy-MM-dd')))
+  const holidayDates = new Set((holidays || []).map(h => format(new Date(h.date), 'yyyy-MM-dd')))
   
   const { data: userHolidays } = await supabase.from('user_holidays').select('*').eq('user_id', userId)
-  userHolidays.forEach(uh => {
-    if (uh.holiday_date) holidayDates.add(uh.holiday_date)
-  })
+  if (userHolidays) {
+    userHolidays.forEach(uh => {
+      if (uh.holiday_date) holidayDates.add(uh.holiday_date)
+    })
+  }
 
   let holidaysWorked = 0;
   attendedDates.forEach(dateStr => {

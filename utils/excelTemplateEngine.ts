@@ -59,15 +59,35 @@ export const downloadTemplate = async (
   const empIds    = dynamicOptions?.employee_id_mapping  ?? [];
   const siteNames = dynamicOptions?.site_name_mapping    ?? [];
 
+  // Determine active columns based on selected month (for monthly attendance template)
+  let activeColumns = [...template.columns];
+  const smRaw = (dynamicOptions as any)?.selected_month;
+  const smStr = Array.isArray(smRaw) ? smRaw[0] : (typeof smRaw === 'string' ? smRaw : null);
+  
+  if (smStr && template.id === 'attendance_monthly_bulk') {
+    const [y, m] = smStr.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    activeColumns = activeColumns.filter(col => {
+      if (col.key.startsWith('day_')) {
+        const dayNum = parseInt(col.key.split('_')[1]);
+        return dayNum <= daysInMonth;
+      }
+      return true;
+    });
+  }
+
   // Day status values stored here to bypass Excel's 255-char inline formula limit
   const dayStatuses = ['P','A','1/2P','1/4P','3/4P','EL','SL','CL','LOP','H','W/O','W/H','C/O','C/D','W/P','H/P','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP'];
 
   // Generate Month & Year list from current year + 1 down to 2018
   const monthYears: string[] = [];
+  if (smStr) monthYears.push(smStr); // Put selected month first
+
   const currentYear = new Date().getFullYear();
   for (let y = currentYear + 1; y >= 2018; y--) {
     for (let m = 12; m >= 1; m--) {
-      monthYears.push(`${y}-${String(m).padStart(2, '0')}`);
+      const val = `${y}-${String(m).padStart(2, '0')}`;
+      if (val !== smStr) monthYears.push(val);
     }
   }
 
@@ -85,6 +105,8 @@ export const downloadTemplate = async (
     if (dayStatuses[r] !== undefined) lookupsWs.getCell(`D${r + 2}`).value = dayStatuses[r];
     if (monthYears[r]  !== undefined) lookupsWs.getCell(`E${r + 2}`).value = monthYears[r];
   }
+  
+  lookupsWs.getCell('Z1').value = ''; // Helper for empty list validation range
 
   const empCount     = empNames.length;
   const statusCount  = dayStatuses.length;
@@ -101,7 +123,7 @@ export const downloadTemplate = async (
   // worksheet was already created above to ensure correct ordering
 
   // Set columns FIRST â€” fixes column letter mapping before any rows are added
-  worksheet.columns = template.columns.map(col => ({
+  worksheet.columns = activeColumns.map(col => ({
     header: col.required ? `* ${col.header}` : col.header,
     key: col.key,
     width: col.width || 18
@@ -109,7 +131,7 @@ export const downloadTemplate = async (
 
   // Style header row (row 1, created by worksheet.columns assignment above)
   const headerRow = worksheet.getRow(1);
-  template.columns.forEach((col, idx) => {
+  activeColumns.forEach((col, idx) => {
     const cell = headerRow.getCell(idx + 1);
     if (col.required) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC0000' } };
@@ -126,7 +148,7 @@ export const downloadTemplate = async (
 
   // Add sample rows (3 rows)
   template.sampleData.forEach(row => {
-    worksheet.addRow(template.columns.map(col => row[col.key] ?? ''));
+    worksheet.addRow(activeColumns.map(col => row[col.key] ?? ''));
   });
   worksheet.addRow([]);
   worksheet.addRow([]);
@@ -134,16 +156,18 @@ export const downloadTemplate = async (
   onProgress?.(50);
 
   // --- 3. COLUMN INDICES (after worksheet.columns is established) ---
-  const nameColIdx    = template.columns.findIndex(c => c.key === 'employee_name') + 1;
-  const idColIdx      = template.columns.findIndex(c => c.key === 'employee_id') + 1;
-  const siteColIdx    = template.columns.findIndex(c => c.key === 'site_name') + 1;
+  const nameColIdx    = activeColumns.findIndex(c => c.key === 'employee_name') + 1;
+  const idColIdx      = activeColumns.findIndex(c => c.key === 'employee_id') + 1;
+  const siteColIdx    = activeColumns.findIndex(c => c.key === 'site_name') + 1;
+  const monthYearIdx  = activeColumns.findIndex(c => c.key === 'month_year') + 1;
   const nameColLetter = nameColIdx > 0 ? worksheet.getColumn(nameColIdx).letter : '';
+  const monthYearLetter = monthYearIdx > 0 ? worksheet.getColumn(monthYearIdx).letter : 'C';
   const hasAutofill   = !!(empCount > 0 && nameColLetter && lookupRange);
 
   // --- 4. VALIDATIONS & VLOOKUP FORMULAS (500 rows max for performance) ---
   const DATA_ROWS = 500;
 
-  for (const [idx, col] of template.columns.entries()) {
+  for (const [idx, col] of activeColumns.entries()) {
     const colIdx    = idx + 1;
     const colLetter = worksheet.getColumn(colIdx).letter;
     const isIdCol   = hasAutofill && colIdx === idColIdx;
@@ -182,11 +206,22 @@ export const downloadTemplate = async (
           formulae: [monthYearRef]
         };
       } else if (isDayCol) {
-        cell.dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          formulae: [dayStatusRef]
-        };
+        const dayNum = parseInt(col.key.split('_')[1]);
+        if (dayNum >= 29) {
+          // Smart validation: Only allow selection if the day exists in the month selected in column C
+          // Formula: IF(last_day_of_month >= dayNum, status_list, empty_cell)
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [`=IF(DAY(EOMONTH(DATE(LEFT($${monthYearLetter}${r},4),MID($${monthYearLetter}${r},6,2),1),0))>=${dayNum}, ${dayStatusRef}, Lookups!$Z$1)`]
+          };
+        } else {
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: [dayStatusRef]
+          };
+        }
       } else if (col.type === 'enum' && col.enumValues && col.enumValues.join(',').length <= 255) {
         cell.dataValidation = {
           type: 'list',
@@ -205,6 +240,30 @@ export const downloadTemplate = async (
   }
 
   onProgress?.(80);
+
+  // --- 5. CONDITIONAL FORMATTING (Grey out invalid days for short months) ---
+  activeColumns.forEach((col, idx) => {
+    if (col.key.startsWith('day_')) {
+      const dayNum = parseInt(col.key.split('_')[1]);
+      if (dayNum >= 29) {
+        const colLetter = worksheet.getColumn(idx + 1).letter;
+        worksheet.addConditionalFormatting({
+          ref: `${colLetter}2:${colLetter}${DATA_ROWS}`,
+          rules: [
+            {
+              priority: 1,
+              type: 'expression',
+              formulae: [`=DAY(EOMONTH(DATE(LEFT($${monthYearLetter}2,4),MID($${monthYearLetter}2,6,2),1),0))<${dayNum}`],
+              style: {
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } },
+                font: { color: { argb: 'FF999999' } }
+              }
+            }
+          ]
+        });
+      }
+    }
+  });
 
   // --- 5. SHEET PROTECTION ---
   const PASS = 'Paradigm_security2006';
@@ -261,7 +320,9 @@ const getCellValue = (cell: ExcelJS.Cell): any => {
   
   // Handle objects (formulas, rich text, hyperlinks)
   if (typeof value === 'object') {
-    if ('result' in value) return value.result; // FormulaValue
+    if ('formula' in value) {
+      return (value as any).result !== undefined ? (value as any).result : '';
+    }
     if ('richText' in value) {
       return (value as ExcelJS.CellRichTextValue).richText.map(rt => rt.text).join('');
     }
