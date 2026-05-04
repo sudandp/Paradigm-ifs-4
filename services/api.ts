@@ -270,7 +270,22 @@ const toCamelCase = (data: any): any => {
     for (const key in data) {
       if (Object.prototype.hasOwnProperty.call(data, key)) {
         const camelKey = key.replace(/_([a-z])/g, g => g[1].toUpperCase());
-        camelCased[camelKey] = toCamelCase(data[key]);
+        let value = data[key];
+        
+        // Auto-parse JSON strings
+        if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+          try {
+            const parsed = JSON.parse(value);
+            // Only use parsed value if it resulted in an object or array
+            if (parsed && typeof parsed === 'object') {
+              value = parsed;
+            }
+          } catch (e) {
+            // Not JSON or malformed, keep as original string
+          }
+        }
+        
+        camelCased[camelKey] = toCamelCase(value);
       }
     }
     return processUrlsForDisplay(camelCased);
@@ -2024,23 +2039,72 @@ export const api = {
     const camelEntities: any[] = (entities || []).map(e => processUrlsForDisplay(toCamelCase(e)));
 
     const companyMap = new Map<string, any[]>();
+    const assignedEntityIds = new Set<string>();
+
     camelCompanies.forEach(company => {
-      const companyWithEntities = { ...company, entities: camelEntities.filter(e => e.companyId === company.id) };
-      if (!companyMap.has(company.groupId)) companyMap.set(company.groupId, []);
-      companyMap.get(company.groupId)!.push(companyWithEntities);
+      const companyEntities = camelEntities.filter(e => e.companyId === company.id);
+      companyEntities.forEach(e => assignedEntityIds.add(e.id));
+      const companyWithEntities = { ...company, entities: companyEntities };
+      
+      const targetGroupId = company.groupId || 'unassigned_group';
+      if (!companyMap.has(targetGroupId)) companyMap.set(targetGroupId, []);
+      companyMap.get(targetGroupId)!.push(companyWithEntities);
     });
 
-    return camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: [] }));
+    const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: [] }));
+
+    const unassignedCompanies = companyMap.get('unassigned_group') || [];
+    const validGroupIds = new Set(camelGroups.map(g => g.id));
+    for (const [groupId, comps] of companyMap.entries()) {
+        if (groupId !== 'unassigned_group' && !validGroupIds.has(groupId)) {
+            unassignedCompanies.push(...comps);
+        }
+    }
+
+    const unassignedEntities = camelEntities.filter(e => !assignedEntityIds.has(e.id));
+
+    if (unassignedCompanies.length > 0 || unassignedEntities.length > 0) {
+        if (unassignedEntities.length > 0) {
+            let defaultCompany = unassignedCompanies.find(c => c.id === 'unassigned_company');
+            if (!defaultCompany) {
+                defaultCompany = { id: 'unassigned_company', name: 'Unassigned Entities', groupId: 'unassigned_group', entities: [] };
+                unassignedCompanies.push(defaultCompany);
+            }
+            defaultCompany.entities.push(...unassignedEntities);
+        }
+
+        structure.push({
+            id: 'unassigned_group',
+            name: 'Unassigned / Orphaned',
+            companies: unassignedCompanies,
+            locations: []
+        });
+    }
+
+    return structure;
   },
   bulkSaveOrganizationStructure: async (groups: OrganizationGroup[]): Promise<void> => {
     // 1. Upsert Groups (exclude companies and locations)
-    const groupData = groups.map(({ companies, locations, ...rest }) => toSnakeCase(rest));
+    const validGroups = groups.filter(g => g.id !== 'unassigned_group');
+    const groupData = validGroups.map(({ companies, locations, ...rest }) => toSnakeCase(rest));
     const { error: groupError } = await supabase.from('organization_groups').upsert(groupData);
     if (groupError) throw groupError;
 
     // 2. Upsert Companies (exclude entities)
     const companies = groups.flatMap(g => g.companies.map(c => ({ ...c, groupId: g.id })));
-    const companyData = companies.map(({ entities, ...rest }) => toSnakeCase(rest));
+    const validCompanies = companies.filter(c => c.id !== 'unassigned_company');
+    const companyData = validCompanies.map(({ entities, ...rest }) => {
+        const payload = toSnakeCase(rest);
+        if (payload.group_id === 'unassigned_group') payload.group_id = null;
+        
+        // Stringify nested objects for TEXT columns (skip arrays for Postgres array columns)
+        for (const key in payload) {
+          if (payload[key] !== null && typeof payload[key] === 'object' && !Array.isArray(payload[key]) && !(payload[key] instanceof Date)) {
+            payload[key] = JSON.stringify(payload[key]);
+          }
+        }
+        return payload;
+    });
     const { error: companyError } = await supabase.from('companies').upsert(companyData);
     if (companyError) throw companyError;
 
@@ -2049,10 +2113,19 @@ export const api = {
     const entityData = entities.map(e => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { agreements, status: _status, ...rest } = e;
-        return toSnakeCase({
+        const payload = toSnakeCase({
             ...rest,
             agreementDetails: agreements
         });
+        if (payload.company_id === 'unassigned_company') payload.company_id = null;
+        
+        // Stringify nested objects for TEXT columns (skip arrays for Postgres array columns)
+        for (const key in payload) {
+          if (payload[key] !== null && typeof payload[key] === 'object' && !Array.isArray(payload[key]) && !(payload[key] instanceof Date)) {
+            payload[key] = JSON.stringify(payload[key]);
+          }
+        }
+        return payload;
     });
     const { error: entityError } = await supabase.from('entities').upsert(entityData);
     if (entityError) throw entityError;
@@ -2088,13 +2161,31 @@ export const api = {
   },
   createCompany: async (company: Partial<Company>): Promise<Company> => {
     const { entities, ...rest } = company;
-    const { data, error } = await supabase.from('companies').insert(toSnakeCase(rest)).select().single();
+    const dbData = toSnakeCase(rest);
+    if (dbData.group_id === 'unassigned_group') dbData.group_id = null;
+    
+    // Stringify nested objects for TEXT columns (skip arrays for Postgres array columns)
+    for (const key in dbData) {
+      if (dbData[key] !== null && typeof dbData[key] === 'object' && !Array.isArray(dbData[key]) && !(dbData[key] instanceof Date)) {
+        dbData[key] = JSON.stringify(dbData[key]);
+      }
+    }
+    const { data, error } = await supabase.from('companies').insert(dbData).select().single();
     if (error) throw error;
     return toCamelCase({ ...data, entities: [] });
   },
   updateCompany: async (id: string, updates: Partial<Company>): Promise<Company> => {
     const { entities, ...rest } = updates;
-    const { data, error } = await supabase.from('companies').update(toSnakeCase(rest)).eq('id', id).select().single();
+    const dbData = toSnakeCase(rest);
+    if (dbData.group_id === 'unassigned_group') dbData.group_id = null;
+    
+    // Stringify nested objects for TEXT columns (skip arrays for Postgres array columns)
+    for (const key in dbData) {
+      if (dbData[key] !== null && typeof dbData[key] === 'object' && !Array.isArray(dbData[key]) && !(dbData[key] instanceof Date)) {
+        dbData[key] = JSON.stringify(dbData[key]);
+      }
+    }
+    const { data, error } = await supabase.from('companies').update(dbData).eq('id', id).select().single();
     if (error) throw error;
     return toCamelCase(data);
   },
@@ -2128,6 +2219,15 @@ export const api = {
     }
 
     const dbData = toSnakeCase(entityToSave);
+    if (dbData.company_id === 'unassigned_company') dbData.company_id = null;
+    
+    // Stringify nested objects for TEXT columns (skip arrays for Postgres array columns)
+    for (const key in dbData) {
+      if (dbData[key] !== null && typeof dbData[key] === 'object' && !Array.isArray(dbData[key]) && !(dbData[key] instanceof Date)) {
+        dbData[key] = JSON.stringify(dbData[key]);
+      }
+    }
+
     let query;
     if (id && !id.startsWith('new_')) {
       query = supabase.from('entities').update(dbData).eq('id', id);

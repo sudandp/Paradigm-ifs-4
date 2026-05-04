@@ -216,7 +216,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     table: 'attendance_events',
     matchKey: 'date',
     columns: [
-      { key: 'employee_id', header: 'Employee ID', required: true, type: 'string', width: 20, description: 'Unique Employee Code' },
+      { key: 'employee_id', header: 'Employee ID', required: false, type: 'string', width: 20, description: 'Unique Employee Code' },
       { key: 'employee_name', header: 'Employee Name', required: true, type: 'string', width: 25, description: 'Full name of the employee' },
       { key: 'date', header: 'Date', required: true, type: 'date', width: 15, description: 'Attendance Date (YYYY-MM-DD)' },
       { key: 'punch_in', header: 'Punch In Time', required: false, type: 'string', width: 15, description: 'HH:MM format (e.g., 09:00)' },
@@ -257,7 +257,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       '6. This sheet is password protected to ensure data integrity.',
     ],
     columns: [
-      { key: 'employee_id', header: 'Employee ID', required: true, type: 'string', width: 20, description: 'Unique Employee Code' },
+      { key: 'employee_id', header: 'Employee ID', required: false, type: 'string', width: 20, description: 'Unique Employee Code' },
       { key: 'employee_name', header: 'Employee Name', required: true, type: 'string', width: 25, description: 'Full name of the employee' },
       { key: 'month_year', header: 'Month & Year', required: true, type: 'string', width: 15, description: 'YYYY-MM format (e.g., 2026-04)' },
       { key: 'site_name', header: 'Site Name', required: true, type: 'string', width: 25, description: 'Primary site name' },

@@ -26,6 +26,7 @@ interface EntityFormProps {
   initialData: Entity | null;
   companyName: string;
   companies?: Company[];
+  companyId?: string;
 }
 
 const entitySchema = yup.object({
@@ -414,7 +415,7 @@ const isDepartmentMatch = (dept: string, category: string) => {
     return d.includes(c) || c.includes(d);
 };
 
-const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initialData, companyName, companies }) => {
+const EntityForm: React.FC<EntityFormProps> = ({ isOpen, onClose, onSave, initialData, companyName, companies, companyId }) => {
   const [activeTab, setActiveTab] = useState<Tab>('General');
   const [completedTabs, setCompletedTabs] = useState<Set<Tab>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -555,15 +556,35 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
 
   const isEditing = !!initialData;
   const watchForm6 = watch('complianceDetails.form6Applicable');
-  const companyId = watch('companyId');
+  const watchedCompanyId = watch('companyId');
+
+  const currentCompany = useMemo(() => {
+    const cid = watchedCompanyId || companyId || (initialData as any)?.companyId;
+    if (cid && companies) {
+      return companies.find(c => c.id === cid);
+    }
+    if (companyName && companies) {
+      return companies.find(c => c.name === companyName);
+    }
+    return null;
+  }, [companies, watchedCompanyId, companyId, initialData, companyName]);
+
+  const isBangaloreBased = useMemo(() => {
+    return currentCompany?.location?.toLowerCase() === 'bangalore';
+  }, [currentCompany]);
 
   const selectedCompanyName = useMemo(() => {
     if (companyName) return companyName;
-    if (companyId && companies) {
-      return companies.find(c => c.id === companyId)?.name || '';
-    }
+    if (currentCompany) return currentCompany.name;
     return '';
-  }, [companyName, companyId, companies]);
+  }, [companyName, currentCompany]);
+
+  // Effect to lock location for Bangalore-based companies
+  useEffect(() => {
+    if (isBangaloreBased) {
+      setValue('location', 'Bangalore');
+    }
+  }, [isBangaloreBased, setValue]);
 
   useEffect(() => {
     if (isOpen) {
@@ -827,7 +848,14 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                             </Select>
                         )}
                         <Input label="Billing Name (As Per Documents)" id="billingName" registration={register('billingName')} error={errors.billingName?.message} />
-                        <Input label="Location / City" id="location" registration={register('location')} error={errors.location?.message} />
+                        <Input 
+                            label="Location / City" 
+                            id="location" 
+                            registration={register('location')} 
+                            error={errors.location?.message} 
+                            disabled={isBangaloreBased}
+                            placeholder={isBangaloreBased ? "Bangalore (Fixed for this company)" : "e.g. Bangalore"}
+                        />
                         <Input label="Latitude" id="latitude" registration={register('latitude')} error={errors.latitude?.message} placeholder="e.g. 12.9716" />
                         <Input label="Longitude" id="longitude" registration={register('longitude')} error={errors.longitude?.message} placeholder="e.g. 77.5946" />
                         <Controller name="siteTakeoverDate" control={control} render={({ field }) => (

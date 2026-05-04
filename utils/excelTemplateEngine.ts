@@ -50,8 +50,8 @@ export const downloadTemplate = async (
   onProgress?.(10);
   const workbook = new ExcelJS.Workbook();
 
-  // --- 1. LOOKUPS SHEET (built first so refs are stable) ---
-  // Col A = employee_name, Col B = employee_id, Col C = site_name, Col D = day statuses
+  const instrWs = template.instructions && template.instructions.length > 0 ? workbook.addWorksheet('Instructions') : null;
+  const worksheet = workbook.addWorksheet(template.name);
   const lookupsWs = workbook.addWorksheet('Lookups');
   lookupsWs.state = 'hidden';
 
@@ -98,7 +98,7 @@ export const downloadTemplate = async (
   onProgress?.(30);
 
   // --- 2. DATA SHEET ---
-  const worksheet = workbook.addWorksheet(template.name);
+  // worksheet was already created above to ensure correct ordering
 
   // Set columns FIRST â€” fixes column letter mapping before any rows are added
   worksheet.columns = template.columns.map(col => ({
@@ -124,26 +124,12 @@ export const downloadTemplate = async (
   // Freeze header row + first 4 columns
   worksheet.views = [{ state: 'frozen', xSplit: 4, ySplit: 1, activeCell: 'E2' }];
 
-  // Only add sample row when no real employee data exists
-  if (empCount === 0) {
-    template.sampleData.forEach(row => {
-      worksheet.addRow(template.columns.map(col => row[col.key] ?? ''));
-    });
-  } else {
-    // PRE-FILL the sheet with all active employees and current month/year!
-    const currentMonthYear = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    
-    for (let i = 0; i < empCount; i++) {
-      const rowData = template.columns.map(col => {
-        if (col.key === 'employee_name') return empNames[i];
-        if (col.key === 'employee_id') return empIds[i];
-        if (col.key === 'site_name') return siteNames[i];
-        if (col.key === 'month_year') return currentMonthYear;
-        return '';
-      });
-      worksheet.addRow(rowData);
-    }
-  }
+  // Add sample rows (3 rows)
+  template.sampleData.forEach(row => {
+    worksheet.addRow(template.columns.map(col => row[col.key] ?? ''));
+  });
+  worksheet.addRow([]);
+  worksheet.addRow([]);
 
   onProgress?.(50);
 
@@ -229,18 +215,35 @@ export const downloadTemplate = async (
     if (!isAutoFilled) worksheet.getColumn(colIdx).protection = { locked: false };
   });
   worksheet.getRow(1).eachCell({ includeEmpty: true }, c => { c.protection = { locked: true }; });
-  worksheet.protect(PASS, { selectLockedCells: true, selectUnlockedCells: true, autoFilter: true, sort: true });
+  
+  // Protect worksheet allowing alignment and formatting, but preventing structural changes
+  worksheet.protect(PASS, { 
+    selectLockedCells: true, 
+    selectUnlockedCells: true, 
+    autoFilter: true, 
+    sort: true,
+    formatCells: true,
+    formatColumns: true,
+    formatRows: true,
+    insertColumns: false,
+    insertRows: false,
+    deleteColumns: false,
+    deleteRows: false
+  });
   lookupsWs.protect(PASS, {});
 
   // --- 6. INSTRUCTIONS SHEET ---
-  if (template.instructions && template.instructions.length > 0) {
-    const instrWs = workbook.addWorksheet('Instructions');
+  if (instrWs && template.instructions && template.instructions.length > 0) {
     instrWs.getCell('A1').value = `Instructions: ${template.name}`;
     instrWs.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
     instrWs.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
     template.instructions.forEach((line, i) => { instrWs.getCell(`A${i + 3}`).value = line; });
     instrWs.getColumn(1).width = 100;
-    instrWs.protect(PASS, {});
+    instrWs.protect(PASS, {
+      selectLockedCells: true, 
+      selectUnlockedCells: true, 
+      formatCells: true
+    });
   }
 
   // --- 7. DOWNLOAD ---

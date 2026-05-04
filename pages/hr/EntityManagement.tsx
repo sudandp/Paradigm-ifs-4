@@ -113,7 +113,7 @@ const EntityManagement: React.FC = () => {
     const isMobile = useMediaQuery('(max-width: 767px)');
 
     // Modals state
-    const [entityFormState, setEntityFormState] = useState<{ isOpen: boolean; initialData: Entity | null; companyName: string }>({ isOpen: false, initialData: null, companyName: '' });
+    const [entityFormState, setEntityFormState] = useState<{ isOpen: boolean; initialData: Entity | null; companyName: string; companyId?: string }>({ isOpen: false, initialData: null, companyName: '', companyId: '' });
     const [nameModalState, setNameModalState] = useState<{
         isOpen: boolean;
         mode: 'add' | 'edit';
@@ -249,13 +249,13 @@ const EntityManagement: React.FC = () => {
     };
 
     // Client/Entity handlers
-    const handleAddClient = (companyName: string) => setEntityFormState({ isOpen: true, initialData: null, companyName });
-    const handleEditClient = (entity: Entity, companyName: string) => setEntityFormState({ isOpen: true, initialData: entity, companyName });
+    const handleAddClient = (companyName: string, companyId: string) => setEntityFormState({ isOpen: true, initialData: null, companyName, companyId });
+    const handleEditClient = (entity: Entity, companyName: string, companyId: string) => setEntityFormState({ isOpen: true, initialData: entity, companyName, companyId });
     const handleSaveClient = async (clientData: Entity, pendingFiles: Record<string, UploadedFile | UploadedFile[]>) => {
         try {
-            let company = groups.flatMap(g => g.companies).find(c => c.name === entityFormState.companyName);
+            let company = groups.flatMap(g => g.companies).find(c => entityFormState.companyId ? c.id === entityFormState.companyId : c.name === entityFormState.companyName);
             
-            // If company not found by name (fallback for global add), use companyId from data
+            // Fallback for global add or missing ID
             if (!company && clientData.companyId) {
                 company = allCompanies.find(c => c.id === clientData.companyId);
             }
@@ -393,7 +393,7 @@ const EntityManagement: React.FC = () => {
                 setEntityFormState(prev => ({ ...prev, initialData: savedClient }));
             } else {
                 setToast({ message: clientData.id.startsWith('new_') ? 'Society added successfully.' : 'Society updated successfully.', type: 'success' });
-                setEntityFormState({ isOpen: false, initialData: null, companyName: '' });
+                setEntityFormState({ isOpen: false, initialData: null, companyName: '', companyId: '' });
             }
         } catch (error) {
             console.error('Save failed:', error);
@@ -721,7 +721,7 @@ const EntityManagement: React.FC = () => {
                                                             </div>
                                                             <div className="flex items-center gap-2">
                                                                 <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => setViewingClients({ companyName: company.name, clients: company.entities })}><Eye className="h-4 w-4" /></Button>
-                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => handleAddClient(company.name)}><Plus className="h-4 w-4" /></Button>
+                                                                <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-accent/10 text-accent" onClick={() => handleAddClient(company.name, company.id)}><Plus className="h-4 w-4" /></Button>
                                                                 <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-blue-500/5 text-blue-500" onClick={() => setCompanyFormState({ isOpen: true, mode: 'edit', groupId: group.id, groupName: group.name, initialData: company })}><Edit className="h-4 w-4" /></Button>
                                                                 <Button variant="icon" size="sm" className="h-8 w-8 hover:bg-red-500/5 text-red-500" onClick={() => handleDeleteClick('company', company.id, company.name)}><Trash2 className="h-4 w-4" /></Button>
                                                             </div>
@@ -736,10 +736,10 @@ const EntityManagement: React.FC = () => {
                                                                             <span className="text-sm text-primary-text flex items-center gap-2">
                                                                                 <Building className="h-3.5 w-3.5 text-muted/60" />
                                                                                 {client.name}
-                                                                                {client.location && <span className="text-[10px] text-muted uppercase tracking-tight ml-1 font-medium bg-page/50 px-1.5 py-0.5 rounded border border-border/40">{client.location}</span>}
+                                                                                {(client.location || company.location) && <span className="text-[10px] text-muted uppercase tracking-tight ml-1 font-medium bg-page/50 px-1.5 py-0.5 rounded border border-border/40">{client.location || company.location}</span>}
                                                                             </span>
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-blue-500/10 text-blue-500" onClick={() => handleEditClient(client, company.name)}><Edit className="h-3.5 w-3.5" /></Button>
+                                                                                <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-blue-500/10 text-blue-500" onClick={() => handleEditClient(client, company.name, company.id)}><Edit className="h-3.5 w-3.5" /></Button>
                                                                                 <Button variant="icon" size="sm" className="h-7 w-7 hover:bg-red-500/10 text-red-500" onClick={() => handleDeleteClick('client', client.id, client.name)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                                                             </div>
                                                                         </div>
@@ -775,7 +775,7 @@ const EntityManagement: React.FC = () => {
                                 </p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <Button onClick={() => setEntityFormState({ isOpen: true, initialData: null, companyName: '' })} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-md hover:shadow-lg transition-all duration-300">
+                                <Button onClick={() => setEntityFormState({ isOpen: true, initialData: null, companyName: '', companyId: '' })} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="border hover:opacity-90 text-white shadow-md hover:shadow-lg transition-all duration-300">
                                     <Plus className="mr-2 h-5 w-5" /> Add New Site
                                 </Button>
                             </div>
@@ -825,7 +825,7 @@ const EntityManagement: React.FC = () => {
                                                     <td className="px-6 py-5">
                                                         <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
                                                             <Button size="sm" variant="outline" className="h-9 font-bold px-4 border-accent/20 hover:bg-accent/5" onClick={() => {
-                                                                setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '' });
+                                                                setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '', companyId: entity.companyId });
                                                             }}>
                                                                 <Eye className="mr-2 h-4 w-4" /> Configure
                                                             </Button>
