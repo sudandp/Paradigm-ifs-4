@@ -388,12 +388,7 @@ const ApplyLeave: React.FC = () => {
                 return;
             }
 
-            // Block Comp Off requests for specific roles
-            if (formData.leaveType === 'Comp Off' && isTechnicalRole(user.role)) {
-                setToast({ message: 'Compensatory Off is not applicable for your role.', type: 'error' });
-                setIsSubmitting(false);
-                return;
-            }
+
 
             const startDateObj = new Date(formData.startDate.replace(/-/g, '/'));
             const endDateObj = new Date(formData.endDate.replace(/-/g, '/'));
@@ -688,7 +683,7 @@ const ApplyLeave: React.FC = () => {
                                         <option value="Earned">Earned</option>
                                         <option value="Sick">Sick</option>
                                         <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
-                                        {!isTechnicalRole(user?.role) && <option value="Comp Off">Comp Off</option>}
+                                        <option value="Comp Off">Comp Off</option>
                                         <option value="Loss of Pay">Loss of Pay</option>
                                         {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                         {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}

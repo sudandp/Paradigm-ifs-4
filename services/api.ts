@@ -18,7 +18,7 @@ import type {
 } from '../types';
 import { getObjectDiff } from '../utils/diff';
 import { 
-  differenceInCalendarDays, differenceInCalendarMonths, format, startOfMonth, endOfMonth, 
+  differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, format, startOfMonth, endOfMonth, 
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays,
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
@@ -3570,7 +3570,16 @@ export const api = {
     const attendedDates = new Set((yearEvents || [])
         .filter(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'))
         .map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
-    const holidayDates = new Set(holidays.map(h => format(new Date(h.date), 'yyyy-MM-dd')));
+    const holidayDates = new Set(holidays.map(h => {
+        const dStr = String(h.date);
+        if (dStr.includes('T')) return format(new Date(dStr), 'yyyy-MM-dd');
+        return format(new Date(dStr.replace(/-/g, '/')), 'yyyy-MM-dd');
+    }));
+
+    // Add FIXED_HOLIDAYS (e.g. May 1st Labour Day)
+    FIXED_HOLIDAYS.forEach(fh => {
+        holidayDates.add(`${currentYear}-${fh.date}`);
+    });
     
     // User requested refinement: Only count Sundays, Fixed (Gov) holidays, and SELECTED optional holidays.
     // If we have fresh data, use the results from userHolidaysRes. If cached, use userHolidaysLocal.
@@ -3620,18 +3629,19 @@ export const api = {
     const floatingTotal = 0;
     let dynamicCompOffTotal = 0;
     
-    // 2. Comp Offs based on attendance on Sundays or Public/Recurring Holidays (Earned via Work)
+    // 2. Comp Offs based on attendance on Week Offs or Public/Recurring Holidays (Earned via Work)
+    const weeklyOffDays = rules?.weeklyOffDays || [0];
     attendedDates.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
-        const dayName = format(date, 'EEEE');
         
         // Only count work within the CURRENT YEAR, up to the end of the viewed month
         const yearStartDate = new Date(yearStart.replace(/-/g, '/'));
         if (date < yearStartDate) return;
         if (date > endOfMonth(referenceDate)) return;
 
-        // Comp Off Accrual Check (Sunday or Public/Recurring Holiday)
-        if (dayName === 'Sunday' || holidayDates.has(dateStr)) {
+        // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
+        const dayOfWeek = date.getDay();
+        if (weeklyOffDays.includes(dayOfWeek) || holidayDates.has(dateStr)) {
             dynamicCompOffTotal += 1;
         }
     });
@@ -3729,8 +3739,8 @@ export const api = {
       floatingTotal: floatingTotalValue, 
       floatingUsed: 0,
       floatingPending: 0,
-      compOffTotal: (isNotValid(rules.compOffLeavesValidFrom, rules.compOffLeavesExpiryDate) || isTechnicalRole(roleName)) ? 0 : finalCompOffTotal, // Only Attendance on Holidays/Sundays
-      compOffUsed: 0,
+      compOffTotal: (isNotValid(rules.compOffLeavesValidFrom, rules.compOffLeavesExpiryDate)) ? 0 : finalCompOffTotal, 
+      compOffUsed: manualCompOffUsed, // Start with manual 'used' logs
       compOffPending: 0,
       maternityTotal: 0,
       maternityUsed: 0,
@@ -3760,8 +3770,14 @@ export const api = {
       // Maternity: 26 weeks (182 days), requires 6 months tenure
       const maternityWeeks = rules.maternityLeaveWeeks ?? 26;
       const maternityMinTenure = rules.maternityMinTenureMonths ?? 6;
-      const userCreatedAt = userData.created_at ? new Date(userData.created_at) : new Date();
-      const tenureMonths = differenceInCalendarMonths(referenceDate, userCreatedAt);
+      
+      // Use joining_date if available, fallback to created_at
+      const tenureStartDateStr = userData.joining_date || userData.created_at;
+      const tenureStartDate = tenureStartDateStr ? new Date(tenureStartDateStr.replace(/-/g, '/')) : new Date();
+      
+      // Use differenceInMonths for strict tenure (full months elapsed)
+      const tenureMonths = differenceInMonths(referenceDate, tenureStartDate);
+      
       if (tenureMonths >= maternityMinTenure) {
         balance.maternityTotal = maternityWeeks * 7; // Convert weeks to days
       }

@@ -211,8 +211,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const visuallyActiveCurr = (daysActiveInWeek >= threshold);
 
             if (isDetailedPresent) {
-                // User requested: if worked, show as P (present) even on Sundays/Holidays
-                finalStatus = 'present';
+                // If worked on a Sunday or Holiday, set a special status
+                if (isCompanyHoliday) {
+                    finalStatus = 'holiday-present';
+                } else if (isSunday || (isRecurringHoliday && !isFloatingExpired)) {
+                    finalStatus = 'weekend-present';
+                } else {
+                    finalStatus = 'present';
+                }
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isRecurringHoliday && !isFloatingExpired) {
@@ -228,7 +234,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             }
 
             // Update Counters
-            const isPresenceForThreshold = ['present', 'holiday-present'].includes(finalStatus) || (isCompanyHoliday && !isPast);
+            const isPresenceForThreshold = ['present', 'holiday-present', 'weekend-present'].includes(finalStatus) || (isCompanyHoliday && !isPast);
             const isLeaveForActivity = finalStatus === 'leave' && !['loss of pay', 'lop'].includes((foundLeave?.leaveType || '').toLowerCase());
             
             if (isPresenceForThreshold || isLeaveForActivity) {
@@ -261,7 +267,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             case 'sunday': return 'bg-rose-300 text-gray-800 border-rose-400 shadow-sm'; // Rose Pink for Sunday
             case 'company-holiday': return 'bg-sky-400 text-white border-sky-500 shadow-sm'; // Sky Blue for Company Holiday
             case 'floating-holiday': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Vibrant Amber
-            case 'holiday-present': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Vibrant Purple (Comp Off)
+            case 'holiday-present': return 'bg-sky-400 text-white border-sky-500 shadow-sm'; // Holiday color, will be overlaid with gradient
+            case 'weekend-present': return 'bg-rose-300 text-gray-800 border-rose-400 shadow-sm'; // Sunday color, will be overlaid with gradient
             case 'leave': return 'bg-blue-600 text-white border-blue-700 shadow-sm'; // Blue for Leave
             default: return 'bg-gray-50 text-gray-400 border-gray-100'; // Neutral
         }
@@ -288,7 +295,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const status = res.status;
             
             let normalPay = 0;
-            if (['present', 'holiday-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
+            if (['present', 'holiday-present', 'weekend-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 if (status === 'present') {
                     const { workingHours } = calculateWorkingHours(dayEvents, date);
                     const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
@@ -386,7 +393,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         let overlayText: string | null = null;
                         let customStyle: React.CSSProperties = {};
 
-                        if (status === 'present' || status === 'holiday-present') {
+                        if (status === 'present' || status === 'holiday-present' || status === 'weekend-present') {
                             const dateKey = format(date, 'yyyy-MM-dd');
                             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
                             const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
@@ -408,18 +415,26 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     borderColor: 'transparent'
                                 };
                             } else if (relevantLeave && relevantLeave.dayOption === 'half') {
-                                overlayText = '0.5P';
+                                overlayText = status === 'holiday-present' ? 'H/0.5P' : status === 'weekend-present' ? 'W.O/0.5P' : '0.5P';
+                                const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 customStyle = {
-                                    background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green / Half Blue
+                                    background: `linear-gradient(135deg, ${leftColor} 50%, #2563eb 50%)`, // Half Holiday/Sunday / Half Blue
                                     borderColor: 'transparent'
                                 };
                             } else if (workingHours >= shiftThreshold) {
-                                overlayText = 'P';
+                                overlayText = status === 'holiday-present' ? 'H/P' : status === 'weekend-present' ? 'W.O/P' : 'P';
+                                if (status === 'holiday-present' || status === 'weekend-present') {
+                                    const leftColor = status === 'holiday-present' ? '#38bdf8' : '#fda4af'; // sky-400 or rose-300
+                                    customStyle = {
+                                        background: `linear-gradient(135deg, ${leftColor} 50%, #10b981 50%)`, // Split with green
+                                        borderColor: 'transparent'
+                                    };
+                                }
                             } else {
-                                overlayText = '0.5P';
-                                const baseColor = status === 'holiday-present' ? '#7c3aed' : '#10b981'; // violet-600 or emerald-500
+                                overlayText = status === 'holiday-present' ? 'H/0.5P' : status === 'weekend-present' ? 'W.O/0.5P' : '0.5P';
+                                const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 customStyle = {
-                                    background: `linear-gradient(135deg, ${baseColor} 50%, #ef4444 50%)`, // Split with red (#ef4444)
+                                    background: `linear-gradient(135deg, ${leftColor} 50%, #ef4444 50%)`, // Split with red (#ef4444)
                                     borderColor: 'transparent' // Hide the border
                                 };
                             }

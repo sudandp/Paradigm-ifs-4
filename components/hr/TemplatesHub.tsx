@@ -19,6 +19,7 @@ import {
 } from '../../utils/excelTemplateEngine';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../services/supabase';
+import { api } from '../../services/api';
 import { format } from 'date-fns';
 import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
 
@@ -132,26 +133,22 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
       
       // For attendance templates, fetch the list of active employees and their sites for dropdowns/autofill
       if (template.id === 'attendance_monthly_bulk' || template.id === 'attendance_bulk') {
-        const { data: users } = await supabase
-          .from('users')
-          .select(`
-            employee_code, 
-            name, 
-            organizations (
-              short_name
-            )
-          `)
-          .eq('status', 'active')
-          .order('name');
+        try {
+          const users = await api.getUsers({ fetchAll: true });
           
-        if (users && users.length > 0) {
-          // Special handling for Employee dropdown with Linked Data (ID and Site)
-          // We'll pass the mapping so the generator can create VLOOKUP formulas
-          dynamicOptions = {
-            employee_name: Array.from(new Set(users.map(u => u.name).filter(Boolean))),
-            employee_id_mapping: users.map(u => u.employee_code).filter(Boolean),
-            site_name_mapping: users.map(u => (u.organizations as any)?.short_name || '').filter(Boolean)
-          };
+          if (users && users.length > 0) {
+            // Filter out unverified users and field staff if needed, or just unverified
+            const activeUsers = users.filter((u: any) => u.role !== 'unverified');
+
+            dynamicOptions = {
+              // Ensure arrays are exactly the same length, even if values are empty
+              employee_name: activeUsers.map((u: any) => `${u.name} (${u.employeeCode || u.employee_code || ''})`.trim()),
+              employee_id_mapping: activeUsers.map((u: any) => u.employeeCode || u.employee_code || ''),
+              site_name_mapping: activeUsers.map((u: any) => u.organizationName || u.organization_name || 'Office')
+            };
+          }
+        } catch (error) {
+          console.error('Error fetching users for template:', error);
         }
       }
 
@@ -557,7 +554,8 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
 
             if (template.id === 'attendance_bulk') {
               const employeeId = row.data['employee_id'];
-              const providedName = row.data['employee_name']?.toString().trim();
+              const providedNameRaw = row.data['employee_name']?.toString().trim();
+              const providedName = providedNameRaw?.split(' (')[0]; // Handle Name (ID) format
               const { data: userData } = await supabase.from('users').select('id, name').eq('employee_code', employeeId).maybeSingle();
               
               if (!userData) {
@@ -610,67 +608,89 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
             }
 
             if (template.id === 'attendance_monthly_bulk') {
-              const employeeId = row.data['employee_id'];
-              const providedName = row.data['employee_name']?.toString().trim();
-              const { data: userData } = await supabase.from('users').select('id, name').eq('employee_code', employeeId).maybeSingle();
-              
-              if (!userData) {
+              // Look up employee by code (auto-filled from Excel dropdown)
+              const employeeId = row.data['employee_id']?.toString().trim();
+              const providedNameRaw = row.data['employee_name']?.toString().trim();
+              // Strip "(EMP001)" suffix that comes from the Excel "Name (ID)" dropdown format
+              const providedName = providedNameRaw?.replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+              if (!employeeId && !providedName) { totalFailed++; continue; }
+
+              // Prefer lookup by employee_code; fallback to name if ID is empty
+              const { data: userData } = await supabase
+                .from('users')
+                .select('id, name, employee_code, organizations(short_name)')
+                .eq('employee_code', employeeId || '')
+                .maybeSingle();
+
+              if (!userData) { 
+                console.warn(`[Monthly Bulk] User not found for code: ${employeeId}`);
+                totalFailed++; 
+                continue; 
+              }
+
+              const monthYear = row.data['month_year']?.toString().trim(); // YYYY-MM
+              // Default location: use site_name from sheet, else employee's primary org
+              const siteName = row.data['site_name']?.toString().trim()
+                || (userData.organizations as any)?.short_name
+                || 'Office';
+
+              if (!monthYear || !/^\d{4}-\d{2}$/.test(monthYear)) {
+                console.warn(`[Monthly Bulk] Invalid month_year for ${employeeId}: ${monthYear}`);
                 totalFailed++;
                 continue;
               }
 
-              // Validate Name Match
-              if (providedName && userData.name.toLowerCase() !== providedName.toLowerCase()) {
-                console.warn(`[Attendance Monthly] Name mismatch for ${employeeId}. Expected: ${userData.name}, Provided: ${providedName}`);
-                totalFailed++;
-                continue;
-              }
+              // Statuses that generate punch-in/out events with their default times
+              const durationMap: Record<string, { in: string; out: string }> = {
+                'P':            { in: '09:00', out: '18:00' },
+                'PRESENT':      { in: '09:00', out: '18:00' },
+                '1/2P':         { in: '09:00', out: '13:30' },
+                '1/4P':         { in: '09:00', out: '11:15' },
+                '3/4P':         { in: '09:00', out: '15:45' },
+                'W/H':          { in: '09:00', out: '17:00' },
+                'WFH':          { in: '09:00', out: '17:00' },
+                'W/P':          { in: '09:00', out: '18:00' },
+                'H/P':          { in: '09:00', out: '18:00' },
+                '0.5P EL':      { in: '09:00', out: '13:30' },
+                '0.5P SL':      { in: '09:00', out: '13:30' },
+                '0.5P CL':      { in: '09:00', out: '13:30' },
+                '0.5P LOP':     { in: '09:00', out: '13:30' },
+                '0.5P+0.5 EL':  { in: '09:00', out: '13:30' },
+                '0.5P+0.5 SL':  { in: '09:00', out: '13:30' },
+                '0.5P+0.5 CL':  { in: '09:00', out: '13:30' },
+                '0.5P+0.5 LOP': { in: '09:00', out: '13:30' },
+              };
 
-              const monthYear = row.data['month_year']; // YYYY-MM
-              const siteName = row.data['site_name'];
+              // Statuses that only need a leave record (no attendance punch)
+              const leaveOnlyStatuses = ['A', 'ABSENT', 'LOP', 'SL', 'EL', 'CL', 'C/O', 'C/D'];
 
-              for (let i = 1; i <= 31; i++) {
-                const status = row.data[`day_${i}`]?.toString().toUpperCase().trim();
-                if (!status) continue;
+              for (let day = 1; day <= 31; day++) {
+                const rawStatus = row.data[`day_${day}`]?.toString().trim();
+                if (!rawStatus || rawStatus === '') continue;
 
-                const dayStr = i.toString().padStart(2, '0');
+                const status = rawStatus.toUpperCase();
+                const dayStr = day.toString().padStart(2, '0');
                 const dateStr = `${monthYear}-${dayStr}`;
-                
-                // Validate if date exists for the month (e.g. avoid Feb 30)
-                const dateObj = new Date(dateStr);
-                if (isNaN(dateObj.getTime()) || dateObj.getDate() !== i) continue;
 
-                // Duration mapping for fractional notations
-                const durationMap: Record<string, { in: string; out: string }> = {
-                  'P': { in: '09:00', out: '18:00' },
-                  'PRESENT': { in: '09:00', out: '18:00' },
-                  '1/2P': { in: '09:00', out: '13:30' },
-                  '1/4P': { in: '09:00', out: '11:15' },
-                  '3/4P': { in: '09:00', out: '15:45' },
-                  'W/H': { in: '09:00', out: '17:00' },
-                  'WFH': { in: '09:00', out: '17:00' },
-                  '0.5P EL': { in: '09:00', out: '13:30' },
-                  '0.5P SL': { in: '09:00', out: '13:30' },
-                  '0.5P CL': { in: '09:00', out: '13:30' },
-                  '0.5P LOP': { in: '09:00', out: '13:30' },
-                  '0.5P+0.5 EL': { in: '09:00', out: '13:30' },
-                  '0.5P+0.5 SL': { in: '09:00', out: '13:30' },
-                  '0.5P+0.5 CL': { in: '09:00', out: '13:30' },
-                  '0.5P+0.5 LOP': { in: '09:00', out: '13:30' },
-                  'W/P': { in: '09:00', out: '18:00' },
-                  'H/P': { in: '09:00', out: '18:00' },
-                };
+                // Skip invalid dates (e.g. Feb 30)
+                const dateObj = new Date(`${dateStr}T00:00:00`);
+                if (isNaN(dateObj.getTime()) || dateObj.getDate() !== day) continue;
 
+                // Skip non-event statuses (Week Off, Holiday) — no DB record needed
+                if (['W/O', 'H', 'S', 'WO'].includes(status)) continue;
+
+                // Insert punch events if this status has a time mapping
                 const punchTimes = durationMap[status];
-
                 if (punchTimes) {
                   const location = (status === 'W/H' || status === 'WFH') ? 'Work From Home' : siteName;
-                  const { error } = await supabase.from('attendance_events').insert([
+                  const { error: punchErr } = await supabase.from('attendance_events').insert([
                     {
                       user_id: userData.id,
                       timestamp: new Date(`${dateStr}T${punchTimes.in}:00`).toISOString(),
                       type: 'punch-in',
                       location_name: location,
+                      source: 'bulk_import',
                       is_manual: true
                     },
                     {
@@ -678,23 +698,27 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
                       timestamp: new Date(`${dateStr}T${punchTimes.out}:00`).toISOString(),
                       type: 'punch-out',
                       location_name: location,
+                      source: 'bulk_import',
                       is_manual: true
                     }
                   ]);
-                  if (!error) created += 2; else totalFailed += 2;
+                  if (!punchErr) created += 2; else { console.error('[Monthly Bulk] Punch insert error:', punchErr); totalFailed += 2; }
                 }
-                
-                // Handle Leave portion
-                if (['LOP', 'A', 'ABSENT', 'S', 'SL', 'SICK', 'E', 'EL', 'EARNED', 'C', 'CL', 'CASUAL', 'C/O', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP'].includes(status)) {
-                  let leaveType: any = 'Loss of Pay';
-                  if (status.includes('S')) leaveType = 'Sick';
-                  else if (status.includes('E')) leaveType = 'Earned';
+
+                // Insert leave record for leave/absent statuses
+                const isLeave = leaveOnlyStatuses.some(s => status === s || status.includes(s))
+                  || ['0.5P EL','0.5P SL','0.5P CL','0.5P LOP','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP'].includes(status);
+
+                if (isLeave) {
+                  let leaveType = 'Loss of Pay';
+                  if (status.includes('SL')) leaveType = 'Sick';
+                  else if (status.includes('EL')) leaveType = 'Earned';
                   else if (status === 'C/O') leaveType = 'Comp Off';
-                  else if (status.includes('C')) leaveType = 'Casual';
-                  
+                  else if (status === 'C/D') leaveType = 'Compensatory Day';
+                  else if (status.includes('CL')) leaveType = 'Casual';
+
                   const isHalfDay = status.startsWith('0.5P');
-                  
-                  const { error } = await supabase.from('leave_requests').insert({
+                  const { error: leaveErr } = await supabase.from('leave_requests').insert({
                     id: crypto.randomUUID(),
                     user_id: userData.id,
                     leave_type: leaveType,
@@ -705,7 +729,7 @@ const TemplatesHub: React.FC<TemplatesHubProps> = ({ initialTemplateId, restrict
                     day_option: isHalfDay ? 'half_afternoon' : 'full',
                     approval_history: []
                   });
-                  if (!error) created++; else totalFailed++;
+                  if (!leaveErr) created++; else { console.error('[Monthly Bulk] Leave insert error:', leaveErr); totalFailed++; }
                 }
               }
               continue;

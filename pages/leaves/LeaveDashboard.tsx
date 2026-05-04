@@ -544,8 +544,7 @@ const LeaveDashboard: React.FC = () => {
             value: `${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}`, 
             description: `Total: ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
             icon: CalendarClock,
-            isExpired: balanceDataState.expiryStates?.compOff,
-            isHidden: isTechnicalRole(user?.role)
+            isExpired: balanceDataState.expiryStates?.compOff
         },
         {
             title: 'Monthly Pay Days',
@@ -573,7 +572,7 @@ const LeaveDashboard: React.FC = () => {
         { title: 'Sick Leave', value: '0 / 0', icon: HeartPulse, isLoading: true },
         { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
-        ...(user?.role !== 'technical_reliever' ? [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }] : []),
+        { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
     ];
 
