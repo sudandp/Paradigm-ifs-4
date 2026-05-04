@@ -124,12 +124,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const loadReportData = async () => {
     setLoading(true);
     try {
+      const startDate = startOfMonth(new Date(year, month - 1));
+      let endDate = endOfMonth(new Date(year, month - 1));
+      const today = startOfToday();
+      if (isAfter(endDate, today)) endDate = today;
+
       const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes] = await Promise.all([
         externalUsers || api.getUsers(),
-        api.getLeaveRequests(),
-        api.getAllUserHolidays(),
+        api.getLeaveRequests({ 
+          startDate: format(subDays(startDate, 1), 'yyyy-MM-dd'),
+          endDate: format(addDays(endDate, 1), 'yyyy-MM-dd')
+        }),
+        api.getAllUserHolidays({ year }),
         api.getRoles(),
-        api.getInitialAppData() // Get full settings context including holidays
+        api.getInitialAppData() 
       ]);
 
       const leavesData = leavesDataResponse?.data || [];
@@ -153,10 +161,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         }
       }
 
-      const startDate = startOfMonth(new Date(year, month - 1));
-      let endDate = endOfMonth(new Date(year, month - 1));
-      const today = startOfToday();
-      if (isAfter(endDate, today)) endDate = today;
+      // End date logic moved up
       // Start fetching from the Monday at least 15 days before the month start to ensure clean weekly blocks
       const fetchStartDate = startOfWeek(subDays(startDate, 15), { weekStartsOn: 1 });
       
