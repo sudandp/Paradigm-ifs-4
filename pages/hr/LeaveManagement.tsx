@@ -449,8 +449,8 @@ const LeaveManagement: React.FC = () => {
                 return;
         }
 
-        setStartDate(start ? start.toISOString() : '');
-        setEndDate(end ? end.toISOString() : '');
+        setStartDate(start ? format(start, 'yyyy-MM-dd') : '');
+        setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
     };
 
     const fetchAllForExport = async (statusFilter: LeaveRequestStatus | 'all'): Promise<LeaveRequest[]> => {
@@ -479,14 +479,36 @@ const LeaveManagement: React.FC = () => {
     };
 
     const prepareReportData = (data: LeaveRequest[]) => {
-        return data.map(req => ({
-            ...req,
-            startDate: format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM yyyy'),
-            endDate: format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM yyyy'),
-            createdAt: (req as any).createdAt ? format(new Date((req as any).createdAt), 'dd MMM yyyy HH:mm') : 'N/A',
-            status: req.status.replace(/_/g, ' ').toUpperCase(),
-            dayOption: req.dayOption || 'N/A'
-        }));
+        return data.map(req => {
+            let startDateStr = 'N/A';
+            let endDateStr = 'N/A';
+            
+            try {
+                if (req.startDate) {
+                    const s = req.startDate.includes('T') ? new Date(req.startDate) : new Date(req.startDate.replace(/-/g, '/'));
+                    if (!isNaN(s.getTime())) {
+                        startDateStr = format(s, 'dd MMM yyyy');
+                    }
+                }
+                if (req.endDate) {
+                    const e = req.endDate.includes('T') ? new Date(req.endDate) : new Date(req.endDate.replace(/-/g, '/'));
+                    if (!isNaN(e.getTime())) {
+                        endDateStr = format(e, 'dd MMM yyyy');
+                    }
+                }
+            } catch (e) {
+                console.error('Date formatting failed for request:', req.id, e);
+            }
+
+            return {
+                ...req,
+                startDate: startDateStr,
+                endDate: endDateStr,
+                createdAt: (req as any).createdAt ? format(new Date((req as any).createdAt), 'dd MMM yyyy HH:mm') : 'N/A',
+                status: req.status.replace(/_/g, ' ').toUpperCase(),
+                dayOption: req.dayOption || 'N/A'
+            };
+        });
     };
 
     const REPORT_COLUMNS_EXCEL: GenericReportColumn[] = [
@@ -592,8 +614,27 @@ const LeaveManagement: React.FC = () => {
 
     const getFileSuffix = () => {
         if (!startDate && !endDate) return 'All_Time';
-        if (startDate === endDate) return format(new Date(startDate), 'yyyyMMdd');
-        return `${format(new Date(startDate.replace(/-/g, '/')), 'yyyyMMdd')}_to_${format(new Date(endDate.replace(/-/g, '/')), 'yyyyMMdd')}`;
+        
+        const parseDate = (d: string) => {
+            if (!d) return null;
+            try {
+                const date = d.includes('T') ? new Date(d) : new Date(d.replace(/-/g, '/'));
+                return isNaN(date.getTime()) ? null : date;
+            } catch {
+                return null;
+            }
+        };
+
+        const sDate = parseDate(startDate);
+        const eDate = parseDate(endDate);
+
+        if (sDate && eDate && format(sDate, 'yyyyMMdd') === format(eDate, 'yyyyMMdd')) {
+            return format(sDate, 'yyyyMMdd');
+        }
+
+        const s = sDate ? format(sDate, 'yyyyMMdd') : 'Start';
+        const e = eDate ? format(eDate, 'yyyyMMdd') : 'End';
+        return `${s}_to_${e}`;
     };
 
     const handleExportReport = async () => {
