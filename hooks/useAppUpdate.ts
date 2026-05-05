@@ -6,6 +6,7 @@ export interface AppVersionInfo {
   latestVersionCode: number;
   latestVersionName: string;
   apkDownloadUrl: string;
+  whatsappGroupUrl?: string;
   releaseNotes: string;
   isMandatory: boolean;
 }

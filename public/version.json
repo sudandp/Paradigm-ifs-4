@@ -1,7 +1,8 @@
 {
-    "latestVersionCode": 6,
-    "latestVersionName": "6.0.0",
-    "apkDownloadUrl": "https://app.paradigmfms.com/app-release.apk",
-    "releaseNotes": "Important updates and bug fixes.",
-    "isMandatory": true
+  "latestVersionCode": 2,
+  "latestVersionName": "1.0.1",
+  "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
+  "apkDownloadUrl": "https://app.paradigmfms.com",
+  "releaseNotes": "Critical Update: Please join our WhatsApp group to download the latest APK.",
+  "isMandatory": true
 }

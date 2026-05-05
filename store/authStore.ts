@@ -573,13 +573,12 @@ export const useAuthStore = create<AuthState>()(
                     site: ['site_manager', 'security_guard', 'supervisor']
                 };
                 const officeRoles = roleMapping.office || [];
-                const fieldRoles = roleMapping.field || [];
-                // Site staff = roles explicitly in site mapping AND not in office/field
-                const isSiteStaffRole = (roleMapping.site || []).includes(user.role) &&
-                    !officeRoles.includes(user.role) && !fieldRoles.includes(user.role);
-                const isTechnicalRoleUser = isTechnicalRole(user.role) || isTechnicalRole(user.roleId);
-                // Technical roles need a longer lookback because OT/site work can cross midnight.
-                const siteShiftLookbackMs = isTechnicalRoleUser ? 48 * 60 * 60 * 1000 : (isSiteStaffRole ? 16 * 60 * 60 * 1000 : 0);
+                const isOfficeStaffRole = officeRoles.includes(user.role) || officeRoles.includes(user.roleId);
+                
+                // All non-office roles (Site, Field, and Unverified) need a long lookback (48h) 
+                // because site work and OT often cross midnight.
+                const siteShiftLookbackMs = !isOfficeStaffRole ? 48 * 60 * 60 * 1000 : 0;
+                
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
                     : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
@@ -649,7 +648,7 @@ export const useAuthStore = create<AuthState>()(
                 let hasPreviousDayOpenSession = false;
                 let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
 
-                if (isTechnicalRoleUser && lastEvent) {
+                if (!isOfficeStaffRole && lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
                     const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
                     
@@ -689,7 +688,7 @@ export const useAuthStore = create<AuthState>()(
                 }
 
                 set({
-                    isCheckedIn: currentlyCheckedIn || (isTechnicalRoleUser && isSiteOtCheckedIn),
+                    isCheckedIn: currentlyCheckedIn || (!isOfficeStaffRole && isSiteOtCheckedIn),
                     isOnBreak: isOnBreak,
                     lastCheckInTime: checkIn,
                     lastCheckOutTime: lastEvent?.type === 'punch-out' ? checkOut : null,

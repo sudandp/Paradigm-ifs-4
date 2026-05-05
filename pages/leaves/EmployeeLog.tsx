@@ -316,9 +316,10 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                         <div
                                             key={`${event.timestamp}-${index}`}
                                             className={`p-3 rounded-lg border-l-4 ${
-                                                event.type === 'punch-in' ? 'bg-emerald-50 border-emerald-500' :
-                                                event.type === 'punch-out' ? 'bg-rose-50 border-rose-500' :
+                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-50 border-emerald-500' :
+                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-50 border-rose-500' :
                                                 event.type === 'break-in' ? 'bg-amber-50 border-amber-500' :
+                                                event.type.includes('site-ot') ? 'bg-indigo-50 border-indigo-500' :
                                                 'bg-sky-50 border-sky-500'
                                             }`}
                                         >
@@ -326,9 +327,10 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 <div className="flex items-center gap-3">
                                                     <div
                                                         className={`p-2 rounded-lg ${
-                                                            event.type === 'punch-in' ? 'bg-emerald-100 text-emerald-700' :
-                                                            event.type === 'punch-out' ? 'bg-rose-100 text-rose-700' :
+                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-100 text-emerald-700' :
+                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-100 text-rose-700' :
                                                             event.type === 'break-in' ? 'bg-amber-100 text-amber-700' :
+                                                            event.type.includes('site-ot') ? 'bg-indigo-100 text-indigo-700' :
                                                             'bg-sky-100 text-sky-700'
                                                         }`}
                                                     >
@@ -336,19 +338,23 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                     </div>
                                                     <div>
                                                         <div className={`font-semibold capitalize ${
-                                                            event.type === 'punch-in' ? 'text-emerald-900' :
-                                                            event.type === 'punch-out' ? 'text-rose-900' :
+                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-900' :
+                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-900' :
                                                             event.type === 'break-in' ? 'text-amber-900' :
+                                                            event.type.includes('site-ot') ? 'text-indigo-900' :
                                                             'text-sky-900'
                                                         }`}>
                                                             {event.type === 'punch-in' ? (event.workType === 'field' ? 'Site Check In' : 'Punch In') :
                                                              event.type === 'punch-out' ? (event.workType === 'field' ? 'Site Check Out' : 'Punch Out') :
+                                                             event.type === 'site-ot-in' ? 'Site OT In' :
+                                                             event.type === 'site-ot-out' ? 'Site OT Out' :
                                                              event.type.replace('-', ' ')}
                                                         </div>
                                                         <div className={`text-sm font-medium ${
-                                                            event.type === 'punch-in' ? 'text-emerald-700' :
-                                                            event.type === 'punch-out' ? 'text-rose-700' :
+                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700' :
+                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700' :
                                                             event.type === 'break-in' ? 'text-amber-700' :
+                                                            event.type.includes('site-ot') ? 'text-indigo-700' :
                                                             'text-sky-700'
                                                         }`}>
                                                             {format(new Date(event.timestamp), 'hh:mm a')}

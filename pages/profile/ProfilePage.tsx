@@ -869,9 +869,11 @@ const ProfilePage: React.FC = () => {
                                                 onClick={() => {
                                                     triggerHaptic();
                                                     if (isFieldCheckedIn || isSiteOtCheckedIn) {
-                                                        navigate(`/attendance/check-out?workType=${siteWorkMode === 'ot' ? 'site-ot' : 'field'}`);
+                                                        const mode = isSiteOtCheckedIn ? 'site-ot' : 'field';
+                                                        navigate(`/attendance/check-out?workType=${mode}`);
                                                     } else {
-                                                        navigate(`/attendance/check-in?workType=${siteWorkMode === 'ot' ? 'site-ot' : 'field'}`);
+                                                        const mode = siteWorkMode === 'ot' ? 'site-ot' : 'field';
+                                                        navigate(`/attendance/check-in?workType=${mode}`);
                                                     }
                                                 }}
                                                 className={`

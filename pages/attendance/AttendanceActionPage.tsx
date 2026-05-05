@@ -31,14 +31,14 @@ const AttendanceActionPage: React.FC = () => {
 
     // Determine action from URL
     const query = new URLSearchParams(location.search);
-    const workType = query.get('workType') as 'office' | 'field' || 'office';
+    const workType = query.get('workType') as 'office' | 'field' | 'site-ot' || 'office';
     const isCheckIn = location.pathname.includes('check-in');
     const isBreakIn = location.pathname.includes('break-in');
     const isBreakOut = location.pathname.includes('break-out');
     
     const actionParam = query.get('action') || query.get('forcedType');
     
-    let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : 'Punch In') : (workType === 'field' ? 'Site Check Out' : 'Punch Out');
+    let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : (workType === 'site-ot' ? 'Site OT In' : 'Punch In')) : (workType === 'field' ? 'Site Check Out' : (workType === 'site-ot' ? 'Site OT Out' : 'Punch Out'));
     if (isBreakIn) action = 'Break In';
     if (isBreakOut) action = 'Break Out';
     if (actionParam === 'site-ot-in') action = 'Site OT In';
@@ -74,14 +74,17 @@ const AttendanceActionPage: React.FC = () => {
 
             // Determine forced type
             let forcedType: string | undefined = undefined;
-            if (isCheckIn) forcedType = 'punch-in';
-            if (!isCheckIn && !isBreakIn && !isBreakOut) forcedType = 'punch-out';
+            if (isCheckIn) forcedType = workType === 'site-ot' ? 'site-ot-in' : 'punch-in';
+            if (!isCheckIn && !isBreakIn && !isBreakOut) forcedType = workType === 'site-ot' ? 'site-ot-out' : 'punch-out';
             if (isBreakIn) forcedType = 'break-in';
             if (isBreakOut) forcedType = 'break-out';
             if (actionParam) forcedType = actionParam;
 
+            // Normalize workType for DB compatibility ('site-ot' -> 'field')
+            const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
+            
             // Direct check-in OR direct check-out (if geofencing is disabled)
-            const { success, message } = await toggleCheckInStatus(undefined, null, workType, undefined, forcedType, forcedType === 'break-in' ? breakInterval : undefined);
+            const { success, message } = await toggleCheckInStatus(undefined, null, normalizedWorkType, undefined, forcedType, forcedType === 'break-in' ? breakInterval : undefined);
             setToast({ message, type: success ? 'success' : 'error' });
             
             if (success) {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Download, AlertCircle } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import type { AppVersionInfo } from '../hooks/useAppUpdate';
 
 interface UpdatePromptModalProps {
@@ -10,8 +11,13 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
   if (!updateInfo) return null;
 
   const handleUpdate = () => {
-    // Open the browser to download the APK
-    window.open(updateInfo.apkDownloadUrl, '_system');
+    const downloadUrl = updateInfo.whatsappGroupUrl || updateInfo.apkDownloadUrl;
+    // On native, open in system browser to trigger WhatsApp app redirection
+    if (Capacitor.isNativePlatform()) {
+      window.open(downloadUrl, '_system');
+    } else {
+      window.open(downloadUrl, '_blank');
+    }
   };
 
   return (
