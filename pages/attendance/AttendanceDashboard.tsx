@@ -521,7 +521,7 @@ const AttendanceDashboard: React.FC = () => {
     
     // Dynamic lists derived from users (only show companies/sites that have users)
     const activeOrganizations = useMemo(() => {
-        if (isAdmin(user?.role)) return organizations.sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return organizations.sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
         if (!users || users.length === 0) return [];
         const orgIds = new Set(users.map(u => u.organizationId).filter(Boolean));
         return organizations
@@ -530,7 +530,7 @@ const AttendanceDashboard: React.FC = () => {
     }, [users, organizations, user]);
 
     const activeSocieties = useMemo(() => {
-        if (isAdmin(user?.role)) return societies.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return societies.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         if (!users || users.length === 0) return [];
         const socIds = new Set(users.map(u => u.societyId).filter(Boolean));
         return societies
@@ -613,18 +613,16 @@ const AttendanceDashboard: React.FC = () => {
 
     // --- Fetch Audit Logs ---
     const fetchAuditLogs = useCallback(async () => {
+        if (!dateRange.startDate || !dateRange.endDate) return;
+
         try {
             let query = supabase
                 .from('attendance_audit_logs')
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (dateRange.startDate) {
-                query = query.gte('created_at', format(startOfDay(dateRange.startDate), 'yyyy-MM-dd HH:mm:ss'));
-            }
-            if (dateRange.endDate) {
-                query = query.lte('created_at', format(endOfDay(dateRange.endDate), 'yyyy-MM-dd HH:mm:ss'));
-            }
+            query = query.gte('created_at', startOfDay(dateRange.startDate).toISOString());
+            query = query.lte('created_at', endOfDay(dateRange.endDate).toISOString());
 
             const { data: logsData, error: logsError } = await query.limit(reportPageSize);
 
@@ -660,7 +658,7 @@ const AttendanceDashboard: React.FC = () => {
         } catch (error) {
             console.error("Error fetching audit logs", error);
         }
-    }, []);
+    }, [dateRange.startDate, dateRange.endDate, reportPageSize]);
 
     useEffect(() => {
         if (reportType === 'audit') {
@@ -744,7 +742,7 @@ const AttendanceDashboard: React.FC = () => {
             const loadInitialData = async () => {
                 try {
                     let initialUsers = [];
-                    if (isAdmin(user?.role)) {
+                    if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
                         initialUsers = await api.getUsers();
                     } else if (user) {
                         // Managers see their team, normal users see themselves
@@ -758,7 +756,7 @@ const AttendanceDashboard: React.FC = () => {
                     setUsers(initialUsers);
                     usersRef.current = initialUsers;
                     
-                    if (isAdmin(user?.role)) {
+                    if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
                         api.getOrganizations().then(setOrganizations);
                         api.getEntities().then(setSocieties);
                     }
@@ -953,7 +951,7 @@ const AttendanceDashboard: React.FC = () => {
                 // Ensure we have users data
                 let currentUsers = usersRef.current;
                 if (currentUsers.length === 0) {
-                    if (isAdmin(user?.role)) {
+                    if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
                         currentUsers = await api.getUsers();
                     } else if (user) {
                         currentUsers = await api.getTeamMembers(user.id);
@@ -1768,6 +1766,7 @@ const AttendanceDashboard: React.FC = () => {
                 );
             }
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
+            if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
             if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} />;
             return null;
         }
@@ -2566,7 +2565,7 @@ const AttendanceDashboard: React.FC = () => {
                 <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">
                     {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
                 </h2>
-                {isAdmin(user?.role) && (
+                {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                         <Button 
                             onClick={() => setIsManualEntryModalOpen(true)}
@@ -2709,7 +2708,7 @@ const AttendanceDashboard: React.FC = () => {
                         </select>
                     </div>
 
-                    {!isEmployeeView && isAdmin(user?.role) && (
+                    {!isEmployeeView && (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
                         <>
                                     <div className="col-span-1">
                                         <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
@@ -2769,7 +2768,7 @@ const AttendanceDashboard: React.FC = () => {
                                 </>
                             )}
 
-                    {(isAdmin(user?.role) || isReportingManager) && (
+                    {(isAdmin(user?.role) || isReportingManager || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
                         <div className="col-span-1">
                             <label htmlFor={employeeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Employee</label>
                             <select
