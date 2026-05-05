@@ -94,7 +94,9 @@ export const exportGenericReportToExcel = async (
     worksheet.getRow(2).height = 20;
     worksheet.mergeCells(`A2:${mergeEndCol}2`);
     const dateCell = worksheet.getCell('A2');
-    dateCell.value = `${format(dateRange.startDate, 'dd MMM yyyy')} to ${format(dateRange.endDate, 'dd MMM yyyy')}`;
+    const startStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'dd MMM yyyy') : 'Start';
+    const endStr = (dateRange.endDate instanceof Date && !isNaN(dateRange.endDate.getTime())) ? format(dateRange.endDate, 'dd MMM yyyy') : 'End';
+    dateCell.value = `${startStr} to ${endStr}`;
     dateCell.font = { size: 11, color: { argb: 'FF444444' }, italic: true };
     dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
 
@@ -151,7 +153,8 @@ export const exportGenericReportToExcel = async (
 
     // 5. Generate and Save
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `${fileNamePrefix}_${format(dateRange.startDate, 'MMM_yyyy')}.xlsx`;
+    const monthStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'MMM_yyyy') : format(new Date(), 'MMM_yyyy');
+    const fileName = `${fileNamePrefix}_${monthStr}.xlsx`;
     saveAs(new Blob([buffer]), fileName);
 };
 
@@ -193,7 +196,9 @@ export const exportAttendanceToExcel = async (
 
     worksheet.mergeCells('A2:AJ2');
     const dateCell = worksheet.getCell('A2');
-    dateCell.value = `${format(dateRange.startDate, 'dd MMMM yyyy')} - ${format(dateRange.endDate, 'dd MMMM yyyy')}`;
+    const startStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'dd MMMM yyyy') : 'Start';
+    const endStr = (dateRange.endDate instanceof Date && !isNaN(dateRange.endDate.getTime())) ? format(dateRange.endDate, 'dd MMMM yyyy') : 'End';
+    dateCell.value = `${startStr} - ${endStr}`;
     dateCell.font = { size: 12, italic: true, color: { argb: 'FF475569' } };
     dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
@@ -329,7 +334,8 @@ export const exportAttendanceToExcel = async (
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
-    const fileName = `Monthly_Attendance_Report_${format(dateRange.startDate, 'MMM_yyyy')}.xlsx`;
+    const monthStr = (dateRange.startDate instanceof Date && !isNaN(dateRange.startDate.getTime())) ? format(dateRange.startDate, 'MMM_yyyy') : format(new Date(), 'MMM_yyyy');
+    const fileName = `Monthly_Attendance_Report_${monthStr}.xlsx`;
     saveAs(new Blob([buffer]), fileName);
 };
 

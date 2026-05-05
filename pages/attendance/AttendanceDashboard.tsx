@@ -2697,10 +2697,12 @@ const AttendanceDashboard: React.FC = () => {
                             <option value="basic">Basic Report</option>
                             <option value="monthly">Monthly Summary</option>
                             <option value="work_hours">Work Hours Report</option>
+                            {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
+                                <option value="site_ot">Site OT Report</option>
+                            )}
                             {isAdmin(user?.role) && (
                                 <>
                                     <option value="log">Attendance Logs</option>
-                                    <option value="site_ot">Site OT Report</option>
                                     <option value="audit">Audit Logs</option>
                                 </>
                             )}
@@ -2937,7 +2939,7 @@ const AttendanceDashboard: React.FC = () => {
 
 
             {/* Report Preview Section */}
-            <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div className="flex flex-col gap-1">
                         <h2 className="text-lg font-bold text-white md:text-gray-900">Report Preview</h2>
@@ -2967,37 +2969,35 @@ const AttendanceDashboard: React.FC = () => {
                             {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                             {isDownloading ? 'Generating...' : 'Download PDF'}
                         </Button>
+                        <Button
+                            type="button"
+                            onClick={handleDownloadExcel}
+                            disabled={isDownloading}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                        >
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                            {isDownloading ? 'Generating...' : 'Download Excel'}
+                        </Button>
                         {isAdmin(user?.role) && (
-                            <>
-                                <Button
-                                    type="button"
-                                    onClick={handleDownloadExcel}
-                                    disabled={isDownloading}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                    {isDownloading ? 'Generating...' : 'Download Excel'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={() => setIsMailModalOpen(true)}
-                                    disabled={isDownloading || isSendingEmail}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                                    {isSendingEmail ? 'Sending...' : 'Mail Report'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    onClick={handleDownloadCsv}
-                                    disabled={isDownloading}
-                                    className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                                >
-                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                    {isDownloading ? 'Generating...' : 'Download CSV'}
-                                </Button>
-                            </>
+                            <Button
+                                type="button"
+                                onClick={() => setIsMailModalOpen(true)}
+                                disabled={isDownloading || isSendingEmail}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                                {isSendingEmail ? 'Sending...' : 'Mail Report'}
+                            </Button>
                         )}
+                        <Button
+                            type="button"
+                            onClick={handleDownloadCsv}
+                            disabled={isDownloading}
+                            className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                        >
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                            {isDownloading ? 'Generating...' : 'Download CSV'}
+                        </Button>
                     </div>
                     )}
                 </div>
