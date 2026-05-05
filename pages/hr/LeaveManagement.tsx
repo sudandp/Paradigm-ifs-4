@@ -111,6 +111,28 @@ const LeaveManagement: React.FC = () => {
     const [selectedUserId, setSelectedUserId] = useState<string>('all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+
+    // Helper for safe date parsing and formatting
+    const parseSafeDate = (d: any): Date | null => {
+        if (!d) return null;
+        if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+        try {
+            const date = typeof d === 'string' && d.includes('T') ? new Date(d) : new Date(String(d).replace(/-/g, '/'));
+            return isNaN(date.getTime()) ? null : date;
+        } catch {
+            return null;
+        }
+    };
+
+    const formatSafeDate = (date: any, formatStr: string, fallback = 'N/A') => {
+        const d = parseSafeDate(date);
+        if (!d) return fallback;
+        try {
+            return format(d, formatStr);
+        } catch {
+            return fallback;
+        }
+    };
     const [activePreset, setActivePreset] = useState<string>('This Month');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningId, setActioningId] = useState<string | null>(null);
@@ -479,36 +501,14 @@ const LeaveManagement: React.FC = () => {
     };
 
     const prepareReportData = (data: LeaveRequest[]) => {
-        return data.map(req => {
-            let startDateStr = 'N/A';
-            let endDateStr = 'N/A';
-            
-            try {
-                if (req.startDate) {
-                    const s = req.startDate.includes('T') ? new Date(req.startDate) : new Date(req.startDate.replace(/-/g, '/'));
-                    if (!isNaN(s.getTime())) {
-                        startDateStr = format(s, 'dd MMM yyyy');
-                    }
-                }
-                if (req.endDate) {
-                    const e = req.endDate.includes('T') ? new Date(req.endDate) : new Date(req.endDate.replace(/-/g, '/'));
-                    if (!isNaN(e.getTime())) {
-                        endDateStr = format(e, 'dd MMM yyyy');
-                    }
-                }
-            } catch (e) {
-                console.error('Date formatting failed for request:', req.id, e);
-            }
-
-            return {
-                ...req,
-                startDate: startDateStr,
-                endDate: endDateStr,
-                createdAt: (req as any).createdAt ? format(new Date((req as any).createdAt), 'dd MMM yyyy HH:mm') : 'N/A',
-                status: req.status.replace(/_/g, ' ').toUpperCase(),
-                dayOption: req.dayOption || 'N/A'
-            };
-        });
+        return data.map(req => ({
+            ...req,
+            startDate: formatSafeDate(req.startDate, 'dd MMM yyyy'),
+            endDate: formatSafeDate(req.endDate, 'dd MMM yyyy'),
+            createdAt: formatSafeDate((req as any).createdAt, 'dd MMM yyyy HH:mm'),
+            status: req.status.replace(/_/g, ' ').toUpperCase(),
+            dayOption: req.dayOption || 'N/A'
+        }));
     };
 
     const REPORT_COLUMNS_EXCEL: GenericReportColumn[] = [
@@ -559,8 +559,8 @@ const LeaveManagement: React.FC = () => {
                 REPORT_COLUMNS_EXCEL,
                 `Leave Requests — ${getStatusLabel(statusFilter)}`,
                 {
-                    startDate: startDate ? new Date(startDate) : new Date(new Date().getFullYear(), 0, 1),
-                    endDate: endDate ? new Date(endDate) : new Date(),
+                    startDate: parseSafeDate(startDate) || new Date(new Date().getFullYear(), 0, 1),
+                    endDate: parseSafeDate(endDate) || new Date(),
                 },
                 `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_${getFileSuffix()}`,
                 undefined,
@@ -605,35 +605,25 @@ const LeaveManagement: React.FC = () => {
     const getReportSubtitle = () => {
         if (!startDate && !endDate) return 'All Records';
         if (startDate && endDate) {
-            if (startDate === endDate) return `Date: ${format(new Date(startDate), 'dd MMM yyyy')}`;
-            return `Period: ${format(new Date(startDate), 'dd MMM yyyy')} - ${format(new Date(endDate), 'dd MMM yyyy')}`;
+            if (startDate === endDate) return `Date: ${formatSafeDate(startDate, 'dd MMM yyyy')}`;
+            return `Period: ${formatSafeDate(startDate, 'dd MMM yyyy')} - ${formatSafeDate(endDate, 'dd MMM yyyy')}`;
         }
-        if (startDate) return `Since: ${format(new Date(startDate), 'dd MMM yyyy')}`;
-        return `Until: ${format(new Date(endDate), 'dd MMM yyyy')}`;
+        if (startDate) return `Since: ${formatSafeDate(startDate, 'dd MMM yyyy')}`;
+        return `Until: ${formatSafeDate(endDate, 'dd MMM yyyy')}`;
     };
 
     const getFileSuffix = () => {
         if (!startDate && !endDate) return 'All_Time';
         
-        const parseDate = (d: string) => {
-            if (!d) return null;
-            try {
-                const date = d.includes('T') ? new Date(d) : new Date(d.replace(/-/g, '/'));
-                return isNaN(date.getTime()) ? null : date;
-            } catch {
-                return null;
-            }
-        };
+        const sDate = parseSafeDate(startDate);
+        const eDate = parseSafeDate(endDate);
 
-        const sDate = parseDate(startDate);
-        const eDate = parseDate(endDate);
-
-        if (sDate && eDate && format(sDate, 'yyyyMMdd') === format(eDate, 'yyyyMMdd')) {
-            return format(sDate, 'yyyyMMdd');
+        if (sDate && eDate && formatSafeDate(sDate, 'yyyyMMdd') === formatSafeDate(eDate, 'yyyyMMdd')) {
+            return formatSafeDate(sDate, 'yyyyMMdd');
         }
 
-        const s = sDate ? format(sDate, 'yyyyMMdd') : 'Start';
-        const e = eDate ? format(eDate, 'yyyyMMdd') : 'End';
+        const s = sDate ? formatSafeDate(sDate, 'yyyyMMdd') : 'Start';
+        const e = eDate ? formatSafeDate(eDate, 'yyyyMMdd') : 'End';
         return `${s}_to_${e}`;
     };
 
@@ -1098,7 +1088,7 @@ const LeaveManagement: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td data-label="Type" className="px-4 py-3 text-muted">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</td>
-                                                <td data-label="Dates" className="px-4 py-3 text-muted">{format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}</td>
+                                                <td data-label="Dates" className="px-4 py-3 text-muted">{formatSafeDate(req.startDate, 'dd MMM')} - {formatSafeDate(req.endDate, 'dd MMM')}</td>
                                                 <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                                 <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
                                                 <td data-label="Actions" className="px-4 py-3">
@@ -1130,7 +1120,7 @@ const LeaveManagement: React.FC = () => {
                                         auditLogs.map((log) => (
                                             <tr key={log.id}>
                                                 <td data-label="Date & Time" className="px-4 py-3 text-muted whitespace-nowrap">
-                                                    {format(new Date(log.createdAt), 'dd MMM yyyy, HH:mm')}
+                                                    {formatSafeDate(log.createdAt, 'dd MMM yyyy, HH:mm')}
                                                 </td>
                                                 <td data-label="Performed By" className="px-4 py-3 font-medium">
                                                     <div className="flex items-center gap-2">
@@ -1212,7 +1202,7 @@ const LeaveManagement: React.FC = () => {
                                                 <span className="truncate max-w-[120px]" title={claim.userName}>{claim.userName}</span>
                                             </div>
                                         </td>
-                                        <td data-label="Date & Type" className="px-4 py-3 text-muted">{format(new Date(claim.workDate), 'dd MMM, yyyy')} ({claim.workType})</td>
+                                        <td data-label="Date & Type" className="px-4 py-3 text-muted">{formatSafeDate(claim.workDate, 'dd MMM, yyyy')} ({claim.workType})</td>
                                         <td data-label="Claim" className="px-4 py-3 text-muted">{claim.claimType}{claim.claimType === 'OT' ? ` (${claim.hoursWorked} hrs)` : ''}</td>
                                         <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{claim.reason}</td>
                                         <td data-label="Status" className="px-4 py-3"><ClaimStatusChip status={claim.status} /></td>
@@ -1282,7 +1272,7 @@ const LeaveManagement: React.FC = () => {
                                                 <div className="flex flex-wrap gap-1">
                                                     {selections.map((h, i) => (
                                                         <span key={i} className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-[11px] whitespace-nowrap">
-                                                            {h.holidayName} ({format(new Date(h.holidayDate.replace(/-/g, '/')), 'dd MMM')})
+                                                            {h.holidayName} ({formatSafeDate(h.holidayDate, 'dd MMM')})
                                                         </span>
                                                     ))}
                                                 </div>
@@ -1436,8 +1426,8 @@ const LeaveManagement: React.FC = () => {
                                             </div>
                                         </td>
                                         <td data-label="Type" className="px-4 py-3 text-muted">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</td>
-                                        <td data-label="Dates" className="px-4 py-3 text-muted">{format(new Date(req.startDate.replace(/-/g, '/')), 'dd MMM')} - {format(new Date(req.endDate.replace(/-/g, '/')), 'dd MMM')}</td>
-                                        <td data-label="Raised On" className="px-4 py-3 text-muted">{(req as any).createdAt ? format(new Date((req as any).createdAt), 'dd MMM, hh:mm a') : 'N/A'}</td>
+                                        <td data-label="Dates" className="px-4 py-3 text-muted">{formatSafeDate(req.startDate, 'dd MMM')} - {formatSafeDate(req.endDate, 'dd MMM')}</td>
+                                        <td data-label="Raised On" className="px-4 py-3 text-muted">{formatSafeDate((req as any).createdAt, 'dd MMM, hh:mm a')}</td>
                                         <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                         <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
                                         <td data-label="Actions" className="px-4 py-3">
