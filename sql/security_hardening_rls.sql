@@ -51,10 +51,12 @@ CREATE POLICY "Only admins can view security logs" ON security_audit_logs
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own profile
+DROP POLICY IF EXISTS "Users can read own profile" ON users;
 CREATE POLICY "Users can read own profile" ON users
     FOR SELECT USING (auth.uid() = id);
 
 -- Admins/HR/Management can read all user profiles
+DROP POLICY IF EXISTS "Authorized roles can read all users" ON users;
 CREATE POLICY "Authorized roles can read all users" ON users
     FOR SELECT USING (
         EXISTS (
@@ -65,6 +67,7 @@ CREATE POLICY "Authorized roles can read all users" ON users
     );
 
 -- Reporting managers can read their direct reports
+DROP POLICY IF EXISTS "Managers can read their reports" ON users;
 CREATE POLICY "Managers can read their reports" ON users
     FOR SELECT USING (
         reporting_manager_id = auth.uid() OR
@@ -73,6 +76,7 @@ CREATE POLICY "Managers can read their reports" ON users
     );
 
 -- Users can update their own non-sensitive fields
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
 CREATE POLICY "Users can update own profile" ON users
     FOR UPDATE USING (auth.uid() = id)
     WITH CHECK (
@@ -105,14 +109,15 @@ CREATE POLICY "Only admins can delete users" ON users
 CREATE POLICY "Users can insert own profile" ON users
     FOR INSERT WITH CHECK (auth.uid() = id);
 
--- ============================================================
 -- 3. ATTENDANCE EVENTS — Users can only insert their own events
 -- ============================================================
 ALTER TABLE attendance_events ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can insert own attendance" ON attendance_events;
 CREATE POLICY "Users can insert own attendance" ON attendance_events
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can read own attendance" ON attendance_events;
 CREATE POLICY "Users can read own attendance" ON attendance_events
     FOR SELECT USING (
         auth.uid() = user_id OR
@@ -131,17 +136,19 @@ CREATE POLICY "Users can read own attendance" ON attendance_events
         )
     );
 
--- ============================================================
 -- 4. NOTIFICATIONS — Users can only read their own
 -- ============================================================
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can read own notifications" ON notifications;
 CREATE POLICY "Users can read own notifications" ON notifications
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
 CREATE POLICY "System can insert notifications" ON notifications
     FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
 CREATE POLICY "Users can update own notifications" ON notifications
     FOR UPDATE USING (auth.uid() = user_id);
 
@@ -291,6 +298,10 @@ BEGIN
     WHERE id = user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- IMPORTANT: Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION sync_user_auth_password(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION approve_user(UUID, TEXT) TO authenticated;
 
 -- ============================================================
 -- 10. BIOMETRIC DEVICE KEY COLUMN

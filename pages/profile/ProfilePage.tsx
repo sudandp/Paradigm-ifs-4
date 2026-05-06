@@ -77,7 +77,8 @@ const ProfilePage: React.FC = () => {
         isSiteOtCheckedIn,
         breakIntervals,
         hasPreviousDayOpenSession,
-        previousDaySessionInfo
+        previousDaySessionInfo,
+        loginWithPasscode
     } = useAuthStore();
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
@@ -390,25 +391,46 @@ const ProfilePage: React.FC = () => {
         
         setIsSavingPasscode(true);
         try {
-            // Security check: Fetch the LATEST passcode from the database 
-            // to avoid "Incorrect Passcode" errors due to stale local session data (e.g. after admin reset)
+            console.log(`[PasscodeUpdate] Verifying current passcode for user: ${user.id}`);
+            
+            // 1. VERIFICATION STRATEGY: 
+            // Try DB check first (fast), but fallback to Auth sign-in check if DB is out of sync.
             const latestPasscode = await api.getUserPasscode(user.id);
+            const dbMatches = (latestPasscode || '5687') === formData.oldPasscode;
             
-            // If no passcode is set in the DB, fallback to system default '5687'
-            const effectiveCurrentPasscode = latestPasscode || '5687';
+            let verified = dbMatches;
             
-            if (effectiveCurrentPasscode !== formData.oldPasscode) {
+            if (!dbMatches) {
+                console.log("[PasscodeUpdate] DB verification failed (Expected: " + (latestPasscode || '5687') + "). Trying direct Auth verification...");
+                const result = await loginWithPasscode(user.email, formData.oldPasscode, true);
+                if (!result.error) {
+                    verified = true;
+                    console.log("[PasscodeUpdate] Auth verification successful via re-login.");
+                }
+            }
+
+            if (!verified) {
+                console.warn(`[PasscodeUpdate] Final verification failed.`);
                 setToast({ message: 'Current passcode is incorrect.', type: 'error' });
                 setIsSavingPasscode(false);
                 return;
             }
+            
+            console.log(`[PasscodeUpdate] Verification successful. Updating to new passcode.`);
 
             await api.updateUserPasscode(user.id, formData.newPasscode);
             updateUserProfile({ passcode: formData.newPasscode });
             resetPasscode({ oldPasscode: '', newPasscode: '', confirmPasscode: '' });
             setToast({ message: 'Passcode updated successfully!', type: 'success' });
         } catch (error: any) {
-            setToast({ message: error.message || 'Failed to update passcode.', type: 'error' });
+            console.error("[PasscodeUpdate] Error:", error);
+            let userMessage = error.message || 'Failed to update passcode.';
+            
+            if (error.message?.toLowerCase().includes('permission denied')) {
+                userMessage = "Permission Denied: Your database role lacks 'EXECUTE' permission for the sync function. Please run the Security Hardening SQL migration or contact an administrator.";
+            }
+            
+            setToast({ message: userMessage, type: 'error' });
         } finally {
             setIsSavingPasscode(false);
         }
@@ -1032,7 +1054,7 @@ const ProfilePage: React.FC = () => {
                             </div>
                             <p className="text-[11px] text-gray-400 mb-6 leading-relaxed uppercase font-bold tracking-tight">4-digit code required for high-security attendance verification.</p>
                             <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                <Input label="Current Pin" id="oldPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
                                 <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
                                 <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-2">Update Security</Button>
                             </form>
@@ -1463,8 +1485,6 @@ const ProfilePage: React.FC = () => {
                                     label="Current Passcode" 
                                     id="oldPasscode-desktop" 
                                     type="password" 
-                                    inputMode="numeric"
-                                    maxLength={4}
                                     placeholder="Enter current PIN"
                                     registration={registerPasscode('oldPasscode')}
                                     error={passcodeErrors.oldPasscode?.message}

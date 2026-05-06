@@ -148,6 +148,7 @@
     "@xmldom/xmldom": "^0.8.12",
     "sharp": "^0.33.5",
     "@capacitor/project": "^1.1.0",
-    "uuid": "14.0.0"
+    "uuid": "14.0.0",
+    "ip-address": "^10.1.1"
   }
 }

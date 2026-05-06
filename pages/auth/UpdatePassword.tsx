@@ -5,10 +5,10 @@ import * as yup from 'yup';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { authService } from '../../services/authService';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useDevice } from '../../hooks/useDevice';
+import { api } from '../../services/api';
 
 const validationSchema = yup.object({
   password: yup.string().min(6, 'Password must be at least 6 characters').required('Password is required'),
@@ -36,14 +36,15 @@ const UpdatePassword = () => {
   });
 
   const onSubmit: SubmitHandler<UpdatePasswordForm> = async (data) => {
-    setError('');
-    const { error: updateError } = await authService.updateUserPassword(data.password);
-    if (updateError) {
-      setError(updateError.message);
-    } else {
+    try {
+      if (!user) throw new Error('Session expired. Please request a new link.');
+      await api.updateUserPasscode(user.id, data.password);
+      
       setSuccess(true);
       await logout();
       setTimeout(() => navigate('/auth/login', { replace: true }), 2000);
+    } catch (updateError: any) {
+      setError(updateError.message || 'Failed to update password. Please try again.');
     }
   };
 

@@ -1896,22 +1896,13 @@ export const api = {
     
     if (dbError) throw dbError;
 
-    // 2. Update the Supabase Auth password
-    // NOTE: This updates the password for the CURRENTLY LOGGED IN user
-    // if the userId belongs to them. If it's an admin updating another user,
-    // this specific call won't work for the other user without the admin API.
-    // However, for the user changing their own passcode in the profile, this is correct.
-    // SATISFY SUPABASE 6-CHARACTER MINIMUM:
-    // If it's a 4-digit passcode, use a hidden prefix to satisfy Auth rules.
-    const effectivePassword = (newPasscode.length === 4 && /^\d+$/.test(newPasscode)) 
-      ? `PAR_${newPasscode}` 
-      : newPasscode;
-
-    const { error: authError } = await supabase.auth.updateUser({
-      password: effectivePassword
+    // 2. Update the Supabase Auth password via RPC (to bypass "require current password" restriction)
+    const { error: rpcError } = await supabase.rpc('sync_user_auth_password', {
+      user_id: userId,
+      new_passcode: newPasscode
     });
 
-    if (authError) throw authError;
+    if (rpcError) throw rpcError;
   },
 
   resetUserPasscode: async (userId: string): Promise<string> => {
@@ -1933,7 +1924,8 @@ export const api = {
     });
 
     if (rpcError) {
-      console.warn('Passcode saved locally, but Auth sync failed. User may need to sign in with their old password or Google.', rpcError);
+      console.error('[API] Auth sync failed during passcode reset:', rpcError);
+      throw new Error(`Passcode updated in DB but failed to sync with Auth: ${rpcError.message}`);
     }
 
     // 3. Trigger Notification Dispatch
