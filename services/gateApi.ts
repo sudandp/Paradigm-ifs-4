@@ -1,0 +1,411 @@
+/**
+ * Gate Attendance API Service
+ * Handles all Supabase operations for the gate attendance module.
+ */
+
+import { supabase } from './supabase';
+import type { GateUser, GateAttendanceLog, GateAttendanceMethod } from '../types/gate';
+
+// ─── Helper: generate a unique QR token ────────────────────────────────────────
+function generateQrToken(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let token = 'PG-';
+  for (let i = 0; i < 12; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+// ─── Gate Users ────────────────────────────────────────────────────────────────
+
+export async function fetchGateUsers(): Promise<GateUser[]> {
+  const { data, error } = await supabase
+    .from('gate_users')
+    .select(`
+      id, user_id, face_descriptor, qr_token, photo_url,
+      department, is_active, created_at, updated_at,
+      users:user_id (name, email, photo_url)
+    `)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.users?.name || 'Unknown',
+    userEmail: row.users?.email || '',
+    userPhotoUrl: row.users?.photo_url || row.photo_url,
+    faceDescriptor: row.face_descriptor,
+    qrToken: row.qr_token,
+    photoUrl: row.photo_url,
+    department: row.department,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function fetchAllGateUsers(): Promise<GateUser[]> {
+  const { data, error } = await supabase
+    .from('gate_users')
+    .select(`
+      id, user_id, face_descriptor, qr_token, photo_url,
+      department, is_active, created_at, updated_at,
+      users:user_id (name, email, photo_url)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id,
+    userName: row.users?.name || 'Unknown',
+    userEmail: row.users?.email || '',
+    userPhotoUrl: row.users?.photo_url || row.photo_url,
+    faceDescriptor: row.face_descriptor,
+    qrToken: row.qr_token,
+    photoUrl: row.photo_url,
+    department: row.department,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function registerGateUser(params: {
+  userId: string;
+  faceDescriptor: number[] | null;
+  photoUrl?: string;
+  department?: string;
+}): Promise<GateUser> {
+  const qrToken = generateQrToken();
+
+  const { data, error } = await supabase
+    .from('gate_users')
+    .upsert({
+      user_id: params.userId,
+      face_descriptor: params.faceDescriptor,
+      qr_token: qrToken,
+      photo_url: params.photoUrl || null,
+      department: params.department || null,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    faceDescriptor: data.face_descriptor,
+    qrToken: data.qr_token,
+    photoUrl: data.photo_url,
+    department: data.department,
+    isActive: data.is_active,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function updateGateUserDescriptor(gateUserId: string, faceDescriptor: number[]): Promise<void> {
+  const { error } = await supabase
+    .from('gate_users')
+    .update({ face_descriptor: faceDescriptor, updated_at: new Date().toISOString() })
+    .eq('id', gateUserId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function deactivateGateUser(gateUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('gate_users')
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq('id', gateUserId);
+
+  if (error) throw new Error(error.message);
+}
+
+// ─── Gate Attendance Logs ──────────────────────────────────────────────────────
+
+export async function markGateAttendance(params: {
+  userId: string;
+  gateUserId?: string;
+  method: GateAttendanceMethod;
+  confidence?: number;
+  imageProofUrl?: string;
+  notes?: string;
+}): Promise<GateAttendanceLog> {
+  const { data, error } = await supabase
+    .from('gate_attendance_logs')
+    .insert({
+      user_id: params.userId,
+      gate_user_id: params.gateUserId || null,
+      method: params.method,
+      confidence: params.confidence || null,
+      image_proof_url: params.imageProofUrl || null,
+      notes: params.notes || null,
+      device_info: {
+        userAgent: navigator.userAgent,
+        screen: `${screen.width}x${screen.height}`,
+      },
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    gateUserId: data.gate_user_id,
+    method: data.method,
+    confidence: data.confidence,
+    imageProofUrl: data.image_proof_url,
+    markedAt: data.marked_at,
+    deviceInfo: data.device_info,
+    location: data.location,
+    notes: data.notes,
+    createdAt: data.created_at,
+  };
+}
+
+export async function fetchGateAttendanceLogs(params?: {
+  date?: string; // YYYY-MM-DD
+  userId?: string;
+  method?: GateAttendanceMethod;
+  limit?: number;
+}): Promise<GateAttendanceLog[]> {
+  let query = supabase
+    .from('gate_attendance_logs')
+    .select(`
+      id, user_id, gate_user_id, method, confidence,
+      image_proof_url, marked_at, device_info, location, notes, created_at,
+      users:user_id (name, photo_url),
+      gate_users:gate_user_id (department)
+    `)
+    .order('marked_at', { ascending: false });
+
+  if (params?.date) {
+    const start = `${params.date}T00:00:00.000Z`;
+    const end = `${params.date}T23:59:59.999Z`;
+    query = query.gte('marked_at', start).lte('marked_at', end);
+  }
+
+  if (params?.userId) {
+    query = query.eq('user_id', params.userId);
+  }
+
+  if (params?.method) {
+    query = query.eq('method', params.method);
+  }
+
+  if (params?.limit) {
+    query = query.limit(params.limit);
+  } else {
+    query = query.limit(200);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    userId: row.user_id,
+    gateUserId: row.gate_user_id,
+    userName: row.users?.name || 'Unknown',
+    userPhotoUrl: row.users?.photo_url || '',
+    department: row.gate_users?.department || '',
+    method: row.method,
+    confidence: row.confidence,
+    imageProofUrl: row.image_proof_url,
+    markedAt: row.marked_at,
+    deviceInfo: row.device_info,
+    location: row.location,
+    notes: row.notes,
+    createdAt: row.created_at,
+  }));
+}
+
+// ─── Photo Upload ──────────────────────────────────────────────────────────────
+
+export async function uploadGatePhoto(
+  base64Data: string,
+  folder: 'registration' | 'proof',
+  fileName?: string
+): Promise<string> {
+  const finalName = fileName || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const filePath = `gate-captures/${folder}/${finalName}`;
+
+  // Convert base64 to Uint8Array
+  const byteString = atob(base64Data);
+  const arrayBuffer = new ArrayBuffer(byteString.length);
+  const uint8Array = new Uint8Array(arrayBuffer);
+  for (let i = 0; i < byteString.length; i++) {
+    uint8Array[i] = byteString.charCodeAt(i);
+  }
+
+  const { error } = await supabase.storage
+    .from('gate-captures')
+    .upload(filePath, uint8Array, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+
+  if (error) throw new Error(`Upload failed: ${error.message}`);
+
+  const { data: urlData } = supabase.storage
+    .from('gate-captures')
+    .getPublicUrl(filePath);
+
+  return urlData.publicUrl;
+}
+
+// ─── Lookup by QR Token ────────────────────────────────────────────────────────
+
+export async function lookupByQrToken(token: string): Promise<GateUser | null> {
+  const { data, error } = await supabase
+    .from('gate_users')
+    .select(`
+      id, user_id, face_descriptor, qr_token, photo_url,
+      department, is_active, created_at, updated_at,
+      users:user_id (name, email, photo_url)
+    `)
+    .eq('qr_token', token)
+    .eq('is_active', true)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    userName: (data as any).users?.name || 'Unknown',
+    userEmail: (data as any).users?.email || '',
+    userPhotoUrl: (data as any).users?.photo_url || data.photo_url,
+    faceDescriptor: data.face_descriptor,
+    qrToken: data.qr_token,
+    photoUrl: data.photo_url,
+    department: data.department,
+    isActive: data.is_active,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+// ─── Kiosk Devices Management ──────────────────────────────────────────────────
+
+export interface KioskDevice {
+  id: string;
+  locationId: string;
+  locationName?: string;
+  deviceName: string;
+  deviceModel: string;
+  ipAddress: string | null;
+  batteryPercentage: number | null;
+  signalStrength: string | null;
+  isActive: boolean;
+  lastHeartbeat: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchKioskDevices(): Promise<KioskDevice[]> {
+  const { data, error } = await supabase
+    .from('kiosk_devices')
+    .select(`
+      id, location_id, device_name, device_model, ip_address,
+      battery_percentage, signal_strength, is_active, last_heartbeat, created_at, updated_at,
+      locations:location_id (name)
+    `)
+    .order('device_name', { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    locationId: row.location_id,
+    locationName: row.locations?.name || 'Unassigned',
+    deviceName: row.device_name,
+    deviceModel: row.device_model,
+    ipAddress: row.ip_address,
+    batteryPercentage: row.battery_percentage,
+    signalStrength: row.signal_strength,
+    isActive: row.is_active,
+    lastHeartbeat: row.last_heartbeat,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function registerKioskDevice(params: {
+  locationId: string;
+  deviceName: string;
+  deviceModel?: string;
+}): Promise<KioskDevice> {
+  const { data, error } = await supabase
+    .from('kiosk_devices')
+    .insert({
+      location_id: params.locationId,
+      device_name: params.deviceName,
+      device_model: params.deviceModel || 'Samsung M07',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    id: data.id,
+    locationId: data.location_id,
+    deviceName: data.device_name,
+    deviceModel: data.device_model,
+    ipAddress: data.ip_address,
+    batteryPercentage: data.battery_percentage,
+    signalStrength: data.signal_strength,
+    isActive: data.is_active,
+    lastHeartbeat: data.last_heartbeat,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function reportKioskHeartbeat(
+  locationId: string,
+  telemetry: {
+    batteryPercentage: number | null;
+    ipAddress: string | null;
+    signalStrength: string | null;
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from('kiosk_devices')
+    .update({
+      battery_percentage: telemetry.batteryPercentage,
+      ip_address: telemetry.ipAddress,
+      signal_strength: telemetry.signalStrength,
+      last_heartbeat: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('location_id', locationId);
+
+  if (error) {
+    console.warn('[gateApi] Failed to report kiosk heartbeat:', error.message);
+  }
+}
+
+export async function fetchKioskLocations(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('id, name')
+    .order('name', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+

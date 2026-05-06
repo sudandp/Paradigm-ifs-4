@@ -35,16 +35,12 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
     setIsChecking(true);
     setStatusMessage('Connecting to security bridge...');
 
-    // iOS Standalone PWA fast-path:
-    // The Permissions API is unreliable in iOS Safari PWA mode.
-    // If we somehow reached PermissionsPrimer on iOS PWA, immediately complete.
+    // iOS Web fast-path:
+    // The Permissions API is unreliable in iOS Web (both Safari and PWA).
+    // If we reached PermissionsPrimer on iOS Web, immediately complete.
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isStandaloneIOS = isIOS && (
-      (window.navigator as any).standalone === true ||
-      window.matchMedia('(display-mode: standalone)').matches
-    );
-    if (isStandaloneIOS && !Capacitor.isNativePlatform()) {
-      console.log('[PermissionsPrimer] iOS standalone — immediately completing.');
+    if (isIOS && !Capacitor.isNativePlatform()) {
+      console.log('[PermissionsPrimer] iOS Web — immediately completing.');
       setIsChecking(false);
       setTimeout(() => { onComplete(); }, 500);
       return;

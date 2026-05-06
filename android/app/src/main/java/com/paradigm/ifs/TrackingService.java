@@ -41,7 +41,16 @@ public class TrackingService extends Service {
                 .setPriority(NotificationCompat.PRIORITY_LOW) // Minimal intrusion
                 .build();
 
-        startForeground(NOTIFICATION_ID, notification);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            stopSelf(); // Stop service gracefully if it fails to start in foreground
+        }
 
         // START_STICKY ensures the service re-starts if it's killed by the OS
         return START_STICKY;

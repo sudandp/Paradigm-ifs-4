@@ -73,7 +73,6 @@ const ProfilePage: React.FC = () => {
         checkAttendanceStatus,
         dailyPunchCount,
         isFieldCheckedIn,
-        isFieldCheckedOut,
         isSiteOtCheckedIn,
         breakIntervals,
         hasPreviousDayOpenSession,
@@ -391,8 +390,6 @@ const ProfilePage: React.FC = () => {
         
         setIsSavingPasscode(true);
         try {
-            console.log(`[PasscodeUpdate] Verifying current passcode for user: ${user.id}`);
-            
             // 1. VERIFICATION STRATEGY: 
             // Try DB check first (fast), but fallback to Auth sign-in check if DB is out of sync.
             const latestPasscode = await api.getUserPasscode(user.id);
@@ -401,29 +398,24 @@ const ProfilePage: React.FC = () => {
             let verified = dbMatches;
             
             if (!dbMatches) {
-                console.log("[PasscodeUpdate] DB verification failed (Expected: " + (latestPasscode || '5687') + "). Trying direct Auth verification...");
                 const result = await loginWithPasscode(user.email, formData.oldPasscode, true);
                 if (!result.error) {
                     verified = true;
-                    console.log("[PasscodeUpdate] Auth verification successful via re-login.");
                 }
             }
 
             if (!verified) {
-                console.warn(`[PasscodeUpdate] Final verification failed.`);
                 setToast({ message: 'Current passcode is incorrect.', type: 'error' });
                 setIsSavingPasscode(false);
                 return;
             }
             
-            console.log(`[PasscodeUpdate] Verification successful. Updating to new passcode.`);
-
             await api.updateUserPasscode(user.id, formData.newPasscode);
             updateUserProfile({ passcode: formData.newPasscode });
             resetPasscode({ oldPasscode: '', newPasscode: '', confirmPasscode: '' });
             setToast({ message: 'Passcode updated successfully!', type: 'success' });
         } catch (error: any) {
-            console.error("[PasscodeUpdate] Error:", error);
+            console.error("Passcode update failed:", error);
             let userMessage = error.message || 'Failed to update passcode.';
             
             if (error.message?.toLowerCase().includes('permission denied')) {
@@ -855,6 +847,43 @@ const ProfilePage: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* ── Stale Break Warning (mobile): break-in from previous session, not checked in today ── */}
+                            {isOnBreak && !effectivelyCheckedIn && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="w-full mt-6 px-2"
+                                >
+                                    <div className="relative overflow-hidden rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-900/50 to-orange-900/40 backdrop-blur-xl p-4 shadow-lg">
+                                        <div className="absolute inset-0 bg-amber-400/5 animate-pulse" />
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Coffee className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">Break Not Closed</h4>
+                                            </div>
+                                            <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
+                                                Your break from a <span className="font-bold text-white">previous session</span> was never ended.
+                                                You must end it before punching in, or apply for a correction.
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => { triggerHaptic(ImpactStyle.Medium); navigate('/attendance/break-out'); }}
+                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                >
+                                                    <Coffee className="w-3.5 h-3.5" /> End Break
+                                                </button>
+                                                <button
+                                                    onClick={() => { triggerHaptic(ImpactStyle.Light); navigate('/leaves/apply?leaveType=Correction'); }}
+                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-xs font-black uppercase tracking-widest transition-all active:scale-95 border border-amber-500/20 flex items-center justify-center gap-1.5"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5" /> Correction
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
                             {/* ── Action Grid: Break / Site / Site OT ── */}
                             {effectivelyCheckedIn && !isPunchBlocked && (
                                 <motion.div 
@@ -967,7 +996,11 @@ const ProfilePage: React.FC = () => {
 
                             {/* Hint Zone */}
                             <div className="mt-6 px-8 text-center min-h-[32px]">
-                                {isCheckedIn ? (
+                                {isOnBreak && !effectivelyCheckedIn ? (
+                                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[10px] text-amber-400 uppercase tracking-[0.15em] font-black leading-relaxed animate-pulse">
+                                        ☕ end break above to enable punch in
+                                    </motion.p>
+                                ) : isCheckedIn ? (
                                     <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.4 }} className="text-[10px] text-emerald-200 uppercase tracking-[0.15em] font-black leading-relaxed">
                                         active session · remember to punch out
                                     </motion.p>
@@ -1339,6 +1372,37 @@ const ProfilePage: React.FC = () => {
                                                     </div>
                                                 </div>
                                             )}
+                                             {/* ── Stale Break Warning (desktop): break-in from previous session, not checked in today ── */}
+                                             {isOnBreak && !effectivelyCheckedIn && (
+                                                 <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 mb-2">
+                                                     <div className="flex items-start gap-2">
+                                                         <Coffee className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                                         <div className="flex-1">
+                                                             <p className="text-xs font-bold text-amber-800">Unclosed Break from Previous Session</p>
+                                                             <p className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">
+                                                                 You forgot to end your break. End it now to enable punch-in, or apply for a correction if hours need adjustment.
+                                                             </p>
+                                                             <div className="flex gap-1.5 mt-2">
+                                                                 <Button
+                                                                     onClick={() => navigate('/attendance/break-out')}
+                                                                     variant="primary"
+                                                                     className="!h-7 !text-[10px] !px-2.5 !bg-amber-500 hover:!bg-amber-600"
+                                                                 >
+                                                                     <Coffee className="mr-1 h-3 w-3" /> End Break Now
+                                                                 </Button>
+                                                                 <Button
+                                                                     onClick={() => navigate('/leaves/apply?leaveType=Correction')}
+                                                                     variant="secondary"
+                                                                     className="!h-7 !text-[10px] !px-2.5"
+                                                                 >
+                                                                     <FileText className="mr-1 h-3 w-3" /> Apply Correction
+                                                                 </Button>
+                                                             </div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             )}
+
                                              {/* ── 1. Primary Session Toggle (Punch In/Out) ── */}
                                              <div className="w-full">
                                                 {!isCheckedIn ? (
@@ -1359,8 +1423,8 @@ const ProfilePage: React.FC = () => {
                                                             variant="primary"
                                                             className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-emerald-900/20 ${
                                                                 isPunchBlocked ? '!bg-amber-600' : '!bg-emerald-600 hover:!bg-emerald-700 '
-                                                            } ${isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                            disabled={isOnBreak || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
+                                                            } ${(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                            disabled={(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
                                                         >
                                                            {isPunchBlocked ? (
                                                                 unlockRequestStatus === 'pending' 
@@ -1382,8 +1446,8 @@ const ProfilePage: React.FC = () => {
                                                     <Button
                                                         onClick={() => navigate('/attendance/check-out?workType=office')}
                                                         variant="danger"
-                                                        className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut) ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                        disabled={isOnBreak || isActionInProgress || ((isFieldStaffRole || isSiteStaffRole) && !isFieldCheckedOut)}
+                                                        className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                        disabled={isOnBreak || isActionInProgress}
                                                     >
                                                         <LogOut className="mr-2 h-4 w-4" /> Punch Out
                                                     </Button>

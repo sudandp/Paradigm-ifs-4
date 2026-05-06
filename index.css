@@ -812,7 +812,7 @@ body {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        position: absolute !important;
+        /* Removed position: absolute - was causing icon overlap in card action bars */
     }
     button[class*="delete"]:hover, button[class*="remove"]:hover {
         background-color: rgba(239, 68, 68, 0.1) !important;
@@ -827,7 +827,8 @@ body {
     [class*="header"] button,
     button[class*="icon"],
     .btn-icon,
-    button:has(> svg:only-child) {
+    /* Exclude .user-card-actions buttons from the svg-only override */
+    button:has(> svg:only-child):not(.user-card-actions button):not([class*="rounded-xl"]) {
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;

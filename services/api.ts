@@ -1924,7 +1924,7 @@ export const api = {
     });
 
     if (rpcError) {
-      console.error('[API] Auth sync failed during passcode reset:', rpcError);
+      console.error('Auth sync failed:', rpcError);
       throw new Error(`Passcode updated in DB but failed to sync with Auth: ${rpcError.message}`);
     }
 
@@ -2793,6 +2793,7 @@ export const api = {
     /** Optional pre‑computed address for this location */
     address?: string | null;
     createdBy?: string | null;
+    kioskPin?: string | null;
   }): Promise<Location> => {
     const status = await Network.getStatus();
     if (!status.connected) {
@@ -2838,6 +2839,7 @@ export const api = {
     longitude?: number;
     radius?: number;
     address?: string | null;
+    kioskPin?: string | null;
   }): Promise<Location> => {
     const payload = toSnakeCase(updates);
     const { data, error } = await supabase

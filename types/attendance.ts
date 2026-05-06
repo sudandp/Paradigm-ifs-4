@@ -91,6 +91,8 @@ export interface Location {
    * stored in the database.
    */
   createdByName?: string;
+  /** Optional kiosk pin for site-based remote lock/unlock config */
+  kioskPin?: string | null;
 }
 
 export interface RecurringHolidayRule {

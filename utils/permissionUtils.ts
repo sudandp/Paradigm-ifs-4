@@ -37,16 +37,9 @@ const showWebNotification = (title: string, body: string) => {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * Detect if running as an iOS standalone/PWA (Add to Home Screen) app.
- * navigator.standalone is an iOS-only property, true when launched from Home Screen.
- */
-const isIosStandalone = (): boolean => {
+const isIosWeb = (): boolean => {
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isStandalone =
-        (window.navigator as any).standalone === true ||
-        window.matchMedia('(display-mode: standalone)').matches;
-    return isIOS && isStandalone;
+    return isIOS && !Capacitor.isNativePlatform();
 };
 
 /**
@@ -76,13 +69,13 @@ export const checkRequiredPermissions = async () => {
     if (!Capacitor.isNativePlatform()) {
         const missing: string[] = [];
 
-        // ── iOS Standalone (Add to Home Screen) Fast-Path ──────────────────
-        // On iOS PWA, the Permissions API is unsupported or returns unreliable
+        // ── iOS Web Fast-Path ──────────────────
+        // On iOS Web (Safari/PWA), the Permissions API is unsupported or returns unreliable
         // results, and querying geolocation can trigger repeated popups.
         // We bypass all web permission pre-checks and let the app start normally.
         // Actual permission prompts will appear just-in-time when features are used.
-        if (isIosStandalone()) {
-            console.log('[PermissionUtils] iOS standalone detected — bypassing web permission pre-check.');
+        if (isIosWeb()) {
+            console.log('[PermissionUtils] iOS Web detected — bypassing web permission pre-check.');
             return { allGranted: true, missing: [] };
         }
 
@@ -184,11 +177,11 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
         
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const webReqDelay = isSafari ? 400 : 800;
-        // On iOS standalone (PWA), we don't pre-request permissions.
+        // On iOS Web (Safari/PWA), we don't pre-request permissions.
         // Permissions are requested just-in-time via actual feature use
         // (e.g., geolocation on punch-in) to prevent iOS popup loops.
-        if (isIosStandalone()) {
-            console.log('[PermissionUtils] iOS standalone — skipping web permission request sequence.');
+        if (isIosWeb()) {
+            console.log('[PermissionUtils] iOS Web — skipping web permission request sequence.');
             if (onProgress) onProgress('', []);
             return;
         }

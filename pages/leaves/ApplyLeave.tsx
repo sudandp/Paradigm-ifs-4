@@ -100,7 +100,7 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
 });
 
 const ApplyLeave: React.FC = () => {
-    const { user } = useAuthStore();
+    const { user, isCheckedIn } = useAuthStore();
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [toast, setToast] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -195,6 +195,15 @@ const ApplyLeave: React.FC = () => {
             setValue('endDate', watchStartDate);
         }
     }, [watchStartDate, watchLeaveType, setValue]);
+ 
+     // If working (Checked In) and applying for Sick leave today, default to Half Day
+     React.useEffect(() => {
+         if (!watchStartDate) return;
+         const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+         if (watchLeaveType === 'Sick' && isToday && isCheckedIn) {
+             setValue('dayOption', 'half');
+         }
+     }, [watchLeaveType, watchStartDate, isCheckedIn, setValue]);
 
     const isSingleDay = useMemo(() => {
         if (!watchStartDate || !watchEndDate) return false;
@@ -394,14 +403,15 @@ const ApplyLeave: React.FC = () => {
             const endDateObj = new Date(formData.endDate.replace(/-/g, '/'));
             const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDateObj, startDateObj) + 1;
 
-            // Strict time check: Leaves must be applied before 9 AM on the start date
-            if (!['Correction', 'Permission'].includes(formData.leaveType)) {
+            // Strict time check: 
+            // 1. Sick Leave, Correction, and Permission can be applied for any date (past/present/future).
+            // 2. All other leaves must be applied at least one day in advance (no past or present days).
+            if (!['Correction', 'Permission', 'Sick'].includes(formData.leaveType)) {
                 const now = new Date();
-                const cutoffTime = new Date(startDateObj);
-                cutoffTime.setHours(9, 0, 0, 0);
+                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-                if (now > cutoffTime) {
-                    setToast({ message: 'Leave must be applied before 9:00 AM on the start date. Past leaves are not allowed.', type: 'error' });
+                if (startDateObj <= todayMidnight) {
+                    setToast({ message: 'This type of leave must be applied at least one day in advance. Past and present days are not allowed.', type: 'error' });
                     setIsSubmitting(false);
                     return;
                 }

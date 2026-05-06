@@ -64,7 +64,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                 <div className={`flex items-center h-14 w-full ${isMobile ? 'justify-center' : 'justify-between'}`}>
                     <div className={isMobile ? "absolute inset-x-0 flex justify-center pointer-events-none" : "flex-1 flex justify-start"}>
                             {isMobile && (
-                                <div className="pointer-events-auto bg-white py-2 px-6 rounded-xl border-0 shadow-md my-2 transition-all duration-300 mx-auto">
+                                <div className="pointer-events-auto bg-white py-2 px-3 md:px-6 rounded-xl border-0 shadow-md my-2 transition-all duration-300 mx-auto">
                                     <Logo className="border-0 h-[36px]" variant="original" />
                                 </div>
                             )}
@@ -116,7 +116,7 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                     </div>
                                 )}
                                  {user && (
-                                     <div className={isMobile ? "absolute right-8 top-[20%] -translate-y-1/2" : ""}>
+                                     <div className={isMobile ? "absolute right-2.5 top-1/2 -translate-y-1/2 z-10 scale-90" : ""}>
                                          <NotificationBell theme={isMobile ? 'dark' : 'light'} />
                                      </div>
                                  )}

@@ -46,6 +46,7 @@ const LocationManagement: React.FC = () => {
   const [newLatitude, setNewLatitude] = useState<string>('');
   const [newLongitude, setNewLongitude] = useState<string>('');
   const [newAddress, setNewAddress] = useState('');
+  const [newKioskPin, setNewKioskPin] = useState<string>('1234');
   const [assignUserId, setAssignUserId] = useState('');
   // Allow selecting multiple locations via checkboxes instead of a single dropdown.
   const [assignLocationIds, setAssignLocationIds] = useState<string[]>([]);
@@ -176,6 +177,7 @@ const LocationManagement: React.FC = () => {
           longitude: lonNum,
           radius: radiusNum,
           address,
+          kioskPin: newKioskPin || '1234',
         });
         setToast({ message: 'Location updated successfully.', type: 'success' });
         setEditingLocationId(null);
@@ -188,6 +190,7 @@ const LocationManagement: React.FC = () => {
           radius: radiusNum,
           address,
           createdBy: user?.id || null,
+          kioskPin: newKioskPin || '1234',
         });
         setToast({ message: 'Location created successfully.', type: 'success' });
       }
@@ -197,6 +200,7 @@ const LocationManagement: React.FC = () => {
       setNewLatitude('');
       setNewLongitude('');
       setNewAddress('');
+      setNewKioskPin('1234');
       setCurrentPage(1);
       await refreshLocations();
     } catch (err: any) {
@@ -232,6 +236,7 @@ const LocationManagement: React.FC = () => {
     setNewLatitude(loc.latitude.toString());
     setNewLongitude(loc.longitude.toString());
     setNewAddress(loc.address || '');
+    setNewKioskPin(loc.kioskPin || '1234');
 
     // Scroll to the top of the page to show the edit form
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -245,6 +250,7 @@ const LocationManagement: React.FC = () => {
     setNewLatitude('');
     setNewLongitude('');
     setNewAddress('');
+    setNewKioskPin('1234');
   };
 
   // Delete a location after confirming
@@ -288,6 +294,7 @@ const LocationManagement: React.FC = () => {
             <Input label="Latitude" id="locLat" name="locationLat" type="number" value={newLatitude} onChange={(e) => setNewLatitude(e.target.value)} placeholder="12.9716" />
             <Input label="Longitude" id="locLng" name="locationLng" type="number" value={newLongitude} onChange={(e) => setNewLongitude(e.target.value)} placeholder="77.5946" />
             <Input label="Address (optional)" id="locAddr" name="locationAddress" autoComplete="street-address" value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="Street, City, State" />
+            <Input label="Kiosk Unlock PIN (4-digit)" id="locKioskPin" name="locationKioskPin" value={newKioskPin} onChange={(e) => setNewKioskPin(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="1234" maxLength={4} />
           </div>
           <div className="flex flex-wrap mt-4 gap-4">
             <Button variant="secondary" onClick={handleUseCurrentLocation} isLoading={isFetchingLocation} disabled={isFetchingLocation}>
@@ -398,6 +405,7 @@ const LocationManagement: React.FC = () => {
                       <div className="mt-4 pt-4 border-t border-border grid grid-cols-2 gap-4 text-sm">
                         <div><p className="text-muted">Radius</p><p>{loc.radius}m</p></div>
                         <div><p className="text-muted">Coordinates</p><p>{loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}</p></div>
+                        <div><p className="text-muted">Kiosk PIN</p><p className="font-mono font-bold text-emerald-600">{loc.kioskPin || '1234'}</p></div>
                         <div><p className="text-muted">Created By</p><p>{loc.createdByName || userMap.get(loc.createdBy || '') || '-'}</p></div>
                         <div><p className="text-muted">Created At</p><p>{loc.createdAt ? new Date(loc.createdAt).toLocaleDateString() : '-'}</p></div>
                       </div>
@@ -414,6 +422,7 @@ const LocationManagement: React.FC = () => {
                         <th className="p-3 border-b border-border text-left">Radius (m)</th>
                         <th className="p-3 border-b border-border text-left">Coordinates</th>
                         <th className="p-3 border-b border-border text-left">Address</th>
+                        <th className="p-3 border-b border-border text-left">Kiosk PIN</th>
                         <th className="p-3 border-b border-border text-left">Created By</th>
                         <th className="p-3 border-b border-border text-left">Created At</th>
                         <th className="p-3 border-b border-border text-left">Actions</th>
@@ -426,6 +435,7 @@ const LocationManagement: React.FC = () => {
                           <td className="p-3">{loc.radius}</td>
                           <td className="p-3">{loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}</td>
                           <td className="p-3">{loc.address || '-'}</td>
+                          <td className="p-3 font-mono font-bold text-emerald-600">{loc.kioskPin || '1234'}</td>
                           <td className="p-3">{loc.createdByName || userMap.get(loc.createdBy || '') || '-'}</td>
                           <td className="p-3">{loc.createdAt ? new Date(loc.createdAt).toLocaleString() : '-'}</td>
                           <td className="p-3 whitespace-nowrap">

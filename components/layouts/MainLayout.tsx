@@ -110,7 +110,13 @@ export const allNavLinks: NavLinkConfig[] = [
     // Biometric Devices
     { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_users', category: 'Biometric Devices' },
     { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
+    { to: '/admin/kiosks', label: 'Kiosk Monitoring', icon: Smartphone, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
     { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'view_profile', category: 'Biometric Devices' },
+
+    // Gate Attendance
+    { to: '/gate/register', label: 'Gate Registration', icon: UserPlus, permission: 'manage_users', category: 'Gate Attendance' },
+    { to: '/gate/logs', label: 'Gate Logs', icon: ClipboardList, permission: 'manage_users', category: 'Gate Attendance' },
+    { to: '/gate', label: 'Gate Kiosk', icon: Cpu, permission: 'manage_users', category: 'Gate Attendance' },
 
     // Security & Roles
     { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions', category: 'Security & Roles' },
@@ -142,6 +148,7 @@ const CATEGORY_ICONS: Record<string, any> = {
     'Finance & Invoicing': IndianRupee,
     'Audit & Costing': ClipboardCheck,
     'Biometric Devices': Smartphone,
+    'Gate Attendance': ShieldCheck,
     'Security & Roles': ShieldCheck,
     'System Config': Settings,
     'Support & Profile': LifeBuoy,

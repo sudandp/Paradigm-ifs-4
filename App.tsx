@@ -74,6 +74,7 @@ const RoleManagement = lazyWithRetry(() => import('./pages/admin/RoleManagement'
 const ModuleManagement = lazyWithRetry(() => import('./pages/admin/ModuleManagement'));
 const ManageDevices = lazyWithRetry(() => import('./pages/admin/ManageDevices'));
 const DeviceApprovals = lazyWithRetry(() => import('./pages/admin/DeviceApprovals'));
+const KioskManagement = lazyWithRetry(() => import('./pages/admin/KioskManagement'));
 const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/AdvancedNotificationSettings'));
 const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').then(m => ({ default: m.ApiSettings })));
 const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/OperationsDashboard'));
@@ -159,6 +160,11 @@ const AuditTrail = lazyWithRetry(() => import('./pages/enterprise/AuditTrail'));
 const EmployeeReferralForm = lazyWithRetry(() => import('./pages/referral/EmployeeReferralForm'));
 const BusinessReferralForm = lazyWithRetry(() => import('./pages/referral/BusinessReferralForm'));
 const ReferralManagement = lazyWithRetry(() => import('./pages/referral/ReferralManagement'));
+
+// Gate Attendance Module
+const GateKiosk = lazyWithRetry(() => import('./pages/gate/GateKiosk'));
+const RegisterGateUser = lazyWithRetry(() => import('./pages/gate/RegisterGateUser'));
+const GateAttendanceLogs = lazyWithRetry(() => import('./pages/gate/GateAttendanceLogs'));
 
 // Onboarding Form Steps
 const PersonalDetails = lazyWithRetry(() => import('./pages/onboarding/PersonalDetails'));
@@ -1157,6 +1163,9 @@ const App: React.FC = () => {
 
         <Route path="/public/forms" element={<FormsSelection />} />
         <Route path="/public/forms/gmc" element={<GMCForm />} />
+
+        {/* Gate Attendance Kiosk — standalone public route for security guard device */}
+        <Route path="/gate" element={<GateKiosk />} />
         
         {/* Full-screen Image Viewer */}
         <Route path="/document-viewer" element={<DocumentViewerPage />} />
@@ -1233,6 +1242,7 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="manage_biometric_devices" />}>
             <Route path="admin/devices" element={<ManageDevices />} />
             <Route path="admin/device-approvals" element={<DeviceApprovals />} />
+            <Route path="admin/kiosks" element={<KioskManagement />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_sites" />}>
             <Route path="admin/sites" element={<SiteManagement />} />
@@ -1384,6 +1394,12 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute requiredPermission="manage_approval_workflow" />}>
             <Route path="enterprise/approvals" element={<ApprovalsInbox />} />
             <Route path="enterprise/audit-trail" element={<AuditTrail />} />
+          </Route>
+
+          {/* Gate Attendance Admin */}
+          <Route element={<ProtectedRoute requiredPermission="manage_users" />}>
+            <Route path="gate/register" element={<RegisterGateUser />} />
+            <Route path="gate/logs" element={<GateAttendanceLogs />} />
           </Route>
 
           {/* Support */}

@@ -18,12 +18,19 @@ public class TrackingPlugin extends Plugin {
         intent.putExtra("title", title);
         intent.putExtra("text", text);
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            getContext().startForegroundService(intent);
-        } else {
-            getContext().startService(intent);
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                getContext().startForegroundService(intent);
+            } else {
+                getContext().startService(intent);
+            }
+            call.resolve();
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Resolve instead of reject to prevent crashing JS side if unhandled,
+            // or reject safely.
+            call.reject("Failed to start foreground service: " + e.getMessage());
         }
-        call.resolve();
     }
 
     @PluginMethod
