@@ -534,20 +534,20 @@ const RegisterGateUser: React.FC = () => {
                     <p className="text-[5px] text-gray-700 mt-2.5 leading-snug font-medium px-2">{printTerms}</p>
                     
                     {/* Logo Block */}
-                    <div className="mt-auto mb-1 flex flex-col items-center justify-center w-full">
-                       <div className="flex items-center justify-center gap-1.5 bg-white/40 px-2 py-1 rounded-lg max-w-[90%]">
+                    <div className="mt-auto mb-2 flex flex-col items-center justify-center w-full">
+                       <div className="flex items-center justify-center gap-1.5 bg-white/40 px-2 py-1.5 rounded-lg overflow-hidden" style={{ maxWidth: '90%' }}>
                          {currentLogo ? (
-                            <img src={currentLogo} alt="Logo" className="h-4 object-contain" />
+                            <img src={currentLogo} alt="Logo" className="h-4 w-auto object-contain shrink-0" style={{ maxWidth: '40px' }} />
                          ) : (
                             <Shield className="w-4 h-4 text-emerald-700 shrink-0" />
                          )}
-                         <span className="font-black text-[7px] leading-none text-gray-900 tracking-tighter uppercase truncate">{printCompanyName}</span>
+                         <span className="font-black text-[7px] leading-none text-gray-900 tracking-tighter uppercase truncate" style={{ maxWidth: '80px' }}>{printCompanyName}</span>
                        </div>
                     </div>
                     
                     {/* Black bar website/company */}
-                    <div className="mt-2 bg-gray-900 w-[120%] py-1.5 -mx-4 transform rotate-0 shadow-lg">
-                      <p className="text-[5px] text-emerald-400 font-medium tracking-widest uppercase truncate px-6">{printCompanyName} PORTAL</p>
+                    <div className="bg-gray-900 w-full py-1.5 shadow-lg">
+                      <p className="text-[5px] text-emerald-400 font-medium tracking-widest uppercase truncate px-3 text-center">{printCompanyName} PORTAL</p>
                     </div>
                     
                     {/* Bottom Footer Info (Icons + text) */}

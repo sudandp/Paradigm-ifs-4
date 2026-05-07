@@ -18,6 +18,34 @@ function generateQrToken(): string {
 
 // ─── Gate Users ────────────────────────────────────────────────────────────────
 
+// Normalize face_descriptor from JSONB — Supabase may return nested/non-array formats
+function normalizeFaceDescriptor(raw: any): number[] | null {
+  if (!raw) return null;
+  // If it's already a flat array of numbers
+  if (Array.isArray(raw) && raw.length === 128 && typeof raw[0] === 'number') return raw;
+  // If Supabase wraps it in an object with numeric keys (JSONB edge case)
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const keys = Object.keys(raw);
+    if (keys.length === 128) {
+      const arr = keys.sort((a, b) => Number(a) - Number(b)).map(k => Number(raw[k]));
+      if (arr.every(v => !isNaN(v))) return arr;
+    }
+  }
+  // If it's a stringified JSON array
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length === 128) return parsed.map(Number);
+    } catch { /* ignore */ }
+  }
+  // If it's an array but contains non-numbers, try to convert
+  if (Array.isArray(raw) && raw.length === 128) {
+    const arr = raw.map(Number);
+    if (arr.every(v => !isNaN(v))) return arr;
+  }
+  return null;
+}
+
 export async function fetchGateUsers(): Promise<GateUser[]> {
   const { data, error } = await supabase
     .from('gate_users')
@@ -37,7 +65,7 @@ export async function fetchGateUsers(): Promise<GateUser[]> {
     userName: row.users?.name || 'Unknown',
     userEmail: row.users?.email || '',
     userPhotoUrl: row.users?.photo_url || row.photo_url,
-    faceDescriptor: row.face_descriptor,
+    faceDescriptor: normalizeFaceDescriptor(row.face_descriptor),
     qrToken: row.qr_token,
     photoUrl: row.photo_url,
     department: row.department,
@@ -65,7 +93,7 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
     userName: row.users?.name || 'Unknown',
     userEmail: row.users?.email || '',
     userPhotoUrl: row.users?.photo_url || row.photo_url,
-    faceDescriptor: row.face_descriptor,
+    faceDescriptor: normalizeFaceDescriptor(row.face_descriptor),
     qrToken: row.qr_token,
     photoUrl: row.photo_url,
     department: row.department,
@@ -122,12 +150,24 @@ export async function updateGateUserDescriptor(gateUserId: string, faceDescripto
 }
 
 export async function deactivateGateUser(gateUserId: string): Promise<void> {
-  const { error } = await supabase
+  // Hard delete — the old soft-delete (is_active=false) was failing because:
+  // 1. No RLS DELETE policy existed
+  // 2. fetchAllGateUsers() showed deactivated users anyway
+  // Try hard delete first; fall back to soft-delete if RLS blocks it
+  const { error: deleteError } = await supabase
     .from('gate_users')
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .delete()
     .eq('id', gateUserId);
 
-  if (error) throw new Error(error.message);
+  if (deleteError) {
+    // Fallback: soft-delete if DELETE policy is missing
+    console.warn('[gateApi] Hard delete failed, falling back to soft-delete:', deleteError.message);
+    const { error: updateError } = await supabase
+      .from('gate_users')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', gateUserId);
+    if (updateError) throw new Error(updateError.message);
+  }
 }
 
 // ─── Gate Attendance Logs ──────────────────────────────────────────────────────
