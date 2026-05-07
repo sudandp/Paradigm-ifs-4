@@ -32,6 +32,7 @@ const getRoleBadgeClass = (role: string) => {
         case 'developer': return 'bg-indigo-100 text-indigo-700';
         case 'operation_manager': return 'bg-rose-100 text-rose-700';
         case 'unverified': return 'bg-yellow-100 text-yellow-800';
+        case 'kiosk': return 'bg-cyan-100 text-cyan-700';
         default: return 'bg-slate-100 text-slate-700';
     }
 };
@@ -397,6 +398,9 @@ const UserManagement: React.FC = () => {
 
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
+            // Hide kiosk service accounts from normal admin view unless searching/filtering
+            const isSearching = filters.name || filters.email || filters.role || filters.site || filters.biometricId;
+            if (user.role === 'kiosk' && !isSearching) return false;
             if (filters.name && !user.name?.toLowerCase().includes(filters.name.toLowerCase())) return false;
             if (filters.email && !user.email?.toLowerCase().includes(filters.email.toLowerCase())) return false;
             if (filters.role && user.role !== filters.role) return false;

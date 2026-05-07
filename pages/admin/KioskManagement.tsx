@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../services/api';
-import { fetchKioskDevices, registerKioskDevice, reportKioskHeartbeat, KioskDevice } from '../../services/gateApi';
+import { fetchKioskDevices, registerKioskDevice, assignKioskDevice, deleteKioskDevice, reportKioskHeartbeat, KioskDevice } from '../../services/gateApi';
 import type { Location } from '../../types';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { Monitor, Battery, Wifi, Shield, Plus, RefreshCw, AlertCircle, CheckCircle, Smartphone, MapPin, Search } from 'lucide-react';
+import { Monitor, Battery, Wifi, Shield, Plus, RefreshCw, AlertCircle, CheckCircle, Smartphone, MapPin, Search, Edit, UserCheck, Trash2 } from 'lucide-react';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import Pagination from '../../components/ui/Pagination';
 
@@ -21,8 +21,11 @@ const KioskManagement: React.FC = () => {
   // Form state
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [deviceName, setDeviceName] = useState('');
-  const [deviceModel, setDeviceModel] = useState('Samsung M07');
-  const [showAddModal, setShowAddModal] = useState(false);
+  
+  // Edit state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingKioskId, setEditingKioskId] = useState<string | null>(null);
+  const [editingKioskUserId, setEditingKioskUserId] = useState<string | null>(null);
 
   // Search and pagination state
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,39 +55,52 @@ const KioskManagement: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleRegisterKiosk = async (e: React.FormEvent) => {
+  const openEditModal = (k: KioskDevice) => {
+    setEditingKioskId(k.id);
+    setEditingKioskUserId(k.userId);
+    setDeviceName(k.deviceName || '');
+    setSelectedLocationId(k.locationId || '');
+    setShowEditModal(true);
+  };
+
+  const handleDeleteKiosk = async (k: KioskDevice) => {
+    if (!window.confirm(`Are you sure you want to delete "${k.deviceName}"?\nThis will remove the device record from the system.`)) return;
+    try {
+      await deleteKioskDevice(k.id);
+      setToast({ message: 'Kiosk deleted successfully!', type: 'success' });
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err.message || 'Failed to delete kiosk device.', type: 'error' });
+    }
+  };
+
+  const handleUpdateKiosk = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingKioskId) return;
     if (!selectedLocationId || !deviceName) {
       setToast({ message: 'Please select a location and provide a device name.', type: 'error' });
       return;
     }
-
-    // Check UNIQUE location constraint locally before sending to DB
-    const locationInUse = kiosks.some(k => k.locationId === selectedLocationId);
-    if (locationInUse) {
-      setToast({ message: 'This site location already has an active kiosk assigned.', type: 'error' });
-      return;
-    }
-
     setIsRegistering(true);
     try {
-      await registerKioskDevice({
-        locationId: selectedLocationId,
-        deviceName,
-        deviceModel,
-      });
-      setToast({ message: 'Kiosk registered successfully!', type: 'success' });
+      await assignKioskDevice(editingKioskId, deviceName, selectedLocationId, editingKioskUserId);
+      setToast({ message: editingKioskUserId ? 'Kiosk updated successfully!' : 'Kiosk assigned & user account created!', type: 'success' });
       setSelectedLocationId('');
       setDeviceName('');
-      setShowAddModal(false);
+      setEditingKioskId(null);
+      setEditingKioskUserId(null);
+      setShowEditModal(false);
       await loadData();
     } catch (err: any) {
       console.error(err);
-      setToast({ message: err.message || 'Failed to register kiosk device.', type: 'error' });
+      setToast({ message: err.message || 'Failed to assign kiosk device.', type: 'error' });
     } finally {
       setIsRegistering(false);
     }
   };
+
+
 
   // Status checkers based on 5 minutes (300,000 ms) threshold
   const isOnline = (lastHeartbeat: string) => {
@@ -136,12 +152,13 @@ const KioskManagement: React.FC = () => {
           <div>
             <AdminPageHeader title="Gate Kiosk Devices" />
             <p className="text-muted -mt-4 mb-4">
-              Monitor, configure, and register hardware kiosk devices and real-time telemetry (Samsung M07).
+              Monitor and assign hardware kiosk devices to locations. Devices auto-register on first boot.
             </p>
           </div>
-          <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 self-start md:self-auto">
-            <Plus className="h-4 w-4" /> Register Kiosk
-          </Button>
+          <div className="flex items-center gap-2 text-sm text-muted bg-primary-50 p-3 rounded-lg border border-primary-100">
+             <AlertCircle className="h-5 w-5 text-primary-500" />
+             Boot a new device in Kiosk Mode to register it here automatically.
+          </div>
         </div>
       </div>
 
@@ -225,6 +242,11 @@ const KioskManagement: React.FC = () => {
                       <p className="text-sm text-muted flex items-center gap-1 mt-1">
                         <MapPin className="h-3 w-3" /> {k.locationName}
                       </p>
+                      {k.userEmail && (
+                        <p className="text-[10px] text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-full mt-1.5 w-fit flex items-center gap-1">
+                          <UserCheck className="h-3 w-3" /> {k.userEmail}
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -259,6 +281,14 @@ const KioskManagement: React.FC = () => {
                       <p className="mt-0.5">{k.lastHeartbeat ? new Date(k.lastHeartbeat).toLocaleString() : 'Never'}</p>
                     </div>
                   </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => openEditModal(k)} size="sm" className="flex items-center gap-1.5 text-xs py-1.5 h-auto">
+                      <Edit className="h-3.5 w-3.5" /> Assign Site
+                    </Button>
+                    <Button variant="outline" onClick={() => handleDeleteKiosk(k)} size="sm" className="flex items-center gap-1.5 text-xs py-1.5 h-auto border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               );
             })
@@ -272,17 +302,19 @@ const KioskManagement: React.FC = () => {
               <tr>
                 <th className="p-3 border-b border-border text-left">Device Name</th>
                 <th className="p-3 border-b border-border text-left">Site Location</th>
+                <th className="p-3 border-b border-border text-left">Linked Account</th>
                 <th className="p-3 border-b border-border text-left">Status</th>
                 <th className="p-3 border-b border-border text-left">Battery</th>
                 <th className="p-3 border-b border-border text-left">Signal Speed</th>
                 <th className="p-3 border-b border-border text-left">IP Address</th>
                 <th className="p-3 border-b border-border text-left">Last Active</th>
+                <th className="p-3 border-b border-border text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginatedKiosks.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted">
+                  <td colSpan={9} className="p-8 text-center text-muted">
                     No registered kiosk devices found.
                   </td>
                 </tr>
@@ -296,6 +328,15 @@ const KioskManagement: React.FC = () => {
                         {k.deviceName}
                       </td>
                       <td className="p-3">{k.locationName}</td>
+                      <td className="p-3">
+                        {k.userEmail ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-cyan-50 text-cyan-700">
+                            <UserCheck className="h-3 w-3" /> {k.userEmail}
+                          </span>
+                        ) : (
+                          <span className="text-muted text-xs italic">Not linked</span>
+                        )}
+                      </td>
                       <td className="p-3">
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -332,6 +373,16 @@ const KioskManagement: React.FC = () => {
                       <td className="p-3 text-xs text-muted">
                         {k.lastHeartbeat ? new Date(k.lastHeartbeat).toLocaleString() : 'Never'}
                       </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="secondary" onClick={() => openEditModal(k)} size="sm" className="flex items-center gap-1.5 text-xs py-1 h-auto px-2 border-emerald-500/20 hover:bg-emerald-500/10 hover:border-emerald-500/30">
+                            <Edit className="h-3.5 w-3.5 text-emerald-600" /> Assign
+                          </Button>
+                          <Button variant="outline" onClick={() => handleDeleteKiosk(k)} size="sm" className="text-xs py-1 h-auto px-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -352,15 +403,15 @@ const KioskManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Add Modal */}
-      {showAddModal && (
+      {/* Edit Modal */}
+      {showEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card w-full max-w-md border border-border rounded-xl shadow-2xl p-6 relative">
-            <h3 className="text-lg font-bold text-primary-text mb-4">Register New Kiosk Device</h3>
-            <form onSubmit={handleRegisterKiosk} className="space-y-4">
+            <h3 className="text-lg font-bold text-primary-text mb-4">Assign Location to Kiosk</h3>
+            <form onSubmit={handleUpdateKiosk} className="space-y-4">
               <Select
                 label="Site Location"
-                id="kiosk-loc"
+                id="edit-kiosk-loc"
                 name="kioskLocation"
                 value={selectedLocationId}
                 onChange={(e) => setSelectedLocationId(e.target.value)}
@@ -375,36 +426,28 @@ const KioskManagement: React.FC = () => {
               </Select>
 
               <Input
-                label="Kiosk Name"
-                id="kiosk-name"
+                label="Kiosk Display Name"
+                id="edit-kiosk-name"
                 name="kioskName"
-                placeholder="e.g., Samsung M07 - Gate 1"
+                placeholder="e.g., Gate 1 - North Entrance"
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
                 required
               />
 
-              <Input
-                label="Hardware Model"
-                id="kiosk-model"
-                name="kioskModel"
-                placeholder="Defaults to Samsung M07"
-                value={deviceModel}
-                onChange={(e) => setDeviceModel(e.target.value)}
-              />
-
               <div className="flex justify-end gap-3 mt-6">
-                <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>
+                <Button variant="secondary" type="button" onClick={() => setShowEditModal(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" isLoading={isRegistering}>
-                  Register Device
+                  Save Assignment
                 </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 };

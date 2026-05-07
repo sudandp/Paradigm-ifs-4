@@ -21,10 +21,26 @@ public class MainActivity extends BridgeActivity {
         // Prevent screen recording and screenshots system-wide
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
+        android.content.SharedPreferences prefs = getSharedPreferences("KioskPrefs", Context.MODE_PRIVATE);
+        boolean isKioskModeActive = prefs.getBoolean("kiosk_mode_active", false);
+
+        if (isKioskModeActive) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true);
+                setTurnScreenOn(true);
+            } else {
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
+            }
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+
         registerPlugin(BadgeHelperPlugin.class);
         registerPlugin(RingtonePlugin.class);
         registerPlugin(BreakAlarmPlugin.class);
         registerPlugin(TrackingPlugin.class);
+        registerPlugin(KioskPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();
     }

@@ -60,6 +60,13 @@ interface GateStore {
   assignedLocationId: string | null;
   assignedLocationName: string | null;
   setAssignedLocation: (id: string | null, name: string | null) => void;
+
+  deviceId: string | null;
+  setDeviceId: (id: string | null) => void;
+  locationName: string | null;
+  setLocationName: (name: string | null) => void;
+  isKioskMode: boolean;
+  setKioskMode: (active: boolean) => void;
 }
 
 const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -116,13 +123,23 @@ export const useGateStore = create<GateStore>()(
       assignedLocationId: null,
       assignedLocationName: null,
       setAssignedLocation: (id, name) => set({ assignedLocationId: id, assignedLocationName: name }),
+
+      deviceId: null,
+      setDeviceId: (id) => set({ deviceId: id }),
+      locationName: null,
+      setLocationName: (name) => set({ locationName: name }),
+      isKioskMode: false,
+      setKioskMode: (active) => set({ isKioskMode: active }),
     }),
     {
       name: 'gate-kiosk-storage',
       partialize: (state) => ({ 
         assignedLocationId: state.assignedLocationId, 
         assignedLocationName: state.assignedLocationName,
-        kioskPin: state.kioskPin
+        kioskPin: state.kioskPin,
+        deviceId: state.deviceId,
+        locationName: state.locationName,
+        isKioskMode: state.isKioskMode
       }),
     }
   )

@@ -24,6 +24,8 @@ import type { User } from './types';
 import { useOnboardingStore } from './store/onboardingStore';
 import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
+import { useGateStore } from './store/gateStore';
+import { KioskPlugin } from './plugins/KioskPlugin';
 import { syncService } from './services/offline/syncService';
 import OfflineStatusBanner from './components/OfflineStatusBanner';
 import { pushNotificationService } from './services/pushNotificationService';
@@ -163,6 +165,7 @@ const ReferralManagement = lazyWithRetry(() => import('./pages/referral/Referral
 
 // Gate Attendance Module
 const GateKiosk = lazyWithRetry(() => import('./pages/gate/GateKiosk'));
+const KioskProvision = lazyWithRetry(() => import('./pages/gate/KioskProvision'));
 const RegisterGateUser = lazyWithRetry(() => import('./pages/gate/RegisterGateUser'));
 const GateAttendanceLogs = lazyWithRetry(() => import('./pages/gate/GateAttendanceLogs'));
 
@@ -368,6 +371,50 @@ const App: React.FC = () => {
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
   const { triggerAlert: triggerBreakAlert } = useBreakAlertStore();
+
+  const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
+  const [showProvision, setShowProvision] = useState(false);
+  const { isKioskMode, setKioskMode, setDeviceId } = useGateStore();
+
+  // ── Kiosk Mode Initialization ──────────────────────────────────────────────
+  useEffect(() => {
+    const checkKiosk = async () => {
+      try {
+        if (!Capacitor.isNativePlatform()) {
+          setIsCheckingKiosk(false);
+          return;
+        }
+
+        const { active } = await KioskPlugin.isKioskActive();
+        setKioskMode(active);
+
+        if (active) {
+          setIsCheckingKiosk(false);
+          return;
+        }
+
+        const { deviceId } = await KioskPlugin.getDeviceId();
+        setDeviceId(deviceId);
+
+        // Check if device exists in Supabase
+        const { data, error } = await supabase
+          .from('kiosk_devices')
+          .select('id')
+          .eq('device_id', deviceId)
+          .maybeSingle();
+
+        if (!error && !data) {
+          // Doesn't exist -> Show provisioning
+          setShowProvision(true);
+        }
+      } catch (e) {
+        console.warn('[App] Kiosk check failed', e);
+      } finally {
+        setIsCheckingKiosk(false);
+      }
+    };
+    checkKiosk();
+  }, [setKioskMode, setDeviceId]);
 
   // ── Listen for web-side break alert timer events ──────────────────────────
   // permissionUtils.ts dispatches 'break-alert-trigger' via setInterval on web.
@@ -1133,11 +1180,28 @@ const App: React.FC = () => {
   // While the initial authentication check OR the permissions check is running, show the splash screen.
   // This prevents the router from rendering and making incorrect navigation decisions
   // and ensures push notification and other dependent services have the required state to initialize.
-  if (!isInitialized || !permissionsComplete) {
+  if (!isInitialized || !permissionsComplete || isCheckingKiosk) {
     return (
       <Splash 
         onComplete={handleSplashComplete}
       />
+    );
+  }
+
+  if (isKioskMode) {
+    return (
+      <Suspense fallback={<Splash onComplete={() => {}} />}>
+        <GateKiosk />
+        <Toaster position="top-right" />
+      </Suspense>
+    );
+  }
+
+  if (showProvision) {
+    return (
+      <Suspense fallback={<Splash onComplete={() => {}} />}>
+        <KioskProvision />
+      </Suspense>
     );
   }
 

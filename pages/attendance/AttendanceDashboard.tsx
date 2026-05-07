@@ -5,6 +5,7 @@ import { isAdmin } from '../../utils/auth';
 // number increments on the chart axes, and unify the report generation/download flow into a single action.
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
+import { fetchKioskDevices, type KioskDevice } from '../../services/gateApi';
 import { pdf } from '@react-pdf/renderer';
 import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
@@ -466,6 +467,7 @@ const AttendanceDashboard: React.FC = () => {
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
     const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
     const [monthlyDataMap, setMonthlyDataMap] = useState<Record<string, EmployeeMonthlyData[]>>({});
+    const [kioskDevices, setKioskDevices] = useState<KioskDevice[]>([]);
 
     const [dateRange, setDateRange] = useState<Range>({
         startDate: startOfToday(),
@@ -975,7 +977,7 @@ const AttendanceDashboard: React.FC = () => {
                 // Add 12-hour lookahead to capture night shift completions
                 const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
 
-                const [events, leavesResponse, holidaysResponse, rolesResponse] = await Promise.all([
+                const [events, leavesResponse, holidaysResponse, rolesResponse, kioskDevicesResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
                     api.getLeaveRequests({ 
                         startDate: queryStart.toISOString(), 
@@ -983,10 +985,12 @@ const AttendanceDashboard: React.FC = () => {
                         status: ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'] 
                     }),
                     api.getAllUserHolidays(),
-                    api.getRoles()
+                    api.getRoles(),
+                    fetchKioskDevices().catch(() => [])
                 ]);
 
                 setAttendanceEvents(events);
+                setKioskDevices(kioskDevicesResponse || []);
                 const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
@@ -1517,10 +1521,18 @@ const AttendanceDashboard: React.FC = () => {
 
         // PRE-INDEX: Users Map for O(1) lookup
         const usersMap = new Map(users.map(u => [u.id, u]));
+        const kioskDeviceMap = new Map(kioskDevices.map(d => [d.id, d.deviceModel || d.deviceName]));
+        const kioskLocationMap = new Map(kioskDevices.filter(d => d.locationId).map(d => [d.locationId, d.deviceModel || d.deviceName]));
         const dayKeyMapLogs = buildAttendanceDayKeyByEventId(attendanceEvents);
+        const startStr = format(dateRange.startDate, 'yyyy-MM-dd');
+        const endStr = format(dateRange.endDate, 'yyyy-MM-dd');
 
         return attendanceEvents
-            .filter(e => targetUserIds.has(e.userId))
+            .filter(e => {
+                if (!targetUserIds.has(e.userId)) return false;
+                const sessionDateStr = dayKeyMapLogs[e.id];
+                return sessionDateStr && sessionDateStr >= startStr && sessionDateStr <= endStr;
+            })
             .map(e => {
                 const user = usersMap.get(e.userId) as any;
                 // Priority: 1) event.locationName (stored in DB), 2) fallback to lat/lon if present
@@ -1535,7 +1547,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // Use session-anchored date for night shifts
                 const sessionDateStr = dayKeyMapLogs[e.id];
-                const displayDate = format(new Date(sessionDateStr), 'dd MMM yyyy');
+                const displayDate = sessionDateStr ? format(new Date(sessionDateStr.replace(/-/g, '/')), 'dd MMM yyyy') : '-';
 
                 return {
                     userName: user?.name || 'Unknown',
@@ -1546,7 +1558,11 @@ const AttendanceDashboard: React.FC = () => {
                     latitude: e.latitude,
                     longitude: e.longitude,
                     workType: e.workType,
-                    device: (e as any).device || '-'
+                    device: e.deviceId && kioskDeviceMap.has(e.deviceId) 
+                        ? kioskDeviceMap.get(e.deviceId) 
+                        : (e.source === 'gate-kiosk' && e.locationId && kioskLocationMap.has(e.locationId))
+                            ? kioskLocationMap.get(e.locationId)
+                            : (e.deviceName || (e as any).device || '-')
                 };
             })
             .sort((a, b) => {
@@ -1555,7 +1571,7 @@ const AttendanceDashboard: React.FC = () => {
                 return b.time.localeCompare(a.time);
             });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, kioskDevices]);
 
     // 3. Monthly Report Data (Aggregated)
     // Legacy monthlyReportData removed - now handled by unified MonthlyHoursReport component
@@ -1583,6 +1599,8 @@ const AttendanceDashboard: React.FC = () => {
 
         const targetUserIds = new Set(filteredUsers.map(u => u.id));
         const data: SiteOtDataRow[] = [];
+        const startStr = format(dateRange.startDate, 'yyyy-MM-dd');
+        const endStr = format(dateRange.endDate, 'yyyy-MM-dd');
 
         filteredUsers.forEach(user => {
             const userEvents = attendanceEvents.filter(e => 
@@ -1607,14 +1625,17 @@ const AttendanceDashboard: React.FC = () => {
                         i++; // Skip the next event
                     }
 
-                    data.push({
-                        userName: user.name,
-                        date: format(new Date(event.timestamp), 'yyyy-MM-dd'),
-                        siteOtIn: format(new Date(event.timestamp), 'HH:mm'),
-                        siteOtOut,
-                        duration,
-                        locationName: event.locationName || 'N/A'
-                    });
+                    const eventDateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
+                    if (eventDateStr >= startStr && eventDateStr <= endStr) {
+                        data.push({
+                            userName: user.name,
+                            date: eventDateStr,
+                            siteOtIn: format(new Date(event.timestamp), 'HH:mm'),
+                            siteOtOut,
+                            duration,
+                            locationName: event.locationName || 'N/A'
+                        });
+                    }
                 }
             }
         });

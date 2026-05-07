@@ -10,9 +10,12 @@ import {
 } from '../../services/gateApi';
 import { useKioskTelemetry } from '../../hooks/useKioskTelemetry';
 import { api } from '../../services/api';
+import { supabase } from '../../services/supabase';
+import { KioskPlugin } from '../../plugins/KioskPlugin';
+import { useNavigate } from 'react-router-dom';
 import type { GateUser, GateScanResult, GateMode } from '../../types/gate';
 import type { AttendanceEventType, Location } from '../../types/attendance';
-import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft } from 'lucide-react';
+import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const FACE_MATCH_THRESHOLD = 0.45; // Euclidean distance — lower = stricter
@@ -45,8 +48,12 @@ const GateKiosk: React.FC = () => {
     isProcessing, setProcessing,
     todayLogs, addLog,
     isKioskLocked, setKioskLocked, kioskPin,
-    assignedLocationId, assignedLocationName, setAssignedLocation
+    assignedLocationId, assignedLocationName, setAssignedLocation,
+    deviceId, locationName, setDeviceId, setLocationName,
+    isKioskMode, setKioskMode
   } = useGateStore();
+
+  const navigate = useNavigate();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,16 +73,17 @@ const GateKiosk: React.FC = () => {
   // Settings & Action state
   const [showSettings, setShowSettings] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [kioskDevices, setKioskDevices] = useState<any[]>([]);
   const [selectedAction, setSelectedAction] = useState<AttendanceEventType | null>(null);
 
   const telemetry = useKioskTelemetry();
 
   // Background Hardware Telemetry Heartbeat (reporting every 2 minutes)
   useEffect(() => {
-    if (!assignedLocationId) return;
+    if (!deviceId) return;
 
     const sendHeartbeat = () => {
-      reportKioskHeartbeat(assignedLocationId, {
+      reportKioskHeartbeat(deviceId, {
         batteryPercentage: telemetry.batteryPercentage,
         ipAddress: telemetry.ipAddress,
         signalStrength: telemetry.signalStrength,
@@ -87,24 +95,69 @@ const GateKiosk: React.FC = () => {
 
     const t = setInterval(sendHeartbeat, 120_000);
     return () => clearInterval(t);
-  }, [assignedLocationId, telemetry.batteryPercentage, telemetry.ipAddress, telemetry.signalStrength]);
+  }, [deviceId, telemetry.batteryPercentage, telemetry.ipAddress, telemetry.signalStrength]);
+
+  // Realtime Device & Location Sync
+  useEffect(() => {
+    let channel: any = null;
+
+    const initDeviceSync = async () => {
+      const { deviceId: nativeId } = await KioskPlugin.getDeviceId();
+      setDeviceId(nativeId);
+
+      // Load offline location fallback first
+      const cachedLocName = localStorage.getItem('kiosk_last_location_name');
+      const cachedLocId = localStorage.getItem('kiosk_last_location_id');
+      if (cachedLocName && cachedLocId && !locationName) {
+        setLocationName(cachedLocName);
+        setAssignedLocation(cachedLocId, cachedLocName);
+      }
+
+      // Upsert to DB to register device and update heartbeat
+      await supabase.from('kiosk_devices').upsert({
+        device_id: nativeId,
+        is_active: true,
+        last_heartbeat: new Date().toISOString()
+      }, { onConflict: 'device_id' });
+
+      // Subscribe to Realtime for location updates from Admin
+      channel = supabase
+        .channel('kiosk-device')
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'kiosk_devices',
+          filter: `device_id=eq.${nativeId}`
+        }, (payload: any) => {
+          if (payload.new && payload.new.location_name) {
+            console.log('[KioskSync] Remote location update received:', payload.new.location_name);
+            setLocationName(payload.new.location_name);
+            setAssignedLocation(payload.new.location_id, payload.new.location_name);
+            
+            // Persist for offline resilience
+            localStorage.setItem('kiosk_last_location_name', payload.new.location_name);
+            localStorage.setItem('kiosk_last_location_id', payload.new.location_id);
+          }
+        })
+        .subscribe();
+    };
+
+    initDeviceSync();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [setDeviceId, setLocationName, setAssignedLocation]);
 
   useEffect(() => {
     fetchKioskDevices()
       .then((devices) => {
-        const kioskLocations = devices
-          .filter(d => d.locationId)
-          .map(d => ({
-            id: d.locationId,
-            name: d.locationName || 'Unassigned'
-          }));
-        setLocations(kioskLocations as any);
+        setKioskDevices(devices);
       })
       .catch((err) => {
         console.error('[GateKiosk] Failed to load kiosk devices:', err);
-        fetchKioskLocations()
-          .then((locs) => setLocations(locs as any))
-          .catch((e) => console.error('[GateKiosk] Fallback fetch failed:', e));
       });
   }, []);
 
@@ -244,12 +297,15 @@ const GateKiosk: React.FC = () => {
 
       // Dual Logging: Send to main attendance module
       try {
+        const matchingDevice = kioskDevices.find(d => d.locationId === assignedLocationId);
         await api.addAttendanceEvent({
           userId: user.userId,
           type: selectedAction,
           timestamp: new Date().toISOString(),
           locationId: assignedLocationId,
           locationName: assignedLocationName,
+          deviceId: matchingDevice ? matchingDevice.id : undefined,
+          deviceName: matchingDevice ? (matchingDevice.deviceModel || matchingDevice.deviceName) : undefined,
           source: 'gate-kiosk',
           isManual: false,
         });
@@ -657,31 +713,71 @@ const GateKiosk: React.FC = () => {
 
       {/* ─── Settings Modal ──────────────────────────────────────── */}
       {showSettings && (
-        <div className="absolute inset-0 z-[100000] flex items-center justify-center bg-black/80">
-          <div className="bg-emerald-950 border border-emerald-500/20 rounded-3xl p-6 w-full max-w-sm flex flex-col gap-4">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2"><Settings className="w-5 h-5 text-emerald-400" /> Kiosk Settings</h2>
+        <div className="absolute inset-0 z-[100000] flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-emerald-950 border border-emerald-500/20 rounded-3xl p-6 w-full max-w-sm flex flex-col gap-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2"><Settings className="w-5 h-5 text-emerald-400" /> Kiosk Settings</h2>
+              <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-white/5 rounded-full text-emerald-300/50 hover:text-white transition-colors">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
             
-            <div>
-              <label className="text-emerald-300/60 text-sm mb-1 block">Assigned Location</label>
-              <select
-                className="w-full bg-emerald-900 border border-emerald-500/20 text-white rounded-xl px-4 py-3 outline-none focus:border-emerald-400"
-                style={{ backgroundColor: '#022c16', color: '#ffffff' }}
-                value={assignedLocationId || ''}
-                onChange={(e) => {
-                  const loc = locations.find(l => l.id === e.target.value);
-                  setAssignedLocation(e.target.value || null, loc?.name || null);
-                }}
-              >
-                <option value="" style={{ backgroundColor: '#022c16', color: '#ffffff' }}>None (Unassigned)</option>
-                {locations.map(l => (
-                  <option key={l.id} value={l.id} style={{ backgroundColor: '#022c16', color: '#ffffff' }}>{l.name}</option>
-                ))}
-              </select>
+            <div className="flex flex-col gap-4">
+              <div className="bg-black/20 rounded-2xl p-4 border border-emerald-500/10">
+                <label className="text-emerald-300/60 text-xs font-semibold uppercase mb-2 block tracking-wider">Device ID</label>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-white font-mono text-sm break-all">{deviceId || 'Unknown'}</span>
+                  <button 
+                    onClick={() => {
+                      if (deviceId) {
+                        navigator.clipboard.writeText(deviceId);
+                        alert('Device ID copied to clipboard');
+                      }
+                    }}
+                    className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl transition-colors shrink-0"
+                    title="Copy Device ID"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-emerald-300/40 text-[10px] mt-2 leading-relaxed">Share this ID with an Administrator to link this device to a gate location.</p>
+              </div>
+
+              <div className="bg-black/20 rounded-2xl p-4 border border-emerald-500/10">
+                <label className="text-emerald-300/60 text-xs font-semibold uppercase mb-1 block tracking-wider">Current Location</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <MapPin className="w-4 h-4 text-emerald-400" />
+                  <span className="text-white font-semibold">{locationName || 'Unassigned'}</span>
+                </div>
+                <p className="text-emerald-300/40 text-[10px] mt-2 leading-relaxed">Location is managed remotely via the Admin Dashboard. Real-time updates active.</p>
+              </div>
             </div>
 
-            <button onClick={() => setShowSettings(false)} className="mt-2 w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-xl transition-all">
-              Save & Close
-            </button>
+            <div className="flex flex-col gap-3 mt-2">
+              <button 
+                onClick={async () => {
+                  const pin = window.prompt('Enter Admin PIN to exit Kiosk Mode:');
+                  if (!pin) return;
+                  
+                  // Verify against app_config (or default 1234)
+                  const { data } = await supabase.from('app_config').select('config_value').eq('config_key', 'kiosk_admin_pin').maybeSingle();
+                  const validPin = data?.config_value || '1234';
+                  
+                  if (pin === validPin) {
+                    await KioskPlugin.stopLockTask();
+                    setKioskMode(false);
+                    setShowSettings(false);
+                    // Redirect to login or profile
+                    navigate('/auth/login', { replace: true });
+                  } else {
+                    alert('Invalid PIN');
+                  }
+                }}
+                className="w-full py-3.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" /> Exit Kiosk Mode
+              </button>
+            </div>
           </div>
         </div>
       )}

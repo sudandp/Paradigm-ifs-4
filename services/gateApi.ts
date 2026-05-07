@@ -301,6 +301,7 @@ export async function lookupByQrToken(token: string): Promise<GateUser | null> {
 
 export interface KioskDevice {
   id: string;
+  deviceId: string;
   locationId: string;
   locationName?: string;
   deviceName: string;
@@ -310,6 +311,8 @@ export interface KioskDevice {
   signalStrength: string | null;
   isActive: boolean;
   lastHeartbeat: string;
+  userId: string | null;
+  userEmail: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -318,9 +321,10 @@ export async function fetchKioskDevices(): Promise<KioskDevice[]> {
   const { data, error } = await supabase
     .from('kiosk_devices')
     .select(`
-      id, location_id, device_name, device_model, ip_address,
-      battery_percentage, signal_strength, is_active, last_heartbeat, created_at, updated_at,
-      locations:location_id (name)
+      id, device_id, location_id, device_name, device_model, ip_address,
+      battery_percentage, signal_strength, is_active, last_heartbeat, user_id, created_at, updated_at,
+      locations:location_id (name),
+      users:user_id (email)
     `)
     .order('device_name', { ascending: true });
 
@@ -328,25 +332,30 @@ export async function fetchKioskDevices(): Promise<KioskDevice[]> {
 
   return (data || []).map((row: any) => ({
     id: row.id,
+    deviceId: row.device_id,
     locationId: row.location_id,
     locationName: row.locations?.name || 'Unassigned',
-    deviceName: row.device_name,
-    deviceModel: row.device_model,
+    deviceName: row.device_name || row.device_id,
+    deviceModel: row.device_model || 'Unknown',
     ipAddress: row.ip_address,
     batteryPercentage: row.battery_percentage,
     signalStrength: row.signal_strength,
     isActive: row.is_active,
     lastHeartbeat: row.last_heartbeat,
+    userId: row.user_id,
+    userEmail: row.users?.email || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
 }
 
-export async function registerKioskDevice(params: {
-  locationId: string;
-  deviceName: string;
-  deviceModel?: string;
-}): Promise<KioskDevice> {
+export async function registerKioskDevice(
+  params: {
+    locationId: string;
+    deviceName: string;
+    deviceModel?: string;
+  }
+): Promise<KioskDevice> {
   const { data, error } = await supabase
     .from('kiosk_devices')
     .insert({
@@ -361,6 +370,7 @@ export async function registerKioskDevice(params: {
 
   return {
     id: data.id,
+    deviceId: data.device_id,
     locationId: data.location_id,
     deviceName: data.device_name,
     deviceModel: data.device_model,
@@ -369,13 +379,108 @@ export async function registerKioskDevice(params: {
     signalStrength: data.signal_strength,
     isActive: data.is_active,
     lastHeartbeat: data.last_heartbeat,
+    userId: data.user_id || null,
+    userEmail: null,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
 }
 
-export async function reportKioskHeartbeat(
+export async function updateKioskDevice(
+  id: string,
+  updates: {
+    locationId?: string;
+    deviceName?: string;
+    userId?: string;
+  }
+): Promise<void> {
+  const payload: any = {};
+  if (updates.locationId !== undefined) payload.location_id = updates.locationId;
+  if (updates.deviceName !== undefined) payload.device_name = updates.deviceName;
+  if (updates.userId !== undefined) payload.user_id = updates.userId;
+  
+  const { error } = await supabase
+    .from('kiosk_devices')
+    .update(payload)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteKioskDevice(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('kiosk_devices')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Assign a location to a kiosk device.
+ * If the device doesn't have a linked user account yet, one is auto-created
+ * with role='kiosk' and email kiosk-{name}@paradigm.local.
+ */
+export async function assignKioskDevice(
+  kioskId: string,
+  deviceName: string,
   locationId: string,
+  existingUserId: string | null
+): Promise<{ userId: string }> {
+  // Lazy import to avoid circular dependency
+  const { api } = await import('./api');
+
+  let userId = existingUserId;
+
+  if (!userId) {
+    // Generate a sanitized email from device name
+    const sanitized = deviceName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      || 'kiosk-device';
+    const email = `kiosk-${sanitized}@paradigm.local`;
+    const password = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+
+    try {
+      const newUser = await api.createAuthUser({
+        name: deviceName,
+        email,
+        password,
+        role: 'kiosk',
+      });
+      userId = newUser.id;
+    } catch (err: any) {
+      // If user already exists with this email, look it up
+      if (err?.message?.includes('already registered') || err?.message?.includes('already been registered')) {
+        const { data: existing } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+        if (existing) {
+          userId = existing.id;
+        } else {
+          throw new Error(`Failed to create kiosk user account: ${err.message}`);
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // Update the kiosk device with location + user link
+  await updateKioskDevice(kioskId, {
+    locationId,
+    deviceName,
+    userId: userId!,
+  });
+
+  return { userId: userId! };
+}
+
+export async function reportKioskHeartbeat(
+  deviceId: string,
   telemetry: {
     batteryPercentage: number | null;
     ipAddress: string | null;
@@ -391,7 +496,7 @@ export async function reportKioskHeartbeat(
       last_heartbeat: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('location_id', locationId);
+    .eq('device_id', deviceId);
 
   if (error) {
     console.warn('[gateApi] Failed to report kiosk heartbeat:', error.message);

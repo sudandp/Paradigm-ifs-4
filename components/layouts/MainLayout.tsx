@@ -108,15 +108,15 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/billing/cost-analysis', label: 'Verification Costing', icon: ClipboardCheck, permission: 'view_verification_costing', category: 'Audit & Costing' },
 
     // Biometric Devices
-    { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_users', category: 'Biometric Devices' },
+    { to: '/admin/device-approvals', label: 'Device Approvals', icon: ShieldCheck, permission: 'manage_device_approvals', category: 'Biometric Devices' },
     { to: '/admin/devices', label: 'Biometric Devices', icon: Cpu, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
-    { to: '/admin/kiosks', label: 'Kiosk Monitoring', icon: Smartphone, permission: 'manage_biometric_devices', category: 'Biometric Devices' },
-    { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'view_profile', category: 'Biometric Devices' },
+    { to: '/admin/kiosks', label: 'Kiosk Monitoring', icon: Smartphone, permission: 'view_kiosk_monitoring', category: 'Biometric Devices' },
+    { to: '/settings/devices', label: 'Linked Devices', icon: Smartphone, permission: 'manage_linked_devices', category: 'Biometric Devices' },
 
     // Gate Attendance
-    { to: '/gate/register', label: 'Gate Registration', icon: UserPlus, permission: 'manage_users', category: 'Gate Attendance' },
-    { to: '/gate/logs', label: 'Gate Logs', icon: ClipboardList, permission: 'manage_users', category: 'Gate Attendance' },
-    { to: '/gate', label: 'Gate Kiosk', icon: Cpu, permission: 'manage_users', category: 'Gate Attendance' },
+    { to: '/gate/register', label: 'Gate Registration', icon: UserPlus, permission: 'manage_gate_registration', category: 'Gate Attendance' },
+    { to: '/gate/logs', label: 'Gate Logs', icon: ClipboardList, permission: 'view_gate_logs', category: 'Gate Attendance' },
+    { to: '/gate', label: 'Gate Kiosk', icon: Cpu, permission: 'manage_gate_kiosk', category: 'Gate Attendance' },
 
     // Security & Roles
     { to: '/admin/roles', label: 'Role Management', icon: ShieldCheck, permission: 'manage_roles_and_permissions', category: 'Security & Roles' },

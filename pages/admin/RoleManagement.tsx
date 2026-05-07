@@ -79,7 +79,15 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_verification_costing', name: 'View Verification Costing', description: 'Analyze costs associated with third-party document verifications.', category: 'Audit & Costing' },
 
     // Biometric Devices
-    { key: 'manage_biometric_devices', name: 'Manage Biometric Devices', description: 'Add, monitor, and remove biometric devices.', category: 'Biometric Devices' },
+    { key: 'manage_device_approvals', name: 'Device Approvals', description: 'Manage and approve device linking requests.', category: 'Biometric Devices' },
+    { key: 'manage_biometric_devices', name: 'Biometric Devices', description: 'Add, monitor, and remove biometric devices.', category: 'Biometric Devices' },
+    { key: 'view_kiosk_monitoring', name: 'Kiosk Monitoring', description: 'Monitor kiosk devices status and health.', category: 'Biometric Devices' },
+    { key: 'manage_linked_devices', name: 'Linked Devices', description: 'Manage linked user devices and active sessions.', category: 'Biometric Devices' },
+
+    // Gate Attendance
+    { key: 'manage_gate_registration', name: 'Gate Registration', description: 'Register and manage gate access credentials.', category: 'Gate Attendance' },
+    { key: 'view_gate_logs', name: 'Gate Logs', description: 'View access logs from gate kiosks.', category: 'Gate Attendance' },
+    { key: 'manage_gate_kiosk', name: 'Gate Kiosk', description: 'Monitor and configure gate kiosk operations.', category: 'Gate Attendance' },
 
     // Security & Roles
     { key: 'manage_users', name: 'Manage Users', description: 'Create, edit, and delete user accounts.', category: 'Security & Roles' },

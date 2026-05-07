@@ -2418,6 +2418,29 @@ export const api = {
    *              latitude, longitude, locationId, and locationName properties.
    */
   addAttendanceEvent: async (event: Omit<AttendanceEvent, 'id'>): Promise<void> => {
+    // Automatically populate device metadata if not provided
+    try {
+      const { getCurrentDevice } = await import('./deviceService');
+      const currentDevice = await getCurrentDevice();
+      if (currentDevice) {
+        if (!event.deviceName) event.deviceName = currentDevice.deviceName;
+        if (!event.batteryLevel && currentDevice.deviceInfo?.batteryLevel !== undefined) {
+          event.batteryLevel = currentDevice.deviceInfo.batteryLevel;
+        }
+        if (!event.ipAddress && currentDevice.deviceInfo?.ipAddress) {
+          event.ipAddress = currentDevice.deviceInfo.ipAddress;
+        }
+        if (!event.networkType && currentDevice.deviceInfo?.connectionType) {
+          event.networkType = currentDevice.deviceInfo.connectionType;
+        }
+        if (!event.source) {
+          event.source = currentDevice.deviceType;
+        }
+      }
+    } catch (err) {
+      console.warn('[addAttendanceEvent] Failed to resolve current device info:', err);
+    }
+
     const status = await Network.getStatus();
     if (!status.connected) {
         const offlineId = `att_offline_${Date.now()}`;

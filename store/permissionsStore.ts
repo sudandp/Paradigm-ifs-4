@@ -27,7 +27,8 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing',
     'view_field_staff_tracking', 'manage_modules', 'access_support_desk',
-    'view_my_team', 'view_field_reports', 'manage_biometric_devices',
+    'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
+    'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
@@ -38,7 +39,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'apply_for_leave', 'manage_leave_requests', 'download_attendance_report',
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing', 'access_support_desk',
-    'view_profile', 'view_referrals',
+    'view_profile', 'view_referrals', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   finance: [
@@ -58,7 +59,8 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing',
     'view_field_staff_tracking', 'manage_modules', 'access_support_desk',
-    'view_my_team', 'view_field_reports', 'manage_biometric_devices',
+    'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
+    'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
@@ -86,7 +88,8 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing',
     'view_field_staff_tracking', 'manage_modules', 'access_support_desk',
-    'view_my_team', 'view_field_reports', 'manage_biometric_devices',
+    'view_my_team', 'view_field_reports', 'manage_biometric_devices', 'manage_device_approvals', 'view_kiosk_monitoring', 'manage_linked_devices',
+    'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
@@ -98,7 +101,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'download_attendance_report', 'manage_tasks', 'manage_policies', 'manage_insurance',
     'manage_enrollment_rules', 'manage_uniforms', 'view_invoice_summary',
     'view_verification_costing', 'view_field_staff_tracking', 'access_support_desk',
-    'view_my_team', 'view_field_reports', 'manage_geo_locations', 'view_my_locations', 'view_profile',
+    'view_my_team', 'view_field_reports', 'manage_geo_locations', 'view_my_locations', 'view_profile', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   finance_manager: [
