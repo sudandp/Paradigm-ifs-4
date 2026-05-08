@@ -12,7 +12,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
@@ -24,6 +24,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
 import { calculateEmployeeScores, getEmployeeScore } from '../../services/employeeScoring';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import PersonalFaceAuth from '../../components/attendance/PersonalFaceAuth';
 
 
 // --- Profile Section ---
@@ -109,6 +110,12 @@ const ProfilePage: React.FC = () => {
     
     // Work Mode Selection State
     const [siteWorkMode, setSiteWorkMode] = useState<'duty' | 'ot'>('duty');
+    
+    // Biometric Enrollment State
+    const [showFaceEnroll, setShowFaceEnroll] = useState(false);
+    
+    // Settings Modal State
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     // Children State (for female employees)
     const [children, setChildren] = useState<UserChild[]>([]);
@@ -506,7 +513,8 @@ const ProfilePage: React.FC = () => {
     const tasksLink = canManageTasks ? '/tasks' : '/onboarding/tasks';
     const getRoleName = (role: string) => role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-    if (!user) return <div>Loading user profile...</div>;
+    if (!user) return <LoadingScreen message="Initializing profile..." />;
+    if (isScoresLoading) return <LoadingScreen message="Syncing performance data..." />;
 
     const avatarFile: UploadedFile | null = user.photoUrl
         ? { preview: user.photoUrl, name: 'Profile Photo', type: 'image/jpeg', size: 0 }
@@ -594,6 +602,14 @@ const ProfilePage: React.FC = () => {
                             >
                                 <Camera className="w-3 h-3" />
                                 Capture
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); setIsSettingsOpen(true); }}
+                                className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 rounded-full active:scale-95 transition-all hover:bg-emerald-500/20"
+                            >
+                                <Settings className="w-3 h-3" />
+                                Settings
                             </button>
                         </div>
                     </motion.div>
@@ -1054,49 +1070,7 @@ const ProfilePage: React.FC = () => {
                         </div>
                     </section>
 
-                    {/* Secondary Management Sections */}
-                    <div className="space-y-8 px-2 pb-24 text-white">
-                        {/* Profile Details Fragment */}
-                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <UserIcon className="h-5 w-5 text-emerald-400" />
-                                <h3 className="text-sm font-black uppercase tracking-widest">Identity Details</h3>
-                            </div>
-                            <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
-                                <div className="space-y-4">
-                                    <Input label="Display Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
-                                    <Input label="Contact Direct" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
-                                    <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-gray-500 uppercase">Biological Gender</label>
-                                        <select {...register('gender')} className="w-full bg-black/20 border border-white/5 rounded-xl h-12 px-4 text-sm font-bold text-white focus:border-emerald-500 outline-none transition-all">
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-4">Update Profile</Button>
-                            </form>
-                        </section>
-
-                        {/* Security Pin Section */}
-                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <Lock className="h-5 w-5 text-amber-400" />
-                                <h3 className="text-sm font-black uppercase tracking-widest">Security Pin</h3>
-                            </div>
-                            <p className="text-[11px] text-gray-400 mb-6 leading-relaxed uppercase font-bold tracking-tight">4-digit code required for high-security attendance verification.</p>
-                            <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-12 rounded-xl font-black uppercase tracking-widest text-xs mt-2">Update Security</Button>
-                            </form>
-                        </section>
-
-                        {/* Alert Tone Picker Section */}
-                        <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                            <AlertTonePicker />
-                        </section>
+                    {/* Secondary Management Sections - MOVED to Settings Modal */}
 
                         {/* Family Section Fragment */}
                         {user.gender === 'Female' && (
@@ -1132,13 +1106,112 @@ const ProfilePage: React.FC = () => {
                             </section>
                         )}
                     </div>
-                </div>
-            </div>
-        );
-    }
 
-    if (isScoresLoading) {
-        return <LoadingScreen message="Loading page data..." />;
+                    {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
+                    <AnimatePresence>
+                        {isSettingsOpen && (
+                            <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-2xl flex flex-col"
+                            >
+                                {/* Modal Header */}
+                                <div className="flex items-center justify-between p-6 border-b border-white/5">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                                            <Settings className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">Settings</h2>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Configuration Center</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => setIsSettingsOpen(false)}
+                                        className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
+                                    >
+                                        <ArrowLeft className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Modal Content */}
+                                <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+                                     {/* 1. Biometric Security Card */}
+                                     <section>
+                                        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-4 opacity-10">
+                                                <Shield className="w-16 h-16 text-emerald-400" />
+                                            </div>
+                                            <div className="relative z-10 space-y-4">
+                                                <div className="space-y-1">
+                                                    <h3 className="text-white font-black uppercase tracking-tighter italic text-xl">Biometrics</h3>
+                                                    <p className="text-emerald-400/60 text-[10px] font-bold uppercase tracking-widest">Face ID Enrollment</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
+                                                    className="w-full py-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Camera className="w-4 h-4" />
+                                                    Re-enroll Face
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {/* 2. Identity Details */}
+                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <UserIcon className="h-5 w-5 text-emerald-400" />
+                                            <h3 className="text-sm font-black uppercase tracking-widest italic">Identity</h3>
+                                        </div>
+                                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                                            <Input label="Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
+                                            <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
+                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Update Identity</Button>
+                                        </form>
+                                    </section>
+
+                                    {/* 3. Security Pin */}
+                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <Lock className="h-5 w-5 text-amber-400" />
+                                            <h3 className="text-sm font-black uppercase tracking-widest italic">Security Pin</h3>
+                                        </div>
+                                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                            <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                            <Input label="New Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                            <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Change Pin</Button>
+                                        </form>
+                                    </section>
+
+                                    {/* 4. Alert Tone */}
+                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                        <AlertTonePicker />
+                                    </section>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Biometric Enrollment Modal (Mobile) */}
+                    <AnimatePresence>
+                        {showFaceEnroll && user && (
+                            <div className="fixed inset-0 z-[120]">
+                                <PersonalFaceAuth 
+                                    userId={user.id} 
+                                    onVerified={() => {
+                                        setShowFaceEnroll(false);
+                                        setToast({ message: 'Biometrics updated!', type: 'success' });
+                                    }} 
+                                    onCancel={() => setShowFaceEnroll(false)}
+                                    actionLabel="Enrollment"
+                                />
+                            </div>
+                        )}
+                    </AnimatePresence>
+                </div>
+        );
     }
 
     return (
@@ -1186,6 +1259,14 @@ const ProfilePage: React.FC = () => {
                             >
                                 <Camera className="w-4 h-4 mr-2 flex-shrink-0" />
                                 Capture
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); setIsSettingsOpen(true); }}
+                                className="inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-emerald-600/20 bg-emerald-50 text-emerald-700 text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                            >
+                                <Settings className="w-4 h-4 mr-2 flex-shrink-0" />
+                                Profile Settings
                             </button>
                         </div>
                     </div>
@@ -1710,6 +1791,122 @@ const ProfilePage: React.FC = () => {
                 </div>
             </div>
 
+
+            {/* ═══ SETTINGS MODAL ═══ */}
+            <AnimatePresence>
+                {isSettingsOpen && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-xl flex flex-col"
+                    >
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/5">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                                    <Settings className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">App Settings</h2>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Personalize your experience</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setIsSettingsOpen(false)}
+                                className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
+                            >
+                                <ArrowLeft className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-10 pb-32">
+                             {/* 1. Biometric Security Card */}
+                             <section>
+                                <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                        <Shield className="w-16 h-16 text-emerald-400" />
+                                    </div>
+                                    <div className="relative z-10 space-y-4">
+                                        <div className="space-y-1">
+                                            <h3 className="text-white font-black uppercase tracking-tighter italic text-xl leading-none">Biometric Security</h3>
+                                            <p className="text-emerald-400/60 text-[11px] font-bold uppercase tracking-widest">Face Recognition Enrollment</p>
+                                        </div>
+                                        <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">Update your face biometric profile for secure attendance verification.</p>
+                                        <button 
+                                            onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
+                                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-900/40 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Camera className="w-4 h-4" />
+                                            Re-enroll My Face
+                                        </button>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* 2. Identity Details Fragment */}
+                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <UserIcon className="h-5 w-5 text-emerald-400" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest italic">Identity Details</h3>
+                                </div>
+                                <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                                    <div className="space-y-4">
+                                        <Input label="Display Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
+                                        <Input label="Contact Direct" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
+                                        <div className="space-y-1">
+                                            <label className="block text-[10px] font-black text-gray-500 uppercase">Biological Gender</label>
+                                            <select {...register('gender')} className="w-full bg-black/20 border border-white/5 rounded-xl h-12 px-4 text-sm font-bold text-white focus:border-emerald-500 outline-none transition-all">
+                                                <option value="Male">Male</option>
+                                                <option value="Female">Female</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-4 italic shadow-lg shadow-emerald-900/20">Save Identity Changes</Button>
+                                </form>
+                            </section>
+
+                            {/* 3. Security Pin Section */}
+                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <Lock className="h-5 w-5 text-amber-400" />
+                                    <h3 className="text-sm font-black uppercase tracking-widest italic">Security Pin</h3>
+                                </div>
+                                <p className="text-[11px] text-gray-400 mb-6 leading-relaxed uppercase font-bold tracking-tight">4-digit code required for high-security attendance verification.</p>
+                                <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                    <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                    <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                    <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic shadow-lg shadow-amber-900/20">Update Security Pin</Button>
+                                </form>
+                            </section>
+
+                            {/* 4. Alert Tone Picker Section */}
+                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
+                                <AlertTonePicker />
+                            </section>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Biometric Enrollment Modal */}
+            <AnimatePresence>
+                {showFaceEnroll && user && (
+                    <div className="fixed inset-0 z-[100]">
+                        <PersonalFaceAuth 
+                            userId={user.id} 
+                            onVerified={() => {
+                                setShowFaceEnroll(false);
+                                setToast({ message: 'Biometrics updated successfully!', type: 'success' });
+                            }} 
+                            onCancel={() => setShowFaceEnroll(false)}
+                            actionLabel="Enrollment Update"
+                        />
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

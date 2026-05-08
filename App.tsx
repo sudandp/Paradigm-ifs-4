@@ -374,19 +374,20 @@ const App: React.FC = () => {
 
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
-  const { isKioskMode, setKioskMode, setDeviceId } = useGateStore();
+  const { isKioskMode, setKioskMode: updateKioskMode, setDeviceId, isKioskSkipped, setKioskSkipped } = useGateStore();
 
   // ── Kiosk Mode Initialization ──────────────────────────────────────────────
   useEffect(() => {
     const checkKiosk = async () => {
       try {
-        if (!Capacitor.isNativePlatform()) {
+        if (!Capacitor.isNativePlatform() || isKioskSkipped) {
           setIsCheckingKiosk(false);
+          setShowProvision(false);
           return;
         }
 
         const { active } = await KioskPlugin.isKioskActive();
-        setKioskMode(active);
+        updateKioskMode(active);
 
         if (active) {
           setIsCheckingKiosk(false);
@@ -414,7 +415,7 @@ const App: React.FC = () => {
       }
     };
     checkKiosk();
-  }, [setKioskMode, setDeviceId]);
+  }, [updateKioskMode, setDeviceId, isKioskSkipped]);
 
   // ── Listen for web-side break alert timer events ──────────────────────────
   // permissionUtils.ts dispatches 'break-alert-trigger' via setInterval on web.
@@ -1197,7 +1198,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (showProvision) {
+  if (showProvision && !isKioskSkipped) {
     return (
       <Suspense fallback={<Splash onComplete={() => {}} />}>
         <KioskProvision />

@@ -11,7 +11,7 @@ const KioskProvision: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [adminPin, setAdminPin] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { setKioskMode } = useGateStore();
+  const { setKioskMode, setKioskSkipped } = useGateStore();
 
   useEffect(() => {
     // Fetch the correct admin PIN from Supabase config table
@@ -101,6 +101,15 @@ const KioskProvision: React.FC = () => {
           className="w-full py-4 mt-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-bold text-lg transition-all shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2"
         >
           {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Activate Kiosk'}
+        </button>
+
+        <button
+          onClick={() => {
+            setKioskSkipped(true);
+          }}
+          className="w-full py-3 mt-2 rounded-2xl bg-white/5 hover:bg-white/10 text-emerald-400 font-black uppercase tracking-widest text-xs transition-all border border-emerald-500/20"
+        >
+          Login as Employee
         </button>
       </div>
     </div>

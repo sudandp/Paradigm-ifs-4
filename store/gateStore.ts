@@ -67,6 +67,8 @@ interface GateStore {
   setLocationName: (name: string | null) => void;
   isKioskMode: boolean;
   setKioskMode: (active: boolean) => void;
+  isKioskSkipped: boolean;
+  setKioskSkipped: (skipped: boolean) => void;
 }
 
 const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -130,6 +132,8 @@ export const useGateStore = create<GateStore>()(
       setLocationName: (name) => set({ locationName: name }),
       isKioskMode: false,
       setKioskMode: (active) => set({ isKioskMode: active }),
+      isKioskSkipped: false,
+      setKioskSkipped: (skipped) => set({ isKioskSkipped: skipped }),
     }),
     {
       name: 'gate-kiosk-storage',
@@ -139,7 +143,8 @@ export const useGateStore = create<GateStore>()(
         kioskPin: state.kioskPin,
         deviceId: state.deviceId,
         locationName: state.locationName,
-        isKioskMode: state.isKioskMode
+        isKioskMode: state.isKioskMode,
+        isKioskSkipped: state.isKioskSkipped
       }),
     }
   )

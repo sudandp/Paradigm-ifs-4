@@ -7,6 +7,8 @@ import { LogIn, LogOut, Clock, CheckCircle, Coffee, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
 import { api } from '../../services/api';
+import PersonalFaceAuth from '../../components/attendance/PersonalFaceAuth';
+import { lookupByPasscode, getGateUserByUserId } from '../../services/gateApi';
 
 
 const AttendanceActionPage: React.FC = () => {
@@ -18,6 +20,13 @@ const AttendanceActionPage: React.FC = () => {
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
     const [breakInterval, setBreakInterval] = useState<number>(0.1666);
+    
+    // Face Authentication State
+    const [showFaceAuth, setShowFaceAuth] = useState(false);
+    const [usePasscodeFallback, setUsePasscodeFallback] = useState(false);
+    const [passcode, setPasscode] = useState('');
+    const [isVerifyingPasscode, setIsVerifyingPasscode] = useState(false);
+    const [isVerified, setIsVerified] = useState(false);
 
     React.useEffect(() => {
         const init = async () => {
@@ -60,6 +69,12 @@ const AttendanceActionPage: React.FC = () => {
     }
 
     const handleConfirm = async () => {
+        // If not verified yet, trigger face auth
+        if (!isVerified) {
+            setShowFaceAuth(true);
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             // Use cached geofencing settings for immediate response
@@ -97,6 +112,36 @@ const AttendanceActionPage: React.FC = () => {
             setToast({ message: 'Failed to process request.', type: 'error' });
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleFaceVerified = () => {
+        setIsVerified(true);
+        setShowFaceAuth(false);
+        // Automatically trigger confirm after verification
+        setTimeout(() => {
+            handleConfirm();
+        }, 500);
+    };
+
+    const handlePasscodeSubmit = async () => {
+        if (passcode.length < 4) return;
+        setIsVerifyingPasscode(true);
+        try {
+            const user = await lookupByPasscode(passcode);
+            if (user && user.userId === useAuthStore.getState().user?.id) {
+                setToast({ message: 'Passcode verified!', type: 'success' });
+                setIsVerified(true);
+                setShowFaceAuth(false);
+                setUsePasscodeFallback(false);
+                setTimeout(() => handleConfirm(), 500);
+            } else {
+                setToast({ message: 'Invalid passcode for this user.', type: 'error' });
+            }
+        } catch (err) {
+            setToast({ message: 'Error verifying passcode.', type: 'error' });
+        } finally {
+            setIsVerifyingPasscode(false);
         }
     };
 
@@ -229,6 +274,59 @@ const AttendanceActionPage: React.FC = () => {
                 onConfirm={handleReportConfirm}
                 isLoading={isSubmitting}
             />
+
+            {/* Face Authentication Overlay */}
+            {showFaceAuth && (
+                <PersonalFaceAuth 
+                    userId={useAuthStore.getState().user?.id || ''}
+                    actionLabel={action}
+                    onVerified={handleFaceVerified}
+                    onCancel={() => setShowFaceAuth(false)}
+                    onFallback={() => setUsePasscodeFallback(true)}
+                />
+            )}
+
+            {/* Passcode Fallback Modal */}
+            <AnimatePresence>
+                {usePasscodeFallback && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-6">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="w-full max-w-xs bg-white rounded-3xl p-8 text-center shadow-2xl"
+                        >
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-lg font-black uppercase tracking-tight text-gray-900">Enter Passcode</h3>
+                                <button onClick={() => setUsePasscodeFallback(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                                    <X className="w-5 h-5 text-gray-400" />
+                                </button>
+                            </div>
+                            
+                            <p className="text-xs text-gray-500 mb-8 font-medium">Use your 4-digit gate passcode to verify.</p>
+                            
+                            <input 
+                                type="password"
+                                maxLength={4}
+                                value={passcode}
+                                onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ''))}
+                                className="w-full text-center text-3xl font-black tracking-[0.5em] py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all mb-8"
+                                placeholder="****"
+                                autoFocus
+                            />
+
+                            <Button 
+                                onClick={handlePasscodeSubmit}
+                                isLoading={isVerifyingPasscode}
+                                disabled={passcode.length < 4}
+                                className="w-full !rounded-2xl !py-4 font-black uppercase tracking-widest italic !bg-emerald-600 !border-emerald-700"
+                            >
+                                Verify Passcode
+                            </Button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

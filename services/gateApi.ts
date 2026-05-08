@@ -23,7 +23,7 @@ function generatePasscode(): string {
 // ─── Gate Users ────────────────────────────────────────────────────────────────
 
 // Normalize face_descriptor from JSONB — Supabase may return nested/non-array formats
-function normalizeFaceDescriptor(raw: any): number[] | null {
+export function normalizeFaceDescriptor(raw: any): number[] | null {
   if (!raw) return null;
   // If it's already a flat array of numbers
   if (Array.isArray(raw) && raw.length === 128 && typeof raw[0] === 'number') return raw;
@@ -107,6 +107,36 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
+}
+
+export async function getGateUserByUserId(userId: string): Promise<GateUser | null> {
+  const { data, error } = await supabase
+    .from('gate_users')
+    .select(`
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
+      department, is_active, created_at, updated_at,
+      users:user_id (name, email, photo_url)
+    `)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    userName: (data as any).users?.name || 'Unknown',
+    userEmail: (data as any).users?.email || '',
+    userPhotoUrl: (data as any).users?.photo_url || data.photo_url,
+    faceDescriptor: normalizeFaceDescriptor(data.face_descriptor),
+    qrToken: data.qr_token,
+    passcode: data.passcode,
+    photoUrl: data.photo_url,
+    department: data.department,
+    isActive: data.is_active,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
 }
 
 export async function registerGateUser(params: {
