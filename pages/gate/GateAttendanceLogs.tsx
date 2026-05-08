@@ -62,11 +62,12 @@ const GateAttendanceLogs: React.FC = () => {
 
   // Export CSV
   const exportCsv = () => {
-    const headers = ['Name', 'Department', 'Method', 'Confidence', 'Time', 'Notes'];
+    const headers = ['Name', 'Department', 'Method', 'Device', 'Confidence', 'Time', 'Notes'];
     const rows = filtered.map((l) => [
       l.userName || '',
       l.department || '',
       l.method,
+      l.deviceInfo?.deviceName || 'Web Browser',
       l.confidence ? (l.confidence * 100).toFixed(1) + '%' : '',
       format(new Date(l.markedAt), 'hh:mm:ss a'),
       l.notes || '',
@@ -162,6 +163,7 @@ const GateAttendanceLogs: React.FC = () => {
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Employee</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Department</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Method</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Device</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Confidence</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Time</th>
                   </tr>
@@ -184,6 +186,9 @@ const GateAttendanceLogs: React.FC = () => {
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${METHOD_COLORS[log.method]}`}>
                           {METHOD_ICONS[log.method]} {log.method}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted text-xs">
+                        {log.deviceInfo?.deviceName || '—'}
                       </td>
                       <td className="px-4 py-3 text-muted">
                         {log.confidence ? `${(log.confidence * 100).toFixed(1)}%` : '—'}
@@ -210,7 +215,8 @@ const GateAttendanceLogs: React.FC = () => {
                   }
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-primary-text text-sm truncate">{log.userName}</p>
-                    <p className="text-xs text-muted">{log.department || '—'} • {format(new Date(log.markedAt), 'hh:mm a')}</p>
+                    <p className="text-xs text-muted truncate">{log.department || '—'} • {format(new Date(log.markedAt), 'hh:mm a')}</p>
+                    <p className="text-[10px] text-accent/60 font-medium truncate">{log.deviceInfo?.deviceName || 'Web'}</p>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${METHOD_COLORS[log.method]}`}>
                     {log.method}

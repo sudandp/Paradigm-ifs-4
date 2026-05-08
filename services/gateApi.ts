@@ -150,24 +150,13 @@ export async function updateGateUserDescriptor(gateUserId: string, faceDescripto
 }
 
 export async function deactivateGateUser(gateUserId: string): Promise<void> {
-  // Hard delete — the old soft-delete (is_active=false) was failing because:
-  // 1. No RLS DELETE policy existed
-  // 2. fetchAllGateUsers() showed deactivated users anyway
-  // Try hard delete first; fall back to soft-delete if RLS blocks it
-  const { error: deleteError } = await supabase
+  // Soft delete — preserves history in gate_attendance_logs
+  const { error } = await supabase
     .from('gate_users')
-    .delete()
+    .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', gateUserId);
 
-  if (deleteError) {
-    // Fallback: soft-delete if DELETE policy is missing
-    console.warn('[gateApi] Hard delete failed, falling back to soft-delete:', deleteError.message);
-    const { error: updateError } = await supabase
-      .from('gate_users')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('id', gateUserId);
-    if (updateError) throw new Error(updateError.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 // ─── Gate Attendance Logs ──────────────────────────────────────────────────────
@@ -179,6 +168,7 @@ export async function markGateAttendance(params: {
   confidence?: number;
   imageProofUrl?: string;
   notes?: string;
+  deviceName?: string;
 }): Promise<GateAttendanceLog> {
   const { data, error } = await supabase
     .from('gate_attendance_logs')
@@ -192,6 +182,7 @@ export async function markGateAttendance(params: {
       device_info: {
         userAgent: navigator.userAgent,
         screen: `${screen.width}x${screen.height}`,
+        deviceName: params.deviceName || 'Web Browser',
       },
     })
     .select()

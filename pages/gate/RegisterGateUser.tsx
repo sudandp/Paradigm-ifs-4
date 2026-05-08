@@ -12,8 +12,10 @@ import type { GateUser } from '../../types/gate';
 import { useLogoStore } from '../../store/logoStore';
 import {
   ArrowLeft, Camera, QrCode, User, UserPlus, Trash2, CheckCircle2,
-  Loader2, Search, Download, RefreshCw, Shield, AlertTriangle, Printer, X
+  Loader2, Search, Download, RefreshCw, Shield, AlertTriangle, Printer, X, Clock, Settings
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
 
 const RegisterGateUser: React.FC = () => {
   const navigate = useNavigate();
@@ -21,597 +23,671 @@ const RegisterGateUser: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [gateUsers, setGateUsers] = useState<GateUser[]>([]);
+  const { currentLogo } = useLogoStore();
+
+  const [users, setUsers] = useState<GateUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-
-  // Registration form
+  
   const [showForm, setShowForm] = useState(false);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
-  const [empSearch, setEmpSearch] = useState('');
+  const [registering, setRegistering] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
-  const [department, setDepartment] = useState('');
-  const [registering, setRegistering] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
-  const [faceApiLoaded, setFaceApiLoaded] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [empSearch, setEmpSearch] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+
+  // Print ID Card state
   const [printUser, setPrintUser] = useState<GateUser | null>(null);
-  const [printBloodGroup, setPrintBloodGroup] = useState<string>('B+ Positive');
-  const [printCompanyName, setPrintCompanyName] = useState<string>(
-    () => localStorage.getItem('printCompanyName') || 'PARADIGM SERVICES'
-  );
-  const [printTerms, setPrintTerms] = useState<string>(
-    () => localStorage.getItem('printTerms') || 'This card is property of Paradigm Services. If found, please return to the office address.'
-  );
-  const [printAddress, setPrintAddress] = useState<string>(
-    () => localStorage.getItem('printAddress') || 'Paradigm Services\n123 Business Road'
-  );
-  
-  const currentLogo = useLogoStore(state => state.currentLogo);
+  const [printCompanyName, setPrintCompanyName] = useState('PARADIGM OFFICE');
+  const [printBloodGroup, setPrintBloodGroup] = useState('B+');
+  const [printTerms, setPrintTerms] = useState('1. This card is property of the company.\n2. Loss must be reported immediately.\n3. Return upon termination of employment.');
+  const [printAddress, setPrintAddress] = useState('Plot No. 42, Knowledge Park III,\nGreater Noida, UP - 201310');
+  const [printEmployeeId, setPrintEmployeeId] = useState('');
+
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('printCompanyName', printCompanyName);
-  }, [printCompanyName]);
-  
-  useEffect(() => {
-    localStorage.setItem('printTerms', printTerms);
-  }, [printTerms]);
-  
-  useEffect(() => {
-    localStorage.setItem('printAddress', printAddress);
-  }, [printAddress]);
+    if (showForm && !modelsLoaded) {
+      loadModels();
+    }
+  }, [showForm, modelsLoaded]);
 
-  // Load face-api.js
+  const loadModels = async () => {
+    try {
+      setModelsLoading(true);
+      const faceapi = await import('face-api.js');
+      const MODEL_URL = '/models';
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+      ]);
+      setModelsLoaded(true);
+    } catch (err) {
+      console.error('Failed to load face-api models:', err);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        const faceapi = await import('face-api.js');
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ]);
-        setFaceApiLoaded(true);
-      } catch (err) {
-        console.error('Failed to load face-api models:', err);
-      }
-    })();
+    if (printUser) {
+      setPrintEmployeeId(printUser.userId.substring(0, 8).toUpperCase());
+    }
+  }, [printUser]);
+
+  useEffect(() => {
+    loadUsers();
+    loadEmployees();
+    
+    // Load saved ID card settings
+    const savedCompany = localStorage.getItem('print_id_company');
+    const savedAddress = localStorage.getItem('print_id_address');
+    const savedTerms = localStorage.getItem('print_id_terms');
+    if (savedCompany) setPrintCompanyName(savedCompany);
+    if (savedAddress) setPrintAddress(savedAddress);
+    if (savedTerms) setPrintTerms(savedTerms);
   }, []);
 
-  // Fetch registered gate users
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
+  // Persist settings
+  useEffect(() => {
+    localStorage.setItem('print_id_company', printCompanyName);
+    localStorage.setItem('print_id_address', printAddress);
+    localStorage.setItem('print_id_terms', printTerms);
+  }, [printCompanyName, printAddress, printTerms]);
+
+  const loadUsers = async () => {
     try {
-      const users = await fetchAllGateUsers();
-      setGateUsers(users);
+      const data = await fetchAllGateUsers();
+      setUsers(data);
     } catch (err) {
       console.error('Failed to load gate users:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
-
-  // Fetch available employees for registration
-  useEffect(() => {
-    if (!showForm) return;
-    (async () => {
-      try {
-        const { data, error } = await supabase.from('users').select('id, name, email, photo_url, role_id').neq('role_id', 'unverified').order('name');
-        if (error) throw error;
-        setEmployees(data || []);
-      } catch (err) {
-        console.error('Error fetching employees for gate registration:', err);
-      }
-    })();
-  }, [showForm]);
-
-  // Camera controls
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      setCameraActive(true);
-    } catch (err) {
-      console.error('Camera error:', err);
-      setMessage({ text: 'Camera access denied', type: 'error' });
-    }
+  const loadEmployees = async () => {
+    const { data } = await supabase.from('users').select('id, name, email, photo_url').order('name');
+    setEmployees(data || []);
   };
 
   useEffect(() => {
     if (cameraActive && streamRef.current && videoRef.current) {
       videoRef.current.srcObject = streamRef.current;
-      videoRef.current.play().catch((err) => console.error('Error playing video:', err));
     }
+    return () => {
+      // Cleanup on unmount or when cameraActive becomes false
+      if (!cameraActive && videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
   }, [cameraActive]);
+
+  // Global cleanup
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: 640, height: 480 } 
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+    } catch (err) {
+      console.error('Camera failed:', err);
+      alert('Could not access camera');
+    }
+  };
 
   const stopCamera = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setCameraActive(false);
   };
 
-  useEffect(() => () => stopCamera(), []);
-
-  // Capture photo and compute descriptor
   const captureAndCompute = async () => {
-    if (!videoRef.current || !canvasRef.current || !faceApiLoaded) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    ctx.drawImage(videoRef.current, 0, 0);
-
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    setCapturedPhoto(dataUrl);
-    stopCamera();
-
-    // Compute face descriptor
+    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
+    
     try {
       const faceapi = await import('face-api.js');
-      const img = await faceapi.fetchImage(dataUrl);
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
-        .withFaceLandmarks(true)
-        .withFaceDescriptor();
+      const detection = await faceapi.detectSingleFace(
+        videoRef.current, 
+        new faceapi.TinyFaceDetectorOptions()
+      ).withFaceLandmarks(true).withFaceDescriptor();
 
-      if (detection) {
-        setFaceDescriptor(Array.from(detection.descriptor));
-        setMessage({ text: 'Face detected successfully!', type: 'success' });
-      } else {
-        setFaceDescriptor(null);
-        setMessage({ text: 'No face detected. Please retake photo with face clearly visible.', type: 'error' });
+      if (!detection) {
+        alert('No face detected. Please ensure your face is clearly visible and try again.');
+        return;
       }
+
+      const canvas = canvasRef.current;
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        setCapturedPhoto(canvas.toDataURL('image/jpeg', 0.8));
+      }
+      
+      setFaceDescriptor(Array.from(detection.descriptor));
+      stopCamera();
     } catch (err) {
-      console.error('Face descriptor error:', err);
-      setFaceDescriptor(null);
-      setMessage({ text: 'Failed to compute face descriptor', type: 'error' });
+      console.error('Capture failed:', err);
+      alert('Capture failed. Please try again.');
     }
   };
 
-  // Register user
   const handleRegister = async () => {
     if (!selectedEmployee) return;
     setRegistering(true);
-    setMessage(null);
-
     try {
-      let photoUrl: string | undefined;
+      let finalPhotoUrl = selectedEmployee.photo_url;
+      
       if (capturedPhoto) {
-        const b64 = capturedPhoto.split(',')[1];
-        photoUrl = await uploadGatePhoto(b64, 'registration', `${selectedEmployee.id}.jpg`);
+        const base64 = capturedPhoto.split(',')[1];
+        finalPhotoUrl = await uploadGatePhoto(base64, 'registration');
       }
 
       await registerGateUser({
         userId: selectedEmployee.id,
         faceDescriptor,
-        photoUrl,
-        department,
+        photoUrl: finalPhotoUrl,
+        department: 'General',
       });
 
-      setMessage({ text: `${selectedEmployee.name} registered successfully!`, type: 'success' });
+      setShowForm(false);
       setCapturedPhoto(null);
       setFaceDescriptor(null);
       setSelectedEmployee(null);
-      setEmpSearch('');
-      setDepartment('');
-      setShowForm(false);
       loadUsers();
-    } catch (err: any) {
-      setMessage({ text: err.message || 'Registration failed', type: 'error' });
+    } catch (err) {
+      console.error('Registration failed:', err);
+      alert('Registration failed');
     } finally {
       setRegistering(false);
     }
   };
 
-  // Deactivate user
-  const handleDeactivate = async (user: GateUser) => {
-    if (!confirm(`Remove ${user.userName} from gate attendance?`)) return;
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Deactivate this user?')) return;
     try {
-      await deactivateGateUser(user.id);
+      await deactivateGateUser(id);
       loadUsers();
-    } catch (err: any) {
-      setMessage({ text: err.message, type: 'error' });
+    } catch (err) {
+      console.error('Deactivation failed:', err);
     }
   };
 
-  // Generate QR code image URL (using a public API for simplicity)
-  const getQrImageUrl = (token: string) =>
-    `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(token)}&bgcolor=ffffff&color=052e16`;
-
-  // Filter
-  const filtered = gateUsers.filter((u) =>
-    (u.userName || '').toLowerCase().includes(search.toLowerCase()) ||
-    (u.department || '').toLowerCase().includes(search.toLowerCase())
+  const filtered = users.filter(u => 
+    u.isActive && (
+      (u.userName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (u.userEmail || '').toLowerCase().includes(search.toLowerCase())
+    )
   );
-  const filteredEmps = empSearch.length >= 2
-    ? employees.filter((e) =>
-        e.name.toLowerCase().includes(empSearch.toLowerCase()) ||
-        e.email.toLowerCase().includes(empSearch.toLowerCase())
-      ).slice(0, 8)
-    : [];
+
+  const filteredEmployees = employees.filter(e =>
+    e.name.toLowerCase().includes(empSearch.toLowerCase()) ||
+    e.email.toLowerCase().includes(empSearch.toLowerCase())
+  ).slice(0, 5);
+
+  const getQrImageUrl = (token: string) => {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${token}`;
+  };
 
   return (
-    <div className="min-h-screen bg-page">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-card border-b border-border px-4 md:px-6 py-4 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-muted" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-primary-text">Gate User Registration</h1>
-          <p className="text-xs text-muted">{gateUsers.length} users registered</p>
+    <div className="p-4 md:p-8 w-full pb-24">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-10 mb-10 pb-6 border-b border-gray-100">
+        <div className="flex-shrink-0">
+          <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-xs font-bold text-muted hover:text-accent uppercase tracking-wider mb-2 transition-colors">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back
+          </button>
+          <h1 className="text-3xl font-black text-primary-text tracking-tight">Gate Registration</h1>
+          <p className="text-muted text-sm font-medium">Manage employee biometric & QR access</p>
         </div>
-        <button onClick={() => { setShowForm(true); setMessage(null); }}
-          className="btn btn-md btn-primary flex items-center gap-2">
-          <UserPlus className="w-4 h-4" /> Register
-        </button>
+
+        <div className="flex-1 max-w-md relative group">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted group-focus-within:text-accent transition-colors">
+            <Search className="w-5 h-5" />
+          </div>
+          <input 
+            type="text" 
+            placeholder="Search users..." 
+            className="form-input !pl-12 h-12 text-base shadow-sm border-gray-200 focus:border-accent transition-all rounded-2xl bg-gray-50/50 focus:bg-white w-full"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="lg:ml-auto">
+          <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-2.5 p-3.5 md:px-6 md:py-3 rounded-2xl shadow-lg shadow-accent/20 hover:shadow-accent/40 transform active:scale-95 transition-all">
+            <UserPlus className="w-6 h-6 md:w-5 md:h-5" /> 
+            <span className="font-bold hidden md:inline">Register New</span>
+          </button>
+        </div>
       </div>
 
-      {/* Message Banner */}
-      {message && (
-        <div className={`mx-4 md:mx-6 mt-4 px-4 py-3 rounded-xl flex items-center gap-3 text-sm font-medium ${
-          message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
-          {message.text}
+      {/* Users Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-10 h-10 animate-spin text-accent" />
         </div>
-      )}
-
-      <div className="p-4 md:p-6">
-        {/* Search */}
-        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center bg-white p-3 md:p-5 rounded-3xl border border-border shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl mb-4">
-          <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-muted group-focus-within:text-accent transition-colors max-md:text-white/20" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search registered users..."
-              className="w-full h-11 md:h-12 bg-page border border-border rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base text-primary-text placeholder:text-muted focus:ring-2 focus:ring-accent/20 outline-none transition-all max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]"
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-accent animate-spin" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20 text-muted text-sm">No registered users found</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((u) => (
-              <div key={u.id} className="bg-card rounded-2xl border border-border p-4 shadow-card hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3 mb-3">
-                  {u.userPhotoUrl
-                    ? <img src={u.userPhotoUrl} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-accent/20" />
-                    : <div className="w-12 h-12 rounded-full bg-accent-light flex items-center justify-center"><User className="w-6 h-6 text-accent" /></div>
-                  }
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-primary-text text-sm truncate">{u.userName}</p>
-                    <p className="text-xs text-muted truncate">{u.department || u.userEmail}</p>
-                  </div>
-                  <button onClick={() => setPrintUser(u)} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Print ID Card">
-                    <Printer className="w-4 h-4 text-emerald-600" />
-                  </button>
-                  <button onClick={() => handleDeactivate(u)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Remove">
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map(u => (
+            <div key={u.id} className="bg-card rounded-2xl border border-border shadow-sm hover:shadow-md transition-all overflow-hidden group">
+              <div className="p-5 flex gap-4">
+                <div className="relative">
+                  {u.userPhotoUrl ? (
+                    <img src={u.userPhotoUrl} alt="" className="w-20 h-20 rounded-2xl object-cover border border-border" />
+                  ) : (
+                    <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center"><User className="w-8 h-8 text-gray-300" /></div>
+                  )}
+                  {u.faceDescriptor && (
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center" title="Face Registered">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <div className={`w-2 h-2 rounded-full ${u.faceDescriptor ? 'bg-emerald-400' : 'bg-gray-300'}`} />
-                    <span className="text-muted">Face {u.faceDescriptor ? '✓' : '✗'}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <QrCode className="w-3 h-3 text-muted" />
-                    <span className="text-muted font-mono">{u.qrToken}</span>
-                  </div>
-                </div>
-                {/* QR Code preview */}
-                <div className="mt-4 flex justify-center">
-                  <div className="p-3.5 bg-[#f0fdf4] border border-emerald-500/10 rounded-2xl shadow-inner hover:scale-105 hover:shadow-sm transition-all duration-300">
-                    <img src={getQrImageUrl(u.qrToken)} alt="QR" className="w-24 h-24 rounded-lg mix-blend-multiply" loading="lazy" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-primary-text truncate">{u.userName || 'Unknown'}</h3>
+                  <p className="text-xs text-muted truncate mb-2">{u.userEmail}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] font-bold text-muted uppercase tracking-wider">{u.department || 'General'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                      {u.isActive ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <div className="px-5 py-3 bg-gray-50/50 border-t border-border flex items-center justify-between">
+                <div className="flex gap-2">
+                  <button onClick={() => setPrintUser(u)} className="p-2 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all" title="Print ID Card">
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => window.open(getQrImageUrl(u.qrToken))} className="p-2 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all" title="View QR">
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                </div>
+                <button onClick={() => handleDelete(u.id)} className="p-2 rounded-xl bg-white border border-border hover:border-red-500 hover:text-red-500 transition-all" title="Deactivate">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              
+              {/* QR Preview Hidden */}
+              <div className="hidden">
+                <div id={`qr-${u.id}`} className="p-4 bg-white flex flex-col items-center">
+                  <p className="font-bold text-sm mb-2">{u.userName}</p>
+                  <img src={getQrImageUrl(u.qrToken)} alt="QR" className="w-24 h-24 rounded-lg mix-blend-multiply" loading="lazy" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ─── Registration Modal ──────────────────────────────────── */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card rounded-3xl shadow-xl border border-border w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-primary-text">Register New User</h2>
-                <button onClick={() => { setShowForm(false); stopCamera(); setCapturedPhoto(null); setFaceDescriptor(null); setSelectedEmployee(null); }}
-                  className="p-2 rounded-xl hover:bg-gray-100">✕</button>
-              </div>
-
-              {/* Employee Search */}
-              <div className="mb-4">
-                <label className="text-xs font-semibold text-muted uppercase mb-1 block">Select Employee</label>
-                <input type="text" value={empSearch}
-                  onChange={(e) => { setEmpSearch(e.target.value); setSelectedEmployee(null); }}
-                  placeholder="Search by name or email..."
-                  className="form-input" />
-                {filteredEmps.length > 0 && !selectedEmployee && (
-                  <div className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-border divide-y divide-border">
-                    {filteredEmps.map((e) => (
-                      <button key={e.id} onClick={() => { setSelectedEmployee(e); setEmpSearch(e.name); }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 text-left text-sm">
-                        {e.photo_url ? <img src={e.photo_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <User className="w-8 h-8 p-1.5 text-muted" />}
-                        <div><p className="font-medium text-primary-text">{e.name}</p><p className="text-xs text-muted">{e.email}</p></div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedEmployee && (
-                  <div className="mt-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-medium text-emerald-700">{selectedEmployee.name} selected</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Department */}
-              <div className="mb-4">
-                <label className="text-xs font-semibold text-muted uppercase mb-1 block">Department (Optional)</label>
-                <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="e.g. Security, IT, Admin"
-                  className="form-input" />
-              </div>
-
-              {/* Face Capture */}
-              <div className="mb-4">
-                <label className="text-xs font-semibold text-muted uppercase mb-2 block">Face Photo</label>
-                {capturedPhoto ? (
-                  <div className="relative">
-                    <img src={capturedPhoto} alt="Captured" className="w-full rounded-2xl border border-border" />
-                    <div className="absolute top-2 right-2 flex gap-2">
-                      <button onClick={() => { setCapturedPhoto(null); setFaceDescriptor(null); startCamera(); }}
-                        className="p-2 rounded-full bg-white/90 shadow hover:bg-white"><RefreshCw className="w-4 h-4 text-muted" /></button>
-                    </div>
-                    {faceDescriptor && (
-                      <div className="absolute bottom-2 left-2 px-3 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Face Detected
-                      </div>
-                    )}
-                  </div>
-                ) : cameraActive ? (
-                  <div className="relative">
-                    <video ref={videoRef} className="w-full rounded-2xl border border-border" playsInline muted autoPlay style={{ transform: 'scaleX(-1)' }} />
-                    <canvas ref={canvasRef} className="hidden" />
-                    <button onClick={captureAndCompute}
-                      className="absolute bottom-3 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/40 flex items-center justify-center hover:bg-emerald-400 transition-colors">
-                      <Camera className="w-7 h-7 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={startCamera}
-                    className="w-full py-12 rounded-2xl border-2 border-dashed border-border hover:border-accent/40 transition-colors flex flex-col items-center gap-2 text-muted">
-                    <Camera className="w-8 h-8" />
-                    <span className="text-sm font-medium">Open Camera to Capture Face</span>
-                    <span className="text-xs">This step is optional but recommended</span>
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-card rounded-3xl shadow-xl border border-white/10 w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-bold text-primary-text">Register New User</h2>
+                  <button onClick={() => { setShowForm(false); stopCamera(); setCapturedPhoto(null); setFaceDescriptor(null); setSelectedEmployee(null); }}
+                    className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+                    <X className="w-5 h-5" />
                   </button>
-                )}
-              </div>
+                </div>
 
-              {/* Submit */}
-              <button onClick={handleRegister}
-                disabled={!selectedEmployee || registering}
-                className="w-full btn btn-lg btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
-                {registering ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
-                {registering ? 'Registering...' : 'Register User'}
-              </button>
-            </div>
+                {/* Employee Search */}
+                <div className="mb-6 relative">
+                  <label htmlFor="employee-search" className="text-sm font-medium text-muted mb-1.5 block">Search Employee</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+                    <input 
+                      id="employee-search"
+                      name="employee-search"
+                      type="text" 
+                      placeholder="Type name or email..." 
+                      className="form-input pl-10"
+                      value={empSearch}
+                      onChange={e => { setEmpSearch(e.target.value); setSelectedEmployee(null); }}
+                    />
+                  </div>
+
+                  {empSearch.length >= 2 && !selectedEmployee && (
+                    <div className="absolute z-[60] left-0 right-0 mt-2 bg-card border border-border rounded-2xl shadow-xl overflow-hidden divide-y divide-border">
+                      {filteredEmployees.map(e => (
+                        <button 
+                          key={e.id}
+                          onClick={() => { setSelectedEmployee(e); setEmpSearch(e.name); }}
+                          className="w-full px-4 py-3 hover:bg-gray-50 flex items-center gap-3 text-left transition-colors"
+                        >
+                          {e.photo_url ? (
+                            <img src={e.photo_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><User className="w-4 h-4 text-gray-400" /></div>
+                          )}
+                          <div>
+                            <p className="text-sm font-bold text-primary-text">{e.name}</p>
+                            <p className="text-xs text-muted">{e.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                      {filteredEmployees.length === 0 && (
+                        <div className="px-4 py-8 text-center text-muted">
+                          <p className="text-sm italic">No employees found matching "{empSearch}"</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Capture Section */}
+                <div className="mb-8">
+                  <label className="text-sm font-medium text-muted mb-2 block text-center">Face Recognition Enrollment</label>
+                  
+                  {capturedPhoto ? (
+                    <div className="relative">
+                      <img src={capturedPhoto} alt="Captured" className="w-full rounded-2xl border border-emerald-500/30" />
+                      <button onClick={() => { setCapturedPhoto(null); setFaceDescriptor(null); startCamera(); }}
+                        className="absolute bottom-3 right-3 btn btn-sm bg-black/50 hover:bg-black/70 text-white backdrop-blur-md border-white/20">
+                        <RefreshCw className="w-4 h-4" /> Retake
+                      </button>
+                      <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shadow-lg">Face Computed</div>
+                    </div>
+                  ) : cameraActive ? (
+                    <div className="relative">
+                      <video ref={videoRef} className="w-full rounded-2xl border border-border" playsInline muted autoPlay style={{ transform: 'scaleX(-1)' }} />
+                      <canvas ref={canvasRef} className="hidden" />
+                      
+                      {!modelsLoaded ? (
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] rounded-2xl flex flex-col items-center justify-center text-white gap-3">
+                          <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+                          <span className="text-sm font-bold tracking-wide uppercase">Initializing AI Models...</span>
+                        </div>
+                      ) : (
+                        <button onClick={captureAndCompute}
+                          className="absolute bottom-3 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/40 flex items-center justify-center hover:bg-emerald-400 transition-colors group">
+                          <Camera className="w-7 h-7 text-white group-hover:scale-110 transition-transform" />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button onClick={startCamera}
+                      className="w-full py-12 rounded-2xl border-2 border-dashed border-border hover:border-accent/40 transition-colors flex flex-col items-center gap-2 text-muted">
+                      <Camera className="w-8 h-8" />
+                      <span className="text-sm font-medium">Open Camera to Capture Face</span>
+                      <span className="text-xs">This step is required for face recognition</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Submit */}
+                <button onClick={handleRegister}
+                  disabled={!selectedEmployee || registering}
+                  className="w-full btn btn-lg btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                  {registering ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                  {registering ? 'Registering...' : 'Register User'}
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* ─── Print ID Card Modal ──────────────────────────────────── */}
-      {printUser && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 print-hide">
-          <div className="bg-card rounded-3xl shadow-xl border border-border w-full max-w-3xl max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-border flex items-center justify-between">
-              <h2 className="text-lg font-bold text-primary-text flex items-center gap-2"><Printer className="w-5 h-5"/> Print ID Card</h2>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="btn btn-primary flex items-center gap-2">
-                  <Printer className="w-4 h-4" /> Print Card
-                </button>
-                <button onClick={() => setPrintUser(null)} className="p-2 rounded-xl hover:bg-gray-100"><X className="w-5 h-5"/></button>
-              </div>
-            </div>
-
-            <div className="p-4 border-b border-border flex flex-col gap-4 bg-gray-50/50">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-primary-text">Customize ID Card Text (Auto-saves for future prints)</p>
-                <p className="text-xs text-muted hidden md:block">Set page size to <strong className="text-primary-text">Custom (2.125" x 3.375")</strong> in print dialog.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted">Company Name</label>
-                  <input type="text" value={printCompanyName} onChange={e => setPrintCompanyName(e.target.value)} className="form-input h-9 text-sm" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted">Blood Group</label>
-                  <input type="text" value={printBloodGroup} onChange={e => setPrintBloodGroup(e.target.value)} className="form-input h-9 text-sm" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted">Terms and Conditions</label>
-                  <textarea value={printTerms} onChange={e => setPrintTerms(e.target.value)} className="form-input text-xs h-16 resize-none" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted">Office Address</label>
-                  <textarea value={printAddress} onChange={e => setPrintAddress(e.target.value)} className="form-input text-xs h-16 resize-none" />
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1 flex flex-col md:flex-row gap-8 items-center justify-center bg-gray-100" id="printable-id-card-container">
-               {/* FRONT CARD */}
-               <div className="w-[2.125in] h-[3.375in] bg-white rounded-xl shadow-md flex flex-col relative overflow-hidden shrink-0 print-card" style={{ width: '2.125in', height: '3.375in', boxSizing: 'border-box' }}>
-                  {/* Background Gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-emerald-200/60 via-white to-white z-0"></div>
-                  
-                  {/* Geometric Shapes - Top Left */}
-                  <div className="absolute -top-4 -left-8 w-32 h-32 transform -rotate-45 opacity-50 flex gap-1.5 z-0">
-                     <div className="w-1.5 h-[100%] bg-emerald-400 rounded-full"></div>
-                     <div className="w-3.5 h-[80%] mt-4 bg-emerald-500 rounded-full"></div>
-                     <div className="w-1.5 h-[60%] mt-8 bg-emerald-400 rounded-full"></div>
-                     <div className="w-6 h-[40%] mt-12 bg-emerald-500 rounded-full"></div>
-                  </div>
-
-                  {/* Geometric Shapes - Bottom Right */}
-                  <div className="absolute -bottom-10 -right-10 w-32 h-32 transform -rotate-45 opacity-50 flex gap-1.5 justify-end z-0">
-                     <div className="w-6 h-[40%] mb-12 bg-emerald-500 rounded-full self-end"></div>
-                     <div className="w-1.5 h-[60%] mb-8 bg-emerald-400 rounded-full self-end"></div>
-                     <div className="w-3.5 h-[80%] mb-4 bg-emerald-500 rounded-full self-end"></div>
-                     <div className="w-1.5 h-full bg-emerald-400 rounded-full self-end"></div>
-                  </div>
-
-                  {/* Photo Block */}
-                  <div className="mt-10 ml-4 relative z-10 w-28 h-28 bg-white shadow-lg p-1">
-                    {printUser.userPhotoUrl ? (
-                      <img src={printUser.userPhotoUrl} className="w-full h-full object-cover filter contrast-125 grayscale-[20%]" />
-                    ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                        <User className="w-12 h-12 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Name and Details */}
-                  <div className="mt-4 ml-4 relative z-10 pr-2">
-                    <h3 className="font-black text-[22px] leading-[0.9] uppercase tracking-tighter font-sans">
-                       <span className="text-gray-900 block truncate">{printUser.userName.split(' ')[0]}</span>
-                       <span className="text-emerald-500 block truncate">{printUser.userName.split(' ').slice(1).join(' ') || 'STAFF'}</span>
-                    </h3>
-                    <p className="text-[7px] font-bold text-gray-500 mt-1.5 tracking-widest uppercase truncate">{printUser.department || 'Employee'}</p>
-                  </div>
-
-                  {/* Bottom Info */}
-                  <div className="absolute bottom-4 right-4 flex gap-1 z-10 text-[6px] text-gray-800 text-right font-medium flex-col items-end">
-                     <div className="flex items-center gap-1.5 bg-white/90 px-1.5 py-0.5 rounded shadow-sm border border-emerald-100">
-                       <span className="text-[5px] text-gray-400">ID</span> <span className="font-bold">{printUser.userId.substring(0,8).toUpperCase()}</span>
-                     </div>
-                     <div className="flex items-center gap-1.5 bg-white/90 px-1.5 py-0.5 rounded shadow-sm border border-emerald-100">
-                       <span className="text-[5px] text-gray-400">@</span> <span className="font-bold truncate max-w-[80px]">{printUser.userEmail || 'N/A'}</span>
-                     </div>
-                  </div>
-               </div>
-
-               {/* BACK CARD */}
-               <div className="w-[2.125in] h-[3.375in] bg-gradient-to-br from-emerald-300 via-emerald-200 to-emerald-100 rounded-xl shadow-md flex flex-col relative overflow-hidden shrink-0 print-card" style={{ width: '2.125in', height: '3.375in', boxSizing: 'border-box' }}>
-                  
-                  <div className="flex-1 flex flex-col items-center justify-start p-4 relative z-10 w-full text-center">
+      <AnimatePresence>
+        {printUser && (
+          <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-[5vh] print-hide">
+            <motion.div 
+              initial={{ opacity: 0, y: -40, scale: 0.95 }}
+              animate={{ 
+                opacity: 1, 
+                y: 0, 
+                scale: 1,
+                transition: {
+                  duration: 0.4,
+                  ease: [0.16, 1, 0.3, 1]
+                }
+              }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              className="bg-card rounded-3xl shadow-2xl border border-white/10 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-border flex items-center justify-between">
+                <h2 className="text-lg font-bold text-primary-text flex items-center gap-2"><Printer className="w-5 h-5"/> Print ID Card</h2>
+                <div className="flex items-center gap-3">
+                  <motion.button 
+                    whileHover={{ scale: 1.02, y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => window.print()} 
+                    className="relative group overflow-hidden px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-sm shadow-[0_8px_20px_-6px_rgba(5,150,105,0.5)] hover:shadow-[0_12px_25px_-4px_rgba(5,150,105,0.6)] transition-all flex items-center gap-2.5 border border-emerald-400/20"
+                  >
+                    {/* Shimmer Effect */}
+                    <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] transition-transform" />
                     
-                    {/* QR Code in box */}
-                    <div className="mt-2 p-1.5 bg-white shadow-sm border-2 border-emerald-400/50 w-20 h-20 flex items-center justify-center">
-                      <img src={getQrImageUrl(printUser.qrToken)} className="w-full h-full mix-blend-multiply opacity-90" style={{ filter: 'saturate(0.5)' }} />
+                    <Printer className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
+                    <span>Print Card</span>
+                  </motion.button>
+
+                  <button 
+                    onClick={() => setPrintUser(null)} 
+                    className="p-2.5 rounded-xl bg-gray-100/80 hover:bg-red-50 text-gray-500 hover:text-red-600 transition-all border border-transparent hover:border-red-100"
+                  >
+                    <X className="w-5 h-5"/>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-50/30">
+                {/* Configuration Section */}
+                <div className="p-8 border-b border-border bg-white">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+                      <Settings className="w-5 h-5 text-emerald-600" />
                     </div>
-                    
-                    {/* Terms Header Pill */}
-                    <div className="mt-4 bg-white/90 rounded-full px-4 py-1.5 shadow-sm border border-white">
-                      <h4 className="font-bold text-[7px] text-emerald-800 uppercase tracking-widest">Terms & Conditions</h4>
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Card Configuration</h3>
+                      <p className="text-[10px] text-muted font-medium uppercase tracking-wider">Customize fields for this session</p>
                     </div>
-                    
-                    {/* Terms Text */}
-                    <p className="text-[5px] text-gray-700 mt-2.5 leading-snug font-medium px-2">{printTerms}</p>
-                    
-                    {/* Logo Block */}
-                    <div className="mt-auto mb-2 flex flex-col items-center justify-center w-full">
-                       <div className="flex items-center justify-center gap-1.5 bg-white/40 px-2 py-1.5 rounded-lg overflow-hidden" style={{ maxWidth: '90%' }}>
-                         {currentLogo ? (
-                            <img src={currentLogo} alt="Logo" className="h-4 w-auto object-contain shrink-0" style={{ maxWidth: '40px' }} />
-                         ) : (
-                            <Shield className="w-4 h-4 text-emerald-700 shrink-0" />
-                         )}
-                         <span className="font-black text-[7px] leading-none text-gray-900 tracking-tighter uppercase truncate" style={{ maxWidth: '80px' }}>{printCompanyName}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="print-company-name" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Company Name</label>
+                      <input type="text" id="print-company-name" name="print-company-name" value={printCompanyName} onChange={e => setPrintCompanyName(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="print-blood-group" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Blood Group</label>
+                      <input type="text" id="print-blood-group" name="print-blood-group" value={printBloodGroup} onChange={e => setPrintBloodGroup(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="print-employee-id" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Employee ID</label>
+                      <input type="text" id="print-employee-id" name="print-employee-id" value={printEmployeeId} onChange={e => setPrintEmployeeId(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                    </div>
+                    <div className="flex flex-col gap-2 md:col-span-3">
+                      <label htmlFor="print-terms" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Terms & Conditions</label>
+                      <textarea id="print-terms" name="print-terms" value={printTerms} onChange={e => setPrintTerms(e.target.value)} className="form-input text-xs h-20 resize-none border-gray-200 focus:border-emerald-500 transition-all rounded-xl leading-relaxed" />
+                    </div>
+                    <div className="flex flex-col gap-2 md:col-span-3">
+                      <label htmlFor="print-address" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Office Address</label>
+                      <textarea id="print-address" name="print-address" value={printAddress} onChange={e => setPrintAddress(e.target.value)} className="form-input text-xs h-20 resize-none border-gray-200 focus:border-emerald-500 transition-all rounded-xl leading-relaxed" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preview Section */}
+                <div className="p-8 flex flex-col items-center">
+                  <div className="flex items-center justify-center mb-8">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shadow-sm">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Live Preview</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col lg:flex-row gap-12 items-center justify-center p-8 bg-white/40 rounded-[2.5rem] border border-white/60 shadow-inner" id="printable-id-card-container">
+                    {/* FRONT CARD */}
+                    <div className="w-[2.125in] h-[3.375in] bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col relative overflow-hidden shrink-0 print-card" style={{ width: '2.125in', height: '3.375in', boxSizing: 'border-box' }}>
+                        <div className="absolute inset-0 bg-gradient-to-b from-emerald-200/60 via-white to-white z-0"></div>
+                        <div className="absolute -top-4 -left-8 w-32 h-32 transform -rotate-45 opacity-50 flex gap-1.5 z-0">
+                           <div className="w-1.5 h-[100%] bg-emerald-400 rounded-full"></div>
+                           <div className="w-3.5 h-[80%] mt-4 bg-emerald-500 rounded-full"></div>
+                           <div className="w-1.5 h-[60%] mt-8 bg-emerald-400 rounded-full"></div>
+                           <div className="w-6 h-[40%] mt-12 bg-emerald-500 rounded-full"></div>
+                        </div>
+                        <div className="absolute -bottom-10 -right-10 w-32 h-32 transform -rotate-45 opacity-50 flex gap-1.5 justify-end z-0">
+                           <div className="w-6 h-[40%] mb-12 bg-emerald-500 rounded-full self-end"></div>
+                           <div className="w-1.5 h-[60%] mb-8 bg-emerald-400 rounded-full self-end"></div>
+                           <div className="w-3.5 h-[80%] mb-4 bg-emerald-500 rounded-full self-end"></div>
+                           <div className="w-1.5 h-full bg-emerald-400 rounded-full self-end"></div>
+                        </div>
+                        <div className="mt-10 ml-4 relative z-10 w-28 h-28 bg-white shadow-xl p-1 rounded-sm">
+                          {printUser.userPhotoUrl ? (
+                            <img src={printUser.userPhotoUrl} className="w-full h-full object-cover filter contrast-125 grayscale-[20%]" />
+                          ) : (
+                            <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                              <User className="w-12 h-12 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-4 ml-4 relative z-10 pr-2">
+                          <h3 className="font-black text-[22px] leading-[0.9] uppercase tracking-tighter font-sans">
+                             <span className="text-gray-900 block truncate">{printUser.userName.split(' ')[0]}</span>
+                             <span className="text-emerald-500 block truncate">{printUser.userName.split(' ').slice(1).join(' ') || 'STAFF'}</span>
+                          </h3>
+                          <p className="text-[7px] font-bold text-gray-500 mt-1.5 tracking-widest uppercase truncate">{printUser.department || 'Employee'}</p>
+                        </div>
+                        <div className="absolute bottom-4 right-4 flex gap-1 z-10 text-[6px] text-gray-800 text-right font-medium flex-col items-end">
+                           <div className="flex items-center gap-1.5 bg-white/90 px-1.5 py-0.5 rounded shadow-sm border border-emerald-100">
+                             <span className="text-[5px] text-gray-400">ID</span> <span className="font-bold">{printEmployeeId}</span>
+                           </div>
+                           <div className="flex items-center gap-1.5 bg-white/90 px-1.5 py-0.5 rounded shadow-sm border border-emerald-100">
+                             <span className="text-[5px] text-gray-400">@</span> <span className="font-bold truncate max-w-[80px]">{printUser.userEmail || 'N/A'}</span>
+                           </div>
+                        </div>
+                    </div>
+
+                    {/* BACK CARD */}
+                    <div className="w-[2.125in] h-[3.375in] bg-gradient-to-br from-emerald-300 via-emerald-200 to-emerald-100 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col relative overflow-hidden shrink-0 print-card" style={{ width: '2.125in', height: '3.375in', boxSizing: 'border-box' }}>
+                       <div className="flex-1 flex flex-col items-center justify-start p-4 relative z-10 w-full text-center">
+                         <div className="mt-2 p-1.5 bg-white shadow-sm border-2 border-emerald-400/50 w-20 h-20 flex items-center justify-center">
+                           <img src={getQrImageUrl(printUser.qrToken)} className="w-full h-full mix-blend-multiply opacity-90" style={{ filter: 'saturate(0.5)' }} />
+                         </div>
+                         <div className="mt-4 bg-white/90 rounded-full px-4 py-1.5 shadow-sm border border-white">
+                           <h4 className="font-bold text-[7px] text-emerald-800 uppercase tracking-widest">Terms & Conditions</h4>
+                         </div>
+                         <p className="text-[5px] text-gray-700 mt-2.5 leading-snug font-medium px-2">{printTerms}</p>
+
+                         {/* Logo Without Background */}
+                         <div className="mt-6 flex items-center justify-center w-full px-4">
+                           {currentLogo ? (
+                             <img src={currentLogo} alt="Logo" className="h-10 w-auto object-contain opacity-90 mix-blend-multiply" style={{ maxWidth: '1.5in' }} />
+                           ) : (
+                             <Shield className="w-8 h-8 text-emerald-700/30" />
+                           )}
+                         </div>
+
+                         <div className="bg-gray-900 w-full py-2 shadow-lg mt-auto">
+                           <p className="text-[6px] text-emerald-400 font-black tracking-[0.2em] uppercase truncate px-3 text-center">{printCompanyName}</p>
+                         </div>
+                         <div className="mt-2 w-full grid grid-cols-2 gap-2 text-left pt-2 border-t border-emerald-500/20">
+                           <div className="flex items-start gap-1">
+                             <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
+                             <div>
+                               <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Joined</p>
+                               <p className="text-[5px] font-bold text-gray-800 mt-0.5">{new Date(printUser.createdAt).toLocaleDateString()}</p>
+                             </div>
+                           </div>
+                           <div className="flex items-start gap-1">
+                             <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
+                             <div>
+                               <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Blood Grp</p>
+                               <p className="text-[5px] font-bold text-gray-800 mt-0.5 truncate max-w-[30px]">{printBloodGroup}</p>
+                             </div>
+                           </div>
+                           <div className="flex items-start gap-1 col-span-2 mt-0.5">
+                             <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
+                             <div>
+                               <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Address</p>
+                               <p className="text-[4.5px] font-bold text-gray-800 leading-[1.2] whitespace-pre-line mt-0.5 max-h-[16px] overflow-hidden">{printAddress}</p>
+                             </div>
+                           </div>
+                         </div>
                        </div>
                     </div>
-                    
-                    {/* Black bar website/company */}
-                    <div className="bg-gray-900 w-full py-1.5 shadow-lg">
-                      <p className="text-[5px] text-emerald-400 font-medium tracking-widest uppercase truncate px-3 text-center">{printCompanyName} PORTAL</p>
-                    </div>
-                    
-                    {/* Bottom Footer Info (Icons + text) */}
-                    <div className="mt-2 w-full grid grid-cols-2 gap-2 text-left pt-2 border-t border-emerald-500/20">
-                      <div className="flex items-start gap-1">
-                        <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
-                        <div>
-                          <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Joined</p>
-                          <p className="text-[5px] font-bold text-gray-800 mt-0.5">{new Date(printUser.createdAt).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-1">
-                        <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
-                        <div>
-                          <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Blood Grp</p>
-                          <p className="text-[5px] font-bold text-gray-800 mt-0.5 truncate max-w-[30px]">{printBloodGroup}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-1 col-span-2 mt-0.5">
-                        <div className="mt-0.5 rounded-full bg-emerald-600 p-0.5 shadow-sm"><div className="w-1 h-1 bg-white rounded-full"></div></div>
-                        <div>
-                          <p className="text-[4px] font-bold text-emerald-800 uppercase leading-none">Address</p>
-                          <p className="text-[4.5px] font-bold text-gray-800 leading-[1.2] whitespace-pre-line mt-0.5 max-h-[16px] overflow-hidden">{printAddress}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
                   </div>
-               </div>
-            </div>
+                  
+                  <div className="mt-12 text-center text-[10px] text-muted font-medium uppercase tracking-[0.2em] opacity-40">
+                    Paradigm Security Systems • Professional Series
+                  </div>
+                </div>
+              </div>
+              
+              <style>{`
+                @keyframes shimmer {
+                  100% { transform: translateX(100%); }
+                }
+
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.1); }
+
+                @media print {
+                  body * { visibility: hidden !important; }
+                  #printable-id-card-container, #printable-id-card-container * { visibility: visible !important; }
+                  #printable-id-card-container { 
+                    position: absolute !important; 
+                    left: 0 !important; 
+                    top: 0 !important; 
+                    width: auto !important; 
+                    height: auto !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    background: white !important;
+                    display: flex !important;
+                    flex-direction: row !important;
+                    justify-content: flex-start !important;
+                    align-items: flex-start !important;
+                    gap: 10px !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                  }
+                  .print-card {
+                    border: 1px dashed #ccc !important;
+                    box-shadow: none !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                    page-break-inside: avoid !important;
+                    margin: 0 !important;
+                  }
+                  .print-hide { display: none !important; }
+                }
+              `}</style>
+            </motion.div>
           </div>
-          
-          <style>{`
-            @media print {
-              body * { visibility: hidden !important; }
-              #printable-id-card-container, #printable-id-card-container * { visibility: visible !important; }
-              #printable-id-card-container { 
-                position: absolute !important; 
-                left: 0 !important; 
-                top: 0 !important; 
-                width: auto !important; 
-                height: auto !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                background: white !important;
-                display: flex !important;
-                flex-direction: row !important;
-                justify-content: flex-start !important;
-                align-items: flex-start !important;
-                gap: 10px !important;
-              }
-              .print-card {
-                border: 1px dashed #ccc !important;
-                box-shadow: none !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-                page-break-inside: avoid !important;
-                margin: 0 !important;
-              }
-              .print-hide { background: white !important; }
-            }
-          `}</style>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };

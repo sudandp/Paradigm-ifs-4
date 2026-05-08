@@ -280,11 +280,15 @@ const GateKiosk: React.FC = () => {
 
     setProcessing(true);
     try {
+      const currentDevice = kioskDevices.find(d => d.deviceId === deviceId);
+      const currentDeviceName = currentDevice ? (currentDevice.deviceName || currentDevice.deviceModel) : 'Samsung M07';
+
       const log = await markGateAttendance({
         userId: user.userId,
         gateUserId: user.id,
         method,
         confidence,
+        deviceName: currentDeviceName,
       });
       addRecentScan({
         userId: user.userId,
