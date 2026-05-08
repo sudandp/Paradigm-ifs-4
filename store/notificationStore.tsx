@@ -76,15 +76,16 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
       // Also fetch pending approvals count for admins/managers
       let pendingApprovalsCount = 0;
       const role = (user.role || '').toLowerCase();
-      // Expanded manager roles list
-      const isManagerRole = !['field_staff', 'unverified', 'office_staff', 'back_office_staff'].includes(role) || 
-                            ['admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'developer', 'operation_manager'].includes(role);
+      const isManagerRole = [
+        'admin', 'super_admin', 'management', 'hr', 'hr_ops', 'finance', 'finance_manager', 
+        'developer', 'operation_manager', 'site_manager', 'director', 'business_developer'
+      ].includes(role) || role.includes('manager');
 
       console.log(`[NotificationStore] User role: ${role}, isManagerRole: ${isManagerRole}`);
 
       if (isManagerRole) {
         try {
-          const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management'].includes(role);
+          const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management', 'director', 'operation_manager'].includes(role);
           const isHR = ['hr', 'hr_ops'].includes(role);
           
           let leavesPromise;
@@ -314,6 +315,17 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
               totalUnreadCount: newUnreadCount + state.pendingApprovalsCount
             };
           });
+
+          // Refresh the entire notification state (including approvals) for relevant events
+          const approvalEventTypes = [
+            'leave_request', 'salary_request', 'onboarding_submitted', 
+            'punch_unlock_request', 'device_approval', 'ot_punch'
+          ];
+          
+          if (approvalEventTypes.includes(newNotif.eventType as string)) {
+            console.log(`[NotificationStore] Detected approval event ${newNotif.eventType}, refreshing all data...`);
+            get().fetchNotifications();
+          }
           
           // Trigger web toast for real-time feedback
           if (!Capacitor.isNativePlatform()) {

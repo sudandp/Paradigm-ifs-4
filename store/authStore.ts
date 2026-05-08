@@ -742,6 +742,7 @@ export const useAuthStore = create<AuthState>()(
             
             // Explicitly determine the type. If forcedType is missing, use toggle logic.
             const newType = (forcedType || (isCheckedIn ? 'punch-out' : 'punch-in')) as AttendanceEventType;
+            console.log('[authStore] toggleCheckInStatus:', { newType, workType, forcedType });
 
             // Check field staff restriction for office punch-in
             if (user.role === 'field_staff' && newType === 'punch-in' && (!workType || workType === 'office')) {
@@ -823,7 +824,10 @@ export const useAuthStore = create<AuthState>()(
                         fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
                         isOt: isOtCycle || undefined
                     });
-                    await get().checkAttendanceStatus();
+
+                    // Small delay to allow Supabase to index the new record
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    await get().checkAttendanceStatus(true); // Silent refresh
 
                     // Self-notification is now handled by the dispatcher below with selfNotify: true
                     // This replaces the old hardcoded api.createNotification() call

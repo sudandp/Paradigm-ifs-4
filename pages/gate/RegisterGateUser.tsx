@@ -62,16 +62,32 @@ const RegisterGateUser: React.FC = () => {
   const loadModels = async () => {
     try {
       setModelsLoading(true);
+      console.log('RegisterGateUser: Loading models from origin:', window.location.origin);
       const faceapi = await import('face-api.js');
-      const MODEL_URL = '/models';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-      ]);
+      
+      const MODEL_URL = (window.location.origin + window.location.pathname).replace(/\/$/, '') + '/models';
+      
+      try {
+        console.log('RegisterGateUser: Loading TinyFaceDetector from:', MODEL_URL);
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        
+        console.log('RegisterGateUser: Loading FaceLandmark68TinyNet...');
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+        
+        console.log('RegisterGateUser: Loading FaceRecognitionNet...');
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        console.log('RegisterGateUser: Models loaded successfully');
+      } catch (loadErr) {
+        console.error('RegisterGateUser: Model load failed, trying relative path...', loadErr);
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
+        await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+      }
       setModelsLoaded(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load face-api models:', err);
+      alert('Face recognition initialization failed: ' + (err?.message || 'Unknown error'));
     } finally {
       setModelsLoading(false);
     }
@@ -185,13 +201,13 @@ const RegisterGateUser: React.FC = () => {
       const canvas = canvasRef.current;
 
       // Detect face with higher resolution for better accuracy
-      const detection = await faceapi.detectSingleFace(
-        video,
-        new faceapi.TinyFaceDetectorOptions({ 
-          inputSize: 320, // Increased from 160 for better detection
-          scoreThreshold: 0.4 // Slightly lower threshold to be more permissive
-        })
-      ).withFaceLandmarks(true);
+        const detection = await faceapi.detectSingleFace(
+          video,
+          new faceapi.TinyFaceDetectorOptions({ 
+            inputSize: 416, 
+            scoreThreshold: 0.35 
+          })
+        ).withFaceLandmarks(true);
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
@@ -268,7 +284,10 @@ const RegisterGateUser: React.FC = () => {
       const faceapi = await import('face-api.js');
       const detection = await faceapi.detectSingleFace(
         videoRef.current, 
-        new faceapi.TinyFaceDetectorOptions()
+        new faceapi.TinyFaceDetectorOptions({ 
+          inputSize: 416, 
+          scoreThreshold: 0.35 
+        })
       ).withFaceLandmarks(true).withFaceDescriptor();
 
       if (!detection) {

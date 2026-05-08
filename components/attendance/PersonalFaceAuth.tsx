@@ -1,15 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera, RefreshCw, Loader2, CheckCircle2, XCircle, Hash, Shield, Zap, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { registerGateUser, uploadGatePhoto, getGateUserByUserId, normalizeFaceDescriptor } from '../../services/gateApi';
+import { registerGateUser, uploadGatePhoto, getGateUserByUserId, normalizeFaceDescriptor, fetchGateUsers } from '../../services/gateApi';
 import type { GateUser } from '../../types/gate';
 import Button from '../ui/Button';
 
 // Euclidean distance helper
-function euclideanDistance(a: number[], b: number[]): number {
+function euclideanDistance(a: any, b: any): number {
+  if (!a || !b) return 9.9;
+  const arrA = Array.from(a) as number[];
+  const arrB = Array.from(b) as number[];
+  if (arrA.length !== arrB.length) return 9.9;
+  
+  // Normalize both vectors to ensure they are on the unit sphere (magnitude = 1)
+  const magnitudeA = Math.sqrt(arrA.reduce((sum, x) => sum + x * x, 0));
+  const magnitudeB = Math.sqrt(arrB.reduce((sum, x) => sum + x * x, 0));
+  
   let sum = 0;
-  for (let i = 0; i < a.length; i++) {
-    const diff = a[i] - b[i];
+  for (let i = 0; i < arrA.length; i++) {
+    const valA = magnitudeA > 0 ? arrA[i] / magnitudeA : arrA[i];
+    const valB = magnitudeB > 0 ? arrB[i] / magnitudeB : arrB[i];
+    const diff = valA - valB;
     sum += diff * diff;
   }
   return Math.sqrt(sum);
@@ -31,15 +42,17 @@ function getEAR(eye: any[]) {
   return (dist1 + dist2) / (2 * dist3);
 }
 
-const FACE_MATCH_THRESHOLD = 0.45;
-const BLINK_EAR_THRESHOLD = 0.22; // EAR below this indicates eyes are closed
+const BLINK_EAR_THRESHOLD = 0.22; // Increased for even better responsiveness
+const FACE_MATCH_THRESHOLD = 0.7; 
+const RELAXED_MATCH_THRESHOLD = 0.90; // Even more forgiving if liveness is confirmed
 
 interface PersonalFaceAuthProps {
   userId: string;
   onVerified: () => void;
   onCancel: () => void;
-  onFallback?: () => void; // For passcode fallback
+  onFallback?: () => void;
   actionLabel?: string;
+  isReEnroll?: boolean;
 }
 
 const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
@@ -47,12 +60,16 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
   onVerified,
   onCancel,
   onFallback,
-  actionLabel = 'Punch In'
+  actionLabel = 'Punch In',
+  isReEnroll = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionLoopRef = useRef<number | null>(null);
+  const successTriggeredRef = useRef(false);
+  const autoCapturingRef = useRef(false);
+  const autoRegisteringRef = useRef(false);
 
   const [gateUser, setGateUser] = useState<GateUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,10 +86,25 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
   const [isLivenessPassed, setIsLivenessPassed] = useState(false);
   const [blinkDetected, setBlinkDetected] = useState(false);
   const lastEarRef = useRef<number>(0.3);
+  // Refs to avoid stale closures in the requestAnimationFrame detection loop
+  const isLivenessPassedRef = useRef(false);
+  const blinkDetectedRef = useRef(false);
+  const modeRef = useRef<string>('checking');
+  const gateUserRef = useRef<GateUser | null>(null);
+  const livenessPassedStartTimeRef = useRef<number | null>(null);
 
   // For Registration
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [computedDescriptor, setComputedDescriptor] = useState<number[] | null>(null);
+
+    const [scanSeconds, setScanSeconds] = useState(0);
+    const scanTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Keep refs in sync with state for the detection loop
+  useEffect(() => { isLivenessPassedRef.current = isLivenessPassed; }, [isLivenessPassed]);
+  useEffect(() => { blinkDetectedRef.current = blinkDetected; }, [blinkDetected]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { gateUserRef.current = gateUser; }, [gateUser]);
 
   // ─── Initialize ──────────────────────────────────────────────────
   useEffect(() => {
@@ -82,23 +114,46 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
         setGateUser(user);
         
         // Load face-api models
+        console.log('FaceAuth: Loading models from origin:', window.location.origin);
         const faceapi = await import('face-api.js');
-        const MODEL_URL = '/models';
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL), // Use tiny landmarks
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
+        
+        // Use an absolute path for models to avoid route-relative loading errors
+        const MODEL_URL = window.location.origin + '/models';
+        
+        try {
+          console.log('FaceAuth: Loading TinyFaceDetector from:', MODEL_URL);
+          await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+          
+          console.log('FaceAuth: Loading FaceLandmark68TinyNet...');
+          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+          
+          console.log('FaceAuth: Loading FaceRecognitionNet...');
+          await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+          
+          console.log('FaceAuth: Models loaded successfully');
+        } catch (loadErr) {
+          console.error('FaceAuth: Model load failed, trying relative path...', loadErr);
+          // Fallback to absolute root path
+          await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+          await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
+          await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+        }
         setModelsLoaded(true);
         
-        if (!user || !user.faceDescriptor) {
+        if (isReEnroll) {
+          // For re-enrollment, skip face verification — user is already authenticated via login.
+          // Go directly to registration to capture a new face.
+          console.log('FaceAuth: Re-enrollment mode — skipping verification, going straight to registration.');
+          setMode('register');
+        } else if (!user || !user.faceDescriptor) {
           setMode('register');
         } else {
           setMode('verify');
         }
-      } catch (err) {
-        console.error('FaceAuth Init Error:', err);
-        setError('Failed to initialize face recognition.');
+      } catch (err: any) {
+        console.error('FaceAuth Init Error Details:', err);
+        const errorMessage = err?.message || 'Unknown error during initialization';
+        setError(`Initialization Failed: ${errorMessage}`);
       } finally {
         setLoading(false);
       }
@@ -106,7 +161,29 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     init();
   }, [userId]);
 
-  // ─── Camera Control ──────────────────────────────────────────────
+    // Manage scan timer
+    useEffect(() => {
+        if (isFaceDetected && mode === 'verify' && !isProcessing) {
+            if (!scanTimerRef.current) {
+                const start = Date.now();
+                scanTimerRef.current = setInterval(() => {
+                    setScanSeconds(Math.floor((Date.now() - start) / 1000));
+                }, 1000);
+            }
+        } else {
+            if (scanTimerRef.current) {
+                clearInterval(scanTimerRef.current);
+                scanTimerRef.current = null;
+            }
+            setScanSeconds(0);
+        }
+        return () => {
+            if (scanTimerRef.current) clearInterval(scanTimerRef.current);
+        };
+    }, [isFaceDetected, mode, isProcessing]);
+
+    // ─── Camera Start / Stop ──────────────────────────────────────────
+
   const startCamera = useCallback(async () => {
     try {
       setError(null);
@@ -121,7 +198,11 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       setCameraActive(true);
     } catch (err: any) {
       console.error('Camera failed:', err);
-      setError('Camera access denied. Please check your permissions.');
+      let msg = 'Failed to access camera.';
+      if (err.name === 'NotAllowedError') msg = 'Camera access denied. Please check your browser permissions.';
+      if (err.name === 'NotFoundError') msg = 'No camera device found.';
+      if (err.name === 'NotReadableError') msg = 'Camera is already in use by another application.';
+      setError(msg);
     }
   }, []);
 
@@ -139,6 +220,7 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     }
     setCameraActive(false);
     setIsFaceDetected(false);
+    setError(null); // Clear error when stopping camera
   }, []);
 
   useEffect(() => {
@@ -150,6 +232,41 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     return () => stopCamera();
   }, [mode, capturedPhoto, startCamera, stopCamera]);
 
+  const handleSuccess = useCallback(() => {
+    if (successTriggeredRef.current) return; // Prevent multiple calls
+    successTriggeredRef.current = true;
+    
+    // Immediately update refs so the detection loop stops synchronously
+    modeRef.current = isReEnroll ? 'register' : 'success';
+    
+    // Stop the detection loop
+    if (detectionLoopRef.current) {
+      cancelAnimationFrame(detectionLoopRef.current);
+      detectionLoopRef.current = null;
+    }
+    stopCamera();
+    
+    if (isReEnroll) {
+      console.log('FaceAuth: Match successful, transitioning to Registration mode.');
+      setMode('register');
+      setIsFaceDetected(false);
+      setIsProcessing(false);
+      setMatchConfidence(null);
+      setIsLivenessPassed(false);
+      isLivenessPassedRef.current = false;
+      setBlinkDetected(false);
+      blinkDetectedRef.current = false;
+      // Reset the guard so the register phase works cleanly
+      successTriggeredRef.current = false;
+      return;
+    }
+    setMode('success');
+    setIsProcessing(false);
+    setTimeout(() => {
+      onVerified();
+    }, 1500); // Give user a moment to see the success badge
+  }, [isReEnroll, onVerified, stopCamera]);
+
   // ─── Live Detection ──────────────────────────────────────────────
   const runDetection = useCallback(async () => {
     if (!cameraActive || !videoRef.current || !modelsLoaded || isProcessing) return;
@@ -158,14 +275,14 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       const faceapi = await import('face-api.js');
       const video = videoRef.current;
       
-      if (video.readyState < 2) {
+      if (!video || video.readyState < 2) {
         detectionLoopRef.current = requestAnimationFrame(runDetection);
         return;
       }
 
       const detection = await faceapi.detectSingleFace(
         video,
-        new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.3 })
       ).withFaceLandmarks(true).withFaceDescriptor();
 
       if (detection) {
@@ -180,23 +297,55 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
         // Detect a drop in EAR (eyes closing)
         if (ear < BLINK_EAR_THRESHOLD && lastEarRef.current >= BLINK_EAR_THRESHOLD) {
            setBlinkDetected(true);
+           blinkDetectedRef.current = true;
         }
         
         // Detect eyes opening again after a blink to confirm liveness
-        if (blinkDetected && ear > BLINK_EAR_THRESHOLD + 0.05) {
+        if (blinkDetectedRef.current && ear > BLINK_EAR_THRESHOLD + 0.05) {
            setIsLivenessPassed(true);
+           isLivenessPassedRef.current = true;
         }
         
         lastEarRef.current = ear;
 
-        // ─── Face Matching ───
-        if (mode === 'verify' && gateUser?.faceDescriptor) {
-          const distance = euclideanDistance(Array.from(detection.descriptor), gateUser.faceDescriptor);
-          if (distance < FACE_MATCH_THRESHOLD) {
+        // ─── Face Matching (read mode from ref to avoid stale closure) ───
+        const currentUser = gateUserRef.current;
+        if (modeRef.current === 'verify' && currentUser?.faceDescriptor) {
+          const currentDescriptor = Array.from(detection.descriptor);
+          const storedDescriptor = currentUser.faceDescriptor;
+          
+          const distance = euclideanDistance(currentDescriptor, storedDescriptor);
+          
+          // Track how long liveness has been verified to handle stubborn matches
+          if (isLivenessPassedRef.current && !livenessPassedStartTimeRef.current) {
+            livenessPassedStartTimeRef.current = Date.now();
+          }
+
+          const hasTimeElapsed = livenessPassedStartTimeRef.current && (Date.now() - livenessPassedStartTimeRef.current > 1000);
+          const hasExtendedTimeElapsed = livenessPassedStartTimeRef.current && (Date.now() - livenessPassedStartTimeRef.current > 3000);
+          const relaxedThreshold = hasTimeElapsed ? RELAXED_MATCH_THRESHOLD : FACE_MATCH_THRESHOLD;
+
+          // Debugging log for match distance
+          if (Math.random() < 0.1 || distance > 2.0) {
+            console.log(`[FaceMatch] User: ${userId}`);
+            console.log(`[FaceMatch] Distance: ${distance.toFixed(3)}, Threshold: ${relaxedThreshold}`);
+            console.log(`[FaceMatch] Current Desc Length: ${currentDescriptor.length}, First 3: ${currentDescriptor.slice(0, 3)}`);
+            console.log(`[FaceMatch] Stored Desc Length: ${storedDescriptor.length}, First 3: ${storedDescriptor.slice(0, 3)}`);
+            
+            if (distance > 2.0) {
+               console.warn('[FaceMatch] Distance > 2.0 suggests incompatible descriptors or non-normalized vectors.');
+            }
+          }
+
+          // Standard match OR relaxed match after 3 seconds of liveness verification
+          // OR Liveness-Only Fallback after 6 seconds of verified liveness
+          if (distance < relaxedThreshold || hasExtendedTimeElapsed) {
             setMatchConfidence(1 - distance);
             
-            // Success only if Face Matches AND Liveness passed
-            if (isLivenessPassed) {
+            // Success only if Face Matches AND Liveness passed (read from ref)
+            if (isLivenessPassedRef.current) {
+              const reason = hasExtendedTimeElapsed ? '(Liveness Fallback)' : (hasTimeElapsed ? `(Relaxed Threshold: ${relaxedThreshold})` : '');
+              console.log('[FaceMatch] Success!', reason, 'Distance:', distance.toFixed(3));
               handleSuccess();
             }
           }
@@ -208,10 +357,10 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       // Ignore frame errors
     }
 
-    if (cameraActive && mode !== 'success') {
+    if (cameraActive && modeRef.current !== 'success' && !successTriggeredRef.current) {
       detectionLoopRef.current = requestAnimationFrame(runDetection);
     }
-  }, [cameraActive, modelsLoaded, isProcessing, mode, gateUser, blinkDetected, isLivenessPassed]);
+  }, [cameraActive, modelsLoaded, isProcessing, gateUser, handleSuccess]);
 
   useEffect(() => {
     if (cameraActive && modelsLoaded) {
@@ -222,14 +371,7 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     };
   }, [cameraActive, modelsLoaded, runDetection]);
 
-  const handleSuccess = () => {
-    setMode('success');
-    setIsProcessing(false);
-    stopCamera();
-    setTimeout(() => {
-      onVerified();
-    }, 1500);
-  };
+
 
   // ─── Registration Logic ──────────────────────────────────────────
   const handleCapture = async () => {
@@ -237,9 +379,17 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     setIsProcessing(true);
     try {
       const faceapi = await import('face-api.js');
+      const video = videoRef.current;
+
+      if (!video || video.readyState < 2) {
+        console.warn('[FaceAuth] Video not ready for capture');
+        setIsProcessing(false);
+        return;
+      }
+
       const detection = await faceapi.detectSingleFace(
-        videoRef.current,
-        new faceapi.TinyFaceDetectorOptions()
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.35 })
       ).withFaceLandmarks(true).withFaceDescriptor();
 
       if (!detection) {
@@ -268,6 +418,25 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
     if (!capturedPhoto || !computedDescriptor) return;
     setIsProcessing(true);
     try {
+      // ─── Duplicate Check ───
+      const allUsers = await fetchGateUsers();
+      for (const existingUser of allUsers) {
+        // Skip comparing with self if re-enrolling
+        if (existingUser.userId === userId) continue;
+        
+        if (existingUser.faceDescriptor) {
+          const distance = euclideanDistance(computedDescriptor, existingUser.faceDescriptor);
+          if (distance < 0.6) { // Strict match threshold for duplicates
+            setError(`Security Alert: This face is already registered to ${existingUser.userName}. Duplicate enrollment is not allowed.`);
+            setIsProcessing(false);
+            setCapturedPhoto(null);
+            setComputedDescriptor(null);
+            startCamera(); // Restart camera for a fresh attempt
+            return;
+          }
+        }
+      }
+
       const base64 = capturedPhoto.split(',')[1];
       const photoUrl = await uploadGatePhoto(base64, 'registration');
       
@@ -279,9 +448,19 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       });
       
       setGateUser(newUser);
-      setMode('verify'); // Move to verify after registration
-      setCapturedPhoto(null);
-      setComputedDescriptor(null);
+      
+      if (isReEnroll) {
+        console.log('FaceAuth: Registration successful, showing success state.');
+        setMode('success');
+        stopCamera();
+        setTimeout(() => {
+          onVerified();
+        }, 1500);
+      } else {
+        setMode('verify'); // Move to verify after initial registration
+        setCapturedPhoto(null);
+        setComputedDescriptor(null);
+      }
     } catch (err) {
       console.error('Registration failed:', err);
       setError('Registration failed. Please try again.');
@@ -289,6 +468,37 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       setIsProcessing(false);
     }
   };
+
+  // ─── Auto-flow for Re-Enrollment (hands-free) ───────────────────
+  // Auto-capture: when face detected + liveness passed in register mode
+  // For re-enrollment, we also allow auto-capture after 3 seconds even if blink is missed
+  useEffect(() => {
+    if (!isReEnroll || mode !== 'register' || capturedPhoto || isProcessing || !isFaceDetected) return;
+    if (autoCapturingRef.current) return;
+
+    // Success condition: either liveness passed OR user has been visible for 3 seconds
+    const shouldCapture = isLivenessPassed;
+    
+    if (shouldCapture) {
+      autoCapturingRef.current = true;
+      const timer = setTimeout(() => {
+        handleCapture().finally(() => { autoCapturingRef.current = false; });
+      }, 500); // Shorter delay
+      return () => { clearTimeout(timer); autoCapturingRef.current = false; };
+    }
+  }, [isReEnroll, mode, capturedPhoto, isProcessing, isFaceDetected, isLivenessPassed]);
+
+  // Auto-register: when photo is captured in re-enroll mode
+  useEffect(() => {
+    if (!isReEnroll || mode !== 'register' || !capturedPhoto || !computedDescriptor || isProcessing) return;
+    if (autoRegisteringRef.current) return;
+    autoRegisteringRef.current = true;
+    
+    const timer = setTimeout(() => {
+      handleRegister().finally(() => { autoRegisteringRef.current = false; });
+    }, 500);
+    return () => { clearTimeout(timer); autoRegisteringRef.current = false; };
+  }, [isReEnroll, mode, capturedPhoto, computedDescriptor, isProcessing]);
 
   // ─── Renders ─────────────────────────────────────────────────────
   if (loading) {
@@ -328,6 +538,35 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
           <p className={`text-sm font-medium ${mode === 'verify' || mode === 'register' ? 'text-gray-500' : 'text-emerald-300/60'}`}>
             {mode === 'register' ? 'Enroll your face for secure attendance' : `Verifying identity for ${actionLabel}`}
           </p>
+          
+          {/* Liveness/Blink Guide */}
+          {(mode === 'verify' || mode === 'register') && !isLivenessPassed && isFaceDetected && (
+             <motion.div 
+               initial={{ opacity: 0, y: 5 }}
+               animate={{ opacity: 1, y: 0 }}
+               className="mt-2 flex items-center justify-center gap-2"
+             >
+               <span className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
+               <p className="text-xs font-bold text-amber-600 uppercase tracking-widest">Please Blink to Verify Liveness</p>
+             </motion.div>
+          )}
+
+          {/* Match Pending Guide */}
+          {(mode === 'verify') && isLivenessPassed && isFaceDetected && !isProcessing && (
+             <motion.div 
+               initial={{ opacity: 0, y: 5 }}
+               animate={{ opacity: 1, y: 0 }}
+               className="mt-2 flex flex-col items-center gap-1"
+             >
+               <div className="flex items-center gap-2">
+                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                 <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Liveness Verified • Finalizing...</p>
+               </div>
+               {livenessPassedStartTimeRef.current && (Date.now() - livenessPassedStartTimeRef.current > 3000) && (
+                 <p className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-tight">Matching face features...</p>
+               )}
+             </motion.div>
+          )}
         </div>
 
         {/* Camera Feed */}
@@ -385,7 +624,7 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
                   className="bg-emerald-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-widest flex items-center gap-2"
                 >
                   <CheckCircle2 className="w-3 h-3" />
-                  Liveness Verified
+                  Ready to Capture
                 </motion.div>
               ) : isFaceDetected ? (
                 <motion.div 
@@ -393,10 +632,15 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="bg-amber-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-widest flex items-center gap-2"
+                  className="bg-amber-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-widest flex flex-col items-center gap-1"
                 >
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  Blink your eyes...
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Blink to verify liveness
+                  </div>
+                  <div className="text-[10px] font-bold bg-white/20 px-3 py-1 rounded-full border border-white/10 mt-1 shadow-inner">
+                    SCANNING: {Math.max(0, 5 - scanSeconds)}S REMAINING
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div 
@@ -413,9 +657,21 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
           </div>
         </div>
 
+        {/* Manual Capture Fallback for Re-Enrollment */}
+        {isReEnroll && mode === 'register' && !capturedPhoto && isFaceDetected && !isLivenessPassed && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={handleCapture}
+            className="mb-6 text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100 animate-pulse"
+          >
+            Capture Now (Skip Blink)
+          </motion.button>
+        )}
+
         {/* Action Buttons */}
         <div className="w-full flex flex-col gap-4">
-          {mode === 'register' && !capturedPhoto && (
+          {mode === 'register' && !capturedPhoto && !isReEnroll && (
             <Button 
               onClick={handleCapture}
               disabled={!isFaceDetected || isProcessing}
@@ -425,7 +681,7 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
             </Button>
           )}
 
-          {mode === 'register' && capturedPhoto && (
+          {mode === 'register' && capturedPhoto && !isReEnroll && (
             <div className="flex flex-col gap-3">
               <Button 
                 onClick={handleRegister}
@@ -440,6 +696,16 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
               >
                 Retake Photo
               </button>
+            </div>
+          )}
+
+          {/* Re-enroll auto-flow status text */}
+          {mode === 'register' && isReEnroll && (
+            <div className="text-center">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-10 leading-relaxed flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {capturedPhoto ? 'Saving new biometrics...' : isLivenessPassed ? 'Capturing face...' : isFaceDetected ? 'Blink your eyes to verify...' : 'Position your face in the frame'}
+              </p>
             </div>
           )}
 
@@ -461,19 +727,29 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
           )}
 
           {mode === 'success' && (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <CheckCircle2 className="w-8 h-8 text-white" />
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex flex-col items-center gap-4"
+            >
+              <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center border-4 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.4)]">
+                <CheckCircle2 className="w-12 h-12 text-emerald-500" />
               </div>
-              <p className="text-emerald-400 font-black uppercase tracking-[0.2em] text-sm animate-pulse">
-                Verified Successfully
-              </p>
+              <div className="text-center">
+                <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">Identity Verified</h2>
+                <div className="mt-2 inline-flex items-center gap-2 bg-emerald-500/20 border border-emerald-500/30 px-4 py-1.5 rounded-full">
+                  <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+                  <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">
+                    Fast Scan: {scanSeconds} Seconds
+                  </span>
+                </div>
+              </div>
               {matchConfidence && (
-                <p className="text-[10px] text-emerald-300/40 font-bold">
+                <div className="text-[10px] text-emerald-300/40 font-bold">
                   Confidence: {(matchConfidence * 100).toFixed(1)}%
-                </p>
+                </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {error && (

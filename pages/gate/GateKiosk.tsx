@@ -18,9 +18,9 @@ import type { AttendanceEventType, Location } from '../../types/attendance';
 import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy, Hash, Delete } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────────
-const FACE_MATCH_THRESHOLD = 0.45; // Euclidean distance — lower = stricter
-const SCAN_INTERVAL_MS = 1500; // Throttle face inference to ~0.67 fps
-const RESULT_DISPLAY_MS = 3000; // Show result overlay for 3 seconds
+const FACE_MATCH_THRESHOLD = 0.55; // Euclidean distance — relaxed for better mobile camera performance
+const SCAN_INTERVAL_MS = 800; // Snappier detection
+const RESULT_DISPLAY_MS = 1500; // Faster turnover for queues
 const QR_SCAN_INTERVAL_MS = 500;
 const FACE_SYNC_INTERVAL_MS = 5 * 60 * 1000; // Re-sync face descriptors every 5 min
 
@@ -180,17 +180,31 @@ const GateKiosk: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
+        console.log('[GateKiosk] Loading models from origin:', window.location.origin);
         const faceapi = await import('face-api.js');
-        const MODEL_URL = '/models';
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
+        
+        const MODEL_URL = (window.location.origin + window.location.pathname).replace(/\/$/, '') + '/models';
+        
+        try {
+          console.log('[GateKiosk] Loading TinyFaceDetector from:', MODEL_URL);
+          await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+          
+          console.log('[GateKiosk] Loading FaceLandmark68TinyNet...');
+          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+          
+          console.log('[GateKiosk] Loading FaceRecognitionNet...');
+          await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+          
+          console.log('[GateKiosk] face-api.js models loaded successfully');
+        } catch (loadErr) {
+          console.error('[GateKiosk] Model load failed, trying relative path...', loadErr);
+          await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+          await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
+          await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+        }
         if (!cancelled) setFaceApiLoaded(true);
-        console.log('[GateKiosk] face-api.js models loaded');
       } catch (err) {
-        console.error('[GateKiosk] Failed to load face-api models:', err);
+        console.error('[GateKiosk] Critical error loading face-api models:', err);
       }
     })();
     return () => { cancelled = true; };
@@ -344,7 +358,7 @@ const GateKiosk: React.FC = () => {
       try {
         const faceapi = await import('face-api.js');
         const detections = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }))
           .withFaceLandmarks(true)
           .withFaceDescriptor();
 

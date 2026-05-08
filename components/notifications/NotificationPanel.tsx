@@ -99,7 +99,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const isManagerRole = useMemo(() => {
         if (!user) return false;
         const role = (user.role || '').toLowerCase();
-        return ['admin', 'super_admin', 'developer', 'management', 'hr', 'hr_ops', 'finance_manager'].includes(role) || role.includes('manager');
+        const managerRoles = [
+            'admin', 'super_admin', 'developer', 'management', 
+            'hr', 'hr_ops', 'finance_manager', 'operation_manager', 
+            'site_manager', 'director', 'business_developer'
+        ];
+        return managerRoles.includes(role) || role.includes('manager');
     }, [user]);
 
     const isHRRole = useMemo(() => {
@@ -184,13 +189,14 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     };
 
     const [isActionLoading, setIsActionLoading] = React.useState<string | null>(null);
+    const { totalUnreadCount } = useNotificationStore();
     const scrollContainerRef = React.useRef<HTMLDivElement>(null);
 
     const fetchPendingApprovals = React.useCallback(async () => {
         if (!user || user.role === 'field_staff' || user.role === 'unverified') return;
         try {
             const role = (user.role || '').toLowerCase();
-            const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management'].includes(role);
+            const isSuperAdmin = ['admin', 'super_admin', 'developer', 'management', 'director', 'operation_manager'].includes(role);
             const isHR = ['hr', 'hr_ops'].includes(role);
 
             console.log('[Approvals] Fetching for role:', role, '| isSuperAdmin:', isSuperAdmin, '| isHR:', isHR, '| userId:', user.id);
@@ -262,7 +268,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         if (isOpen) {
             fetchPendingApprovals();
         }
-    }, [isOpen, fetchPendingApprovals]);
+    }, [isOpen, fetchPendingApprovals, totalUnreadCount]);
 
     const handleRespondToUnlock = async (requestId: string, status: 'approved' | 'rejected') => {
         setIsActionLoading(requestId);

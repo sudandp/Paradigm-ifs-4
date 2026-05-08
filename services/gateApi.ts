@@ -174,7 +174,7 @@ export async function registerGateUser(params: {
     userName: data.users?.name || 'Unknown',
     userEmail: data.users?.email || '',
     userPhotoUrl: data.users?.photo_url || data.photo_url,
-    faceDescriptor: data.face_descriptor,
+    faceDescriptor: normalizeFaceDescriptor(data.face_descriptor),
     qrToken: data.qr_token,
     passcode: data.passcode,
     photoUrl: data.photo_url,

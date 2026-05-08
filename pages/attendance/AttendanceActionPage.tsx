@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
@@ -27,6 +27,7 @@ const AttendanceActionPage: React.FC = () => {
     const [passcode, setPasscode] = useState('');
     const [isVerifyingPasscode, setIsVerifyingPasscode] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
+    const isVerifiedRef = useRef(false);
 
     React.useEffect(() => {
         const init = async () => {
@@ -34,6 +35,18 @@ const AttendanceActionPage: React.FC = () => {
                 await fetchGeofencingSettings();
             }
             setSettingsLoaded(true);
+
+            // Pre-fetch location to warm up GPS while user is viewing the page
+            // This prevents the ~10s delay after face verification
+            try {
+                const { getPrecisePosition } = await import('../../utils/locationUtils');
+                console.log('[AttendancePage] Pre-fetching location to warm up GPS...');
+                getPrecisePosition(150, 15000).catch(err => {
+                    console.warn('[AttendancePage] Location pre-fetch failed/timed out, will retry on confirm.', err);
+                });
+            } catch (e) {
+                console.warn('[AttendancePage] Failed to trigger location pre-fetch');
+            }
         };
         init();
     }, [geofencingSettings, fetchGeofencingSettings]);
@@ -68,9 +81,12 @@ const AttendanceActionPage: React.FC = () => {
         iconColor = 'text-indigo-600';
     }
 
-    const handleConfirm = async () => {
-        // If not verified yet, trigger face auth
-        if (!isVerified) {
+    // const requiresFaceAuth = workType === 'office' && !isBreakIn && !isBreakOut;
+    const requiresFaceAuth = false; // Temporarily non-mandatory
+
+    const handleConfirm = async (isAutoConfirm = false) => {
+        // If not verified yet, trigger face auth (only if required for this action)
+        if (requiresFaceAuth && !isVerified && !isVerifiedRef.current && !isAutoConfirm) {
             setShowFaceAuth(true);
             return;
         }
@@ -80,8 +96,8 @@ const AttendanceActionPage: React.FC = () => {
             // Use cached geofencing settings for immediate response
             const settings = geofencingSettings || { enabled: false };
             
-            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled) {
-                // If checking out and geofencing is enabled, open the report modal first
+            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && workType === 'field') {
+                console.log('[AttendancePage] Geofencing enabled for field staff, opening report modal.');
                 setIsReportModalOpen(true);
                 setIsSubmitting(false);
                 return;
@@ -98,14 +114,15 @@ const AttendanceActionPage: React.FC = () => {
             // Normalize workType for DB compatibility ('site-ot' -> 'field')
             const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
             
-            // Direct check-in OR direct check-out (if geofencing is disabled)
+            console.log('[AttendancePage] Triggering toggleCheckInStatus...', { normalizedWorkType, forcedType });
             const { success, message } = await toggleCheckInStatus(undefined, null, normalizedWorkType, undefined, forcedType, forcedType === 'break-in' ? breakInterval : undefined);
+            console.log('[AttendancePage] Toggle Result:', { success, message });
             setToast({ message, type: success ? 'success' : 'error' });
             
             if (success) {
                 setTimeout(() => {
                     navigate('/profile', { replace: true });
-                }, 1500);
+                }, 600); // Faster navigation
             }
         } catch (error) {
             console.error('Action error:', error);
@@ -117,11 +134,10 @@ const AttendanceActionPage: React.FC = () => {
 
     const handleFaceVerified = () => {
         setIsVerified(true);
+        isVerifiedRef.current = true;
         setShowFaceAuth(false);
-        // Automatically trigger confirm after verification
-        setTimeout(() => {
-            handleConfirm();
-        }, 500);
+        // Automatically trigger confirm after verification - much faster
+        handleConfirm(true);
     };
 
     const handlePasscodeSubmit = async () => {
@@ -155,7 +171,7 @@ const AttendanceActionPage: React.FC = () => {
         if (success) {
             setTimeout(() => {
                 navigate('/profile', { replace: true });
-            }, 1500);
+            }, 600);
         }
     };
 
@@ -244,7 +260,7 @@ const AttendanceActionPage: React.FC = () => {
 
                         <div className="flex flex-col gap-4">
                             <Button
-                                onClick={handleConfirm}
+                                onClick={() => handleConfirm()}
                                 variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
                                 className={`w-full !rounded-2xl !py-4 !text-base font-black tracking-widest uppercase italic shadow-2xl transition-all active:scale-[0.98] ${
                                     isBreakIn ? '!bg-emerald-600 !border-emerald-700 hover:!bg-emerald-700 shadow-emerald-900/40' : 

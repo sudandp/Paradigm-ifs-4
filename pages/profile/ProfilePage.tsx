@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useForm, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -7,6 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { User, UploadedFile, EmployeeScore, UserChild } from '../../types';
+import type { GateUser } from '../../types/gate';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -96,6 +98,29 @@ const ProfilePage: React.FC = () => {
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+    const [gateUser, setGateUser] = useState<GateUser | null>(null);
+    const [isGateUserLoading, setIsGateUserLoading] = useState(true);
+    const [showFaceEnroll, setShowFaceEnroll] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    useEffect(() => {
+        const fetchGateData = async () => {
+            if (user?.id) {
+                console.log('[ProfilePage] Fetching gate data for user:', user.id);
+                try {
+                    const { getGateUserByUserId } = await import('../../services/gateApi');
+                    const data = await getGateUserByUserId(user.id);
+                    console.log('[ProfilePage] Gate data received:', data);
+                    setGateUser(data);
+                } catch (err) {
+                    console.error('[ProfilePage] Failed to fetch gate user data:', err);
+                } finally {
+                    setIsGateUserLoading(false);
+                }
+            }
+        };
+        fetchGateData();
+    }, [user?.id, showFaceEnroll, isSettingsOpen]); // Refresh when settings open or face enrollment changes
     
     // Interactive Hints State
     const [showPunchHint, setShowPunchHint] = useState(false);
@@ -111,11 +136,7 @@ const ProfilePage: React.FC = () => {
     // Work Mode Selection State
     const [siteWorkMode, setSiteWorkMode] = useState<'duty' | 'ot'>('duty');
     
-    // Biometric Enrollment State
-    const [showFaceEnroll, setShowFaceEnroll] = useState(false);
     
-    // Settings Modal State
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     // Children State (for female employees)
     const [children, setChildren] = useState<UserChild[]>([]);
@@ -1108,106 +1129,120 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
+                    {isSettingsOpen && createPortal(
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-2xl flex flex-col"
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-white/5">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                                        <Settings className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">Settings</h2>
+                                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Configuration Center</div>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setIsSettingsOpen(false)}
+                                    className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
+                                >
+                                    <ArrowLeft className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Modal Content */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+                                    {/* 1. Biometric Security Card */}
+                                    <section>
+                                    <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                                            <Shield className="w-16 h-16 text-emerald-400" />
+                                        </div>
+                                        <div className="relative z-10 space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <div className="space-y-1">
+                                                    <div className="text-white font-black uppercase tracking-tighter italic text-xl">Biometrics</div>
+                                                    <div className="text-emerald-400/60 text-[10px] font-bold uppercase tracking-widest">Face ID Enrollment</div>
+                                                </div>
+                                                {gateUser?.passcode && (
+                                                    <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2 flex flex-col items-center shadow-inner">
+                                                        <div className="text-[9px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1 opacity-80">Backup Passcode</div>
+                                                        <div className="text-2xl font-black text-white tracking-[0.3em] font-mono leading-none drop-shadow-lg">{gateUser.passcode}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button 
+                                                onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
+                                                className="w-full py-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <Camera className="w-4 h-4" />
+                                                Re-enroll Face
+                                            </button>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* 2. Identity Details */}
+                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <UserIcon className="h-5 w-5 text-emerald-400" />
+                                        <div className="text-sm font-black uppercase tracking-widest italic">Identity</div>
+                                    </div>
+                                    <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                                        <Input label="Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
+                                        <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
+                                        <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Update Identity</Button>
+                                    </form>
+                                </section>
+
+                                {/* 3. Security Pin */}
+                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <Lock className="h-5 w-5 text-amber-400" />
+                                        <div className="text-sm font-black uppercase tracking-widest italic">Security Pin</div>
+                                    </div>
+                                    <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                        <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                        <Input label="New Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
+                                        <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Change Pin</Button>
+                                    </form>
+                                </section>
+
+                                {/* 4. Alert Tone */}
+                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
+                                    <AlertTonePicker />
+                                </section>
+                            </div>
+                        </motion.div>,
+                        document.body
+                    )}
+                    {/* Biometric Enrollment Modal (Mobile) */}
                     <AnimatePresence>
-                        {isSettingsOpen && (
+                        {showFaceEnroll && createPortal(
                             <motion.div 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-2xl flex flex-col"
+                                className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col p-4 items-center justify-center"
                             >
-                                {/* Modal Header */}
-                                <div className="flex items-center justify-between p-6 border-b border-white/5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                                            <Settings className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">Settings</h2>
-                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Configuration Center</p>
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onClick={() => setIsSettingsOpen(false)}
-                                        className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
-                                    >
-                                        <ArrowLeft className="w-5 h-5" />
-                                    </button>
-                                </div>
-
-                                {/* Modal Content */}
-                                <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
-                                     {/* 1. Biometric Security Card */}
-                                     <section>
-                                        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden">
-                                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                                <Shield className="w-16 h-16 text-emerald-400" />
-                                            </div>
-                                            <div className="relative z-10 space-y-4">
-                                                <div className="space-y-1">
-                                                    <h3 className="text-white font-black uppercase tracking-tighter italic text-xl">Biometrics</h3>
-                                                    <p className="text-emerald-400/60 text-[10px] font-bold uppercase tracking-widest">Face ID Enrollment</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
-                                                    className="w-full py-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <Camera className="w-4 h-4" />
-                                                    Re-enroll Face
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    {/* 2. Identity Details */}
-                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                        <div className="flex items-center gap-3 mb-6">
-                                            <UserIcon className="h-5 w-5 text-emerald-400" />
-                                            <h3 className="text-sm font-black uppercase tracking-widest italic">Identity</h3>
-                                        </div>
-                                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
-                                            <Input label="Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
-                                            <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
-                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Update Identity</Button>
-                                        </form>
-                                    </section>
-
-                                    {/* 3. Security Pin */}
-                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                        <div className="flex items-center gap-3 mb-6">
-                                            <Lock className="h-5 w-5 text-amber-400" />
-                                            <h3 className="text-sm font-black uppercase tracking-widest italic">Security Pin</h3>
-                                        </div>
-                                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                            <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                            <Input label="New Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                            <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Change Pin</Button>
-                                        </form>
-                                    </section>
-
-                                    {/* 4. Alert Tone */}
-                                    <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                        <AlertTonePicker />
-                                    </section>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* Biometric Enrollment Modal (Mobile) */}
-                    <AnimatePresence>
-                        {showFaceEnroll && user && (
-                            <div className="fixed inset-0 z-[120]">
                                 <PersonalFaceAuth 
                                     userId={user.id} 
+                                    isReEnroll={true}
                                     onVerified={() => {
+                                        console.log("Biometric verification complete for user:", user.id);
                                         setShowFaceEnroll(false);
-                                        setToast({ message: 'Biometrics updated!', type: 'success' });
+                                        setIsSettingsOpen(false);
+                                        setToast({ message: 'Biometrics updated successfully!', type: 'success' });
                                     }} 
-                                    onCancel={() => setShowFaceEnroll(false)}
-                                    actionLabel="Enrollment"
+                                    onCancel={() => setShowFaceEnroll(false)} 
                                 />
-                            </div>
+                            </motion.div>,
+                            document.body
                         )}
                     </AnimatePresence>
                 </div>
@@ -1241,10 +1276,10 @@ const ProfilePage: React.FC = () => {
                                 {getRoleName(user.role)}
                              </span>
                         </div>
-                        <p className="mt-1.5 text-sm font-normal text-gray-500 md:text-white md:opacity-90 inline-flex items-center gap-1.5">
+                        <div className="mt-1.5 text-sm font-normal text-gray-500 md:text-white md:opacity-90 inline-flex items-center gap-1.5">
                             <Mail className="w-3.5 h-3.5 flex-shrink-0 hidden md:inline-block" />
                             {user.email}
-                        </p>
+                        </div>
                         
                         {/* Desktop Avatar Controls — standardized design system */}
                         <div className="mt-5 hidden md:flex items-center justify-start gap-3">
@@ -1397,27 +1432,27 @@ const ProfilePage: React.FC = () => {
                                 {/* Small Stat Boxes */}
                                 <div className="grid grid-cols-2 gap-2">
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> First In
-                                        </p>
+                                        </div>
                                         <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Last Out
-                                        </p>
+                                        </div>
                                         <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckOutTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> First B-In
-                                        </p>
+                                        </div>
                                         <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(firstBreakInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <p className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Last B-Out
-                                        </p>
+                                        </div>
                                         <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastBreakOutTime)}</p>
                                     </div>
                                 </div>
@@ -1460,9 +1495,9 @@ const ProfilePage: React.FC = () => {
                                                          <Coffee className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                                                          <div className="flex-1">
                                                              <p className="text-xs font-bold text-amber-800">Unclosed Break from Previous Session</p>
-                                                             <p className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">
+                                                             <div className="text-[10px] text-amber-700 mt-0.5 leading-relaxed">
                                                                  You forgot to end your break. End it now to enable punch-in, or apply for a correction if hours need adjustment.
-                                                             </p>
+                                                             </div>
                                                              <div className="flex gap-1.5 mt-2">
                                                                  <Button
                                                                      onClick={() => navigate('/attendance/break-out')}
@@ -1498,6 +1533,8 @@ const ProfilePage: React.FC = () => {
                                                                 if (user?.role === 'field_staff' || user?.role === 'operation_manager') {
                                                                     navigate('/attendance/check-in?workType=office');
                                                                 } else {
+                                                                    // Warm up GPS
+                                                                    import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
                                                                     navigate('/attendance/check-in');
                                                                 }
                                                             }}
@@ -1525,7 +1562,12 @@ const ProfilePage: React.FC = () => {
                                                     </div>
                                                 ) : (
                                                     <Button
-                                                        onClick={() => navigate('/attendance/check-out?workType=office')}
+                                                        onClick={() => {
+                                                            // Warm up GPS for faster punch out
+                                                            import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
+                                                            const targetWorkType = (isFieldCheckedIn || isSiteOtCheckedIn) ? 'field' : 'office';
+                                                            navigate(`/attendance/check-out?workType=${targetWorkType}`);
+                                                        }}
                                                         variant="danger"
                                                         className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                         disabled={isOnBreak || isActionInProgress}
@@ -1894,12 +1936,14 @@ const ProfilePage: React.FC = () => {
             {/* Biometric Enrollment Modal */}
             <AnimatePresence>
                 {showFaceEnroll && user && (
-                    <div className="fixed inset-0 z-[100]">
+                    <div className="fixed inset-0 z-[120]">
                         <PersonalFaceAuth 
                             userId={user.id} 
+                            isReEnroll={true}
                             onVerified={() => {
                                 setShowFaceEnroll(false);
                                 setToast({ message: 'Biometrics updated successfully!', type: 'success' });
+                                checkAttendanceStatus();
                             }} 
                             onCancel={() => setShowFaceEnroll(false)}
                             actionLabel="Enrollment Update"
