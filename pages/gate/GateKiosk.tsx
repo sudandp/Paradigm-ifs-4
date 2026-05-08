@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useGateStore } from '../../store/gateStore';
 import {
-  fetchGateUsers, markGateAttendance, lookupByQrToken, uploadGatePhoto, reportKioskHeartbeat, fetchKioskLocations, fetchKioskDevices,
+  fetchGateUsers, markGateAttendance, lookupByQrToken, lookupByPasscode, uploadGatePhoto, reportKioskHeartbeat, fetchKioskLocations, fetchKioskDevices,
 } from '../../services/gateApi';
 import { useKioskTelemetry } from '../../hooks/useKioskTelemetry';
 import { api } from '../../services/api';
@@ -15,7 +15,7 @@ import { KioskPlugin } from '../../plugins/KioskPlugin';
 import { useNavigate } from 'react-router-dom';
 import type { GateUser, GateScanResult, GateMode } from '../../types/gate';
 import type { AttendanceEventType, Location } from '../../types/attendance';
-import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy } from 'lucide-react';
+import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy, Hash, Delete } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const FACE_MATCH_THRESHOLD = 0.45; // Euclidean distance — lower = stricter
@@ -69,6 +69,8 @@ const GateKiosk: React.FC = () => {
   const [manualSearch, setManualSearch] = useState('');
   const [manualSelected, setManualSelected] = useState<GateUser | null>(null);
   const [qrScanner, setQrScanner] = useState<any>(null);
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [isPasscodeError, setIsPasscodeError] = useState(false);
 
   // Settings & Action state
   const [showSettings, setShowSettings] = useState(false);
@@ -429,6 +431,43 @@ const GateKiosk: React.FC = () => {
     setManualSearch('');
   }, [manualSelected, selectedAction, handleMatch]);
 
+  // ─── Passcode check-in handler ────────────────────────────────────
+  const handlePasscodeSubmit = useCallback(async (code: string) => {
+    if (isProcessing) return;
+    setProcessing(true);
+    setIsPasscodeError(false);
+    try {
+      const user = await lookupByPasscode(code);
+      if (user) {
+        await handleMatch(user, 'passcode');
+        setPasscodeInput('');
+      } else {
+        setIsPasscodeError(true);
+        setTimeout(() => setIsPasscodeError(false), 600); // Reset shake after animation
+        setPasscodeInput('');
+        showResult({ success: false, method: 'passcode', message: 'Invalid Passcode' });
+      }
+    } catch (err: any) {
+      showResult({ success: false, method: 'passcode', message: err.message || 'System error' });
+      setPasscodeInput('');
+    } finally {
+      setProcessing(false);
+    }
+  }, [isProcessing, setProcessing, handleMatch, showResult]);
+
+  const onKeypadPress = (val: string) => {
+    if (passcodeInput.length >= 4) return;
+    const newCode = passcodeInput + val;
+    setPasscodeInput(newCode);
+    if (newCode.length === 4) {
+      handlePasscodeSubmit(newCode);
+    }
+  };
+
+  const onKeypadDelete = () => {
+    setPasscodeInput(prev => prev.slice(0, -1));
+  };
+
   // Resolve active PIN: if a location is assigned and has a kioskPin, use it; otherwise fallback to local store's kioskPin
   const activePin = useMemo(() => {
     if (assignedLocationId) {
@@ -526,9 +565,9 @@ const GateKiosk: React.FC = () => {
           <button onClick={() => setSelectedAction(null)} className="absolute left-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400/80 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          {(['face', 'qr', 'manual'] as GateMode[]).map((mode) => {
-          const icons = { face: User, qr: QrCode, manual: Camera };
-          const labels = { face: 'Face ID', qr: 'QR Scan', manual: 'Manual' };
+          {(['face', 'qr', 'manual', 'passcode'] as GateMode[]).map((mode) => {
+          const icons = { face: User, qr: QrCode, manual: Camera, passcode: Hash };
+          const labels = { face: 'Face ID', qr: 'QR Scan', manual: 'Manual', passcode: 'Passcode' };
           const Icon = icons[mode];
           const isActive = activeMode === mode;
           return (
@@ -645,6 +684,49 @@ const GateKiosk: React.FC = () => {
                 <CheckCircle2 className="w-5 h-5" /> Mark Attendance for {manualSelected.userName}
               </button>
             )}
+          </div>
+        )}
+
+        {activeMode === 'passcode' && (
+          <div className={`w-full max-w-sm mx-auto px-6 flex flex-col items-center gap-8 ${isPasscodeError ? 'animate-shake' : ''}`}>
+            <div className="flex flex-col items-center gap-4">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${isPasscodeError ? 'bg-red-500/20' : 'bg-emerald-500/10'}`}>
+                <Hash className={`w-8 h-8 ${isPasscodeError ? 'text-red-400' : 'text-emerald-400'}`} />
+              </div>
+              <p className={`text-sm font-medium transition-colors ${isPasscodeError ? 'text-red-400' : 'text-emerald-300/60'}`}>
+                {isPasscodeError ? 'Invalid Passcode' : 'Enter your 4-digit passcode'}
+              </p>
+              
+              {/* Passcode dots */}
+              <div className="flex gap-4 mt-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className={`w-4 h-4 rounded-full transition-all duration-200 ${
+                    passcodeInput.length > i 
+                      ? (isPasscodeError ? 'bg-red-400 scale-110' : 'bg-emerald-400 scale-110') 
+                      : 'bg-white/10'
+                  }`} />
+                ))}
+              </div>
+            </div>
+
+            {/* Numeric Keypad */}
+            <div className="grid grid-cols-3 gap-4 w-full">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                <button key={n} onClick={() => onKeypadPress(n.toString())}
+                  className="h-16 rounded-2xl bg-white/5 hover:bg-white/10 active:bg-emerald-500/20 text-white text-2xl font-bold transition-all border border-white/5 flex items-center justify-center">
+                  {n}
+                </button>
+              ))}
+              <div className="h-16" /> {/* Empty spacer */}
+              <button onClick={() => onKeypadPress('0')}
+                className="h-16 rounded-2xl bg-white/5 hover:bg-white/10 active:bg-emerald-500/20 text-white text-2xl font-bold transition-all border border-white/5 flex items-center justify-center">
+                0
+              </button>
+              <button onClick={onKeypadDelete}
+                className="h-16 rounded-2xl bg-white/5 hover:bg-white/10 active:bg-red-500/20 text-emerald-400/60 transition-all flex items-center justify-center">
+                <Delete className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -792,6 +874,12 @@ const GateKiosk: React.FC = () => {
           0%, 100% { top: 15%; opacity: 0.3; }
           50% { top: 75%; opacity: 0.8; }
         }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          20%, 60% { transform: translateX(-10px); }
+          40%, 80% { transform: translateX(10px); }
+        }
+        .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
         @keyframes fadeIn {
           from { opacity: 0; } to { opacity: 1; }
         }

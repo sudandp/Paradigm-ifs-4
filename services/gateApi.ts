@@ -16,6 +16,10 @@ function generateQrToken(): string {
   return token;
 }
 
+function generatePasscode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 // ─── Gate Users ────────────────────────────────────────────────────────────────
 
 // Normalize face_descriptor from JSONB — Supabase may return nested/non-array formats
@@ -50,7 +54,7 @@ export async function fetchGateUsers(): Promise<GateUser[]> {
   const { data, error } = await supabase
     .from('gate_users')
     .select(`
-      id, user_id, face_descriptor, qr_token, photo_url,
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
       users:user_id (name, email, photo_url)
     `)
@@ -67,6 +71,7 @@ export async function fetchGateUsers(): Promise<GateUser[]> {
     userPhotoUrl: row.users?.photo_url || row.photo_url,
     faceDescriptor: normalizeFaceDescriptor(row.face_descriptor),
     qrToken: row.qr_token,
+    passcode: row.passcode,
     photoUrl: row.photo_url,
     department: row.department,
     isActive: row.is_active,
@@ -79,7 +84,7 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
   const { data, error } = await supabase
     .from('gate_users')
     .select(`
-      id, user_id, face_descriptor, qr_token, photo_url,
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
       users:user_id (name, email, photo_url)
     `)
@@ -95,6 +100,7 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
     userPhotoUrl: row.users?.photo_url || row.photo_url,
     faceDescriptor: normalizeFaceDescriptor(row.face_descriptor),
     qrToken: row.qr_token,
+    passcode: row.passcode,
     photoUrl: row.photo_url,
     department: row.department,
     isActive: row.is_active,
@@ -110,6 +116,7 @@ export async function registerGateUser(params: {
   department?: string;
 }): Promise<GateUser> {
   const qrToken = generateQrToken();
+  const passcode = generatePasscode();
 
   const { data, error } = await supabase
     .from('gate_users')
@@ -117,12 +124,16 @@ export async function registerGateUser(params: {
       user_id: params.userId,
       face_descriptor: params.faceDescriptor,
       qr_token: qrToken,
+      passcode: passcode,
       photo_url: params.photoUrl || null,
       department: params.department || null,
       is_active: true,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id' })
-    .select()
+    .select(`
+      *,
+      users:user_id (name, email, photo_url)
+    `)
     .single();
 
   if (error) throw new Error(error.message);
@@ -130,8 +141,12 @@ export async function registerGateUser(params: {
   return {
     id: data.id,
     userId: data.user_id,
+    userName: data.users?.name || 'Unknown',
+    userEmail: data.users?.email || '',
+    userPhotoUrl: data.users?.photo_url || data.photo_url,
     faceDescriptor: data.face_descriptor,
     qrToken: data.qr_token,
+    passcode: data.passcode,
     photoUrl: data.photo_url,
     department: data.department,
     isActive: data.is_active,
@@ -149,14 +164,22 @@ export async function updateGateUserDescriptor(gateUserId: string, faceDescripto
   if (error) throw new Error(error.message);
 }
 
-export async function deactivateGateUser(gateUserId: string): Promise<void> {
-  // Soft delete — preserves history in gate_attendance_logs
-  const { error } = await supabase
+export async function deleteGateUser(gateUserId: string): Promise<void> {
+  // Try hard delete first
+  const { error: deleteError } = await supabase
     .from('gate_users')
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .delete()
     .eq('id', gateUserId);
 
-  if (error) throw new Error(error.message);
+  if (deleteError) {
+    // If hard delete fails (e.g. foreign key violation with logs), fallback to soft delete
+    const { error: updateError } = await supabase
+      .from('gate_users')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', gateUserId);
+
+    if (updateError) throw new Error(updateError.message);
+  }
 }
 
 // ─── Gate Attendance Logs ──────────────────────────────────────────────────────
@@ -302,7 +325,7 @@ export async function lookupByQrToken(token: string): Promise<GateUser | null> {
   const { data, error } = await supabase
     .from('gate_users')
     .select(`
-      id, user_id, face_descriptor, qr_token, photo_url,
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
       users:user_id (name, email, photo_url)
     `)
@@ -320,6 +343,40 @@ export async function lookupByQrToken(token: string): Promise<GateUser | null> {
     userPhotoUrl: (data as any).users?.photo_url || data.photo_url,
     faceDescriptor: data.face_descriptor,
     qrToken: data.qr_token,
+    passcode: data.passcode,
+    photoUrl: data.photo_url,
+    department: data.department,
+    isActive: data.is_active,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+// ─── Lookup by Passcode ────────────────────────────────────────────────────────
+
+export async function lookupByPasscode(passcode: string): Promise<GateUser | null> {
+  const { data, error } = await supabase
+    .from('gate_users')
+    .select(`
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
+      department, is_active, created_at, updated_at,
+      users:user_id (name, email, photo_url)
+    `)
+    .eq('passcode', passcode)
+    .eq('is_active', true)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    userName: (data as any).users?.name || 'Unknown',
+    userEmail: (data as any).users?.email || '',
+    userPhotoUrl: (data as any).users?.photo_url || data.photo_url,
+    faceDescriptor: data.face_descriptor,
+    qrToken: data.qr_token,
+    passcode: data.passcode,
     photoUrl: data.photo_url,
     department: data.department,
     isActive: data.is_active,
@@ -543,5 +600,3 @@ export async function fetchKioskLocations(): Promise<{ id: string; name: string 
   if (error) throw new Error(error.message);
   return data || [];
 }
-
-

@@ -6,13 +6,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import {
-  registerGateUser, fetchAllGateUsers, uploadGatePhoto, deactivateGateUser,
+  registerGateUser, fetchAllGateUsers, uploadGatePhoto, deleteGateUser,
 } from '../../services/gateApi';
 import type { GateUser } from '../../types/gate';
 import { useLogoStore } from '../../store/logoStore';
 import {
   ArrowLeft, Camera, QrCode, User, UserPlus, Trash2, CheckCircle2,
-  Loader2, Search, Download, RefreshCw, Shield, AlertTriangle, Printer, X, Clock, Settings
+  Loader2, Search, Download, RefreshCw, Shield, AlertTriangle, Printer, X, Clock, Settings, Lock, Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
@@ -34,10 +34,13 @@ const RegisterGateUser: React.FC = () => {
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [isFaceDetected, setIsFaceDetected] = useState(false);
+  const detectionLoopRef = useRef<number | null>(null);
   
   const [employees, setEmployees] = useState<any[]>([]);
   const [empSearch, setEmpSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+  const [registeredUser, setRegisteredUser] = useState<GateUser | null>(null);
 
   // Print ID Card state
   const [printUser, setPrintUser] = useState<GateUser | null>(null);
@@ -157,8 +160,106 @@ const RegisterGateUser: React.FC = () => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (detectionLoopRef.current) {
+      cancelAnimationFrame(detectionLoopRef.current);
+      detectionLoopRef.current = null;
+    }
     setCameraActive(false);
+    setIsFaceDetected(false);
   };
+
+  // ─── Live Detection Loop ──────────────────────────────────────────
+  const runDetectionLoop = useCallback(async () => {
+    // Only run if everything is ready
+    if (!cameraActive || !videoRef.current || !canvasRef.current || !modelsLoaded) return;
+    
+    const video = videoRef.current;
+    // Check if video is actually playing and has metadata
+    if (video.readyState < 2 || video.paused || video.ended) {
+      detectionLoopRef.current = requestAnimationFrame(runDetectionLoop);
+      return;
+    }
+
+    try {
+      const faceapi = await import('face-api.js');
+      const canvas = canvasRef.current;
+
+      // Detect face with higher resolution for better accuracy
+      const detection = await faceapi.detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ 
+          inputSize: 320, // Increased from 160 for better detection
+          scoreThreshold: 0.4 // Slightly lower threshold to be more permissive
+        })
+      ).withFaceLandmarks(true);
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (detection) {
+          if (!isFaceDetected) setIsFaceDetected(true);
+          
+          // Match canvas to video display size
+          const dims = faceapi.matchDimensions(canvas, video, true);
+          const resizedDetection = faceapi.resizeResults(detection, dims);
+          
+          // Custom drawing for a more "premium" look
+          const box = resizedDetection.detection.box;
+          
+          // Emerald glow
+          ctx.strokeStyle = '#10b981'; 
+          ctx.lineWidth = 3;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = 'rgba(16, 185, 129, 0.5)';
+          
+          // Draw corners
+          const cornerSize = 24;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          
+          // Top Left
+          ctx.beginPath();
+          ctx.moveTo(box.x, box.y + cornerSize); ctx.lineTo(box.x, box.y); ctx.lineTo(box.x + cornerSize, box.y);
+          ctx.stroke();
+          // Top Right
+          ctx.beginPath();
+          ctx.moveTo(box.x + box.width - cornerSize, box.y); ctx.lineTo(box.x + box.width, box.y); ctx.lineTo(box.x + box.width, box.y + cornerSize);
+          ctx.stroke();
+          // Bottom Left
+          ctx.beginPath();
+          ctx.moveTo(box.x, box.y + box.height - cornerSize); ctx.lineTo(box.x, box.y + box.height); ctx.lineTo(box.x + cornerSize, box.y + box.height);
+          ctx.stroke();
+          // Bottom Right
+          ctx.beginPath();
+          ctx.moveTo(box.x + box.width - cornerSize, box.y + box.height); ctx.lineTo(box.x + box.width, box.y + box.height); ctx.lineTo(box.x + box.width, box.y + box.height - cornerSize);
+          ctx.stroke();
+          
+          // Reset shadow for performance
+          ctx.shadowBlur = 0;
+        } else {
+          if (isFaceDetected) setIsFaceDetected(false);
+        }
+      }
+    } catch (err) {
+      // Avoid spamming logs in loop
+    }
+
+    if (cameraActive) {
+      detectionLoopRef.current = requestAnimationFrame(runDetectionLoop);
+    }
+  }, [cameraActive, modelsLoaded, isFaceDetected]);
+
+  useEffect(() => {
+    if (cameraActive && modelsLoaded) {
+      detectionLoopRef.current = requestAnimationFrame(runDetectionLoop);
+    }
+    return () => {
+      if (detectionLoopRef.current) {
+        cancelAnimationFrame(detectionLoopRef.current);
+      }
+    };
+  }, [cameraActive, modelsLoaded, runDetectionLoop]);
 
   const captureAndCompute = async () => {
     if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
@@ -203,14 +304,16 @@ const RegisterGateUser: React.FC = () => {
         finalPhotoUrl = await uploadGatePhoto(base64, 'registration');
       }
 
-      await registerGateUser({
+      const newUser = await registerGateUser({
         userId: selectedEmployee.id,
         faceDescriptor,
         photoUrl: finalPhotoUrl,
         department: 'General',
       });
-
-      setShowForm(false);
+      
+      setRegisteredUser(newUser);
+      // Don't close form immediately so user can see the passcode/QR
+      // setShowForm(false); 
       setCapturedPhoto(null);
       setFaceDescriptor(null);
       setSelectedEmployee(null);
@@ -224,12 +327,13 @@ const RegisterGateUser: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Deactivate this user?')) return;
+    if (!window.confirm('Are you sure you want to delete this user? This will permanently remove them from the active list.')) return;
     try {
-      await deactivateGateUser(id);
-      loadUsers();
+      await deleteGateUser(id);
+      await loadUsers();
     } catch (err) {
-      console.error('Deactivation failed:', err);
+      console.error('Deletion failed:', err);
+      alert('Failed to delete user');
     }
   };
 
@@ -260,23 +364,23 @@ const RegisterGateUser: React.FC = () => {
           <p className="text-muted text-sm font-medium">Manage employee biometric & QR access</p>
         </div>
 
-        <div className="flex-1 max-w-md relative group">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted group-focus-within:text-accent transition-colors">
-            <Search className="w-5 h-5" />
+        <div className="lg:ml-auto flex flex-col md:flex-row items-stretch md:items-center gap-4 w-full lg:w-auto">
+          <div className="relative group flex-1 md:w-72">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted group-focus-within:text-accent transition-colors">
+              <Search className="w-5 h-5" />
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search users..." 
+              className="form-input !pl-12 h-12 text-sm shadow-sm border-gray-200 focus:border-accent transition-all rounded-2xl bg-gray-50/50 focus:bg-white w-full"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
-          <input 
-            type="text" 
-            placeholder="Search users..." 
-            className="form-input !pl-12 h-12 text-base shadow-sm border-gray-200 focus:border-accent transition-all rounded-2xl bg-gray-50/50 focus:bg-white w-full"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
 
-        <div className="lg:ml-auto">
-          <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center gap-2.5 p-3.5 md:px-6 md:py-3 rounded-2xl shadow-lg shadow-accent/20 hover:shadow-accent/40 transform active:scale-95 transition-all">
-            <UserPlus className="w-6 h-6 md:w-5 md:h-5" /> 
-            <span className="font-bold hidden md:inline">Register New</span>
+          <button onClick={() => setShowForm(true)} className="btn btn-primary flex items-center justify-center gap-2.5 h-12 px-6 rounded-2xl shadow-lg shadow-accent/20 hover:shadow-accent/40 transform active:scale-95 transition-all shrink-0">
+            <UserPlus className="w-5 h-5" /> 
+            <span className="font-bold">Register New</span>
           </button>
         </div>
       </div>
@@ -307,24 +411,52 @@ const RegisterGateUser: React.FC = () => {
                   <h3 className="font-bold text-primary-text truncate">{u.userName || 'Unknown'}</h3>
                   <p className="text-xs text-muted truncate mb-2">{u.userEmail}</p>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-[10px] font-bold text-muted uppercase tracking-wider">{u.department || 'General'}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 md:bg-gray-100 text-[10px] font-bold text-muted md:text-muted dark:bg-white/5 dark:text-white/40 uppercase tracking-wider border border-transparent md:border-transparent dark:border-white/10">{u.department || 'General'}</span>
+                    
+                    {/* Status Chip - Responsive */}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors ${
+                      u.isActive 
+                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200 md:bg-emerald-100 md:text-emerald-700 md:border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' 
+                        : 'bg-red-100 text-red-700 border-red-200 md:bg-red-100 md:text-red-700 md:border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
+                    }`}>
                       {u.isActive ? 'Active' : 'Inactive'}
                     </span>
+
+                    {u.passcode && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 md:bg-amber-100 md:text-amber-700 md:border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                        <Hash className="w-2.5 h-2.5" /> {u.passcode}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className="px-5 py-3 bg-gray-50/50 border-t border-border flex items-center justify-between">
+              {/* Desktop Action Bar (Light) */}
+              <div className="hidden md:flex px-5 py-3 bg-gray-50/50 border-t border-border items-center justify-between">
                 <div className="flex gap-2">
-                  <button onClick={() => setPrintUser(u)} className="p-2 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all" title="Print ID Card">
+                  <button onClick={() => setPrintUser(u)} className="p-2.5 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all shadow-sm active:scale-90" title="Print ID Card">
                     <Printer className="w-4 h-4" />
                   </button>
-                  <button onClick={() => window.open(getQrImageUrl(u.qrToken))} className="p-2 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all" title="View QR">
+                  <button onClick={() => window.open(getQrImageUrl(u.qrToken))} className="p-2.5 rounded-xl bg-white border border-border hover:border-accent hover:text-accent transition-all shadow-sm active:scale-90" title="View QR">
                     <QrCode className="w-4 h-4" />
                   </button>
                 </div>
-                <button onClick={() => handleDelete(u.id)} className="p-2 rounded-xl bg-white border border-border hover:border-red-500 hover:text-red-500 transition-all" title="Deactivate">
-                  <Trash2 className="w-4 h-4" />
+                <button onClick={() => handleDelete(u.id)} className="p-2.5 rounded-xl bg-white border border-border hover:border-red-500 hover:text-red-500 transition-all shadow-sm active:scale-90" title="Delete User">
+                  <Trash2 className="w-4.5 h-4.5" />
+                </button>
+              </div>
+
+              {/* Mobile Action Bar (Dark/Vibrant) */}
+              <div className="flex md:hidden px-5 py-3 bg-black/20 border-t border-white/5 items-center justify-between">
+                <div className="flex gap-3">
+                  <button onClick={() => setPrintUser(u)} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-emerald-400 active:scale-90" title="Print ID Card">
+                    <Printer className="w-4.5 h-4.5" />
+                  </button>
+                  <button onClick={() => window.open(getQrImageUrl(u.qrToken))} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-emerald-400 active:scale-90" title="View QR">
+                    <QrCode className="w-4.5 h-4.5" />
+                  </button>
+                </div>
+                <button onClick={() => handleDelete(u.id)} className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-red-400 active:scale-90" title="Delete User">
+                  <Trash2 className="w-4.5 h-4.5" />
                 </button>
               </div>
               
@@ -359,7 +491,41 @@ const RegisterGateUser: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Employee Search */}
+                {registeredUser ? (
+                  <div className="flex flex-col items-center text-center py-6">
+                    <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                    </div>
+                    <h3 className="text-xl font-bold text-primary-text mb-1">Registration Successful!</h3>
+                    <p className="text-muted text-sm mb-6">User has been registered with the following credentials</p>
+                    
+                    <div className="w-full bg-gray-50 rounded-2xl p-6 border border-border mb-8 flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-muted uppercase tracking-wider">Passcode</span>
+                        <span className="text-2xl font-black text-emerald-600 tracking-[0.2em]">{registeredUser.passcode}</span>
+                      </div>
+                      <div className="border-t border-gray-200 pt-4 flex flex-col items-center gap-3">
+                        <span className="text-xs font-bold text-muted uppercase tracking-wider mb-2">Access QR Code</span>
+                        <div className="bg-white p-3 rounded-2xl shadow-sm border border-border">
+                          <img src={getQrImageUrl(registeredUser.qrToken)} alt="QR" className="w-32 h-32" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 w-full">
+                      <button onClick={() => { setPrintUser(registeredUser); setShowForm(false); setRegisteredUser(null); }}
+                        className="flex-1 btn bg-white border border-border hover:bg-gray-50 text-primary-text py-4 rounded-2xl font-bold flex items-center justify-center gap-2">
+                        <Printer className="w-5 h-5" /> Print Card
+                      </button>
+                      <button onClick={() => { setShowForm(false); setRegisteredUser(null); }}
+                        className="flex-1 btn btn-primary py-4 rounded-2xl font-bold text-lg">
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Employee Search */}
                 <div className="mb-6 relative">
                   <label htmlFor="employee-search" className="text-sm font-medium text-muted mb-1.5 block">Search Employee</label>
                   <div className="relative">
@@ -369,7 +535,7 @@ const RegisterGateUser: React.FC = () => {
                       name="employee-search"
                       type="text" 
                       placeholder="Type name or email..." 
-                      className="form-input pl-10"
+                      className="form-input !pl-11"
                       value={empSearch}
                       onChange={e => { setEmpSearch(e.target.value); setSelectedEmployee(null); }}
                     />
@@ -417,20 +583,42 @@ const RegisterGateUser: React.FC = () => {
                       <div className="absolute top-3 left-3 bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest shadow-lg">Face Computed</div>
                     </div>
                   ) : cameraActive ? (
-                    <div className="relative">
-                      <video ref={videoRef} className="w-full rounded-2xl border border-border" playsInline muted autoPlay style={{ transform: 'scaleX(-1)' }} />
-                      <canvas ref={canvasRef} className="hidden" />
+                    <div className="relative overflow-hidden rounded-2xl group">
+                      <video 
+                        ref={videoRef} 
+                        className="w-full rounded-2xl border border-border bg-black" 
+                        playsInline 
+                        muted 
+                        autoPlay 
+                        style={{ transform: 'scaleX(-1)' }} 
+                      />
+                      <canvas 
+                        ref={canvasRef} 
+                        className="absolute inset-0 w-full h-full pointer-events-none" 
+                        style={{ transform: 'scaleX(-1)' }}
+                      />
                       
-                      {!modelsLoaded ? (
+                      <AnimatePresence>
+                        {isFaceDetected && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-2"
+                          >
+                            <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            Face Detected
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="absolute inset-0 pointer-events-none border-2 border-emerald-500/20 rounded-2xl" />
+
+                      {!modelsLoaded && (
                         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] rounded-2xl flex flex-col items-center justify-center text-white gap-3">
                           <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
                           <span className="text-sm font-bold tracking-wide uppercase">Initializing AI Models...</span>
                         </div>
-                      ) : (
-                        <button onClick={captureAndCompute}
-                          className="absolute bottom-3 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/40 flex items-center justify-center hover:bg-emerald-400 transition-colors group">
-                          <Camera className="w-7 h-7 text-white group-hover:scale-110 transition-transform" />
-                        </button>
                       )}
                     </div>
                   ) : (
@@ -443,13 +631,32 @@ const RegisterGateUser: React.FC = () => {
                   )}
                 </div>
 
-                {/* Submit */}
-                <button onClick={handleRegister}
-                  disabled={!selectedEmployee || registering}
-                  className="w-full btn btn-lg btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
-                  {registering ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
-                  {registering ? 'Registering...' : 'Register User'}
-                </button>
+                {/* Capture & Register Actions */}
+                <div className="flex flex-col gap-3">
+                  {cameraActive && !capturedPhoto && (
+                    <button 
+                      onClick={captureAndCompute}
+                      disabled={!isFaceDetected}
+                      className={`w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all transform active:scale-95 ${
+                        isFaceDetected 
+                          ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Camera className="w-5 h-5" />
+                      Capture Face
+                    </button>
+                  )}
+
+                  <button onClick={handleRegister}
+                    disabled={!selectedEmployee || registering || (!capturedPhoto && !selectedEmployee?.photo_url)}
+                    className="w-full btn btn-lg btn-primary disabled:opacity-50 flex items-center justify-center gap-2">
+                    {registering ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                    {registering ? 'Registering...' : 'Register User'}
+                  </button>
+                </div>
+                </>
+                )}
               </div>
             </motion.div>
           </div>
@@ -499,53 +706,53 @@ const RegisterGateUser: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-50/30">
+              <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-50/30 md:bg-gray-50/30 dark:bg-[#05140f]">
                 {/* Configuration Section */}
-                <div className="p-8 border-b border-border bg-white">
+                <div className="p-8 border-b border-border md:border-border dark:border-white/5 bg-white md:bg-white dark:bg-[#0a2118]">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
-                      <Settings className="w-5 h-5 text-emerald-600" />
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                      <Settings className="w-5 h-5 text-emerald-600 md:text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Card Configuration</h3>
-                      <p className="text-[10px] text-muted font-medium uppercase tracking-wider">Customize fields for this session</p>
+                      <h3 className="text-sm font-black text-gray-900 md:text-gray-900 dark:text-white/90 uppercase tracking-widest">Card Configuration</h3>
+                      <p className="text-[10px] text-muted md:text-muted dark:text-white/40 font-bold uppercase tracking-wider">Customize fields for this session</p>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6">
                     <div className="flex flex-col gap-2">
-                      <label htmlFor="print-company-name" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Company Name</label>
-                      <input type="text" id="print-company-name" name="print-company-name" value={printCompanyName} onChange={e => setPrintCompanyName(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                      <label htmlFor="print-company-name" className="text-[10px] font-black text-gray-500 md:text-gray-500 dark:text-white/40 uppercase tracking-wider">Company Name</label>
+                      <input type="text" id="print-company-name" name="print-company-name" value={printCompanyName} onChange={e => setPrintCompanyName(e.target.value)} className="w-full bg-white md:bg-white dark:bg-white/5 border border-gray-200 md:border-gray-200 dark:border-white/10 rounded-xl px-4 h-10 text-sm text-gray-900 md:text-gray-900 dark:text-white focus:border-emerald-500 transition-all outline-none" />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label htmlFor="print-blood-group" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Blood Group</label>
-                      <input type="text" id="print-blood-group" name="print-blood-group" value={printBloodGroup} onChange={e => setPrintBloodGroup(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                      <label htmlFor="print-blood-group" className="text-[10px] font-black text-gray-500 md:text-gray-500 dark:text-white/40 uppercase tracking-wider">Blood Group</label>
+                      <input type="text" id="print-blood-group" name="print-blood-group" value={printBloodGroup} onChange={e => setPrintBloodGroup(e.target.value)} className="w-full bg-white md:bg-white dark:bg-white/5 border border-gray-200 md:border-gray-200 dark:border-white/10 rounded-xl px-4 h-10 text-sm text-gray-900 md:text-gray-900 dark:text-white focus:border-emerald-500 transition-all outline-none" />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label htmlFor="print-employee-id" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Employee ID</label>
-                      <input type="text" id="print-employee-id" name="print-employee-id" value={printEmployeeId} onChange={e => setPrintEmployeeId(e.target.value)} className="form-input h-10 text-sm font-medium border-gray-200 focus:border-emerald-500 transition-all rounded-xl" />
+                      <label htmlFor="print-employee-id" className="text-[10px] font-black text-gray-500 md:text-gray-500 dark:text-white/40 uppercase tracking-wider">Employee ID</label>
+                      <input type="text" id="print-employee-id" name="print-employee-id" value={printEmployeeId} onChange={e => setPrintEmployeeId(e.target.value)} className="w-full bg-white md:bg-white dark:bg-white/5 border border-gray-200 md:border-gray-200 dark:border-white/10 rounded-xl px-4 h-10 text-sm text-gray-900 md:text-gray-900 dark:text-white focus:border-emerald-500 transition-all outline-none" />
                     </div>
                     <div className="flex flex-col gap-2 md:col-span-3">
-                      <label htmlFor="print-terms" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Terms & Conditions</label>
-                      <textarea id="print-terms" name="print-terms" value={printTerms} onChange={e => setPrintTerms(e.target.value)} className="form-input text-xs h-20 resize-none border-gray-200 focus:border-emerald-500 transition-all rounded-xl leading-relaxed" />
+                      <label htmlFor="print-terms" className="text-[10px] font-black text-gray-500 md:text-gray-500 dark:text-white/40 uppercase tracking-wider">Terms & Conditions</label>
+                      <textarea id="print-terms" name="print-terms" value={printTerms} onChange={e => setPrintTerms(e.target.value)} className="w-full bg-white md:bg-white dark:bg-white/5 border border-gray-200 md:border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs text-gray-700 md:text-gray-700 dark:text-white focus:border-emerald-500 transition-all outline-none h-20 resize-none leading-relaxed" />
                     </div>
                     <div className="flex flex-col gap-2 md:col-span-3">
-                      <label htmlFor="print-address" className="text-[10px] font-black text-gray-500 uppercase tracking-wider">Office Address</label>
-                      <textarea id="print-address" name="print-address" value={printAddress} onChange={e => setPrintAddress(e.target.value)} className="form-input text-xs h-20 resize-none border-gray-200 focus:border-emerald-500 transition-all rounded-xl leading-relaxed" />
+                      <label htmlFor="print-address" className="text-[10px] font-black text-gray-500 md:text-gray-500 dark:text-white/40 uppercase tracking-wider">Office Address</label>
+                      <textarea id="print-address" name="print-address" value={printAddress} onChange={e => setPrintAddress(e.target.value)} className="w-full bg-white md:bg-white dark:bg-white/5 border border-gray-200 md:border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs text-gray-700 md:text-gray-700 dark:text-white focus:border-emerald-500 transition-all outline-none h-20 resize-none leading-relaxed" />
                     </div>
                   </div>
                 </div>
 
                 {/* Preview Section */}
-                <div className="p-8 flex flex-col items-center">
+                <div className="p-8 flex flex-col items-center bg-gray-50 md:bg-gray-50 dark:bg-[#05140f] min-h-[500px]">
                   <div className="flex items-center justify-center mb-8">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shadow-sm">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Live Preview</span>
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 md:bg-emerald-500 dark:bg-emerald-400 animate-pulse"></div>
+                      <span className="text-[10px] font-black text-emerald-700 md:text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Live Preview</span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col lg:flex-row gap-12 items-center justify-center p-8 bg-white/40 rounded-[2.5rem] border border-white/60 shadow-inner" id="printable-id-card-container">
+                  <div className="flex flex-col lg:flex-row gap-12 items-center justify-center p-8 bg-white md:bg-white/40 dark:bg-white/5 rounded-[2.5rem] border border-gray-100 md:border-white/60 dark:border-white/10 shadow-inner" id="printable-id-card-container">
                     {/* FRONT CARD */}
                     <div className="w-[2.125in] h-[3.375in] bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col relative overflow-hidden shrink-0 print-card" style={{ width: '2.125in', height: '3.375in', boxSizing: 'border-box' }}>
                         <div className="absolute inset-0 bg-gradient-to-b from-emerald-200/60 via-white to-white z-0"></div>
@@ -561,9 +768,9 @@ const RegisterGateUser: React.FC = () => {
                            <div className="w-3.5 h-[80%] mb-4 bg-emerald-500 rounded-full self-end"></div>
                            <div className="w-1.5 h-full bg-emerald-400 rounded-full self-end"></div>
                         </div>
-                        <div className="mt-10 ml-4 relative z-10 w-28 h-28 bg-white shadow-xl p-1 rounded-sm">
+                        <div className="mt-10 ml-4 relative z-10 w-28 h-28 bg-white shadow-xl p-1 rounded-sm overflow-hidden">
                           {printUser.userPhotoUrl ? (
-                            <img src={printUser.userPhotoUrl} className="w-full h-full object-cover filter contrast-125 grayscale-[20%]" />
+                            <img src={printUser.userPhotoUrl} className="w-full h-full object-cover" crossOrigin="anonymous" />
                           ) : (
                             <div className="w-full h-full bg-gray-100 flex items-center justify-center">
                               <User className="w-12 h-12 text-gray-400" />
@@ -572,8 +779,8 @@ const RegisterGateUser: React.FC = () => {
                         </div>
                         <div className="mt-4 ml-4 relative z-10 pr-2">
                           <h3 className="font-black text-[22px] leading-[0.9] uppercase tracking-tighter font-sans">
-                             <span className="text-gray-900 block truncate">{printUser.userName.split(' ')[0]}</span>
-                             <span className="text-emerald-500 block truncate">{printUser.userName.split(' ').slice(1).join(' ') || 'STAFF'}</span>
+                             <span className="text-gray-900 block truncate">{(printUser.userName || 'Unknown').split(' ')[0]}</span>
+                             <span className="text-emerald-500 block truncate">{(printUser.userName || '').split(' ').slice(1).join(' ') || 'STAFF'}</span>
                           </h3>
                           <p className="text-[7px] font-bold text-gray-500 mt-1.5 tracking-widest uppercase truncate">{printUser.department || 'Employee'}</p>
                         </div>

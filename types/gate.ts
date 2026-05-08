@@ -8,6 +8,7 @@ export interface GateUser {
   userPhotoUrl?: string;
   faceDescriptor: number[] | null; // 128-d float array
   qrToken: string;
+  passcode: string | null;
   photoUrl: string | null;
   department?: string;
   isActive: boolean;
@@ -15,7 +16,7 @@ export interface GateUser {
   updatedAt: string;
 }
 
-export type GateAttendanceMethod = 'face' | 'qr' | 'manual';
+export type GateAttendanceMethod = 'face' | 'qr' | 'manual' | 'passcode';
 
 export interface GateAttendanceLog {
   id: string;
@@ -34,7 +35,7 @@ export interface GateAttendanceLog {
   createdAt: string;
 }
 
-export type GateMode = 'face' | 'qr' | 'manual';
+export type GateMode = 'face' | 'qr' | 'manual' | 'passcode';
 
 export interface GateScanResult {
   success: boolean;
