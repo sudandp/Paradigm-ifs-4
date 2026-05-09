@@ -1896,13 +1896,19 @@ export const api = {
       .eq('id', userId);
     
     if (dbError) throw dbError;
-
-    // 2. Update the Supabase Auth password via RPC (to bypass "require current password" restriction)
+ 
+    // 2. Also update the gate_users table if it exists for this user
+    await supabase
+      .from('gate_users')
+      .update({ passcode: newPasscode })
+      .eq('user_id', userId);
+ 
+    // 3. Update the Supabase Auth password via RPC (to bypass "require current password" restriction)
     const { error: rpcError } = await supabase.rpc('sync_user_auth_password', {
       user_id: userId,
       new_passcode: newPasscode
     });
-
+ 
     if (rpcError) throw rpcError;
   },
 
