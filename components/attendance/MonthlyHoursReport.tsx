@@ -374,8 +374,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const resolvePayableValue = (s: string): number => {
       if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
       if (['W/P', 'H/P'].includes(s)) return 1.5; 
-      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O', '0.5P', 'W/H'].includes(s)) return 1;
-      if (s.includes('S/L') || s.includes('E/L') || s.includes('C/L') || s.includes('C/O')) {
+      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O', '0.5P', 'W/H', 'F/H'].includes(s)) return 1;
+      if (s.includes('S/L') || s.includes('E/L') || s.includes('C/L') || s.includes('C/O') || s.includes('F/H')) {
           return s.startsWith('1/2') ? 0.5 : 1;
       }
       if (['1/2P', 'Half Day'].includes(s)) return 0.5;
@@ -548,6 +548,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const targetEmployeeName = isSingleUser ? reportData[0].employeeName : (userId && userId !== 'all' ? 'Employee Report' : 'ALL EMPLOYEES');
   const targetEmployeeRole = isSingleUser ? reportData[0].role : undefined;
 
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = endOfMonth(monthStart);
+  const effectiveEnd = isAfter(monthEnd, startOfToday()) ? startOfToday() : monthEnd;
+
   if (loading) return <div className="p-8 text-center">Loading report...</div>;
 
   return (
@@ -564,7 +568,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           </div>
           <div className="text-right">
             <h2 className="text-[24px] font-black tracking-tight text-gray-900 mb-1 leading-none">Monthly Status Report</h2>
-            <p className="text-[14px] text-gray-800 font-bold mb-3">Billing Period: {format(new Date(year, month - 1, 1), 'MMMM yyyy')}</p>
+            <p className="text-[14px] text-gray-800 font-bold mb-3">Billing Cycle: {format(new Date(year, month - 1, 1), 'MMMM yyyy')}</p>
             <div className="text-[11px] text-gray-400 space-y-0.5 font-medium mb-4">
                {currentUser && (
                   <>
@@ -592,7 +596,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         <span className="font-normal text-gray-500">Role:</span> <span className="font-medium text-gray-700 capitalize ml-1">{employee.role ? employee.role.replace(/_/g, ' ') : 'Unverified'}</span>
                     </div>
                     <div className="text-[15px]">
-                        <span className="font-normal text-gray-500">Billing Cycle:</span> <span className="font-medium text-gray-700 ml-1">{format(new Date(year, month - 1, 1), 'do MMMM')} to {format(endOfMonth(new Date(year, month - 1, 1)), 'do MMMM')}</span>
+                        <span className="font-normal text-gray-500">Billing Cycle:</span> <span className="font-medium text-gray-700 ml-1">{format(monthStart, 'do MMMM')} to {format(effectiveEnd, 'do MMMM')}</span>
                     </div>
                 </div>
                 <div className="mt-5 mb-6 flex flex-wrap xl:flex-nowrap gap-4">
@@ -715,6 +719,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
                                 d.status === 'W/P' ? 'bg-blue-50 text-blue-700' :
                                 d.status === 'H' || d.status === 'H/P' ? 'bg-indigo-50 text-indigo-700' :
+                                d.status.includes('F/H') ? 'bg-yellow-50 text-yellow-700' :
                                 d.status.includes('S/L') ? 'bg-purple-50 text-purple-700' :
                                 d.status.includes('E/L') ? 'bg-blue-50 text-blue-700' :
                                 d.status.includes('C/O') ? 'bg-teal-50 text-teal-700' :

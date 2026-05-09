@@ -62,8 +62,8 @@ export const BasicReportView: React.FC<{
     targetUserRole?: string;
 }> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Billing Period: Not Specified';
+        ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Cycle: Not Specified';
 
     if (!data.length) return <EmptyState message="No attendance data found for this period." />;
 
@@ -129,8 +129,8 @@ export const AttendanceLogView: React.FC<{
     targetUserRole?: string;
 }> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Billing Period: Not Specified';
+        ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Cycle: Not Specified';
 
     if (!data.length) return <EmptyState message="No log events recorded for this period." />;
 
@@ -182,8 +182,8 @@ export const MonthlyStatusView: React.FC<{
     targetUserRole?: string;
 }> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Billing Period: Not Specified';
+        ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Cycle: Not Specified';
 
     const dayHeaders = data.length > 0
         ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1)
@@ -308,8 +308,8 @@ export const SiteOtReportView: React.FC<{
     targetUserRole?: string;
 }> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Billing Period: Not Specified';
+        ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Cycle: Not Specified';
 
     if (!data.length) return <EmptyState message="No Site OT records found for this period." />;
 
@@ -358,8 +358,8 @@ export const WorkHoursReportView: React.FC<{
     targetUserRole?: string;
 }> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
-        ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
-        : 'Billing Period: Not Specified';
+        ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'Billing Cycle: Not Specified';
 
     if (!data.length) return <EmptyState message="No work hours data found for this period." />;
 

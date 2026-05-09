@@ -26,7 +26,8 @@ import { useAuthStore } from '../store/authStore';
 import { offlineDb } from './offline/database';
 import { Network } from '@capacitor/network';
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
-import { isTechnicalRole } from '../utils/attendanceCalculations';
+import { isTechnicalRole, calculateWorkingHours } from '../utils/attendanceCalculations';
+import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
 import { FIXED_HOLIDAYS } from '../utils/constants';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 import { createWorker } from 'tesseract.js';
@@ -3579,7 +3580,7 @@ export const api = {
             api.getRecurringHolidays(),
             // Attendance events: still fetch from earliestDataDate for accrual calculation
             supabase.from('attendance_events')
-              .select('timestamp, type')
+              .select('*')
               .eq('user_id', userId)
               .gte('timestamp', earliestDataDate)
               .lte('timestamp', `${currentYear}-12-31`),
@@ -3754,18 +3755,65 @@ export const api = {
     
     // 2. Comp Offs based on attendance on Week Offs or Public/Recurring Holidays (Earned via Work)
     const weeklyOffDays = rules?.weeklyOffDays || [0];
-    attendedDates.forEach(dateStr => {
+    const yearStartDate = new Date(yearStart.replace(/-/g, '/'));
+
+    // Group events by day to calculate working hours for accurate CO earning
+    const dayKeyMap = buildAttendanceDayKeyByEventId(yearEvents || []);
+    const eventsByDay: Record<string, AttendanceEvent[]> = {};
+    (yearEvents || []).forEach(e => {
+        const key = dayKeyMap[e.id];
+        if (key) {
+            if (!eventsByDay[key]) eventsByDay[key] = [];
+            eventsByDay[key].push(e);
+        }
+    });
+
+    // 1. Identify all dates with work (Punches or Approved Corrections)
+    const workDatesSet = new Set<string>();
+    Object.keys(eventsByDay).forEach(key => workDatesSet.add(key));
+    approvedLeaves.forEach(l => {
+        const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
+        const lStatus = String(l.status || '').toLowerCase();
+        if (lType.includes('correction') && (lStatus === 'approved' || lStatus === 'correction_made')) {
+            workDatesSet.add(l.start_date);
+        }
+    });
+
+    // Policy thresholds for full/half day earning
+    const fullThreshold = rules?.minimumHoursFullDay || rules?.dailyWorkingHours?.min || 8;
+    const halfThreshold = rules?.minimumHoursHalfDay || 4;
+
+    // 2. Calculate dynamicCompOffTotal iterating over all dates where work occurred
+    workDatesSet.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
         
         // Only count work within the CURRENT YEAR, up to the end of the viewed month
-        const yearStartDate = new Date(yearStart.replace(/-/g, '/'));
-        if (date < yearStartDate) return;
-        if (date > endOfMonth(referenceDate)) return;
+        if (date < yearStartDate || date > endOfMonth(referenceDate)) return;
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
         if (weeklyOffDays.includes(dayOfWeek) || holidayDates.has(dateStr)) {
-            dynamicCompOffTotal += 1;
+            // Priority 1: Approved Corrections always earn 1.0 CO
+            const hasCorrection = approvedLeaves.some(l => {
+                const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
+                const lStatus = String(l.status || '').toLowerCase();
+                return lType.includes('correction') && 
+                       (lStatus === 'approved' || lStatus === 'correction_made') && 
+                       l.start_date === dateStr;
+            });
+
+            if (hasCorrection) {
+                dynamicCompOffTotal += 1;
+            } else {
+                // Priority 2: Hours-based calculation (supports 0.5 for half-day work)
+                const dayEvents = eventsByDay[dateStr] || [];
+                const { workingHours } = calculateWorkingHours(dayEvents, date);
+                if (workingHours >= fullThreshold) {
+                    dynamicCompOffTotal += 1;
+                } else if (workingHours >= halfThreshold) {
+                    dynamicCompOffTotal += 0.5;
+                }
+            }
         }
     });
 
@@ -3968,11 +4016,30 @@ export const api = {
       const isEarned = type.includes('earned') || type === 'el';
       if (!isEarned && leaveYear < currentYear) return;
       
-      let leaveAmount = 1;
-      if (leave.day_option === 'half') leaveAmount = 0.5;
-      else {
-          const duration = differenceInCalendarDays(new Date(leaveEndDate.replace(/-/g, '/')), new Date(leaveStart.replace(/-/g, '/'))) + 1;
-          leaveAmount = duration;
+      let leaveAmount = 0;
+      if (leave.day_option === 'half') {
+          leaveAmount = 0.5;
+      } else {
+          const startDate = new Date(leaveStart.replace(/-/g, '/'));
+          const endDate = new Date(leaveEndDate.replace(/-/g, '/'));
+          const days = eachDayOfInterval({ start: startDate, end: endDate });
+          
+          if (type.includes('comp') || type === 'co' || type.includes('floating') || type === 'fh') {
+              // Comp Off and Floating Holiday only count working days
+              days.forEach(d => {
+                  const dStr = format(d, 'yyyy-MM-dd');
+                  if (!weeklyOffDays.includes(d.getDay()) && !holidayDates.has(dStr)) {
+                      // If the user actually worked on this day (punched or correction), 
+                      // don't deduct it from their leave balance.
+                      if (!workDatesSet.has(dStr)) {
+                          leaveAmount += 1;
+                      }
+                  }
+              });
+          } else {
+              // EL, SL etc. count calendar days by default
+              leaveAmount = days.length;
+          }
       }
 
       processedLeaves.push({

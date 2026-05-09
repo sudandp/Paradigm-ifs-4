@@ -2088,7 +2088,7 @@ const AttendanceDashboard: React.FC = () => {
 
                         // Metadata Header matching preview
                         csvContent += `"PARADIGM SERVICES",,,,,,,,,,,,,,,,"MONTHLY ATTENDANCE REPORT"\n`;
-                        csvContent += `,,,,,,,,,,,,,,,,,"Billing Period: ${format(m, 'MMMM yyyy')}"\n`;
+                        csvContent += `,,,,,,,,,,,,,,,,,"Billing Cycle: ${format(m, 'MMMM yyyy')}"\n`;
                         csvContent += `,,,,,,,,,,,,,,,,,"Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}"\n`;
                         
                         const targetUserObj = selectedUser !== 'all' ? users.find(u => u.id === selectedUser) : undefined;
@@ -2104,7 +2104,7 @@ const AttendanceDashboard: React.FC = () => {
                         // Column Headers
                         let headerRow = [`"Employee Name"`];
                         daysInMonth.forEach(d => headerRow.push(`"${format(d, 'd')}"`));
-                        headerRow.push(`"P"`, `"1/2P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
+                        headerRow.push(`"P"`, `"1/2P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"F/H"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
                         csvContent += headerRow.join(',') + '\n';
                         
                         // Data Rows
@@ -2121,6 +2121,7 @@ const AttendanceDashboard: React.FC = () => {
                                 `"${emp.compOffs || 0}"`,
                                 `"${emp.earnedLeaves || 0}"`,
                                 `"${emp.sickLeaves || 0}"`,
+                                `"${emp.floatingHolidays || 0}"`,
                                 `"${emp.absentDays || 0}"`,
                                 `"${emp.weekOffs || 0}"`,
                                 `"${emp.holidays || 0}"`,

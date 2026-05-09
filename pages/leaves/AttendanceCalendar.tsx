@@ -219,16 +219,16 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 } else {
                     finalStatus = 'present';
                 }
-            } else if (foundLeave) {
-                finalStatus = 'leave';
-            } else if (isRecurringHoliday && !isFloatingExpired) {
-                // Always show FLOAT color — it's a designated Blue Leave day regardless of threshold
-                finalStatus = 'floating-holiday';
             } else if (isCompanyHoliday) {
                 // Always show HOLIDAY color — it's a designated company holiday
                 finalStatus = 'company-holiday';
+            } else if (isRecurringHoliday && !isFloatingExpired) {
+                // Always show FLOAT color — it's a designated Blue Leave day regardless of threshold
+                finalStatus = 'floating-holiday';
             } else if (isSunday) {
                 finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
+            } else if (foundLeave) {
+                finalStatus = 'leave';
             } else if (isPast) {
                 finalStatus = 'absent';
             }
@@ -302,13 +302,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
 
                     const relevantLeave = leaveRequests?.find(req => {
-                        if (req.status !== 'approved' && req.status !== 'correction_made' && req.status !== 'pending_hr_confirmation') return false;
+                        const lStatus = String(req.status || "").toLowerCase();
+                        if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation') return false;
                         const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
                         const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                         return date >= start && date <= end;
                     });
+                    const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
 
-                    if (relevantLeave && relevantLeave.leaveType === 'Correction') {
+                    if (isCorrection) {
                         normalPay = 1;
                     } else if (relevantLeave && relevantLeave.dayOption === 'half') {
                         normalPay = 1; 
@@ -323,7 +325,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     return date >= startOfDay(new Date(req.startDate.replace(/-/g, '/'))) && date <= endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                 });
                 
-                if (leaveReq && leaveReq.leaveType === 'Correction' && leaveReq.status === 'correction_made') {
+                const isCorrectionReq = leaveReq && String(leaveReq.leaveType || (leaveReq as any).type || "").toLowerCase().includes('correction');
+                if (isCorrectionReq && leaveReq?.status === 'correction_made') {
                     normalPay = 1;
                 } else if (leaveReq && leaveReq.leaveType !== 'Loss of Pay') {
                     normalPay = (leaveReq.dayOption === 'half') ? 0.5 : 1;
@@ -402,13 +405,17 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             
                             const relevantLeave = leaveRequests?.find(req => {
-                                if (req.status !== 'approved' && req.status !== 'correction_made' && req.status !== 'pending_hr_confirmation') return false;
+                                const lStatus = String(req.status || "").toLowerCase();
+                                const lType = String(req.leaveType || (req as any).type || "").toLowerCase();
+                                if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation') return false;
                                 const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
                                 const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                                 return date >= start && date <= end;
                             });
 
-                            if (relevantLeave && relevantLeave.leaveType === 'Correction') {
+                            const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
+
+                            if (isCorrection) {
                                 overlayText = 'P';
                                 customStyle = {
                                     background: '#10b981', // Solid green for correction
@@ -448,7 +455,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 return date >= start && date <= end;
                             });
                             if (request) {
-                                if (request.leaveType === 'Correction') {
+                                const lType = String(request.leaveType || (request as any).type || "").toLowerCase();
+                                if (lType.includes('correction')) {
                                     overlayText = 'P';
                                     customStyle = {
                                         background: '#10b981', // Solid green for correction

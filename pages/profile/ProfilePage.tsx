@@ -14,7 +14,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
@@ -931,16 +931,16 @@ const ProfilePage: React.FC = () => {
                                 >
                                     {/* ── 1. Duty Mode Selector ── */}
                                     {(isFieldStaffRole || isSiteStaffRole) && !(isFieldCheckedIn || isSiteOtCheckedIn) && (
-                                        <div className={`flex bg-black/40 p-1 rounded-xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+                                        <div className={`flex bg-black/40 p-1.5 rounded-2xl border border-white/5 backdrop-blur-md mb-4 ${isOnBreak ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                                             <button 
                                                 onClick={() => { triggerHaptic(); setSiteWorkMode('duty'); }}
-                                                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${siteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'duty' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400'}`}
                                             >
                                                 Regular Duty
                                             </button>
                                             <button 
                                                 onClick={() => { triggerHaptic(); setSiteWorkMode('ot'); }}
-                                                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${siteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
+                                                className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl transition-all duration-300 ${siteWorkMode === 'ot' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400'}`}
                                             >
                                                 Overtime (OT)
                                             </button>
@@ -965,16 +965,16 @@ const ProfilePage: React.FC = () => {
                                                     }
                                                 }}
                                                 className={`
-                                                    relative overflow-hidden p-4 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2
+                                                    relative overflow-hidden p-5 rounded-[32px] border transition-all duration-300 flex flex-col items-center gap-2.5
                                                     ${isOnBreak 
                                                         ? 'bg-white/5 border-white/10 text-gray-500 opacity-40 grayscale' 
                                                         : (isFieldCheckedIn || isSiteOtCheckedIn
                                                             ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' 
                                                             : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400')}
-                                                    backdrop-blur-xl shadow-lg shadow-black/20
+                                                    backdrop-blur-xl shadow-2xl shadow-black/40
                                                 `}
                                             >
-                                                <div className={`p-2 rounded-xl ${isOnBreak ? 'bg-white/5' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'bg-rose-500/20' : 'bg-emerald-500/20')}`}>
+                                                <div className={`p-3 rounded-2xl ${isOnBreak ? 'bg-white/5' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'bg-rose-500/20' : 'bg-emerald-500/20')}`}>
                                                     {isOnBreak ? <Lock className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
                                                 </div>
                                                 <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
@@ -982,7 +982,7 @@ const ProfilePage: React.FC = () => {
                                                 </span>
                                                 {/* Status Indicator */}
                                                 {(isFieldCheckedIn || isSiteOtCheckedIn) && (
-                                                    <div className="absolute top-2 right-2">
+                                                    <div className="absolute top-4 right-4">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
                                                     </div>
                                                 )}
@@ -998,15 +998,15 @@ const ProfilePage: React.FC = () => {
                                                 else navigate('/attendance/break-in');
                                             }}
                                             className={`
-                                                relative overflow-hidden p-4 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2
+                                                relative overflow-hidden p-5 rounded-[32px] border transition-all duration-300 flex flex-col items-center gap-2.5
                                                 ${isOnBreak
                                                     ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
                                                     : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}
-                                                backdrop-blur-xl shadow-lg shadow-black/20
+                                                backdrop-blur-xl shadow-2xl shadow-black/40
                                                 ${(isFieldStaffRole || isSiteStaffRole) ? '' : 'col-span-2'}
                                             `}
                                         >
-                                            <div className={`p-2 rounded-xl ${isOnBreak ? 'bg-amber-500/20' : 'bg-blue-500/20'}`}>
+                                            <div className={`p-3 rounded-2xl ${isOnBreak ? 'bg-amber-500/20' : 'bg-blue-500/20'}`}>
                                                 <Coffee className="h-5 w-5" />
                                             </div>
                                             <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
@@ -1014,7 +1014,7 @@ const ProfilePage: React.FC = () => {
                                             </span>
                                             {/* Status Indicator */}
                                             {isOnBreak && (
-                                                <div className="absolute top-2 right-2">
+                                                <div className="absolute top-4 right-4">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
                                                 </div>
                                             )}
@@ -1052,41 +1052,36 @@ const ProfilePage: React.FC = () => {
 
 
 
-                    {/* Glass Fragment Account Actions */}
-                    <section className="space-y-3 px-2">
-                        <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">Core Utilities</h3>
+                    {/* Native-style Utility Grid */}
+                    <section className="space-y-4 px-2">
+                        <div className="flex items-center justify-between mb-5 px-3">
+                            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white/40">Core Utilities</h2>
+                            <div className="h-[1px] flex-1 bg-white/[0.05] ml-4" />
+                        </div>
                         
-                        <div className="grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-2 gap-3">
                              <button 
                                 onClick={() => navigate('/leaves/dashboard')} 
-                                className="w-full bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between transition-all active:scale-[0.98] group"
+                                className="group flex flex-col items-center justify-center p-5 bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] transition-all duration-300 shadow-xl active:scale-95"
                             >
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-transform">
-                                        <Crosshair className="h-5 w-5" />
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="text-white font-bold text-sm uppercase tracking-tight">Leave Tracker</p>
-                                        <p className="text-gray-500 text-[10px] uppercase font-bold">History & Balance</p>
-                                    </div>
+                                <div className="p-3 bg-emerald-500/10 rounded-2xl mb-3 text-emerald-400 group-active:text-white transition-colors shadow-inner">
+                                    <Crosshair className="h-6 w-6" />
                                 </div>
-                                <Zap className="h-4 w-4 text-emerald-500/30 group-hover:text-emerald-500 transition-colors" />
+                                <div className="text-center">
+                                    <p className="text-white/80 font-black text-[10px] uppercase tracking-widest leading-none">Leave Tracker</p>
+                                </div>
                             </button>
 
                             <button 
                                 onClick={handleLogoutClick} 
-                                className="w-full bg-rose-500/5 border border-rose-500/10 rounded-xl p-4 flex items-center justify-between transition-all active:scale-[0.98] group"
+                                className="group flex flex-col items-center justify-center p-5 bg-rose-500/5 backdrop-blur-xl border border-rose-500/10 rounded-[32px] transition-all duration-300 shadow-xl active:scale-95"
                             >
-                                <div className="flex items-center gap-4">
-                                    <div className="p-3 rounded-lg bg-rose-500/10 text-rose-500 group-hover:scale-110 transition-transform">
-                                        <LogOut className="h-5 w-5" />
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="text-white font-bold text-sm uppercase tracking-tight">Terminate Session</p>
-                                        <p className="text-rose-500/50 text-[10px] uppercase font-bold">Log out completely</p>
-                                    </div>
+                                <div className="p-3 bg-rose-500/10 rounded-2xl mb-3 text-rose-500 group-active:text-white transition-colors shadow-inner">
+                                    <LogOut className="h-6 w-6" />
                                 </div>
-                                <Zap className="h-4 w-4 text-rose-500/30 group-hover:text-rose-500 transition-colors" />
+                                <div className="text-center">
+                                    <p className="text-rose-500/80 font-black text-[10px] uppercase tracking-widest leading-none">Terminate</p>
+                                </div>
                             </button>
                         </div>
                     </section>
@@ -1134,89 +1129,119 @@ const ProfilePage: React.FC = () => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-2xl flex flex-col"
+                            className="fixed inset-0 z-[110] bg-[#041b0f] flex flex-col overflow-hidden"
                         >
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between p-6 border-b border-white/5">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                                        <Settings className="w-5 h-5" />
+                            {/* Premium Mobile Header (Matching Profile Header) */}
+                            <div className="relative overflow-hidden pt-8 pb-6 px-6 bg-gradient-to-br from-[#0a2f1c] to-[#041b0f] rounded-b-[40px] shadow-2xl mb-4">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
+                                
+                                <div className="relative z-10 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-400 shadow-inner border border-emerald-500/20">
+                                            <Settings className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-1.5 opacity-60 mb-0.5">
+                                                <Sparkles className="w-3 h-3 text-emerald-400" />
+                                                <span className="text-[10px] uppercase font-black tracking-[0.2em] text-white">System Config</span>
+                                            </div>
+                                            <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
+                                                Settings<span className="text-emerald-500">.</span>
+                                            </h2>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">Settings</h2>
-                                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Configuration Center</div>
-                                    </div>
+                                    <button 
+                                        onClick={() => { triggerHaptic(); setIsSettingsOpen(false); }}
+                                        className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 active:scale-90 transition-all border border-white/10"
+                                    >
+                                        <ArrowLeft className="w-6 h-6" />
+                                    </button>
                                 </div>
-                                <button 
-                                    onClick={() => setIsSettingsOpen(false)}
-                                    className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
-                                >
-                                    <ArrowLeft className="w-5 h-5" />
-                                </button>
                             </div>
 
                             {/* Modal Content */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-8 pb-32">
+                                {/* Editorial Watermark (Settings) */}
+                                <div 
+                                    className="absolute top-40 left-1/2 -translate-x-1/2 opacity-[0.03] text-[120px] font-black text-white pointer-events-none select-none uppercase tracking-tighter leading-none z-0"
+                                >
+                                    CONFIG
+                                </div>
+
+                                <div className="relative z-10 space-y-6">
                                     {/* 1. Biometric Security Card */}
                                     <section>
-                                    <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                                            <Shield className="w-16 h-16 text-emerald-400" />
-                                        </div>
-                                        <div className="relative z-10 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-1">
-                                                    <div className="text-white font-black uppercase tracking-tighter italic text-xl">Biometrics</div>
-                                                    <div className="text-emerald-400/60 text-[10px] font-bold uppercase tracking-widest">Face ID Enrollment</div>
-                                                </div>
-                                                {gateUser?.passcode && (
-                                                    <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl px-4 py-2 flex flex-col items-center shadow-inner">
-                                                        <div className="text-[9px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1 opacity-80">Backup Passcode</div>
-                                                        <div className="text-2xl font-black text-white tracking-[0.3em] font-mono leading-none drop-shadow-lg">{gateUser.passcode}</div>
-                                                    </div>
-                                                )}
+                                        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] p-6 relative overflow-hidden shadow-2xl">
+                                            <div className="absolute top-0 right-0 p-4 opacity-5">
+                                                <Shield className="w-20 h-20 text-emerald-400" />
                                             </div>
-                                            <button 
-                                                onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
-                                                className="w-full py-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                <Camera className="w-4 h-4" />
-                                                Re-enroll Face
-                                            </button>
+                                            <div className="relative z-10 space-y-6">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="space-y-1">
+                                                        <h3 className="text-white font-black uppercase tracking-widest text-[11px] opacity-40">Biometric Security</h3>
+                                                        <div className="text-white font-black uppercase tracking-tighter italic text-2xl leading-none">Face Auth</div>
+                                                    </div>
+                                                    {gateUser?.passcode && (
+                                                        <div className="bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-2xl px-4 py-2 flex flex-col items-center shadow-lg">
+                                                            <div className="text-[8px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1">Backup PIN</div>
+                                                            <div className="text-2xl font-black text-white tracking-[0.2em] font-mono leading-none">{gateUser.passcode}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <button 
+                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
+                                                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/40 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Camera className="w-4 h-4" />
+                                                    Re-enroll Face Profile
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                </section>
+                                    </section>
 
-                                {/* 2. Identity Details */}
-                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <UserIcon className="h-5 w-5 text-emerald-400" />
-                                        <div className="text-sm font-black uppercase tracking-widest italic">Identity</div>
-                                    </div>
-                                    <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
-                                        <Input label="Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
-                                        <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
-                                        <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Update Identity</Button>
-                                    </form>
-                                </section>
+                                    {/* 2. Identity Details */}
+                                    <section className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] p-6 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400">
+                                                <UserIcon className="h-5 w-5" />
+                                            </div>
+                                            <h3 className="text-sm font-black uppercase tracking-[0.2em] italic text-white/80">Identity Matrix</h3>
+                                        </div>
+                                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-5">
+                                            <div className="space-y-4">
+                                                <Input label="Name" id="name" registration={register('name')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold placeholder:text-white/20" />
+                                                <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold placeholder:text-white/20" />
+                                            </div>
+                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] mt-2 italic shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Update Identity</Button>
+                                        </form>
+                                    </section>
 
-                                {/* 3. Security Pin */}
-                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <Lock className="h-5 w-5 text-amber-400" />
-                                        <div className="text-sm font-black uppercase tracking-widest italic">Security Pin</div>
-                                    </div>
-                                    <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                        <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                        <Input label="New Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                        <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic">Change Pin</Button>
-                                    </form>
-                                </section>
+                                    {/* 3. Security Pin */}
+                                    <section className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] p-6 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-2 bg-amber-500/10 rounded-xl text-amber-400">
+                                                <Lock className="h-5 w-5" />
+                                            </div>
+                                            <h3 className="text-sm font-black uppercase tracking-[0.2em] italic text-white/80">Security Pin</h3>
+                                        </div>
+                                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-5">
+                                            <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold" />
+                                            <Input label="New Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold" />
+                                            <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] mt-2 italic shadow-lg shadow-amber-900/20 active:scale-95 transition-all">Change Access Pin</Button>
+                                        </form>
+                                    </section>
 
-                                {/* 4. Alert Tone */}
-                                <section className="bg-white/5 border border-white/5 rounded-3xl p-6">
-                                    <AlertTonePicker />
-                                </section>
+                                    {/* 4. Alert Tone */}
+                                    <section className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] p-6 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-2 bg-blue-500/10 rounded-xl text-blue-400">
+                                                <Volume2 className="h-5 w-5" />
+                                            </div>
+                                            <h3 className="text-sm font-black uppercase tracking-[0.2em] italic text-white/80">Audio Alerts</h3>
+                                        </div>
+                                        <AlertTonePicker />
+                                    </section>
+                                </div>
                             </div>
                         </motion.div>,
                         document.body
@@ -1834,104 +1859,112 @@ const ProfilePage: React.FC = () => {
             </div>
 
 
-            {/* ═══ SETTINGS MODAL ═══ */}
+            {/* ═══ SETTINGS MODAL (WEB) ═══ */}
             <AnimatePresence>
                 {isSettingsOpen && (
                     <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-xl flex flex-col"
+                        className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                     >
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-white/5">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                                    <Settings className="w-5 h-5" />
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white dark:bg-[#0b291a] w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl shadow-2xl border border-gray-200 dark:border-[#1a3d2c] flex flex-col"
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-[#1a3d2c]">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400">
+                                        <Settings className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Profile Settings</h2>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage your identity and security preferences</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-white uppercase tracking-tighter italic">App Settings</h2>
-                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Personalize your experience</p>
-                                </div>
+                                <button 
+                                    onClick={() => setIsSettingsOpen(false)}
+                                    className="p-2 rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a3d2c] transition-all"
+                                >
+                                    <FileText className="w-6 h-6 rotate-45" /> {/* Close Icon alternative if X not handy, but ArrowLeft is standard here */}
+                                    <ArrowLeft className="w-6 h-6" />
+                                </button>
                             </div>
-                            <button 
-                                onClick={() => setIsSettingsOpen(false)}
-                                className="p-3 rounded-full bg-white/5 text-white hover:bg-white/10 transition-colors"
-                            >
-                                <ArrowLeft className="w-5 h-5" />
-                            </button>
-                        </div>
 
-                        {/* Modal Content */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-10 pb-32">
-                             {/* 1. Biometric Security Card */}
-                             <section>
-                                <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-3xl p-6 relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                                        <Shield className="w-16 h-16 text-emerald-400" />
-                                    </div>
-                                    <div className="relative z-10 space-y-4">
-                                        <div className="space-y-1">
-                                            <h3 className="text-white font-black uppercase tracking-tighter italic text-xl leading-none">Biometric Security</h3>
-                                            <p className="text-emerald-400/60 text-[11px] font-bold uppercase tracking-widest">Face Recognition Enrollment</p>
+                            {/* Modal Content */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Identity Section */}
+                                    <section className="space-y-4">
+                                        <div className="flex items-center gap-2 text-gray-900 dark:text-white mb-2">
+                                            <UserIcon className="w-4 h-4 text-emerald-600" />
+                                            <h3 className="font-bold">Identity Details</h3>
                                         </div>
-                                        <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">Update your face biometric profile for secure attendance verification.</p>
-                                        <button 
-                                            onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
-                                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-emerald-900/40 active:scale-95 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            <Camera className="w-4 h-4" />
-                                            Re-enroll My Face
-                                        </button>
-                                    </div>
-                                </div>
-                            </section>
+                                        <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
+                                            <Input label="Display Name" id="name-modal" registration={register('name')} className="bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c]" />
+                                            <Input label="Phone Number" id="phone-modal" type="tel" registration={register('phone')} className="bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c]" />
+                                            <div className="space-y-1">
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Gender</label>
+                                                <select {...register('gender')} className="w-full bg-gray-50 dark:bg-[#041b0f] border border-gray-200 dark:border-[#1a3d2c] rounded-xl h-11 px-4 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all">
+                                                    <option value="Male">Male</option>
+                                                    <option value="Female">Female</option>
+                                                    <option value="Other">Other</option>
+                                                </select>
+                                            </div>
+                                            <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 hover:!bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-emerald-500/10">Save Changes</Button>
+                                        </form>
+                                    </section>
 
-                            {/* 2. Identity Details Fragment */}
-                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <UserIcon className="h-5 w-5 text-emerald-400" />
-                                    <h3 className="text-sm font-black uppercase tracking-widest italic">Identity Details</h3>
-                                </div>
-                                <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="space-y-4">
-                                    <div className="space-y-4">
-                                        <Input label="Display Name" id="name" registration={register('name')} className="bg-black/20 border-white/5 text-white" />
-                                        <Input label="Contact Direct" id="phone" type="tel" registration={register('phone')} className="bg-black/20 border-white/5 text-white" />
-                                        <div className="space-y-1">
-                                            <label className="block text-[10px] font-black text-gray-500 uppercase">Biological Gender</label>
-                                            <select {...register('gender')} className="w-full bg-black/20 border border-white/5 rounded-xl h-12 px-4 text-sm font-bold text-white focus:border-emerald-500 outline-none transition-all">
-                                                <option value="Male">Male</option>
-                                                <option value="Female">Female</option>
-                                                <option value="Other">Other</option>
-                                            </select>
+                                    {/* Security Section */}
+                                    <section className="space-y-4">
+                                        <div className="flex items-center gap-2 text-gray-900 dark:text-white mb-2">
+                                            <Lock className="w-4 h-4 text-amber-600" />
+                                            <h3 className="font-bold">Access Security</h3>
                                         </div>
-                                    </div>
-                                    <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-4 italic shadow-lg shadow-emerald-900/20">Save Identity Changes</Button>
-                                </form>
-                            </section>
+                                        <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
+                                            <Input label="Current Pin" id="oldPasscode-modal" type="password" registration={registerPasscode('oldPasscode')} className="bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c]" />
+                                            <Input label="New 4-Digit Pin" id="newPasscode-modal" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-gray-50 dark:bg-[#041b0f] border-gray-200 dark:border-[#1a3d2c]" />
+                                            <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 hover:!bg-amber-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-amber-500/10">Update Pin</Button>
+                                        </form>
 
-                            {/* 3. Security Pin Section */}
-                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <Lock className="h-5 w-5 text-amber-400" />
-                                    <h3 className="text-sm font-black uppercase tracking-widest italic">Security Pin</h3>
+                                        {/* Biometrics Preview for Web */}
+                                        <div className="pt-4 border-t border-gray-100 dark:border-[#1a3d2c] mt-4">
+                                            <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-xl p-4 border border-emerald-100 dark:border-emerald-900/30">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Biometric Status</h4>
+                                                    {gateUser?.passcode && (
+                                                        <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded text-emerald-700 dark:text-emerald-300">PIN: {gateUser.passcode}</span>
+                                                    )}
+                                                </div>
+                                                <Button 
+                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
+                                                    variant="outline"
+                                                    className="w-full !h-9 !text-xs !border-emerald-200 dark:!border-emerald-800 !text-emerald-700 dark:!text-emerald-400 hover:!bg-emerald-100 dark:hover:!bg-emerald-900/20"
+                                                >
+                                                    <Camera className="w-3.5 h-3.5 mr-2" />
+                                                    Re-enroll Biometrics
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </section>
                                 </div>
-                                <p className="text-[11px] text-gray-400 mb-6 leading-relaxed uppercase font-bold tracking-tight">4-digit code required for high-security attendance verification.</p>
-                                <form onSubmit={handlePasscodeSubmit(onPasscodeSubmit)} className="space-y-4">
-                                    <Input label="Current Pin" id="oldPasscode" type="password" registration={registerPasscode('oldPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                    <Input label="New Security Pin" id="newPasscode" type="password" inputMode="numeric" maxLength={4} registration={registerPasscode('newPasscode')} className="bg-black/20 border-white/5 text-white" />
-                                    <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 !h-14 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 italic shadow-lg shadow-amber-900/20">Update Security Pin</Button>
-                                </form>
-                            </section>
 
-                            {/* 4. Alert Tone Picker Section */}
-                            <section className="bg-white/5 border border-white/5 rounded-3xl p-6 backdrop-blur-sm">
-                                <AlertTonePicker />
-                            </section>
-                        </div>
+                                {/* Alert Tone Picker Section */}
+                                <section className="pt-6 border-t border-gray-100 dark:border-[#1a3d2c]">
+                                    <div className="flex items-center gap-2 text-gray-900 dark:text-white mb-4">
+                                        <Volume2 className="w-4 h-4 text-blue-600" />
+                                        <h3 className="font-bold">Notification Audio</h3>
+                                    </div>
+                                    <AlertTonePicker />
+                                </section>
+                            </div>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
 
             {/* Biometric Enrollment Modal */}
             <AnimatePresence>

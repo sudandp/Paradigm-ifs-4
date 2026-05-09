@@ -848,7 +848,7 @@ export const BasicReportDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={styles.title}>Basic Attendance Report</Text>
               <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Period: Not Specified'}
+                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
               </Text>
               <Text style={styles.metaText}>
                 Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
@@ -933,19 +933,24 @@ export const MonthlyReportDocument: React.FC<{
   days: Date[];
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days }) => {
   const getStatusColor = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#059669';
+    if (s.includes('+')) return '#0D9488';
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'W/H' || s === 'WFH') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
+    if (s.includes('F/H')) return '#CA8A04';
     if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
+    if (s.includes('LOP')) return '#DC2626';
     return '#475569';
   };
 
   const getStatusBg = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#ECFDF5';
+    if (s.includes('+')) return '#F0FDFA';
+    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'W/H' || s === 'WFH') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
+    if (s.includes('F/H')) return '#FEF9C3';
     return '#FFFFFF';
   };
 
@@ -969,7 +974,7 @@ export const MonthlyReportDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A', textAlign: 'right' }}>ATTENDANCE REPORT</Text>
               <Text style={{ fontSize: 10, color: '#64748B', textAlign: 'right' }}>
-                Billing Period: {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
+                Billing Cycle: {format(dateRange.startDate, 'dd MMM yyyy')} - {format(dateRange.endDate, 'dd MMM yyyy')}
               </Text>
               {generatedBy && (
                 <View style={{ marginTop: 4, textAlign: 'right' }}>
@@ -1029,6 +1034,11 @@ export const MonthlyReportDocument: React.FC<{
             {employee.lossOfPays > 0 && (
               <View style={[styles.attendanceBadge, { backgroundColor: '#FFF1F2', borderColor: '#F43F5E', color: '#881337' }]}>
                 <Text>LOP {employee.lossOfPays}</Text>
+              </View>
+            )}
+            {employee.floatingHolidays > 0 && (
+              <View style={[styles.attendanceBadge, { backgroundColor: '#FEF9C3', borderColor: '#EAB308', color: '#854D0E' }]}>
+                <Text>F/H {employee.floatingHolidays}</Text>
               </View>
             )}
           </View>
@@ -1379,7 +1389,7 @@ export const SiteOtReportDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={styles.title}>Site OT Attendance Report</Text>
               <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Period: Not Specified'}
+                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
               </Text>
               <Text style={styles.metaText}>
                 Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
@@ -1471,7 +1481,7 @@ export const AttendanceLogDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={styles.title}>Detailed Attendance Log</Text>
               <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Period: Not Specified'}
+                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
               </Text>
               <Text style={styles.metaText}>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</Text>
               {generatedBy && (
@@ -1559,7 +1569,7 @@ export const WorkHoursReportDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={styles.title}>Monthly Work Hours Report</Text>
               <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Period: Not Specified'}
+                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
               </Text>
               <Text style={styles.metaText}>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</Text>
               {generatedBy && (
@@ -1645,7 +1655,7 @@ export const AuditLogDocument: React.FC<{
             <View style={styles.headerRight}>
               <Text style={styles.title}>Audit Log Report</Text>
               <Text style={styles.subtitle}>
-                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Period: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Period: Not Specified'}
+                {(dateRange?.startDate && dateRange?.endDate) ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'Billing Cycle: Not Specified'}
               </Text>
               <Text style={styles.metaText}>
                 Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
