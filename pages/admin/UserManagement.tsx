@@ -33,6 +33,7 @@ const getRoleBadgeClass = (role: string) => {
         case 'operation_manager': return 'bg-rose-100 text-rose-700';
         case 'unverified': return 'bg-yellow-100 text-yellow-800';
         case 'kiosk': return 'bg-cyan-100 text-cyan-700';
+        case 'gate_only': return 'bg-blue-100 text-blue-700';
         default: return 'bg-slate-100 text-slate-700';
     }
 };
@@ -60,6 +61,9 @@ const UserRow = React.memo(({
             {user.role === 'unverified' && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-2 uppercase tracking-tight">Pending Approval</span>
             )}
+            {user.role === 'gate_only' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 ml-2 uppercase tracking-tight">Gate Only</span>
+            )}
         </td>
         <td data-label="Company" className="px-6 py-4 text-base text-primary-text font-medium">
             {user.organizationName || (user.societyName ? `${user.societyName} (HO)` : '-')}
@@ -69,7 +73,7 @@ const UserRow = React.memo(({
         </td>
         <td data-label="Actions" className="px-6 py-3">
             <div className="flex items-center gap-4 md:justify-start justify-end">
-                {user.role === 'unverified' && (
+                {(user.role === 'unverified' || user.role === 'gate_only') && (
                     <button 
                         onClick={() => handleApprove(user)} 
                         aria-label={`Approve ${user.name}`} 
@@ -166,7 +170,7 @@ const UserCard = React.memo(({
                 <RotateCw className="h-4 w-4" />
             </button>
             
-            {user.role === 'unverified' && (
+            {(user.role === 'unverified' || user.role === 'gate_only') && (
                 <button 
                     onClick={() => handleApprove(user)} 
                     className="px-4 py-2.5 rounded-xl !bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 flex-shrink-0"

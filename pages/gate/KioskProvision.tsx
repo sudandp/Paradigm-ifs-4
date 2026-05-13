@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { KioskPlugin } from '../../plugins/KioskPlugin';
+import { Capacitor } from '@capacitor/core';
 import { Lock, Shield, Loader2 } from 'lucide-react';
 import { useGateStore } from '../../store/gateStore';
 
@@ -51,7 +52,13 @@ const KioskProvision: React.FC = () => {
     setIsLoading(true);
     try {
       // Activate kiosk mode natively (screen-pin the app)
-      await KioskPlugin.startLockTask();
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await KioskPlugin.startLockTask();
+        } catch (err) {
+          console.warn('[KioskProvision] KioskPlugin.startLockTask failed:', err);
+        }
+      }
       
       // Update global state
       setKioskMode(true);

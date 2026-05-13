@@ -1562,7 +1562,9 @@ const AttendanceDashboard: React.FC = () => {
                         ? kioskDeviceMap.get(e.deviceId) 
                         : (e.source === 'gate-kiosk' && e.locationId && kioskLocationMap.has(e.locationId))
                             ? kioskLocationMap.get(e.locationId)
-                            : (e.deviceName || (e as any).device || '-')
+                            : (e.deviceName || (e as any).device || '-'),
+                    isCached: e.isCached,
+                    cachedAt: (e as any).cachedAt
                 };
             })
             .sort((a, b) => {

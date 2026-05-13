@@ -8,24 +8,48 @@ import { fetchGateAttendanceLogs } from '../../services/gateApi';
 import type { GateAttendanceLog, GateAttendanceMethod } from '../../types/gate';
 import {
   ArrowLeft, Calendar, Download, Filter, Loader2, User,
-  ScanLine, QrCode, Camera, Search, RefreshCw, Clock,
+  QrCode, Camera, Search, RefreshCw, Clock, Hash
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuthStore } from '../../store/authStore';
+import { isAdmin as checkIsAdmin } from '../../utils/auth';
+
+const formatAction = (action?: string) => {
+  if (!action) return '—';
+  return action.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
-  face: <ScanLine className="w-3.5 h-3.5" />,
+  face: <Hash className="w-3.5 h-3.5 opacity-40" />, // Legacy fallback
   qr: <QrCode className="w-3.5 h-3.5" />,
   manual: <Camera className="w-3.5 h-3.5" />,
+  passcode: <Hash className="w-3.5 h-3.5" />,
 };
 
 const METHOD_COLORS: Record<string, string> = {
-  face: 'bg-blue-50 text-blue-700 border-blue-200',
+  face: 'bg-slate-50 text-slate-400 border-slate-200', // Legacy fallback
   qr: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   manual: 'bg-amber-50 text-amber-700 border-amber-200',
+  passcode: 'bg-indigo-50 text-indigo-700 border-indigo-200',
 };
 
 const GateAttendanceLogs: React.FC = () => {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuthStore();
+  
+  // ─── RBAC: Ensure only Admin and Security roles can access ───
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const role = (currentUser.role || '').toLowerCase();
+    const isSecurity = role.includes('security');
+    const isAdmin = checkIsAdmin(currentUser.role);
+    
+    if (!isAdmin && !isSecurity) {
+      console.warn('[GateAttendanceLogs] Unauthorized access attempt by:', currentUser.email);
+      navigate('/forbidden', { replace: true });
+    }
+  }, [currentUser, navigate]);
   const [logs, setLogs] = useState<GateAttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -57,15 +81,16 @@ const GateAttendanceLogs: React.FC = () => {
 
   // Stats
   const totalToday = logs.length;
-  const byMethod = { face: 0, qr: 0, manual: 0 };
-  logs.forEach((l) => { if (byMethod[l.method] !== undefined) byMethod[l.method]++; });
+  const byMethod = { qr: 0, manual: 0, passcode: 0 };
+  logs.forEach((l) => { if (byMethod[l.method as string] !== undefined) byMethod[l.method as string]++; });
 
   // Export CSV
   const exportCsv = () => {
-    const headers = ['Name', 'Department', 'Method', 'Device', 'Confidence', 'Time', 'Notes'];
+    const headers = ['Name', 'Department', 'Action', 'Method', 'Device', 'Confidence', 'Time', 'Notes'];
     const rows = filtered.map((l) => [
       l.userName || '',
       l.department || '',
+      formatAction(l.deviceInfo?.action),
       l.method,
       l.deviceInfo?.deviceName || 'Web Browser',
       l.confidence ? (l.confidence * 100).toFixed(1) + '%' : '',
@@ -116,8 +141,8 @@ const GateAttendanceLogs: React.FC = () => {
               <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value as any)}
                 className="h-11 bg-page border border-border rounded-2xl px-4 text-sm text-primary-text focus:ring-2 focus:ring-accent/20 outline-none transition-all max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white select-none">
                 <option value="">All Methods</option>
-                <option value="face">Face ID</option>
                 <option value="qr">QR Code</option>
+                <option value="passcode">Passcode</option>
                 <option value="manual">Manual</option>
               </select>
             </div>
@@ -139,7 +164,7 @@ const GateAttendanceLogs: React.FC = () => {
             <p className="text-xs text-muted uppercase font-semibold">Total Today</p>
             <p className="text-3xl font-bold text-primary-text mt-1">{totalToday}</p>
           </div>
-          {(['face', 'qr', 'manual'] as const).map((m) => (
+          {(['qr', 'passcode', 'manual'] as const).map((m) => (
             <div key={m} className="bg-card rounded-2xl border border-border p-4 shadow-card">
               <p className="text-xs text-muted uppercase font-semibold flex items-center gap-1.5">{METHOD_ICONS[m]} {m}</p>
               <p className="text-3xl font-bold text-primary-text mt-1">{byMethod[m]}</p>
@@ -162,6 +187,7 @@ const GateAttendanceLogs: React.FC = () => {
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">#</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Employee</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Department</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Action</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Method</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Device</th>
                     <th className="text-left px-4 py-3 font-semibold text-muted text-xs uppercase">Confidence</th>
@@ -182,6 +208,11 @@ const GateAttendanceLogs: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted">{log.department || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                          {formatAction(log.deviceInfo?.action)}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${METHOD_COLORS[log.method]}`}>
                           {METHOD_ICONS[log.method]} {log.method}
@@ -215,7 +246,14 @@ const GateAttendanceLogs: React.FC = () => {
                   }
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-primary-text text-sm truncate">{log.userName}</p>
-                    <p className="text-xs text-muted truncate">{log.department || '—'} • {format(new Date(log.markedAt), 'hh:mm a')}</p>
+                    <p className="text-xs text-muted truncate">
+                      {log.deviceInfo?.action && (
+                        <span className="font-medium text-gray-600 mr-1">
+                          {formatAction(log.deviceInfo.action)} •
+                        </span>
+                      )}
+                      {log.department || '—'} • {format(new Date(log.markedAt), 'hh:mm a')}
+                    </p>
                     <p className="text-[10px] text-accent/60 font-medium truncate">{log.deviceInfo?.deviceName || 'Web'}</p>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${METHOD_COLORS[log.method]}`}>

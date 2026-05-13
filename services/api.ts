@@ -2381,7 +2381,16 @@ export const api = {
         console.warn('Failed to fetch all attendance events from cloud, falling back to cache');
       }
     }
-    return await offlineDb.getCache(`attendance_all_${start.split('T')[0]}`) || [];
+    const cacheKey = `attendance_all_${start.split('T')[0]}`;
+    const cache = await offlineDb.getCacheWithMeta(cacheKey);
+    if (cache && Array.isArray(cache.value)) {
+        return cache.value.map((e: any) => ({
+            ...e,
+            isCached: true,
+            cachedAt: cache.timestamp
+        }));
+    }
+    return [];
   },
   getAttendanceEventsForUsers: async (userIds: string[], start: string, end: string): Promise<AttendanceEvent[]> => {
     if (!userIds || userIds.length === 0) return [];

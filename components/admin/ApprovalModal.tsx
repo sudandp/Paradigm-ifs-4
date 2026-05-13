@@ -23,7 +23,7 @@ const ApprovalModal: React.FC<ApprovalModalProps> = ({ isOpen, onClose, onApprov
       setIsLoading(true);
       api.getRoles().then(fetchedRoles => {
         // Filter out 'unverified' and 'admin' as they shouldn't be assigned directly here.
-        const assignableRoles = fetchedRoles.filter(r => r.id !== 'unverified' && r.id !== 'admin');
+        const assignableRoles = fetchedRoles.filter(r => r.id !== 'unverified' && r.id !== 'admin' && r.id !== 'gate_only');
         setRoles(assignableRoles);
         if (assignableRoles.length > 0) {
           setSelectedRole(assignableRoles[0].id); // Default to the first available role

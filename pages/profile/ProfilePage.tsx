@@ -13,11 +13,13 @@ import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
+import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format } from 'date-fns';
+import CameraCaptureModal from '../../components/CameraCaptureModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
@@ -26,7 +28,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
 import { calculateEmployeeScores, getEmployeeScore } from '../../services/employeeScoring';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import PersonalFaceAuth from '../../components/attendance/PersonalFaceAuth';
+
 
 
 // --- Profile Section ---
@@ -100,27 +102,24 @@ const ProfilePage: React.FC = () => {
     const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
     const [gateUser, setGateUser] = useState<GateUser | null>(null);
     const [isGateUserLoading, setIsGateUserLoading] = useState(true);
-    const [showFaceEnroll, setShowFaceEnroll] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isEnrolling, setIsEnrolling] = useState(false);
+    const [isRegistering, setIsRegistering] = useState(false);
 
     useEffect(() => {
         const fetchGateData = async () => {
             if (user?.id) {
-                console.log('[ProfilePage] Fetching gate data for user:', user.id);
                 try {
                     const { getGateUserByUserId } = await import('../../services/gateApi');
                     const data = await getGateUserByUserId(user.id);
-                    console.log('[ProfilePage] Gate data received:', data);
                     setGateUser(data);
                 } catch (err) {
                     console.error('[ProfilePage] Failed to fetch gate user data:', err);
-                } finally {
-                    setIsGateUserLoading(false);
                 }
             }
         };
         fetchGateData();
-    }, [user?.id, showFaceEnroll, isSettingsOpen]); // Refresh when settings open or face enrollment changes
+    }, [user?.id, isSettingsOpen, isEnrolling]);
     
     // Interactive Hints State
     const [showPunchHint, setShowPunchHint] = useState(false);
@@ -140,8 +139,53 @@ const ProfilePage: React.FC = () => {
 
     // Children State (for female employees)
     const [children, setChildren] = useState<UserChild[]>([]);
-    const [isChildrenLoading, setIsChildrenLoading] = useState(false);
     const [newChildName, setNewChildName] = useState('');
+    const [isChildrenLoading, setIsChildrenLoading] = useState(false);
+
+    const handleResetGateAccess = async () => {
+        if (!user?.id || !gateUser?.id) return;
+        if (!window.confirm('PERMANENT DELETE: This will permanently delete your Gate Access QR code and PIN. You will NOT be able to punch in at any gate kiosk until your profile is re-created. Continue?')) return;
+        
+        try {
+            setIsSaving(true);
+            const { deleteGateUser } = await import('../../services/gateApi');
+            await deleteGateUser(gateUser.id, user.id);
+            setGateUser(null);
+            setToast({ message: 'Gate access profile deleted permanently', type: 'success' });
+            triggerHaptic(ImpactStyle.Heavy);
+        } catch (err: any) {
+            setToast({ message: err.message || 'Failed to delete profile', type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleEnrollmentCapture = async (base64Data: string) => {
+        if (!user?.id) return;
+        setIsRegistering(true);
+        try {
+            // 1. Upload photo
+            const fileName = `gate_${user.id}_${Date.now()}.jpg`;
+            const photoUrl = await uploadGatePhoto(base64Data, 'registration', fileName);
+            
+            // 2. Register user (passcode/QR generated on server/API)
+            const newUser = await registerGateUser({
+                userId: user.id,
+                photoUrl,
+                department: user.department || 'EMPLOYEE'
+            });
+            
+            setGateUser(newUser);
+            setIsEnrolling(false);
+            setToast({ message: '🎉 Gate Access Activated! Use your QR or PIN at any kiosk.', type: 'success' });
+            triggerHaptic(ImpactStyle.Heavy);
+        } catch (err: any) {
+            console.error('[ProfilePage] Enrollment failed:', err);
+            setToast({ message: 'Enrollment failed: ' + err.message, type: 'error' });
+        } finally {
+            setIsRegistering(false);
+        }
+    };
     const [newChildDob, setNewChildDob] = useState('');
     const [newChildCert, setNewChildCert] = useState<string | null>(null);
 
@@ -1124,13 +1168,15 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
-                    {isSettingsOpen && createPortal(
-                        <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[110] bg-[#041b0f] flex flex-col overflow-hidden"
-                        >
+                    {createPortal(
+                        <AnimatePresence>
+                            {isSettingsOpen && (
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 100 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 100 }}
+                                    className="fixed inset-0 z-[110] bg-[#041b0f] flex flex-col overflow-hidden"
+                                >
                             {/* Premium Mobile Header (Matching Profile Header) */}
                             <div className="relative overflow-hidden pt-8 pb-6 px-6 bg-gradient-to-br from-[#0a2f1c] to-[#041b0f] rounded-b-[40px] shadow-2xl mb-4">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
@@ -1161,40 +1207,60 @@ const ProfilePage: React.FC = () => {
 
                             {/* Modal Content */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-8 pb-32">
-                                {/* Editorial Watermark (Settings) */}
-                                <div 
-                                    className="absolute top-40 left-1/2 -translate-x-1/2 opacity-[0.03] text-[120px] font-black text-white pointer-events-none select-none uppercase tracking-tighter leading-none z-0"
-                                >
-                                    CONFIG
-                                </div>
-
                                 <div className="relative z-10 space-y-6">
-                                    {/* 1. Biometric Security Card */}
+                                    {/* 1. Gate Access Security Card */}
                                     <section>
                                         <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] p-6 relative overflow-hidden shadow-2xl">
                                             <div className="absolute top-0 right-0 p-4 opacity-5">
-                                                <Shield className="w-20 h-20 text-emerald-400" />
+                                                <QrCode className="w-20 h-20 text-emerald-400" />
                                             </div>
                                             <div className="relative z-10 space-y-6">
                                                 <div className="flex items-center justify-between">
                                                     <div className="space-y-1">
-                                                        <h3 className="text-white font-black uppercase tracking-widest text-[11px] opacity-40">Biometric Security</h3>
-                                                        <div className="text-white font-black uppercase tracking-tighter italic text-2xl leading-none">Face Auth</div>
+                                                        <h3 className="text-white font-black uppercase tracking-widest text-[11px] opacity-40">Gate Access</h3>
+                                                        <div className="text-white font-black uppercase tracking-tighter italic text-2xl leading-none">Security Identity</div>
+                                                        {gateUser?.createdAt && (
+                                                            <div className="flex items-center gap-1.5 mt-1 text-[8px] font-black uppercase tracking-widest text-emerald-400/60">
+                                                                <Clock className="w-2 h-2" />
+                                                                Enrolled: {new Date(gateUser.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                                                            </div>
+                                                        )}
                                                     </div>
+                                                    {!gateUser && (
+                                                        <button 
+                                                            onClick={() => setIsEnrolling(true)}
+                                                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg active:scale-95 transition-all"
+                                                        >
+                                                            Get Access
+                                                        </button>
+                                                    )}
                                                     {gateUser?.passcode && (
                                                         <div className="bg-emerald-500/10 backdrop-blur-md border border-emerald-500/20 rounded-2xl px-4 py-2 flex flex-col items-center shadow-lg">
-                                                            <div className="text-[8px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1">Backup PIN</div>
+                                                            <div className="text-[8px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-1">Access PIN</div>
                                                             <div className="text-2xl font-black text-white tracking-[0.2em] font-mono leading-none">{gateUser.passcode}</div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                <button 
-                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
-                                                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-900/40 active:scale-95 transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <Camera className="w-4 h-4" />
-                                                    Re-enroll Face Profile
-                                                </button>
+                                                <div className="p-4 bg-white rounded-3xl flex items-center justify-center shadow-inner">
+                                                    {gateUser?.qrToken ? (
+                                                        <img 
+                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${gateUser.qrToken}`} 
+                                                            alt="Access QR" 
+                                                            className="w-32 h-32"
+                                                        />
+                                                    ) : (
+                                                        <div 
+                                                            onClick={() => !gateUser && setIsEnrolling(true)}
+                                                            className={`w-32 h-32 flex flex-col items-center justify-center text-slate-300 ${!gateUser ? 'cursor-pointer hover:bg-white/10 rounded-3xl transition-colors' : ''}`}
+                                                        >
+                                                            <QrCode className="w-16 h-16 opacity-20" />
+                                                            {!gateUser && <span className="text-[8px] font-black uppercase mt-2 opacity-40">Setup Access</span>}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-white/40 text-center font-bold uppercase tracking-widest leading-relaxed">
+                                                    Use this QR or PIN at any Paradigm Gate Kiosk for rapid attendance marking.
+                                                </p>
                                             </div>
                                         </div>
                                     </section>
@@ -1243,33 +1309,11 @@ const ProfilePage: React.FC = () => {
                                     </section>
                                 </div>
                             </div>
-                        </motion.div>,
+                                </motion.div>
+                            )}
+                        </AnimatePresence>,
                         document.body
                     )}
-                    {/* Biometric Enrollment Modal (Mobile) */}
-                    <AnimatePresence>
-                        {showFaceEnroll && createPortal(
-                            <motion.div 
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex flex-col p-4 items-center justify-center"
-                            >
-                                <PersonalFaceAuth 
-                                    userId={user.id} 
-                                    isReEnroll={true}
-                                    onVerified={() => {
-                                        console.log("Biometric verification complete for user:", user.id);
-                                        setShowFaceEnroll(false);
-                                        setIsSettingsOpen(false);
-                                        setToast({ message: 'Biometrics updated successfully!', type: 'success' });
-                                    }} 
-                                    onCancel={() => setShowFaceEnroll(false)} 
-                                />
-                            </motion.div>,
-                            document.body
-                        )}
-                    </AnimatePresence>
                 </div>
         );
     }
@@ -1929,23 +1973,35 @@ const ProfilePage: React.FC = () => {
                                             <Button type="submit" isLoading={isSavingPasscode} disabled={!isPasscodeDirty} className="w-full !bg-amber-600 hover:!bg-amber-700 text-white font-bold h-11 rounded-xl shadow-lg shadow-amber-500/10">Update Pin</Button>
                                         </form>
 
-                                        {/* Biometrics Preview for Web */}
+                                        {/* Gate Access Management for Web */}
                                         <div className="pt-4 border-t border-gray-100 dark:border-[#1a3d2c] mt-4">
                                             <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-xl p-4 border border-emerald-100 dark:border-emerald-900/30">
                                                 <div className="flex items-center justify-between mb-3">
-                                                    <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Biometric Status</h4>
+                                                    <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Gate Access Profile</h4>
                                                     {gateUser?.passcode && (
                                                         <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded text-emerald-700 dark:text-emerald-300">PIN: {gateUser.passcode}</span>
                                                     )}
                                                 </div>
-                                                <Button 
-                                                    onClick={() => { triggerHaptic(); setShowFaceEnroll(true); }}
-                                                    variant="outline"
-                                                    className="w-full !h-9 !text-xs !border-emerald-200 dark:!border-emerald-800 !text-emerald-700 dark:!text-emerald-400 hover:!bg-emerald-100 dark:hover:!bg-emerald-900/20"
-                                                >
-                                                    <Camera className="w-3.5 h-3.5 mr-2" />
-                                                    Re-enroll Biometrics
-                                                </Button>
+                                                <div className="flex gap-2">
+                                                    {gateUser ? (
+                                                        <Button 
+                                                            onClick={handleResetGateAccess}
+                                                            variant="outline"
+                                                            className="w-full !h-9 !text-xs !border-red-200 dark:!border-red-900/30 !text-red-600 dark:!text-red-400 hover:!bg-red-50 dark:hover:!bg-red-900/10"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                                            Reset Gate Profile
+                                                        </Button>
+                                                    ) : (
+                                                        <Button 
+                                                            onClick={() => setIsEnrolling(true)}
+                                                            className="w-full !h-9 !text-xs !bg-emerald-600 hover:!bg-emerald-700 text-white font-bold rounded-lg shadow-sm"
+                                                        >
+                                                            <Camera className="w-3.5 h-3.5 mr-2" />
+                                                            Get Gate Access
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </section>
@@ -1966,24 +2022,15 @@ const ProfilePage: React.FC = () => {
             </AnimatePresence>
 
 
-            {/* Biometric Enrollment Modal */}
-            <AnimatePresence>
-                {showFaceEnroll && user && (
-                    <div className="fixed inset-0 z-[120]">
-                        <PersonalFaceAuth 
-                            userId={user.id} 
-                            isReEnroll={true}
-                            onVerified={() => {
-                                setShowFaceEnroll(false);
-                                setToast({ message: 'Biometrics updated successfully!', type: 'success' });
-                                checkAttendanceStatus();
-                            }} 
-                            onCancel={() => setShowFaceEnroll(false)}
-                            actionLabel="Enrollment Update"
-                        />
-                    </div>
-                )}
-            </AnimatePresence>
+            {isEnrolling && (
+                <CameraCaptureModal
+                    isOpen={isEnrolling}
+                    onClose={() => setIsEnrolling(false)}
+                    onCapture={handleEnrollmentCapture}
+                    captureGuidance="profile"
+                    isLoading={isRegistering}
+                />
+            )}
         </div>
     );
 };

@@ -1,6 +1,7 @@
 import { offlineDb, OutboxItem } from './database';
 import { api } from '../api';
 import { Network } from '@capacitor/network';
+import { dispatchNotificationFromRules } from '../notificationService';
 
 class SyncService {
   private isSyncing = false;
@@ -60,8 +61,9 @@ class SyncService {
       // 2. Pull latest data for all key modules
       await this.pullAllData();
       
-      // 3. Mark last sync success
+      // 3. Mark last sync success + update online timestamp
       await offlineDb.setSyncTime(new Date().toISOString());
+      await offlineDb.setLastOnlineTimestamp();
       
     } catch (error) {
       console.error('[SyncService] Sync failed:', error);
@@ -174,7 +176,29 @@ class SyncService {
           if (item.action === 'INSERT') await api.saveSiteFinanceRecord(item.payload);
           break;
         case 'attendance_events':
-          if (item.action === 'INSERT') await api.addAttendanceEvent(item.payload);
+          if (item.action === 'INSERT') {
+            try {
+              await api.addAttendanceEvent({ ...item.payload, is_offline_sync: true });
+            } catch (attErr: any) {
+              // 409 = duplicate event (idempotency) — treat as success
+              if (attErr?.status === 409 || attErr?.code === '23505') {
+                console.warn(`[SyncService] Attendance event ${item.id} already exists, skipping duplicate`);
+              } else {
+                throw attErr;
+              }
+            }
+          }
+          break;
+        case 'notification_dispatch':
+          if (item.action === 'INSERT') {
+            const { eventType, ...notifPayload } = item.payload;
+            try {
+              dispatchNotificationFromRules(eventType, notifPayload);
+            } catch (nErr) {
+              console.warn(`[SyncService] Notification dispatch failed for ${eventType}:`, nErr);
+              // Don't block sync for notification failures
+            }
+          }
           break;
         case 'support_tickets':
           if (item.action === 'INSERT') await api.createSupportTicket(item.payload);

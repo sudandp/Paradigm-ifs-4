@@ -4,8 +4,9 @@ import { getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalcula
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
+import { offlineAttendanceService } from '../../services/offline/offlineAttendanceService';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus } from '../../types';
-import { ArrowLeft, Clock } from 'lucide-react';
+import { ArrowLeft, Clock, CloudOff } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
@@ -100,7 +101,7 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
 });
 
 const ApplyLeave: React.FC = () => {
-    const { user, isCheckedIn } = useAuthStore();
+    const { user, isCheckedIn, isOffline } = useAuthStore();
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [toast, setToast] = React.useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -611,8 +612,11 @@ const ApplyLeave: React.FC = () => {
                 });
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
-                await api.submitLeaveRequest(basePayload);
-                setToast({ message: 'Leave request submitted successfully!', type: 'success' });
+                const result = await offlineAttendanceService.queueLeaveRequest(basePayload);
+                setToast({ 
+                    message: result.isOffline ? 'You are offline. Request saved and will sync later!' : 'Leave request submitted successfully!', 
+                    type: result.success ? 'success' : 'error' 
+                });
             }
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
         } catch (err) {
@@ -659,8 +663,14 @@ const ApplyLeave: React.FC = () => {
                         </Button>
                     )}
                     <div>
-                        <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg">
+                        <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
                             {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                            {isOffline && (
+                                <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
+                                    <CloudOff className="w-3 h-3" />
+                                    OFFLINE
+                                </span>
+                            )}
                         </h1>
                         {!isEditMode && (
                             <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">

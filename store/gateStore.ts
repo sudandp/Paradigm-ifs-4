@@ -24,10 +24,16 @@ interface GateStore {
   isCameraReady: boolean;
   setCameraReady: (ready: boolean) => void;
 
-  // Face descriptor cache (loaded from DB / IndexedDB)
-  registeredFaces: GateUser[];
-  setRegisteredFaces: (faces: GateUser[]) => void;
+  // User cache (loaded from DB)
+  registeredUsers: GateUser[];
+  setRegisteredUsers: (users: GateUser[]) => void;
   lastSyncTime: number | null;
+
+  // Loading & errors
+  isProcessing: boolean;
+  setProcessing: (processing: boolean) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
 
   // Recent scans for duplicate prevention (5-min window)
   recentScans: RecentScan[];
@@ -44,11 +50,6 @@ interface GateStore {
   setTodayLogs: (logs: GateAttendanceLog[]) => void;
   addLog: (log: GateAttendanceLog) => void;
 
-  // Loading & errors
-  isProcessing: boolean;
-  setProcessing: (processing: boolean) => void;
-  error: string | null;
-  setError: (error: string | null) => void;
 
   // Kiosk pin
   kioskPin: string;
@@ -76,14 +77,14 @@ const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 export const useGateStore = create<GateStore>()(
   persist(
     (set, get) => ({
-      activeMode: 'face',
+      activeMode: 'qr',
       setActiveMode: (mode) => set({ activeMode: mode }),
 
       isCameraReady: false,
       setCameraReady: (ready) => set({ isCameraReady: ready }),
 
-      registeredFaces: [],
-      setRegisteredFaces: (faces) => set({ registeredFaces: faces, lastSyncTime: Date.now() }),
+      registeredUsers: [],
+      setRegisteredUsers: (users) => set({ registeredUsers: users, lastSyncTime: Date.now() }),
       lastSyncTime: null,
 
       recentScans: [],

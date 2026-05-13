@@ -105,13 +105,26 @@ class OfflineDatabase {
 
   async getPendingOutbox(): Promise<OutboxItem[]> {
     if (this.isMobile && this.sqlite) {
-      const res = await this.sqlite.query(`SELECT * FROM outbox WHERE status = 'pending'`);
+      const res = await this.sqlite.query(`SELECT * FROM outbox WHERE status = 'pending' ORDER BY timestamp ASC`);
       return (res.values || []).map(v => ({
         ...v,
         payload: JSON.parse(v.payload)
       }));
     } else if (this.idb) {
       return await this.idb.getAllFromIndex('outbox', 'status', 'pending');
+    }
+    return [];
+  }
+
+  async getAllOutbox(): Promise<OutboxItem[]> {
+    if (this.isMobile && this.sqlite) {
+      const res = await this.sqlite.query(`SELECT * FROM outbox ORDER BY timestamp DESC`);
+      return (res.values || []).map(v => ({
+        ...v,
+        payload: JSON.parse(v.payload)
+      }));
+    } else if (this.idb) {
+      return await this.idb.getAll('outbox');
     }
     return [];
   }
@@ -146,12 +159,38 @@ class OfflineDatabase {
   }
 
   async getCache(key: string): Promise<any | null> {
+    const meta = await this.getCacheWithMeta(key);
+    return meta ? meta.value : null;
+  }
+
+  async deleteCache(key: string): Promise<void> {
     if (this.isMobile && this.sqlite) {
-      const res = await this.sqlite.query(`SELECT value FROM cache WHERE key = ?`, [key]);
-      return res.values?.[0] ? JSON.parse(res.values[0].value) : null;
+      await this.sqlite.run(`DELETE FROM cache WHERE key = ?`, [key]);
     } else if (this.idb) {
-      const res = await this.idb.get('cache', key);
-      return res ? res.value : null;
+      await this.idb.delete('cache', key);
+    }
+  }
+
+  async deleteOldDescriptors(userId: string): Promise<void> {
+    // Ensuring no legacy keys exist for the user
+    await this.deleteCache(`gate_user_${userId}`);
+    await this.deleteCache(`face_descriptor_${userId}`);
+  }
+
+  async getCacheWithMeta(key: string): Promise<{ value: any; timestamp: string } | null> {
+    if (this.isMobile && this.sqlite) {
+      const res = await this.sqlite.query(`SELECT value, timestamp FROM cache WHERE key = ?`, [key]);
+      if (res.values && res.values.length > 0) {
+        return { 
+            value: JSON.parse(res.values[0].value), 
+            timestamp: res.values[0].timestamp 
+        };
+      }
+    } else if (this.idb) {
+      const item = await this.idb.get('cache', key);
+      if (item) {
+        return { value: item.value, timestamp: item.timestamp };
+      }
     }
     return null;
   }
@@ -173,6 +212,84 @@ class OfflineDatabase {
 
   async getSyncTime(): Promise<string | null> {
     return await this.getCache('last_sync_time');
+  }
+
+  // ── Offline-First Helpers ──────────────────────────────────────────────────
+
+  /** Track last successful online communication for 14-day offline auth window */
+  async setLastOnlineTimestamp() {
+    await this.setCache('last_online_timestamp', new Date().toISOString());
+  }
+
+  async getLastOnlineTimestamp(): Promise<string | null> {
+    return await this.getCache('last_online_timestamp');
+  }
+
+  /** Check if we're within the allowed offline window (default 14 days) */
+  async isOfflineSessionValid(maxDays = 14): Promise<boolean> {
+    const timestamp = await this.getLastOnlineTimestamp();
+    if (!timestamp) return false;
+    const lastOnline = new Date(timestamp).getTime();
+    const now = Date.now();
+    const daysSince = (now - lastOnline) / (1000 * 60 * 60 * 24);
+    return daysSince <= maxDays;
+  }
+
+  /** Number of pending items in the outbox (for sync status UI) */
+  async getPendingOutboxCount(): Promise<number> {
+    const items = await this.getPendingOutbox();
+    return items.length;
+  }
+
+  /** Total outbox size including failed items */
+  async getTotalOutboxCount(): Promise<number> {
+    if (this.isMobile && this.sqlite) {
+      const res = await this.sqlite.query(`SELECT COUNT(*) as count FROM outbox`);
+      return res.values?.[0]?.count ?? 0;
+    } else if (this.idb) {
+      return await this.idb.count('outbox');
+    }
+    return 0;
+  }
+
+  /** Purge cache entries older than maxMonths (default 3) to free storage */
+  async purgeOldCache(maxMonths = 3) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - maxMonths);
+    const cutoffStr = cutoff.toISOString();
+
+    if (this.isMobile && this.sqlite) {
+      await this.sqlite.run(`DELETE FROM cache WHERE timestamp < ? AND key LIKE 'attendance_history_%'`, [cutoffStr]);
+      await this.sqlite.run(`DELETE FROM cache WHERE timestamp < ? AND key LIKE 'today_events_%'`, [cutoffStr]);
+    } else if (this.idb) {
+      const tx = this.idb.transaction('cache', 'readwrite');
+      const store = tx.objectStore('cache');
+      const allKeys = await store.getAllKeys();
+      for (const key of allKeys) {
+        const item = await store.get(key);
+        if (item && item.timestamp < cutoffStr) {
+          const k = String(key);
+          if (k.startsWith('attendance_history_') || k.startsWith('today_events_')) {
+            await store.delete(key);
+          }
+        }
+      }
+      await tx.done;
+    }
+  }
+
+  /** Delete all completed (synced) outbox items to free space */
+  async clearSyncedOutbox() {
+    if (this.isMobile && this.sqlite) {
+      await this.sqlite.run(`DELETE FROM outbox WHERE status = 'syncing'`);
+    } else if (this.idb) {
+      const items = await this.idb.getAllFromIndex('outbox', 'status', 'syncing');
+      const tx = this.idb.transaction('outbox', 'readwrite');
+      for (const item of items) {
+        if (item.id) await tx.store.delete(item.id);
+      }
+      await tx.done;
+    }
   }
 }
 

@@ -26,8 +26,8 @@ import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
 import { useGateStore } from './store/gateStore';
 import { KioskPlugin } from './plugins/KioskPlugin';
-import { syncService } from './services/offline/syncService';
-import OfflineStatusBanner from './components/OfflineStatusBanner';
+import { offlineDb } from './services/offline/database';
+import SyncStatusIndicator from './components/offline/SyncStatusIndicator';
 import { pushNotificationService } from './services/pushNotificationService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { Toaster } from 'react-hot-toast';
@@ -46,6 +46,10 @@ import { useAppUpdate } from './hooks/useAppUpdate';
 import { UpdatePromptModal } from './components/UpdatePromptModal';
 import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequiredBanner';
 import { APP_VERSION } from './src/config/appVersion';
+import { Network } from '@capacitor/network';
+import { syncService } from './services/offline/syncService';
+import { offlineAttendanceService } from './services/offline/offlineAttendanceService';
+import OfflineStatusBanner from './components/OfflineStatusBanner';
 
 // Layouts
 import MainLayout from './components/layouts/MainLayout';
@@ -181,7 +185,6 @@ const EsiDetails = lazyWithRetry(() => import('./pages/onboarding/EsiDetails'));
 const GmcDetails = lazyWithRetry(() => import('./pages/onboarding/GmcDetails'));
 const UniformDetails = lazyWithRetry(() => import('./pages/onboarding/UniformDetails'));
 const Documents = lazyWithRetry(() => import('./pages/onboarding/Documents'));
-const Biometrics = lazyWithRetry(() => import('./pages/onboarding/Biometrics'));
 const Review = lazyWithRetry(() => import('./pages/onboarding/Review'));
 const AadhaarScannerPage = lazyWithRetry(() => import('./pages/onboarding/AadhaarScannerPage'));
 
@@ -375,6 +378,25 @@ const App: React.FC = () => {
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
   const { isKioskMode, setKioskMode: updateKioskMode, setDeviceId, isKioskSkipped, setKioskSkipped } = useGateStore();
+  const { setIsOffline } = useAuthStore();
+
+  // ── Network Status Tracking ────────────────────────────────────────────────
+  useEffect(() => {
+    const initNetwork = async () => {
+      const status = await Network.getStatus();
+      setIsOffline(!status.connected);
+    };
+    initNetwork();
+
+    const networkListener = Network.addListener('networkStatusChange', status => {
+      console.log('[Network] Status changed:', status.connected ? 'Online' : 'Offline');
+      setIsOffline(!status.connected);
+    });
+
+    return () => {
+      networkListener.then(h => h.remove());
+    };
+  }, [setIsOffline]);
 
   // ── Kiosk Mode Initialization ──────────────────────────────────────────────
   useEffect(() => {
@@ -815,6 +837,35 @@ const App: React.FC = () => {
 
     const initializeApp = async () => {
       setLoading(true);
+
+      // Helper: restore user session from offline cache (14-day window)
+      const restoreFromOfflineCache = async () => {
+        try {
+          const isValid = await offlineDb.isOfflineSessionValid(14);
+          if (!isValid) {
+            console.log('[App] Offline session expired (>14 days). Requiring re-login.');
+            setUser(null);
+            resetAttendance();
+            return;
+          }
+          const cachedUser = await offlineAttendanceService.getCachedUserProfile();
+          if (cachedUser) {
+            console.log('[App] ✅ Restored user from offline cache:', cachedUser.name);
+            setUser(cachedUser);
+            // Run cache maintenance in background
+            offlineAttendanceService.runMaintenance().catch(() => {});
+          } else {
+            console.log('[App] No cached user profile found. Requiring login.');
+            setUser(null);
+            resetAttendance();
+          }
+        } catch (offlineErr) {
+          console.error('[App] Failed to restore from offline cache:', offlineErr);
+          setUser(null);
+          resetAttendance();
+        }
+      };
+
       try {
         let { data: { session }, error } = await supabase.auth.getSession();
         // If getSession returned an error, log it but continue.
@@ -864,29 +915,35 @@ const App: React.FC = () => {
         if (session) {
           try {
             const appUser = await authService.getAppUserProfile(session.user);
-            if (isMounted) {
+            if (isMounted && appUser) {
               setUser(appUser);
+              // Cache user profile for offline use
+              offlineAttendanceService.cacheUserProfile(appUser).catch(e => console.warn('[App] Failed to cache user profile:', e));
+              offlineDb.setLastOnlineTimestamp().catch(e => console.warn('[App] Failed to set online timestamp:', e));
               // Initialize push notifications on initial session load
               pushNotificationService.init();
+            } else if (isMounted) {
+              // Profile fetch returned null — try offline fallback
+              await restoreFromOfflineCache();
             }
           } catch (e) {
             console.error('Failed to fetch user profile during initialization:', e);
             if (isMounted) {
-              setUser(null);
-              resetAttendance();
+              // Network might be down — try offline cache
+              await restoreFromOfflineCache();
             }
           }
         } else {
+          // No session from Supabase — try offline cache as last resort
           if (isMounted) {
-            setUser(null);
-            resetAttendance();
+            await restoreFromOfflineCache();
           }
         }
       } catch (error) {
         console.error('Error during app initialization:', error);
         if (isMounted) {
-          setUser(null);
-          resetAttendance();
+          // Entire initialization failed (likely network) — try offline cache
+          await restoreFromOfflineCache();
         }
       } finally {
         // Only clear the fallback timeout if initialization finishes before the fallback time
@@ -1286,7 +1343,6 @@ const App: React.FC = () => {
               <Route path="gmc" element={<GmcDetails />} />
               <Route path="uniform" element={<UniformDetails />} />
               <Route path="documents" element={<Documents />} />
-              <Route path="biometrics" element={<Biometrics />} />
               <Route path="review" element={<Review />} />
             </Route>
             <Route path="onboarding/pdf/:id" element={<OnboardingPdfOutput />} />
@@ -1462,8 +1518,10 @@ const App: React.FC = () => {
           </Route>
 
           {/* Gate Attendance Admin */}
-          <Route element={<ProtectedRoute requiredPermission="manage_users" />}>
+          <Route element={<ProtectedRoute requiredPermission="manage_gate_registration" />}>
             <Route path="gate/register" element={<RegisterGateUser />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_gate_logs" />}>
             <Route path="gate/logs" element={<GateAttendanceLogs />} />
           </Route>
 
@@ -1500,6 +1558,7 @@ const App: React.FC = () => {
       />
       {/* ── Break Alert Modal: full-screen overlay with looping alarm ── */}
       <BreakAlertModal />
+      <SyncStatusIndicator />
     </>
   );
 };

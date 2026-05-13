@@ -166,22 +166,31 @@ const DeviceApprovals: React.FC = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <Button 
-                    onClick={() => handleRejectInit(request.id, request.deviceName)}
-                    className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex-1 md:flex-none"
-                    disabled={!!processingId}
+                <div 
+                  className="flex flex-row items-center justify-between gap-3 w-full mt-4 border-t border-gray-100 pt-4"
+                  style={{ display: 'flex', flexDirection: 'row', width: '100%', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f3f4f6' }}
+                >
+                  <div 
+                    role="button"
+                    onClick={() => { if (!processingId) handleRejectInit(request.id, request.deviceName) }}
+                    className={`flex items-center justify-center rounded-lg font-bold text-sm cursor-pointer transition-colors ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
+                    style={{ flex: 1, padding: '12px 16px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
                   >
-                    <X className="w-4 h-4 mr-2" /> Reject
-                  </Button>
-                  <Button 
-                    onClick={() => handleApproveInit(request.id, request.deviceName)}
-                    className="bg-primary hover:bg-primary-dark text-white flex-1 md:flex-none"
-                    isLoading={processingId === request.id}
-                    disabled={!!processingId}
+                    <X className="w-4 h-4 mr-1.5" /> Reject
+                  </div>
+                  <div 
+                    role="button"
+                    onClick={() => { if (!processingId) handleApproveInit(request.id, request.deviceName) }}
+                    className={`flex items-center justify-center rounded-lg font-bold text-sm cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
+                    style={{ flex: 1, padding: '12px 16px', backgroundColor: '#22c55e', color: '#ffffff', border: '1px solid #16a34a' }}
                   >
-                    <Check className="w-4 h-4 mr-2" /> Approve
-                  </Button>
+                    {processingId === request.id ? (
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    ) : (
+                      <Check className="w-4 h-4 mr-1.5" />
+                    )}
+                    Approve
+                  </div>
                 </div>
               </div>
             ))}
@@ -212,20 +221,28 @@ const DeviceApprovals: React.FC = () => {
               Are you sure you want to approve the device <strong>{approveDialog.name}</strong>? The user will be able to access the system from this device.
             </p>
             
-            <div className="flex justify-end gap-3">
-              <button 
+            <div className="flex justify-between w-full gap-3 mt-6" style={{ display: 'flex', width: '100%', gap: '12px', marginTop: '24px' }}>
+              <div 
+                role="button"
                 onClick={() => setApproveDialog(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                className="flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors border border-red-200"
+                style={{ flex: 1, padding: '12px 16px', color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}
               >
                 Cancel
-              </button>
-              <Button 
-                onClick={handleApproveConfirm}
-                className="bg-primary hover:bg-primary-dark text-white border-none"
-                isLoading={processingId === approveDialog.id}
+              </div>
+              <div 
+                role="button"
+                onClick={() => { if (!processingId) handleApproveConfirm() }}
+                className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
+                style={{ flex: 1, padding: '12px 16px', backgroundColor: '#16a34a', color: 'white', borderRadius: '8px' }}
               >
-                <Check className="w-4 h-4 mr-2" /> Approve Device
-              </Button>
+                {processingId === approveDialog.id ? (
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                ) : (
+                  <Check className="w-4 h-4 mr-1.5" />
+                )}
+                Approve Device
+              </div>
             </div>
           </div>
         </div>
@@ -241,27 +258,33 @@ const DeviceApprovals: React.FC = () => {
             </p>
             
             <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-primary focus:border-primary outline-none text-sm"
+              className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-sm"
               placeholder="e.g., Use company provided laptop instead..."
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               autoFocus
             />
             
-            <div className="flex justify-end gap-3 mt-6">
-              <button 
+            <div className="flex justify-between w-full gap-3 mt-6" style={{ display: 'flex', width: '100%', gap: '12px', marginTop: '24px' }}>
+              <div 
+                role="button"
                 onClick={() => setRejectDialog(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                className="flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors border border-red-200"
+                style={{ flex: 1, padding: '12px 16px', color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}
               >
                 Cancel
-              </button>
-              <Button 
-                onClick={handleRejectConfirm}
-                className="bg-red-600 hover:bg-red-700 text-white border-none"
-                isLoading={processingId === rejectDialog.id}
+              </div>
+              <div 
+                role="button"
+                onClick={() => { if (!processingId) handleRejectConfirm() }}
+                className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
+                style={{ flex: 1, padding: '12px 16px', backgroundColor: '#dc2626', color: 'white', borderRadius: '8px' }}
               >
+                {processingId === rejectDialog.id ? (
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                ) : null}
                 Reject Request
-              </Button>
+              </div>
             </div>
           </div>
         </div>

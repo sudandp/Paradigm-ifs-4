@@ -18,17 +18,32 @@ public class BreakAlarmPlugin extends Plugin {
 
     @PluginMethod
     public void schedule(PluginCall call) {
-        double intervalMinutes = call.getDouble("intervalMinutes", 0.1666);
+        // Accept absolute epoch-ms trigger time from JS
+        double triggerAtMsRaw = call.getDouble("triggerAtMs", 0.0);
         int notificationId = call.getInt("id", 1001);
+        int elapsedMinutes = call.getInt("elapsedMinutes", 15);
         String soundFilename = call.getString("soundFilename", null);
         String soundUri = call.getString("soundUri", null);
 
-        long triggerTime = System.currentTimeMillis() + (long)(intervalMinutes * 60 * 1000L);
+        long triggerTime;
+        if (triggerAtMsRaw > 0) {
+            triggerTime = (long) triggerAtMsRaw;
+        } else {
+            // Legacy fallback: if no triggerAtMs, use intervalMinutes (shouldn't happen)
+            double intervalMinutes = call.getDouble("intervalMinutes", 0.1666);
+            triggerTime = System.currentTimeMillis() + (long)(intervalMinutes * 60 * 1000L);
+        }
+
+        // Don't schedule alarms in the past
+        if (triggerTime <= System.currentTimeMillis()) {
+            call.resolve();
+            return;
+        }
 
         AlarmManager alarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(getContext(), BreakAlarmReceiver.class);
         intent.putExtra("id", notificationId);
-        intent.putExtra("elapsedSeconds", (int)Math.round(intervalMinutes * 60));
+        intent.putExtra("elapsedSeconds", elapsedMinutes * 60);
         if (soundUri != null) intent.putExtra("soundUri", soundUri);
         if (soundFilename != null) intent.putExtra("soundFilename", soundFilename);
 

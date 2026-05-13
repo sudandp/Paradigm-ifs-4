@@ -618,11 +618,14 @@ export const scheduleStepBreakReminders = async (startTime: Date, intervalMinute
         const nativeUri = useAlertToneStore.getState().nativeRingtoneUri;
         for (let i = 1; i <= 8; i++) {
             const triggerTime = new Date(startTime.getTime() + (i * intervalMinutes * 60 * 1000));
-            if (triggerTime <= new Date()) continue;
+            if (triggerTime <= new Date()) continue; // skip alarms that are already in the past
             const elapsedMins = i * intervalMinutes;
+            // Pass the ABSOLUTE trigger timestamp so alarms fire at the correct time
+            // even when re-scheduled on app resume (where now >> startTime).
             await scheduleBreakAlarm(
-                elapsedMins,
+                triggerTime.getTime(),
                 NOTIFICATION_IDS.RECURRING_BREAK + i,
+                elapsedMins,
                 toneFilename !== '__native_ringtone__' ? toneFilename : undefined,
                 nativeUri || undefined
             );

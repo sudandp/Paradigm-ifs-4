@@ -159,7 +159,21 @@ export const AttendanceLogView: React.FC<{
                                     <span className={row.type === 'in' ? 'text-green-600' : 'text-orange-600'}>{row.type}</span>
                                 </td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-xs text-gray-600">{row.locationName}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-[10px] text-gray-400 italic">{row.device || '-'}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-[10px] text-gray-400 italic">
+                                     {row.device || '-'}
+                                     {row.isCached && (
+                                         <div className="mt-1">
+                                             <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-[4px] font-bold text-[8px] uppercase tracking-wider">
+                                                 📴 Cached
+                                             </span>
+                                             {row.cachedAt && (
+                                                 <div className="text-[7px] text-amber-600/60 mt-0.5">
+                                                     {format(new Date(row.cachedAt), 'HH:mm dd/MM')}
+                                                 </div>
+                                             )}
+                                         </div>
+                                     )}
+                                 </td>
                             </tr>
                         ))}
                     </tbody>

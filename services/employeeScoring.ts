@@ -15,6 +15,8 @@ import { supabase } from './supabase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInMinutes, differenceInDays } from 'date-fns';
 import type { EmployeeScore, RoleCategory, RoleWeights, Task, AttendanceEvent } from '../types';
 import { isLateCheckIn } from '../utils/attendanceCalculations';
+import { offlineDb } from './offline/database';
+import { Network } from '@capacitor/network';
 
 // Role-based weight configuration
 const ROLE_WEIGHTS: Record<RoleCategory, RoleWeights> = {
@@ -255,78 +257,126 @@ export async function calculateEmployeeScores(
   monthEnd.setHours(23, 59, 59, 999);
   
   const monthKey = format(monthStart, 'yyyy-MM-01');
+  const cacheKey = `employee_score_${userId}_${monthKey}`;
   const monthStartISO = monthStart.toISOString();
   const monthEndISO = monthEnd.toISOString();
+
+  // 1. Check Connectivity
+  const netStatus = await Network.getStatus();
+  const isOffline = !netStatus.connected;
+
+  if (isOffline) {
+    console.log(`[Scoring] Offline detected. Loading cached scores for ${userId}/${monthKey}`);
+    const cached = await offlineDb.getCache(cacheKey);
+    if (cached) return cached;
+    // No cache? Return empty scores rather than failing
+    return createEmptyScore(userId, monthKey);
+  }
 
   const roleCategory = getRoleCategory(userRole);
   const weights = ROLE_WEIGHTS[roleCategory];
 
-  // Calculate all three scores in parallel
-  const [performanceScore, { score: attendanceScore, tiebreakerScore }, responseScore] = await Promise.all([
-    calculatePerformanceScore(userId, monthStartISO, monthEndISO),
-    calculateAttendanceScore(userId, monthStart, monthEnd),
-    calculateResponseScore(userId, monthStartISO, monthEndISO),
-  ]);
+  try {
+    // Calculate all three scores in parallel
+    const [performanceScore, { score: attendanceScore, tiebreakerScore }, responseScore] = await Promise.all([
+      calculatePerformanceScore(userId, monthStartISO, monthEndISO),
+      calculateAttendanceScore(userId, monthStart, monthEnd),
+      calculateResponseScore(userId, monthStartISO, monthEndISO),
+    ]);
 
-  // Weighted overall score (exact match to SQL sync script)
-  const overallScore = clamp(
-    roleCategory === 'field_staff' 
-      ? (performanceScore * 0.4 + attendanceScore * 0.4 + responseScore * 0.2)
-      : (performanceScore * 0.3 + attendanceScore * 0.4 + responseScore * 0.3),
-    0, 100
-  );
+    // Weighted overall score (exact match to SQL sync script)
+    const overallScore = clamp(
+      roleCategory === 'field_staff' 
+        ? (performanceScore * 0.4 + attendanceScore * 0.4 + responseScore * 0.2)
+        : (performanceScore * 0.3 + attendanceScore * 0.4 + responseScore * 0.3),
+      0, 100
+    );
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  // Upsert into employee_scores table
-  const scoreData = {
-    user_id: userId,
-    month: monthKey,
-    performance_score: performanceScore,
-    attendance_score: attendanceScore,
-    response_score: responseScore,
-    overall_score: overallScore,
-    tiebreaker_score: tiebreakerScore,
-    role_category: roleCategory,
-    calculated_at: now,
-  };
-
-  const { data, error } = await supabase
-    .from('employee_scores')
-    .upsert(scoreData, { onConflict: 'user_id,month' })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error upserting employee score:', error);
-    // Return calculated values even if storage fails
-    return {
-      id: '',
-      userId,
+    // Upsert into employee_scores table
+    const scoreData = {
+      user_id: userId,
       month: monthKey,
-      performanceScore,
-      attendanceScore,
-      responseScore,
-      overallScore,
-      tiebreakerScore,
-      roleCategory,
-      calculatedAt: now,
-      createdAt: now,
+      performance_score: performanceScore,
+      attendance_score: attendanceScore,
+      response_score: responseScore,
+      overall_score: overallScore,
+      tiebreaker_score: tiebreakerScore,
+      role_category: roleCategory,
+      calculated_at: now,
     };
-  }
 
+    const { data, error } = await supabase
+      .from('employee_scores')
+      .upsert(scoreData, { onConflict: 'user_id,month' })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('[Scoring] Error upserting to Supabase (possibly offline or paused):', error);
+      const offlineScore = {
+        id: `offline_${Date.now()}`,
+        userId,
+        month: monthKey,
+        performanceScore,
+        attendanceScore,
+        responseScore,
+        overallScore,
+        tiebreakerScore,
+        roleCategory,
+        calculatedAt: now,
+        createdAt: now,
+      };
+      // Save to local cache even if Supabase fails
+      await offlineDb.setCache(cacheKey, offlineScore);
+      return offlineScore;
+    }
+
+    const finalScore = {
+      id: data.id,
+      userId: data.user_id,
+      month: data.month,
+      performanceScore: data.performance_score,
+      attendanceScore: data.attendance_score,
+      responseScore: data.response_score,
+      overallScore: data.overall_score,
+      tiebreakerScore: data.tiebreaker_score || tiebreakerScore,
+      roleCategory: data.role_category,
+      calculatedAt: data.calculated_at,
+      createdAt: data.created_at,
+    };
+
+    // 2. Cache successful result
+    await offlineDb.setCache(cacheKey, finalScore);
+    return finalScore;
+
+  } catch (err) {
+    console.error('[Scoring] Calculation failed (network error?):', err);
+    // Fallback to cache if calculation fails (e.g. "Failed to fetch")
+    const cached = await offlineDb.getCache(cacheKey);
+    if (cached) return cached;
+    return createEmptyScore(userId, monthKey);
+  }
+}
+
+/**
+ * Helper to create an empty score object for offline/error fallbacks
+ */
+function createEmptyScore(userId: string, monthKey: string): EmployeeScore {
+  const now = new Date().toISOString();
   return {
-    id: data.id,
-    userId: data.user_id,
-    month: data.month,
-    performanceScore: data.performance_score,
-    attendanceScore: data.attendance_score,
-    responseScore: data.response_score,
-    overallScore: data.overall_score,
-    tiebreakerScore: data.tiebreaker_score || tiebreakerScore,
-    roleCategory: data.role_category,
-    calculatedAt: data.calculated_at,
-    createdAt: data.created_at,
+    id: 'placeholder',
+    userId,
+    month: monthKey,
+    performanceScore: 0,
+    attendanceScore: 0,
+    responseScore: 0,
+    overallScore: 0,
+    tiebreakerScore: 0,
+    roleCategory: 'office_staff',
+    calculatedAt: now,
+    createdAt: now,
   };
 }
 
@@ -339,17 +389,27 @@ export async function getEmployeeScore(
 ): Promise<EmployeeScore | null> {
   const targetMonth = monthDate || new Date();
   const monthKey = format(startOfMonth(targetMonth), 'yyyy-MM-01');
+  const cacheKey = `employee_score_${userId}_${monthKey}`;
+
+  // Try cache first if offline or for speed
+  const netStatus = await Network.getStatus();
+  if (!netStatus.connected) {
+    return await offlineDb.getCache(cacheKey);
+  }
 
   const { data, error } = await supabase
     .from('employee_scores')
     .select('*')
     .eq('user_id', userId)
     .eq('month', monthKey)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    // If online check fails, return cache as fallback
+    return await offlineDb.getCache(cacheKey);
+  }
 
-  return {
+  const result = {
     id: data.id,
     userId: data.user_id,
     month: data.month,
@@ -362,6 +422,10 @@ export async function getEmployeeScore(
     calculatedAt: data.calculated_at,
     createdAt: data.created_at,
   };
+
+  // Update cache
+  await offlineDb.setCache(cacheKey, result);
+  return result;
 }
 
 /**

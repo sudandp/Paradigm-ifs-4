@@ -322,77 +322,13 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
             'punch_unlock_request', 'device_approval', 'ot_punch'
           ];
           
-          if (approvalEventTypes.includes(newNotif.eventType as string)) {
-            console.log(`[NotificationStore] Detected approval event ${newNotif.eventType}, refreshing all data...`);
+          const eventType = (newNotif as any).eventType || newNotif.type;
+          if (approvalEventTypes.includes(eventType)) {
+            console.log(`[NotificationStore] Detected approval event ${eventType}, refreshing all data...`);
             get().fetchNotifications();
           }
           
-          // Trigger web toast for real-time feedback
-          if (!Capacitor.isNativePlatform()) {
-            const toastTitle = newNotif.title || newNotif.metadata?.title || 'New Alert';
-            const isEmergency = newNotif.type === 'emergency' || newNotif.type === 'emergency_broadcast' || newNotif.severity === 'High';
-            
-            // Check for redundant device approval notifications to suppress toasts
-            const isDeviceApprovalRedundant = 
-              ((newNotif.type as string) === 'device_approval' || (newNotif.type as string) === 'approval_request') && 
-              (newNotif.message?.toLowerCase().includes('submitted for approval') || 
-               newNotif.message?.toLowerCase().includes('requested approval to add a new web device'));
-
-            if (!isDeviceApprovalRedundant) {
-              // Play notification sound on web
-              try {
-                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
-                audio.volume = 0.5;
-                audio.play().catch(e => console.warn('[NotificationStore] Audio playback failed (browser may have blocked autoplay):', e));
-              } catch (err) {
-                console.warn('[NotificationStore] Failed to initialize audio:', err);
-              }
-
-              toast.custom(
-                (t) => (
-                  <div className={`pointer-events-auto flex w-full max-w-sm overflow-hidden rounded-2xl bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-xl transition-all duration-300 transform ${t.visible ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-4 opacity-0 scale-95'} border-l-4 ${isEmergency ? 'border-l-red-500' : 'border-l-[#0A6847]'}`}>
-                    <div className="flex w-full items-start p-4">
-                      <div className="flex-shrink-0 pt-0.5">
-                        {isEmergency ? (
-                          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center ring-4 ring-red-50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-600 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-[#0A6847]/10 flex items-center justify-center ring-4 ring-[#0A6847]/5">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-[#0A6847]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                      <div className="ml-3 w-0 flex-1">
-                        <p className={`text-[13px] font-semibold tracking-tight ${isEmergency ? 'text-red-700' : 'text-slate-900'}`}>
-                          {toastTitle}
-                        </p>
-                        <p className="mt-1 text-[12px] font-medium leading-relaxed text-slate-600 line-clamp-2">
-                          {newNotif.message}
-                        </p>
-                      </div>
-                      <div className="ml-4 flex flex-shrink-0">
-                        <button
-                          onClick={() => toast.dismiss(t.id)}
-                          className="inline-flex rounded-md bg-transparent text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-1.5 focus:outline-none transition-colors"
-                        >
-                          <span className="sr-only">Close</span>
-                          <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ),
-                { duration: isEmergency ? 10000 : 5000, position: 'top-right' }
-              );
-            }
-          }
+          // Web toast removed as requested
 
           if (Capacitor.isNativePlatform()) {
             try {

@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import { Network } from '@capacitor/network';
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
 import { secureSet, secureGet, secureRemove } from '../utils/secureStorage';
@@ -12,6 +13,8 @@ import { supabase } from '../services/supabase';
 import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
 // FIX: Import the 'api' object to resolve 'Cannot find name' errors.
 import { api } from '../services/api';
+import { offlineDb } from '../services/offline/database';
+import { offlineAttendanceService } from '../services/offline/offlineAttendanceService';
 import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
@@ -151,6 +154,9 @@ interface AuthState {
     previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
+    isOffline: boolean;
+    setIsOffline: (isOffline: boolean) => void;
+    checkOfflineSession: () => Promise<boolean>;
     syncRouteTracking: () => Promise<void>;
 }
 
@@ -178,11 +184,12 @@ export const useAuthStore = create<AuthState>()(
         totalWorkingDurationToday: 0,
         breakIntervals: [],
         isOnBreak: false,
+        isOffline: false,
         error: null,
         loading: false,
         geofencingSettings: null,
         breakLimit: 60,
-        breakReminderInterval: 0.1666,
+        breakReminderInterval: 15,
         dailyPunchCount: 0,
         approvedUnlockCount: 0,
         dailyUnlockRequestCount: 0,
@@ -206,6 +213,15 @@ export const useAuthStore = create<AuthState>()(
         setUser: (user) => set({ user, error: null, loading: false }),
         setInitialized: (initialized) => set({ isInitialized: initialized }),
         setLoading: (loading) => set({ loading }),
+        
+        setIsOffline: (isOffline: boolean) => {
+            set({ isOffline });
+            if (!isOffline) {
+                // Update last online timestamp whenever we come back online
+                offlineDb.setLastOnlineTimestamp().catch(() => {});
+            }
+        },
+
         resetAttendance: () => set({
             isCheckedIn: false,
             isAttendanceLoading: false,
@@ -230,6 +246,19 @@ export const useAuthStore = create<AuthState>()(
             previousDaySessionInfo: null
         }),
         setError: (error) => set({ error }),
+
+        checkOfflineSession: async () => {
+            const { isOffline, user } = get();
+            if (isOffline && user) {
+                const isValid = await offlineDb.isOfflineSessionValid(14);
+                if (!isValid) {
+                    console.warn('[authStore] Offline session expired (14+ days since last online). Forcing logout.');
+                    get().forceLogout('Your offline session has expired. Please connect to the internet to log in again.');
+                    return false;
+                }
+            }
+            return true;
+        },
 
         syncRouteTracking: async () => {
             const { user, isFieldCheckedIn } = get();
@@ -328,6 +357,9 @@ export const useAuthStore = create<AuthState>()(
                 if (appUser) {
                     // Success case: profile fetched
                     set({ user: appUser, error: null, loading: false });
+                    // Cache user profile for offline use
+                    offlineAttendanceService.cacheUserProfile(appUser).catch(e => console.warn('[authStore] Failed to cache user profile on login:', e));
+                    
                     // [SECURITY] Log successful login
                     logSecurityEvent({
                         event_type: 'login_success',
@@ -533,15 +565,33 @@ export const useAuthStore = create<AuthState>()(
                 const fullSettings = await api.getAttendanceSettings();
                 const isOfficeUser = ['admin', 'hr', 'finance', 'developer'].includes(user.role);
                 const rules = isOfficeUser ? fullSettings.office : fullSettings.field;
+                const geoSettings = {
+                    enabled: rules.geofencingEnabled ?? false,
+                    maxViolationsPerMonth: rules.maxViolationsPerMonth ?? 3
+                };
+                const breakLimitVal = rules.lunchBreakDuration ?? 60;
                 set({ 
-                    geofencingSettings: {
-                        enabled: rules.geofencingEnabled ?? false,
-                        maxViolationsPerMonth: rules.maxViolationsPerMonth ?? 3
-                    },
-                    breakLimit: rules.lunchBreakDuration ?? 60
+                    geofencingSettings: geoSettings,
+                    breakLimit: breakLimitVal
                 });
+                // Cache for offline use
+                offlineAttendanceService.cacheGeofencingSettings({ geoSettings, breakLimit: breakLimitVal }).catch(() => {});
+                offlineAttendanceService.cacheAttendanceSettings(fullSettings).catch(() => {});
             } catch (error) {
                 console.error('Failed to fetch geofencing settings:', error);
+                // Try to restore from offline cache
+                try {
+                    const cached = await offlineAttendanceService.getCachedGeofencingSettings();
+                    if (cached) {
+                        set({ 
+                            geofencingSettings: cached.geoSettings,
+                            breakLimit: cached.breakLimit
+                        });
+                        console.log('[authStore] Restored geofencing settings from offline cache');
+                    }
+                } catch (cacheErr) {
+                    console.warn('[authStore] No cached geofencing settings available');
+                }
             }
         },
 
@@ -575,6 +625,9 @@ export const useAuthStore = create<AuthState>()(
                 const officeRoles = roleMapping.office || [];
                 const isOfficeStaffRole = officeRoles.includes(user.role) || officeRoles.includes(user.roleId);
                 
+                // --- 14-Day Offline Limit Check ---
+                const isSessionValid = await get().checkOfflineSession();
+                if (!isSessionValid) return;
                 // All non-office roles (Site, Field, and Unverified) need a long lookback (48h) 
                 // because site work and OT often cross midnight.
                 const siteShiftLookbackMs = !isOfficeStaffRole ? 48 * 60 * 60 * 1000 : 0;
@@ -590,7 +643,20 @@ export const useAuthStore = create<AuthState>()(
                     api.getDailyUnlockRequestCount()
                 ]);
 
-                const events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
+                let events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
+                
+                if (eventsResult.status === 'fulfilled') {
+                    // Cache successful fetch for offline use
+                    offlineAttendanceService.updateLocalEventCache(user.id, events).catch(e => console.warn('Failed to cache today events', e));
+                } else {
+                    // Fallback to offline cache
+                    const cachedEvents = await offlineAttendanceService.getLocalTodayEvents(user.id);
+                    if (cachedEvents && cachedEvents.length > 0) {
+                        events = cachedEvents;
+                        console.log('[authStore] Loaded attendance events from offline cache');
+                    }
+                }
+                
                 const approvedUnlockCount = unlockCountResult.status === 'fulfilled' ? unlockCountResult.value : 0;
                 const dailyUnlockRequestCount = dailyUnlockCountResult.status === 'fulfilled' ? dailyUnlockCountResult.value : 0;
 
@@ -810,7 +876,7 @@ export const useAuthStore = create<AuthState>()(
                     const currentDailyPunchCount = get().dailyPunchCount;
                     const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
 
-                    await api.addAttendanceEvent({
+                    const punchResult = await offlineAttendanceService.punchAction({
                         userId: user.id,
                         timestamp: new Date().toISOString(),
                         type: newType,
@@ -825,7 +891,11 @@ export const useAuthStore = create<AuthState>()(
                         isOt: isOtCycle || undefined
                     });
 
-                    // Small delay to allow Supabase to index the new record
+                    if (!punchResult.success) {
+                        return { success: false, message: punchResult.message };
+                    }
+
+                    // Small delay to allow Supabase to index the new record (or outbox to save)
                     await new Promise(resolve => setTimeout(resolve, 300));
                     await get().checkAttendanceStatus(true); // Silent refresh
 
@@ -942,7 +1012,11 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     const actionLabel = getActionTextForType(newType, workType);
-                    return { success: true, message: `Successfully ${actionLabel}!` };
+                    const finalMessage = punchResult.isOffline 
+                        ? punchResult.message 
+                        : `Successfully ${actionLabel}!`;
+                        
+                    return { success: true, message: finalMessage };
                 };
 
                 if (!position || !position.coords) {
@@ -963,7 +1037,14 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     // Stage 1: Always attempt to match against known locations (sites) first
                     // to get a friendly name (e.g., "PIFS Bangalore") regardless of geofencing status.
-                    const userLocations = await api.getUserLocations(user.id);
+                    let userLocations: any[] = [];
+                    try {
+                        userLocations = await api.getUserLocations(user.id);
+                        offlineAttendanceService.cacheUserLocations(user.id, userLocations).catch(() => {});
+                    } catch (e) {
+                        userLocations = await offlineAttendanceService.getCachedUserLocations(user.id) || [];
+                    }
+
                     for (const loc of userLocations) {
                         const dist = calculateDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
                         if (dist <= loc.radius) {
@@ -974,16 +1055,20 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     if (!locationId) {
-                        const allLocations = await api.getLocations();
-                        for (const loc of allLocations) {
-                            const dist = calculateDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
-                            if (dist <= loc.radius) {
-                                locationId = loc.id;
-                                locationName = loc.name;
-                                // Auto-assign this location to the user
-                                api.assignLocationToUser(user.id, loc.id).catch(e => console.warn('[authStore] assignLocationToUser failed:', e));
-                                break;
+                        try {
+                            const allLocations = await api.getLocations();
+                            for (const loc of allLocations) {
+                                const dist = calculateDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
+                                if (dist <= loc.radius) {
+                                    locationId = loc.id;
+                                    locationName = loc.name;
+                                    // Auto-assign this location to the user
+                                    api.assignLocationToUser(user.id, loc.id).catch(e => console.warn('[authStore] assignLocationToUser failed:', e));
+                                    break;
+                                }
                             }
+                        } catch (e) {
+                            console.warn('[Location] Failed to fetch all locations online', e);
                         }
                     }
 
@@ -993,7 +1078,9 @@ export const useAuthStore = create<AuthState>()(
                         try {
                             locationName = await reverseGeocode(latitude, longitude);
                         } catch (err) {
-                            locationName = 'Outside Geofence';
+                            // If reverse geocoding fails, we might be offline
+                            const isOfflineStatus = !(await Network.getStatus()).connected;
+                            locationName = isOfflineStatus ? 'Offline Punch' : 'Outside Geofence';
                         }
 
                         // Log the violation
@@ -1138,6 +1225,7 @@ export const useAuthStore = create<AuthState>()(
             isSiteOtCheckedIn: state.isSiteOtCheckedIn,
             geofencingSettings: state.geofencingSettings,
             breakLimit: state.breakLimit,
+            breakReminderInterval: state.breakReminderInterval,
         }),
     }
 )

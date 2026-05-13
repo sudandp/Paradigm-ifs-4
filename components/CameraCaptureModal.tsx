@@ -16,6 +16,8 @@ interface CameraCaptureModalProps {
   autoConfirm?: boolean;
   /** Pre-captured image (data URL) — skips camera and goes straight to preview */
   initialImage?: string;
+  /** External loading state (e.g. while uploading) */
+  isLoading?: boolean;
 }
 
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -50,7 +52,7 @@ const circleBtn: React.CSSProperties = {
 };
 const iconStyle: React.CSSProperties = { width: 22, height: 22, color: '#ffffff' };
 
-const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose, onCapture, captureGuidance = 'none', autoConfirm = false, initialImage }) => {
+const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose, onCapture, captureGuidance = 'none', autoConfirm = false, initialImage, isLoading = false }) => {
   const [capturedImage, setCapturedImage] = useState<string | null>(initialImage || null);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -263,7 +265,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
       />
 
       {/* Processing overlay */}
-      {isProcessing && !isCameraActive && (
+      {(isProcessing || isLoading) && !isCameraActive && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 40,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

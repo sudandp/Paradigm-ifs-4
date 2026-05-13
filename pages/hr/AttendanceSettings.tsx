@@ -6,12 +6,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon } from 'lucide-react';
+import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon, Sun, BarChart3, Briefcase, Building2, Palmtree, Shield, FileText } from 'lucide-react';
 import DatePicker from '../../components/ui/DatePicker';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import Select from '../../components/ui/Select';
 import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role, SiteStaffDesignation, SiteShiftDefinition } from '../../types';
+import SiteAttendanceConfig from '../../components/attendance/SiteAttendanceConfig';
+import SiteAttendanceSummary from '../../components/attendance/SiteAttendanceSummary';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
@@ -32,6 +34,17 @@ const AttendanceSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const [activeTab, setActiveTab] = useState<'office' | 'field' | 'site' | 'admin' | 'management' | 'selections'>('office');
+    const [subTab, setSubTab] = useState<'general' | 'policies' | 'calc_rules' | 'shifts' | 'departments' | 'holidays' | 'leaves' | 'notifications' | 'fixed_hours' | 'summary'>('general');
+
+    const handleTabChange = (tab: typeof activeTab) => {
+        setActiveTab(tab);
+        if (tab !== 'site' && (subTab === 'shifts' || subTab === 'departments' || subTab === 'summary')) {
+            setSubTab('general');
+        }
+        if (tab === 'site' && subTab === 'fixed_hours') {
+            setSubTab('general');
+        }
+    };
     const [newHolidayName, setNewHolidayName] = useState('');
     const [newHolidayDate, setNewHolidayDate] = useState('');
     const [newRecurringN, setNewRecurringN] = useState(3);
@@ -487,26 +500,26 @@ const AttendanceSettings: React.FC = () => {
                 <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                     {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && (
                         <>
-                            <button onClick={() => setActiveTab('office')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'office' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                            <button onClick={() => handleTabChange('office')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'office' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                                 Office Staff
                             </button>
-                            <button onClick={() => setActiveTab('field')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'field' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                            <button onClick={() => handleTabChange('field')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'field' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                                 Field Staff
                             </button>
                         </>
                     )}
                     {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && (
-                        <button onClick={() => setActiveTab('site')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'site' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                        <button onClick={() => handleTabChange('site')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'site' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                             Site Staff
                         </button>
                     )}
-                    <button onClick={() => setActiveTab('admin')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'admin' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                    <button onClick={() => handleTabChange('admin')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'admin' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                         Admin
                     </button>
-                    <button onClick={() => setActiveTab('management')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'management' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                    <button onClick={() => handleTabChange('management')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'management' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                         Management
                     </button>
-                    <button onClick={() => setActiveTab('selections')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'selections' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
+                    <button onClick={() => handleTabChange('selections')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'selections' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
                         Staff Selections
                     </button>
                 </nav>
@@ -517,30 +530,87 @@ const AttendanceSettings: React.FC = () => {
             {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && activeTab === 'site' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Site Staff (e.g. Site Managers, Security Guards).</p>}
             {activeTab === 'admin' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to System Administrators and HR Admins.</p>}
             {activeTab === 'management' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Top Management, CEO, GM, etc.</p>}
+            
+            {activeTab !== 'selections' && (
+                <div className="mb-6 flex flex-wrap gap-2">
+                    {[
+                        { key: 'general', label: 'General', icon: Settings },
+                        { key: 'calc_rules', label: 'Calculation Rules', icon: BarChart3 },
+                        ...(activeTab === 'site' 
+                            ? [
+                                { key: 'shifts', label: 'Shift Roster', icon: Clock },
+                                { key: 'departments', label: 'Departments', icon: Building2 },
+                                { key: 'summary', label: 'Summary Sheet', icon: FileText }
+                              ]
+                            : [
+                                { key: 'fixed_hours', label: 'Fixed Hours', icon: Clock }
+                              ]),
+                        { key: 'policies', label: 'Policies & Limits', icon: Shield },
+                        { key: 'holidays', label: 'Holidays', icon: Palmtree },
+                        { key: 'leaves', label: 'Leave Allocation', icon: LifeBuoy },
+                        { key: 'notifications', label: 'Notifications & Geo', icon: Bell },
+                    ].map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = subTab === tab.key;
+                        return (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setSubTab(tab.key as any)}
+                                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold border transition-all duration-200 ${
+                                    isActive
+                                        ? 'bg-accent text-white border-accent shadow-sm shadow-accent/30'
+                                        : 'bg-page text-muted border-border/50 hover:border-accent/40 hover:text-accent-dark'
+                                }`}
+                            >
+                                <Icon className="h-3.5 w-3.5" />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {activeTab === 'selections' && <p className="text-sm text-muted -mt-4 mb-4">Select staff groups to include in automated actions like missed check-out triggers.</p>}
 
 
             <div className="space-y-6">
                 {activeTab !== 'selections' && (
                 <>
-                <section>
-                    <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Clock className="mr-2 h-5 w-5 text-muted" />Work Hours</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <Input
-                            label="Minimum Hours for Full Day"
-                            id="minHoursFull"
-                            type="number"
-                            value={currentRules.minimumHoursFullDay}
-                            onChange={(e) => handleSettingChange('minimumHoursFullDay', parseFloat(e.target.value) || 0)}
-                        />
-                        <Input
-                            label="Minimum Hours for Half Day"
-                            id="minHoursHalf"
-                            type="number"
-                            value={currentRules.minimumHoursHalfDay}
-                            onChange={(e) => handleSettingChange('minimumHoursHalfDay', parseFloat(e.target.value) || 0)}
-                        />
-                    </div>
+                <section style={{ display: subTab === 'general' ? undefined : 'none' }}>
+                    <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Settings className="mr-2 h-5 w-5 text-muted" />General Rules</h3>
+                    {activeTab !== 'site' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <Input
+                                label="Minimum Hours for Full Day"
+                                id="minHoursFull"
+                                type="number"
+                                value={currentRules.minimumHoursFullDay}
+                                onChange={(e) => handleSettingChange('minimumHoursFullDay', parseFloat(e.target.value) || 0)}
+                            />
+                            <Input
+                                label="Minimum Hours for Half Day"
+                                id="minHoursHalf"
+                                type="number"
+                                value={currentRules.minimumHoursHalfDay}
+                                onChange={(e) => handleSettingChange('minimumHoursHalfDay', parseFloat(e.target.value) || 0)}
+                            />
+                        </div>
+                    ) : (
+                        <div className="p-4 bg-blue-500/5 border border-blue-500/15 rounded-xl mb-6">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2 bg-blue-500/10 rounded-lg">
+                                    <Clock className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-blue-700">Shift-Based Attendance Enabled</h4>
+                                    <p className="text-xs text-blue-600/80 leading-relaxed mt-1">
+                                        For Site Staff, the system automatically calculates attendance codes (P, 3/4P, etc.) by comparing worked time against the <strong>Shift Roster</strong> window. Manual work duration goals are not required.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mt-6 p-4 bg-accent/5 border border-accent/20 rounded-xl space-y-4">
                         <Checkbox
@@ -557,6 +627,25 @@ const AttendanceSettings: React.FC = () => {
                             checked={currentRules.enableShortfall || false}
                             onChange={(e) => handleSettingChange('enableShortfall', e.target.checked)}
                         />
+                        {currentRules.enableOtToCompOffConversion && (
+                            <div className="pl-8 w-full max-w-xs">
+                                <Input
+                                    label="OT Hours required for 1 Comp Off Day"
+                                    id="otConversionThreshold"
+                                    type="number"
+                                    min="1"
+                                    value={currentRules.otConversionThreshold || 8}
+                                    onChange={(e) => handleSettingChange('otConversionThreshold', parseFloat(e.target.value) || 8)}
+                                    description="Every X hours of OT adds 1 Comp Off day."
+                                />
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                <section style={{ display: subTab === 'policies' ? undefined : 'none' }}>
+                    <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Shield className="mr-2 h-5 w-5 text-muted" />Policies & Limits</h3>
+                    <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl space-y-4">
                         <Checkbox
                             id="enableViolationBlocking"
                             label="Enable Violation Blocking"
@@ -624,24 +713,11 @@ const AttendanceSettings: React.FC = () => {
                                 />
                             </div>
                         )}
-                        {currentRules.enableOtToCompOffConversion && (
-                            <div className="pl-8 w-full max-w-xs">
-                                <Input
-                                    label="OT Hours required for 1 Comp Off Day"
-                                    id="otConversionThreshold"
-                                    type="number"
-                                    min="1"
-                                    value={currentRules.otConversionThreshold || 8}
-                                    onChange={(e) => handleSettingChange('otConversionThreshold', parseFloat(e.target.value) || 8)}
-                                    description="Every X hours of OT adds 1 Comp Off day."
-                                />
-                            </div>
-                        )}
                     </div>
                 </section>
 
                 {/* Calculation Rules Section — previously hardcoded, now configurable */}
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'calc_rules' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-2 flex items-center">
                         <Settings className="mr-2 h-5 w-5 text-muted" />Calculation Rules
                     </h3>
@@ -744,7 +820,7 @@ const AttendanceSettings: React.FC = () => {
                 </section>
 
                 {/* Device Limits Section */}
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'policies' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center">
                         <Monitor className="mr-2 h-5 w-5 text-muted" />Device Limits
                     </h3>
@@ -856,7 +932,7 @@ const AttendanceSettings: React.FC = () => {
                     )}
 
                     {/* Shift Management - Only for Site Staff */}
-                    {activeTab === 'site' && (
+                    {subTab === 'shifts' && (
                     <section className="pt-6 border-t border-border">
                         <h3 className="text-lg font-semibold text-primary-text mb-2 flex items-center">
                             <Clock className="mr-2 h-5 w-5 text-muted" />Shift Management
@@ -883,7 +959,7 @@ const AttendanceSettings: React.FC = () => {
                                                 <th className="text-left px-4 py-3 font-semibold text-primary-text">Shift Name</th>
                                                 <th className="text-left px-4 py-3 font-semibold text-primary-text">Start Time</th>
                                                 <th className="text-left px-4 py-3 font-semibold text-primary-text">End Time</th>
-                                                <th className="text-center px-4 py-3 font-semibold text-primary-text">Night Shift</th>
+                                                <th className="text-center px-4 py-3 font-semibold text-primary-text">Shift Type</th>
                                                 <th className="text-left px-4 py-3 font-semibold text-primary-text">Buffer (min)</th>
                                                 <th className="text-center px-4 py-3 font-semibold text-primary-text">Actions</th>
                                             </tr>
@@ -899,6 +975,7 @@ const AttendanceSettings: React.FC = () => {
                                                     <tr key={shift.id} className="border-t border-border/50 hover:bg-accent/5 transition-colors">
                                                         <td className="px-4 py-3">
                                                             <input
+                                                                id={`shift-name-${idx}`}
                                                                 type="text"
                                                                 className="w-full bg-transparent border border-border/50 rounded-lg px-2 py-1.5 text-sm text-primary-text focus:border-accent focus:outline-none"
                                                                 value={shift.name}
@@ -941,8 +1018,8 @@ const AttendanceSettings: React.FC = () => {
                                                         </td>
                                                         <td className="px-4 py-3 text-center">
                                                             {isCrossMidnight 
-                                                                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 text-xs font-bold"><Moon className="h-3 w-3" />Night</span>
-                                                                : <span className="text-muted text-xs">—</span>
+                                                                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 text-[10px] font-bold uppercase tracking-wider"><Moon className="h-3 w-3" />Night</span>
+                                                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 text-[10px] font-bold uppercase tracking-wider"><Sun className="h-3 w-3" />Day</span>
                                                             }
                                                         </td>
                                                         <td className="px-4 py-3">
@@ -960,17 +1037,29 @@ const AttendanceSettings: React.FC = () => {
                                                             />
                                                         </td>
                                                         <td className="px-4 py-3 text-center">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const updated = (currentRules.siteShifts || []).filter((_: any, i: number) => i !== idx);
-                                                                    handleSettingChange('siteShifts', updated);
-                                                                }}
-                                                                className="text-red-400 hover:text-red-600 transition-colors p-1"
-                                                                title="Remove shift"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </button>
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        document.getElementById(`shift-name-${idx}`)?.focus();
+                                                                    }}
+                                                                    className="text-indigo-400 hover:text-indigo-600 transition-colors p-1"
+                                                                    title="Edit shift"
+                                                                >
+                                                                    <Edit className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const updated = (currentRules.siteShifts || []).filter((_: any, i: number) => i !== idx);
+                                                                        handleSettingChange('siteShifts', updated);
+                                                                    }}
+                                                                    className="text-red-400 hover:text-red-600 transition-colors p-1"
+                                                                    title="Remove shift"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 );
@@ -1012,6 +1101,15 @@ const AttendanceSettings: React.FC = () => {
                         )}
                     </section>
                     )}
+
+                    {/* Site Attendance Department Configuration — Only for Site Staff */}
+                    {activeTab === 'site' && subTab === 'departments' && (
+                        <SiteAttendanceConfig
+                            currentRules={currentRules}
+                            onSettingChange={handleSettingChange}
+                        />
+                    )}
+
 
                     {/* Site & Travel Tracking - Only for Field Staff */}
                     {activeTab === 'field' && (
@@ -1069,7 +1167,7 @@ const AttendanceSettings: React.FC = () => {
                     )}
 
 
-                    <section className="pt-6 border-t border-border">
+                    <section className="pt-6 border-t border-border" style={{ display: subTab === 'policies' ? undefined : 'none' }}>
                         <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Clock className="mr-2 h-5 w-5 text-muted" />Break Tracking</h3>
                         <div className="space-y-4">
                             <Checkbox
@@ -1092,7 +1190,7 @@ const AttendanceSettings: React.FC = () => {
                     </section>
 
 
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'leaves' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><LifeBuoy className="mr-2 h-5 w-5 text-muted" />Leave Allocation</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <div className="flex flex-col">
@@ -1423,7 +1521,7 @@ const AttendanceSettings: React.FC = () => {
                     </div>
                 </section>
 
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'notifications' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Bell className="mr-2 h-5 w-5 text-muted" />Notifications</h3>
                     <Checkbox
                         id="attendance-notifications"
@@ -1434,7 +1532,7 @@ const AttendanceSettings: React.FC = () => {
                     />
                 </section>
 
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'notifications' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Settings className="mr-2 h-5 w-5 text-muted" />Geofencing Verification</h3>
                     <div className="space-y-4">
                         <Checkbox
@@ -1461,7 +1559,11 @@ const AttendanceSettings: React.FC = () => {
                     </div>
                 </section>
 
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'summary' ? undefined : 'none' }}>
+                    <SiteAttendanceSummary currentRules={currentRules} />
+                </section>
+
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'holidays' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Recurring Holidays</h3>
                     <div className="p-4 bg-page rounded-lg">
                         <h4 className="font-semibold mb-2">Add Recurring Holiday</h4>
@@ -1533,7 +1635,7 @@ const AttendanceSettings: React.FC = () => {
                     </div>
                 </section>
 
-                <section className="pt-6 border-t border-border">
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'holidays' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Holiday List</h3>
                     
                     <div className="mb-6 space-y-4">

@@ -125,6 +125,7 @@ export interface User {
   societyName?: string;
   locationId?: string;
   passcode?: string;
+  department?: string;
 }
 
 export interface UserChild {

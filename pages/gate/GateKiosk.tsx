@@ -1,38 +1,31 @@
 /**
  * GateKiosk.tsx — Full-screen kiosk-style attendance gate
- * Supports Face Recognition, QR Scan, and Manual check-in.
+ * Supports QR Scan and Manual check-in.
  * Designed for a single mounted phone/tablet running in browser.
  */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useGateStore } from '../../store/gateStore';
 import {
-  fetchGateUsers, markGateAttendance, lookupByQrToken, lookupByPasscode, uploadGatePhoto, reportKioskHeartbeat, fetchKioskLocations, fetchKioskDevices,
+  fetchGateUsers, markGateAttendance, lookupByQrToken, lookupByPasscode, uploadGatePhoto, reportKioskHeartbeat, fetchKioskLocations, fetchKioskDevices, reportSecurityLog,
 } from '../../services/gateApi';
 import { useKioskTelemetry } from '../../hooks/useKioskTelemetry';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import { KioskPlugin } from '../../plugins/KioskPlugin';
 import { useNavigate } from 'react-router-dom';
+import { Camera as CapCamera } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 import type { GateUser, GateScanResult, GateMode } from '../../types/gate';
 import type { AttendanceEventType, Location } from '../../types/attendance';
-import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy, Hash, Delete } from 'lucide-react';
+import { playFeedbackSound, initAudioContext } from '../../utils/audioFeedback';
+import { useAuthStore } from '../../store/authStore';
+import { isAdmin as checkIsAdmin } from '../../utils/auth';
+import { ScanLine, User, QrCode, Camera, Shield, Lock, Unlock, ChevronDown, CheckCircle2, XCircle, AlertTriangle, Loader2, Search, Settings, LogIn, LogOut, Coffee, MapPin, ArrowLeft, Copy, Hash, Delete, Eye } from 'lucide-react';
 
 // ─── Constants ──────────────────────────────────────────────────────
-const FACE_MATCH_THRESHOLD = 0.55; // Euclidean distance — relaxed for better mobile camera performance
-const SCAN_INTERVAL_MS = 800; // Snappier detection
+const SCAN_INTERVAL_MS = 500; // Snappier detection as per requirements
 const RESULT_DISPLAY_MS = 1500; // Faster turnover for queues
 const QR_SCAN_INTERVAL_MS = 500;
-const FACE_SYNC_INTERVAL_MS = 5 * 60 * 1000; // Re-sync face descriptors every 5 min
-
-// ─── Euclidean distance between two descriptor vectors ──────────────
-function euclideanDistance(a: number[], b: number[]): number {
-  let sum = 0;
-  for (let i = 0; i < a.length; i++) {
-    const diff = a[i] - b[i];
-    sum += diff * diff;
-  }
-  return Math.sqrt(sum);
-}
 
 // ─── Time formatting helper ─────────────────────────────────────────
 function formatTime(date: Date): string {
@@ -40,10 +33,11 @@ function formatTime(date: Date): string {
 }
 
 const GateKiosk: React.FC = () => {
+  const store = useGateStore();
   const {
     activeMode, setActiveMode,
-    registeredFaces, setRegisteredFaces,
-    isDuplicate, addRecentScan, clearExpiredScans,
+    registeredUsers, setRegisteredUsers,
+    addRecentScan, clearExpiredScans,
     currentResult, setCurrentResult,
     isProcessing, setProcessing,
     todayLogs, addLog,
@@ -51,18 +45,34 @@ const GateKiosk: React.FC = () => {
     assignedLocationId, assignedLocationName, setAssignedLocation,
     deviceId, locationName, setDeviceId, setLocationName,
     isKioskMode, setKioskMode
-  } = useGateStore();
+  } = store;
+
+  // Force isDuplicate to false for unrestricted testing
+  const isDuplicate = () => false;
 
   const navigate = useNavigate();
+  const { user: currentUser } = useAuthStore();
+  
+  // ─── RBAC: Ensure only Admin and Security roles can access ───
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const role = (currentUser.role || '').toLowerCase();
+    const isSecurity = role.includes('security');
+    const isAdmin = checkIsAdmin(currentUser.role);
+    
+    if (!isAdmin && !isSecurity) {
+      console.warn('[GateKiosk] Unauthorized access attempt by:', currentUser.email);
+      navigate('/forbidden', { replace: true });
+    }
+  }, [currentUser, navigate]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [faceApiLoaded, setFaceApiLoaded] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -102,9 +112,29 @@ const GateKiosk: React.FC = () => {
   // Realtime Device & Location Sync
   useEffect(() => {
     let channel: any = null;
+    let isCancelled = false;
 
     const initDeviceSync = async () => {
-      const { deviceId: nativeId } = await KioskPlugin.getDeviceId();
+      let nativeId = 'web-kiosk-dev';
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const result = await KioskPlugin.getDeviceId();
+          nativeId = result.deviceId;
+        } catch (err) {
+          console.warn('[GateKiosk] Native KioskPlugin.getDeviceId failed:', err);
+        }
+      } else {
+        // Persistent Web Device ID fallback
+        const cachedId = localStorage.getItem('kiosk_web_device_id');
+        if (cachedId) {
+          nativeId = cachedId;
+        } else {
+          nativeId = 'WEB-' + Math.random().toString(36).substring(2, 11).toUpperCase();
+          localStorage.setItem('kiosk_web_device_id', nativeId);
+        }
+      }
+      
       setDeviceId(nativeId);
 
       // Load offline location fallback first
@@ -122,15 +152,19 @@ const GateKiosk: React.FC = () => {
         last_heartbeat: new Date().toISOString()
       }, { onConflict: 'device_id' });
 
+      if (isCancelled) return;
+
       // Subscribe to Realtime for location updates from Admin
-      channel = supabase
-        .channel('kiosk-device')
+      const channelName = `kiosk-device-${nativeId}-${Math.random().toString(36).substring(2, 7)}`;
+      const newChannel = supabase
+        .channel(channelName)
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
           table: 'kiosk_devices',
           filter: `device_id=eq.${nativeId}`
         }, (payload: any) => {
+          if (isCancelled) return;
           if (payload.new && payload.new.location_name) {
             console.log('[KioskSync] Remote location update received:', payload.new.location_name);
             setLocationName(payload.new.location_name);
@@ -142,11 +176,18 @@ const GateKiosk: React.FC = () => {
           }
         })
         .subscribe();
+      
+      if (isCancelled) {
+        supabase.removeChannel(newChannel);
+      } else {
+        channel = newChannel;
+      }
     };
 
     initDeviceSync();
 
     return () => {
+      isCancelled = true;
       if (channel) {
         supabase.removeChannel(channel);
       }
@@ -175,125 +216,71 @@ const GateKiosk: React.FC = () => {
     return () => clearInterval(t);
   }, [clearExpiredScans]);
 
-  // ─── Load face-api.js models ──────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        console.log('[GateKiosk] Loading models from origin:', window.location.origin);
-        const faceapi = await import('face-api.js');
-        
-        const MODEL_URL = (window.location.origin + window.location.pathname).replace(/\/$/, '') + '/models';
-        
-        try {
-          console.log('[GateKiosk] Loading TinyFaceDetector from:', MODEL_URL);
-          await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-          
-          console.log('[GateKiosk] Loading FaceLandmark68TinyNet...');
-          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
-          
-          console.log('[GateKiosk] Loading FaceRecognitionNet...');
-          await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-          
-          console.log('[GateKiosk] face-api.js models loaded successfully');
-        } catch (loadErr) {
-          console.error('[GateKiosk] Model load failed, trying relative path...', loadErr);
-          await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-          await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
-          await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-        }
-        if (!cancelled) setFaceApiLoaded(true);
-      } catch (err) {
-        console.error('[GateKiosk] Critical error loading face-api models:', err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // ─── Sync registered faces from Supabase ──────────────────────────
-  const syncFaces = useCallback(async () => {
+  // ─── Sync registered users from Supabase ──────────────────────────
+  const syncUsers = useCallback(async () => {
     try {
       const users = await fetchGateUsers();
-      setRegisteredFaces(users);
-      console.log(`[GateKiosk] Synced ${users.length} registered faces`);
+      setRegisteredUsers(users);
+      console.log(`[GateKiosk] Synced ${users.length} users from database`);
     } catch (err) {
-      console.error('[GateKiosk] Failed to sync faces:', err);
+      console.error('[GateKiosk] Failed to sync users:', err);
     }
-  }, [setRegisteredFaces]);
+  }, [setRegisteredUsers]);
 
   useEffect(() => {
-    syncFaces();
-    syncTimerRef.current = setInterval(syncFaces, FACE_SYNC_INTERVAL_MS);
-    return () => { if (syncTimerRef.current) clearInterval(syncTimerRef.current); };
-  }, [syncFaces]);
+    syncUsers();
+    const syncInterval = setInterval(syncUsers, 5 * 60 * 1000);
 
-  // ─── Camera Start / Stop ──────────────────────────────────────────
+    const channel = supabase
+      .channel(`gate-users-realtime-${Math.random().toString(36).substring(2, 7)}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'gate_users',
+      }, () => {
+        syncUsers();
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(syncInterval);
+      supabase.removeChannel(channel);
+    };
+  }, [syncUsers]);
+
   const startCamera = useCallback(async () => {
-    try {
-      setCameraError(null);
-      const constraints: MediaStreamConstraints = {
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch (err: any) {
-      console.error('[GateKiosk] Camera error:', err);
-      setCameraError(err.message || 'Camera access denied');
-    }
-  }, []);
+    if (isKioskLocked) return;
+    // Camera is only needed for proof photos in manual/passcode if desired,
+    // but originally it was for face. QR scanner uses its own logic.
+    // We'll keep it simple: no background camera for now.
+  }, [isKioskLocked]);
 
   const stopCamera = useCallback(() => {
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => {
-          try { t.stop(); } catch (e) {}
-        });
-        streamRef.current = null;
-      }
-      if (videoRef.current) {
-        try { videoRef.current.srcObject = null; } catch (e) {}
-      }
-    } catch (err) {
-      console.warn('[GateKiosk] Error in stopCamera:', err);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     }
   }, []);
-
-  useEffect(() => {
-    if (!isKioskLocked && selectedAction && activeMode === 'face') {
-      startCamera();
-    } else {
-      stopCamera();
-    }
-    return () => stopCamera();
-  }, [isKioskLocked, selectedAction, activeMode, startCamera, stopCamera]);
 
   // ─── Show result overlay, then auto-clear ─────────────────────────
   const showResult = useCallback((result: GateScanResult) => {
     if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     setCurrentResult(result);
+
+    // Audio feedback based on result
+    if (result.success) {
+      playFeedbackSound('success');
+    } else if (result.alreadyMarked) {
+      playFeedbackSound('warning');
+    } else {
+      playFeedbackSound('error');
+    }
+
     resultTimerRef.current = setTimeout(() => setCurrentResult(null), RESULT_DISPLAY_MS);
   }, [setCurrentResult]);
 
   // ─── Handle successful match ──────────────────────────────────────
-  const handleMatch = useCallback(async (user: GateUser, method: GateMode, confidence?: number) => {
-    if (!selectedAction) return;
-
-    if (isDuplicate(user.userId)) {
-      showResult({
-        success: false, method,
-        userId: user.userId, userName: user.userName,
-        userPhotoUrl: user.userPhotoUrl,
-        message: 'Already marked within the last 5 minutes',
-        alreadyMarked: true,
-      });
-      return;
-    }
-
+  const handleMatch = useCallback(async (user: GateUser, method: GateMode) => {
     setProcessing(true);
     try {
       const currentDevice = kioskDevices.find(d => d.deviceId === deviceId);
@@ -303,7 +290,7 @@ const GateKiosk: React.FC = () => {
         userId: user.userId,
         gateUserId: user.id,
         method,
-        confidence,
+        action: selectedAction || 'punch_in', 
         deviceName: currentDeviceName,
       });
       addRecentScan({
@@ -320,7 +307,7 @@ const GateKiosk: React.FC = () => {
         const matchingDevice = kioskDevices.find(d => d.locationId === assignedLocationId);
         await api.addAttendanceEvent({
           userId: user.userId,
-          type: selectedAction,
+          type: selectedAction || 'punch-in',
           timestamp: new Date().toISOString(),
           locationId: assignedLocationId,
           locationName: assignedLocationName,
@@ -338,65 +325,33 @@ const GateKiosk: React.FC = () => {
         userId: user.userId, userName: user.userName,
         userPhotoUrl: user.userPhotoUrl,
         department: user.department,
-        confidence,
         message: `Welcome, ${user.userName}!`,
       });
       setSelectedAction(null); // Reset for the next person
     } catch (err: any) {
-      showResult({ success: false, method, message: err.message || 'Failed to mark attendance' });
+      if (err.message && err.message.includes('Duplicate attendance mark')) {
+        showResult({ success: false, method, alreadyMarked: true, message: `Already checked in, ${user.userName}` });
+      } else {
+        showResult({ success: false, method, message: err.message || 'Failed to mark attendance' });
+      }
     } finally {
       setProcessing(false);
     }
-  }, [isDuplicate, showResult, addRecentScan, addLog, setProcessing, selectedAction, assignedLocationId, assignedLocationName]);
-
-  // ─── Face scanning loop ───────────────────────────────────────────
-  useEffect(() => {
-    if (activeMode !== 'face' || !faceApiLoaded || isKioskLocked || !selectedAction) return;
-
-    const runFaceScan = async () => {
-      if (!videoRef.current || videoRef.current.paused || isProcessing || currentResult) return;
-      try {
-        const faceapi = await import('face-api.js');
-        const detections = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.3 }))
-          .withFaceLandmarks(true)
-          .withFaceDescriptor();
-
-        if (!detections) return;
-        const queryDescriptor = Array.from(detections.descriptor);
-
-        // Find best match from registered faces
-        let bestMatch: GateUser | null = null;
-        let bestDistance = Infinity;
-        for (const user of registeredFaces) {
-          if (!user.faceDescriptor || user.faceDescriptor.length !== 128) continue;
-          const distance = euclideanDistance(queryDescriptor, user.faceDescriptor);
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            bestMatch = user;
-          }
-        }
-
-        if (bestMatch && bestDistance < FACE_MATCH_THRESHOLD) {
-          const confidence = Math.max(0, 1 - bestDistance);
-          await handleMatch(bestMatch, 'face', confidence);
-        }
-      } catch (err) {
-        // Silently ignore per-frame errors to keep scanning
-      }
-    };
-
-    scanTimerRef.current = setInterval(runFaceScan, SCAN_INTERVAL_MS);
-    return () => { if (scanTimerRef.current) clearInterval(scanTimerRef.current); };
-  }, [activeMode, faceApiLoaded, isKioskLocked, registeredFaces, isProcessing, currentResult, handleMatch, selectedAction]);
+  }, [showResult, addRecentScan, addLog, setProcessing, selectedAction, assignedLocationId, assignedLocationName, kioskDevices, deviceId]);
 
   // ─── QR scanning loop ────────────────────────────────────────────
   useEffect(() => {
-    if (activeMode !== 'qr' || isKioskLocked || !selectedAction) return;
+    if (activeMode !== 'qr' || isKioskLocked) return;
     let html5QrCode: any = null;
     let mounted = true;
 
     (async () => {
+      // ─── HARDWARE RESET: Wait for Face camera to release ───
+      stopCamera();
+      await new Promise(r => setTimeout(r, 500));
+      
+      if (!mounted || activeMode !== 'qr') return;
+
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
         html5QrCode = new Html5Qrcode('gate-qr-reader');
@@ -404,9 +359,10 @@ const GateKiosk: React.FC = () => {
 
         await html5QrCode.start(
           { facingMode: 'environment' },
-          { fps: 2, qrbox: { width: 250, height: 250 } },
+          { fps: 10, qrbox: { width: 280, height: 280 } },
           async (decodedText: string) => {
             if (!mounted || isProcessing || currentResult) return;
+            console.log('[GateKiosk] QR Scanned Token:', decodedText.trim());
             // Lookup QR token
             const user = await lookupByQrToken(decodedText.trim());
             if (user) {
@@ -425,14 +381,18 @@ const GateKiosk: React.FC = () => {
     return () => {
       mounted = false;
       if (html5QrCode) {
-        html5QrCode.stop()
-          .then(() => {
-            try { html5QrCode.clear(); } catch (e) {}
-          })
-          .catch((err: any) => {
-            console.warn('[GateKiosk] QR stop error:', err);
-            try { html5QrCode.clear(); } catch (e) {}
-          });
+        const stopScanner = async () => {
+          try {
+            // getState() === 2 means SCANNING
+            if (html5QrCode.getState() === 2) {
+              await html5QrCode.stop();
+            }
+            html5QrCode.clear();
+          } catch (e) {
+            console.warn('[GateKiosk] QR Cleanup safe-catch:', e);
+          }
+        };
+        stopScanner();
       }
     };
   }, [activeMode, isKioskLocked, isProcessing, currentResult, handleMatch, showResult, selectedAction]);
@@ -508,7 +468,7 @@ const GateKiosk: React.FC = () => {
 
     const queryTokens = query.split(/\s+/).filter(Boolean);
 
-    return registeredFaces.filter((u) => {
+    return registeredUsers.filter((u) => {
       const name = (u.userName || '').toLowerCase();
       const email = (u.userEmail || '').toLowerCase();
       const dept = (u.department || '').toLowerCase();
@@ -518,7 +478,7 @@ const GateKiosk: React.FC = () => {
         name.includes(token) || email.includes(token) || dept.includes(token)
       );
     }).slice(0, 8);
-  }, [manualSearch, registeredFaces]);
+  }, [manualSearch, registeredUsers]);
 
   // ═══════════════════ RENDER ═══════════════════════════════════════
 
@@ -561,7 +521,27 @@ const GateKiosk: React.FC = () => {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-emerald-300/70 text-xs font-mono">{formatTime(currentTime)}</span>
-          <span className="text-emerald-400/40 text-xs">{registeredFaces.length} users synced</span>
+          <div className="relative group cursor-help">
+            <span className="text-emerald-400/60 hover:text-emerald-400 transition-colors text-xs">
+              {registeredUsers.length} personnel synced
+            </span>
+            <div className="absolute right-0 top-full mt-2 w-48 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl p-3 opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none shadow-2xl">
+              <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mb-2">Synced Personnel</p>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {registeredUsers.slice(0, 10).map(u => (
+                  <div key={u.id} className="text-xs text-emerald-300 font-medium flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {u.userName}
+                  </div>
+                ))}
+                {registeredUsers.length > 10 && (
+                  <div className="text-[10px] text-emerald-300/40 pl-3.5 italic">
+                    + {registeredUsers.length - 10} more...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           {!isKioskLocked && (
             <button onClick={() => setShowSettings(true)} className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors">
               <Settings className="w-4 h-4 text-emerald-400/60" />
@@ -579,10 +559,10 @@ const GateKiosk: React.FC = () => {
           <button onClick={() => setSelectedAction(null)} className="absolute left-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-emerald-400/80 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          {(['face', 'qr', 'manual', 'passcode'] as GateMode[]).map((mode) => {
-          const icons = { face: User, qr: QrCode, manual: Camera, passcode: Hash };
-          const labels = { face: 'Face ID', qr: 'QR Scan', manual: 'Manual', passcode: 'Passcode' };
-          const Icon = icons[mode];
+          {(['qr', 'manual', 'passcode'] as GateMode[]).map((mode) => {
+          const icons = { qr: QrCode, manual: User, passcode: Hash };
+          const labels = { qr: 'QR Scan', manual: 'Manual', passcode: 'Passcode' };
+          const Icon = icons[mode as keyof typeof icons];
           const isActive = activeMode === mode;
           return (
             <button key={mode}
@@ -593,7 +573,7 @@ const GateKiosk: React.FC = () => {
                   : 'bg-white/5 text-emerald-300/60 hover:bg-white/10'
               }`}>
               <Icon className="w-4 h-4" />
-              {labels[mode]}
+              {labels[mode as keyof typeof labels]}
             </button>
           );
         })}
@@ -626,33 +606,7 @@ const GateKiosk: React.FC = () => {
             })}
           </div>
         ) : (
-          <>
-            {/* Camera feed — always mounted for face mode */}
-            {activeMode === 'face' && (
-          <>
-            <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted autoPlay
-              style={{ transform: 'scaleX(-1)' }} />
-            <canvas ref={canvasRef} className="hidden" />
-            {/* Face scanning overlay */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-64 h-80 border-2 border-emerald-400/40 rounded-3xl relative">
-                <div className="absolute top-0 left-0 w-8 h-8 border-t-3 border-l-3 border-emerald-400 rounded-tl-3xl" />
-                <div className="absolute top-0 right-0 w-8 h-8 border-t-3 border-r-3 border-emerald-400 rounded-tr-3xl" />
-                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-3 border-l-3 border-emerald-400 rounded-bl-3xl" />
-                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-3 border-r-3 border-emerald-400 rounded-br-3xl" />
-                {/* Animated scan line */}
-                <div className="absolute left-2 right-2 h-0.5 bg-emerald-400/60 rounded-full"
-                  style={{ animation: 'scanLine 2s ease-in-out infinite', top: '30%' }} />
-              </div>
-            </div>
-            {!faceApiLoaded && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
-                <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-3" />
-                <p className="text-white font-semibold">Loading Face Recognition...</p>
-              </div>
-            )}
-          </>
-        )}
+          <div className="w-full h-full relative flex flex-col items-center justify-center p-6">
 
         {activeMode === 'qr' && (
           <div className="w-full h-full flex items-center justify-center">
@@ -743,17 +697,7 @@ const GateKiosk: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Camera error */}
-        {cameraError && activeMode === 'face' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
-            <XCircle className="w-12 h-12 text-red-400 mb-3" />
-            <p className="text-white font-semibold mb-1">Camera Unavailable</p>
-            <p className="text-red-300/60 text-sm text-center max-w-xs">{cameraError}</p>
-            <button onClick={startCamera} className="mt-4 px-6 py-2 rounded-xl bg-emerald-500 text-white font-semibold">Retry</button>
           </div>
-        )}
-          </>
         )}
       </div>
 
@@ -781,9 +725,6 @@ const GateKiosk: React.FC = () => {
             )}
             <h2 className="text-white text-2xl font-bold">{currentResult.message}</h2>
             {currentResult.department && <p className="text-white/60 text-sm">{currentResult.department}</p>}
-            {currentResult.confidence !== undefined && (
-              <p className="text-emerald-300/50 text-xs">Confidence: {(currentResult.confidence * 100).toFixed(1)}%</p>
-            )}
             <p className="text-white/40 text-xs">{formatTime(new Date())} • via {currentResult.method.toUpperCase()}</p>
           </div>
         </div>
@@ -864,7 +805,13 @@ const GateKiosk: React.FC = () => {
                   const validPin = data?.config_value || '1234';
                   
                   if (pin === validPin) {
-                    await KioskPlugin.stopLockTask();
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await KioskPlugin.stopLockTask();
+                      } catch (err) {
+                        console.warn('[GateKiosk] KioskPlugin.stopLockTask failed:', err);
+                      }
+                    }
                     setKioskMode(false);
                     setShowSettings(false);
                     // Redirect to login or profile

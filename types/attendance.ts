@@ -45,6 +45,7 @@ export interface AttendanceEvent {
   networkType?: string;
   networkProvider?: string;
   source?: string;
+  isCached?: boolean;
 }
 
 export interface RoutePoint {
@@ -199,6 +200,21 @@ export interface StaffAttendanceRules {
   // --- Shift Management (Site Staff) ---
   enableShiftManagement?: boolean;     // When true, shifts are auto-detected by punch-in time
   siteShifts?: SiteShiftDefinition[];  // Configured shift windows
+  // --- Site Attendance: Department-Level Overrides ---
+  siteDepartments?: {                  // Dynamic list of departments admin adds per site
+    id: string;                        // slug: 'facility_manager', 'security', etc.
+    label: string;                     // display name
+    shortLabel: string;                // short label for grid headers
+  }[];
+  deptRuleConfigs?: {                  // Rules per department (keyed by deptId)
+    deptId: string;
+    weeklyOffDays?: number[];          // [0] = Sunday, [5] = Friday
+    shiftId?: string;                  // default shift from siteShifts[]
+    holidayCodeType?: string;          // 'H', '0.5H', 'O/H', 'O/H.5'
+    leaveTypes?: string[];             // ['E/L', 'S/L', 'C/O']
+    deploymentCount?: number;          // contract headcount for this dept
+  }[];
+  siteHolidayToggle?: boolean;         // Does this site pay for holidays?
 }
 
 export interface SiteShiftDefinition {

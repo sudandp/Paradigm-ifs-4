@@ -2,8 +2,9 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 
 export interface BreakAlarmPlugin {
     schedule(options: {
-        intervalMinutes: number;
+        triggerAtMs: number;
         id: number;
+        elapsedMinutes: number;
         soundFilename?: string;
         soundUri?: string;
     }): Promise<void>;
@@ -13,10 +14,24 @@ export interface BreakAlarmPlugin {
 
 const BreakAlarmNative = registerPlugin<BreakAlarmPlugin>('BreakAlarm');
 
-export const scheduleBreakAlarm = async (intervalMinutes: number, id: number, soundFilename?: string, soundUri?: string): Promise<void> => {
+/**
+ * Schedule a break alarm at a specific absolute time.
+ * @param triggerAtMs  Absolute epoch-ms when the alarm should fire
+ * @param id          Unique notification ID
+ * @param elapsedMinutes  How many minutes elapsed since break started (for display)
+ * @param soundFilename   Optional res/raw filename (no extension)
+ * @param soundUri        Optional native ringtone URI
+ */
+export const scheduleBreakAlarm = async (
+    triggerAtMs: number,
+    id: number,
+    elapsedMinutes: number,
+    soundFilename?: string,
+    soundUri?: string
+): Promise<void> => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return;
     try {
-        await BreakAlarmNative.schedule({ intervalMinutes, id, soundFilename, soundUri });
+        await BreakAlarmNative.schedule({ triggerAtMs, id, elapsedMinutes, soundFilename, soundUri });
     } catch (e) {
         console.warn('[BreakAlarmPlugin] schedule failed:', e);
     }

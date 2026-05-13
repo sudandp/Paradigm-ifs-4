@@ -1,63 +1,172 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
-import { LogIn, LogOut, Clock, CheckCircle, Coffee, X } from 'lucide-react';
+import { LogIn, LogOut, Clock, Coffee, X, CloudOff, Bell, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SmartFieldReportModal from '../../components/attendance/SmartFieldReportModal';
-import { api } from '../../services/api';
-import PersonalFaceAuth from '../../components/attendance/PersonalFaceAuth';
-import { lookupByPasscode, getGateUserByUserId } from '../../services/gateApi';
+import { lookupByPasscode } from '../../services/gateApi';
+import { isDeviceTimeSpoofed } from '../../utils/timeUtils';
+import { getCurrentDevice, isDeviceAuthorized, registerDevice } from '../../services/deviceService';
+import { DeviceType } from '../../types';
 
+// ─── Break duration presets (minutes) ────────────────────────────────────────
+const PRESETS = [
+    { mins: 5,  label: '5',  desc: 'min' },
+    { mins: 10, label: '10', desc: 'min' },
+    { mins: 15, label: '15', desc: 'min' },
+    { mins: 20, label: '20', desc: 'min' },
+    { mins: 30, label: '30', desc: 'min' },
+    { mins: 45, label: '45', desc: 'min' },
+    { mins: 60, label: '60', desc: 'min' },
+];
+
+// ─── Circular Dial Component ─────────────────────────────────────────────────
+const AlarmDial: React.FC<{
+    selectedIndex: number;
+    onSelect: (i: number) => void;
+}> = ({ selectedIndex, onSelect }) => {
+    const size = 240;
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = 95;
+    const dotRadius = 18;
+    const total = PRESETS.length;
+
+    // Progress arc
+    const progress = (selectedIndex + 1) / total;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - progress);
+
+    return (
+        <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+            <svg width={size} height={size} className="absolute inset-0">
+                {/* Background ring */}
+                <circle cx={cx} cy={cy} r={radius} fill="none" stroke="rgba(16,185,129,0.08)" strokeWidth="3" />
+                {/* Progress arc */}
+                <circle
+                    cx={cx} cy={cy} r={radius}
+                    fill="none"
+                    stroke="url(#dialGrad)"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                    transform={`rotate(-90 ${cx} ${cy})`}
+                    className="transition-all duration-500 ease-out"
+                />
+                {/* Tick marks */}
+                {PRESETS.map((_, i) => {
+                    const angle = (i / total) * 360 - 90;
+                    const rad = (angle * Math.PI) / 180;
+                    const tx = cx + (radius + 16) * Math.cos(rad);
+                    const ty = cy + (radius + 16) * Math.sin(rad);
+                    const ix = cx + radius * Math.cos(rad);
+                    const iy = cy + radius * Math.sin(rad);
+                    return (
+                        <line key={i} x1={ix} y1={iy} x2={tx} y2={ty}
+                            stroke={i <= selectedIndex ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.08)'}
+                            strokeWidth="2" strokeLinecap="round"
+                        />
+                    );
+                })}
+                {/* Preset dots around the dial */}
+                {PRESETS.map((p, i) => {
+                    const angle = (i / total) * 360 - 90;
+                    const rad = (angle * Math.PI) / 180;
+                    const dx = cx + radius * Math.cos(rad);
+                    const dy = cy + radius * Math.sin(rad);
+                    const isActive = i === selectedIndex;
+                    return (
+                        <g key={i} onClick={() => onSelect(i)} style={{ cursor: 'pointer' }}>
+                            <circle cx={dx} cy={dy} r={isActive ? dotRadius : 14}
+                                fill={isActive ? 'rgba(16,185,129,0.9)' : 'rgba(255,255,255,0.06)'}
+                                stroke={isActive ? 'rgba(52,211,153,0.8)' : 'rgba(255,255,255,0.1)'}
+                                strokeWidth={isActive ? 2 : 1}
+                                className="transition-all duration-300"
+                            />
+                            <text x={dx} y={dy + 1} textAnchor="middle" dominantBaseline="middle"
+                                fill={isActive ? '#fff' : '#64748b'}
+                                fontSize={isActive ? '10' : '8'}
+                                fontWeight="900"
+                                style={{ pointerEvents: 'none' }}
+                            >
+                                {p.label}
+                            </text>
+                        </g>
+                    );
+                })}
+                <defs>
+                    <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#059669" />
+                        <stop offset="100%" stopColor="#34d399" />
+                    </linearGradient>
+                </defs>
+            </svg>
+
+            {/* Center display */}
+            <div className="relative z-10 flex flex-col items-center">
+                <motion.div
+                    key={selectedIndex}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 15, stiffness: 300 }}
+                    className="flex items-baseline gap-1"
+                >
+                    <span className="text-5xl font-black text-white tabular-nums tracking-tight">
+                        {PRESETS[selectedIndex].label}
+                    </span>
+                    <span className="text-lg font-bold text-emerald-400/70">
+                        {PRESETS[selectedIndex].desc}
+                    </span>
+                </motion.div>
+                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-widest mt-1">
+                    Reminder interval
+                </p>
+            </div>
+        </div>
+    );
+};
 
 const AttendanceActionPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { toggleCheckInStatus, isCheckedIn, geofencingSettings, fetchGeofencingSettings } = useAuthStore();
+    const { toggleCheckInStatus, isCheckedIn, geofencingSettings, fetchGeofencingSettings, isOffline } = useAuthStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-    const [settingsLoaded, setSettingsLoaded] = useState(false);
-    const [breakInterval, setBreakInterval] = useState<number>(0.1666);
+    const [breakInterval, setBreakInterval] = useState<number>(() => useAuthStore.getState().breakReminderInterval || 15);
+    const [selectedIdx, setSelectedIdx] = useState(() => {
+        const stored = useAuthStore.getState().breakReminderInterval || 15;
+        const idx = PRESETS.findIndex(p => p.mins === stored);
+        return idx >= 0 ? idx : 2;
+    });
     
-    // Face Authentication State
-    const [showFaceAuth, setShowFaceAuth] = useState(false);
+    const [isAlarmEnabled, setIsAlarmEnabled] = useState(true);
+    const [alarmVolume, setAlarmVolume] = useState(70);
+    const [isSnoozeEnabled, setIsSnoozeEnabled] = useState(false);
     const [usePasscodeFallback, setUsePasscodeFallback] = useState(false);
     const [passcode, setPasscode] = useState('');
     const [isVerifyingPasscode, setIsVerifyingPasscode] = useState(false);
     const [isVerified, setIsVerified] = useState(false);
-    const isVerifiedRef = useRef(false);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const init = async () => {
-            if (!geofencingSettings) {
-                await fetchGeofencingSettings();
-            }
-            setSettingsLoaded(true);
-
-            // Pre-fetch location to warm up GPS while user is viewing the page
-            // This prevents the ~10s delay after face verification
+            if (!geofencingSettings) await fetchGeofencingSettings();
             try {
                 const { getPrecisePosition } = await import('../../utils/locationUtils');
-                console.log('[AttendancePage] Pre-fetching location to warm up GPS...');
-                getPrecisePosition(150, 15000).catch(err => {
-                    console.warn('[AttendancePage] Location pre-fetch failed/timed out, will retry on confirm.', err);
-                });
-            } catch (e) {
-                console.warn('[AttendancePage] Failed to trigger location pre-fetch');
-            }
+                getPrecisePosition(150, 15000).catch(() => {});
+            } catch (_) {}
         };
         init();
     }, [geofencingSettings, fetchGeofencingSettings]);
 
-    // Determine action from URL
     const query = new URLSearchParams(location.search);
     const workType = query.get('workType') as 'office' | 'field' | 'site-ot' || 'office';
     const isCheckIn = location.pathname.includes('check-in');
     const isBreakIn = location.pathname.includes('break-in');
     const isBreakOut = location.pathname.includes('break-out');
-    
     const actionParam = query.get('action') || query.get('forcedType');
     
     let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : (workType === 'site-ot' ? 'Site OT In' : 'Punch In')) : (workType === 'field' ? 'Site Check Out' : (workType === 'site-ot' ? 'Site OT Out' : 'Punch Out'));
@@ -69,75 +178,72 @@ const AttendanceActionPage: React.FC = () => {
     const Icon = (isCheckIn || isBreakIn || isBreakOut) ? LogIn : LogOut;
     let iconBgColor = isCheckIn ? 'bg-emerald-100' : 'bg-red-100';
     let iconColor = isCheckIn ? 'text-emerald-600' : 'text-red-600';
-    
-    if (isBreakIn) {
-        iconBgColor = 'bg-emerald-100/20';
-        iconColor = 'text-emerald-400';
-    } else if (isBreakOut) {
-        iconBgColor = 'bg-amber-100';
-        iconColor = 'text-amber-600';
-    } else if (actionParam?.includes('site-ot')) {
-        iconBgColor = 'bg-indigo-100';
-        iconColor = 'text-indigo-600';
-    }
+    if (isBreakIn) { iconBgColor = 'bg-emerald-100/20'; iconColor = 'text-emerald-400'; }
+    else if (isBreakOut) { iconBgColor = 'bg-amber-100'; iconColor = 'text-amber-600'; }
+    else if (actionParam?.includes('site-ot')) { iconBgColor = 'bg-indigo-100'; iconColor = 'text-indigo-600'; }
 
-    // const requiresFaceAuth = workType === 'office' && !isBreakIn && !isBreakOut;
-    const requiresFaceAuth = false; // Temporarily non-mandatory
+    const requiresVerification = false;
+
+    const alarmTime = useMemo(() => {
+        const now = new Date();
+        const preset = PRESETS[selectedIdx];
+        return new Date(now.getTime() + preset.mins * 60 * 1000)
+            .toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }, [selectedIdx]);
+
+    const handleDialSelect = (i: number) => {
+        setSelectedIdx(i);
+        setBreakInterval(PRESETS[i].mins);
+    };
 
     const handleConfirm = async (isAutoConfirm = false) => {
-        // If not verified yet, trigger face auth (only if required for this action)
-        if (requiresFaceAuth && !isVerified && !isVerifiedRef.current && !isAutoConfirm) {
-            setShowFaceAuth(true);
-            return;
-        }
-
         setIsSubmitting(true);
         try {
-            // Use cached geofencing settings for immediate response
-            const settings = geofencingSettings || { enabled: false };
-            
-            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && workType === 'field') {
-                console.log('[AttendancePage] Geofencing enabled for field staff, opening report modal.');
-                setIsReportModalOpen(true);
-                setIsSubmitting(false);
-                return;
+            const user = useAuthStore.getState().user;
+            if (!user) { setToast({ message: 'User session invalid.', type: 'error' }); setIsSubmitting(false); return; }
+
+            const { spoofed } = await isDeviceTimeSpoofed();
+            if (spoofed) { setToast({ message: 'Time mismatch! Please enable Automatic Time.', type: 'error' }); setIsSubmitting(false); return; }
+
+            const { deviceIdentifier, deviceType, deviceName, deviceInfo } = await getCurrentDevice();
+            const deviceCheck = await isDeviceAuthorized(user.id, deviceIdentifier);
+            if (!deviceCheck.authorized) {
+                const result = await registerDevice(user.id, user.role, deviceIdentifier, deviceType as DeviceType, deviceName, deviceInfo);
+                if (!result.success) { setToast({ message: `Device Unauthorized: ${result.message}`, type: 'error' }); setIsSubmitting(false); return; }
             }
 
-            // Determine forced type
-            let forcedType: string | undefined = undefined;
+            if (requiresVerification && !isVerified && !isAutoConfirm) { setUsePasscodeFallback(true); setIsSubmitting(false); return; }
+            const settings = geofencingSettings || { enabled: false };
+            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && workType === 'field') {
+                setIsReportModalOpen(true); setIsSubmitting(false); return;
+            }
+
+            let forcedType: string | undefined;
             if (isCheckIn) forcedType = workType === 'site-ot' ? 'site-ot-in' : 'punch-in';
             if (!isCheckIn && !isBreakIn && !isBreakOut) forcedType = workType === 'site-ot' ? 'site-ot-out' : 'punch-out';
             if (isBreakIn) forcedType = 'break-in';
             if (isBreakOut) forcedType = 'break-out';
             if (actionParam) forcedType = actionParam;
 
-            // Normalize workType for DB compatibility ('site-ot' -> 'field')
             const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
             
-            console.log('[AttendancePage] Triggering toggleCheckInStatus...', { normalizedWorkType, forcedType });
-            const { success, message } = await toggleCheckInStatus(undefined, null, normalizedWorkType, undefined, forcedType, forcedType === 'break-in' ? breakInterval : undefined);
-            console.log('[AttendancePage] Toggle Result:', { success, message });
-            setToast({ message, type: success ? 'success' : 'error' });
-            
-            if (success) {
-                setTimeout(() => {
-                    navigate('/profile', { replace: true });
-                }, 600); // Faster navigation
-            }
-        } catch (error) {
-            console.error('Action error:', error);
-            setToast({ message: 'Failed to process request.', type: 'error' });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+            // If break-in and alarm disabled, pass a flag or handle accordingly
+            // For now, toggleCheckInStatus handles scheduling. If disabled, we might want to skip it.
+            // But usually users want the record regardless of the local alarm.
+            const { success, message } = await toggleCheckInStatus(
+                undefined, 
+                null, 
+                normalizedWorkType, 
+                undefined, 
+                forcedType, 
+                (forcedType === 'break-in' && isAlarmEnabled) ? breakInterval : undefined
+            );
 
-    const handleFaceVerified = () => {
-        setIsVerified(true);
-        isVerifiedRef.current = true;
-        setShowFaceAuth(false);
-        // Automatically trigger confirm after verification - much faster
-        handleConfirm(true);
+            setToast({ message, type: success ? 'success' : 'error' });
+            if (success) setTimeout(() => navigate('/profile', { replace: true }), 600);
+        } catch (error) {
+            setToast({ message: 'Failed to process request.', type: 'error' });
+        } finally { setIsSubmitting(false); }
     };
 
     const handlePasscodeSubmit = async () => {
@@ -147,196 +253,231 @@ const AttendanceActionPage: React.FC = () => {
             const user = await lookupByPasscode(passcode);
             if (user && user.userId === useAuthStore.getState().user?.id) {
                 setToast({ message: 'Passcode verified!', type: 'success' });
-                setIsVerified(true);
-                setShowFaceAuth(false);
-                setUsePasscodeFallback(false);
-                setTimeout(() => handleConfirm(), 500);
-            } else {
-                setToast({ message: 'Invalid passcode for this user.', type: 'error' });
-            }
-        } catch (err) {
-            setToast({ message: 'Error verifying passcode.', type: 'error' });
-        } finally {
-            setIsVerifyingPasscode(false);
-        }
+                setIsVerified(true); setUsePasscodeFallback(false);
+                setTimeout(() => handleConfirm(true), 500);
+            } else { setToast({ message: 'Invalid passcode for this user.', type: 'error' }); }
+        } catch (_) { setToast({ message: 'Error verifying passcode.', type: 'error' }); }
+        finally { setIsVerifyingPasscode(false); }
     };
 
-    const handleReportConfirm = async (reportId: string, summary: string, workType: 'office' | 'field') => {
-        setIsReportModalOpen(false);
-        setIsSubmitting(true);
-        const { success, message } = await toggleCheckInStatus(summary, null, workType, reportId);
-        setToast({ message, type: success ? 'success' : 'error' });
-        setIsSubmitting(false);
-
-        if (success) {
-            setTimeout(() => {
-                navigate('/profile', { replace: true });
-            }, 600);
-        }
-    };
-
-    const handleCancel = () => {
-        navigate(-1);
+    const handleReportConfirm = async (reportId: string, summary: string, wt: 'office' | 'field') => {
+        setIsReportModalOpen(false); setIsSubmitting(true);
+        const { success, message } = await toggleCheckInStatus(summary, null, wt, reportId);
+        setToast({ message, type: success ? 'success' : 'error' }); setIsSubmitting(false);
+        if (success) setTimeout(() => navigate('/profile', { replace: true }), 600);
     };
 
     return (
         <div className="fixed inset-0 flex flex-col items-center justify-center p-4 z-20">
-            {/* Background elements for depth */}
             <div className="fixed inset-0 bg-[#041b0f] z-0" />
             <div className="fixed top-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/10 blur-[120px] rounded-full z-0" />
-            <div className="fixed bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px] rounded-full z-0" />
+            <div className="fixed bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-emerald-900/20 blur-[120px] rounded-full z-0" />
 
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <AnimatePresence mode="wait">
                 {!isReportModalOpen && (
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, y: 30, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
+                        exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ type: "spring", damping: 25, stiffness: 350 }}
-                        className="w-full max-w-md bg-white/10 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 shadow-2xl p-10 text-center relative z-10"
+                        className="w-full max-w-md max-h-[92vh] rounded-[2.5rem] border border-white/10 shadow-2xl relative z-10 flex flex-col overflow-hidden"
+                        style={{ background: 'linear-gradient(180deg, rgba(6,30,18,0.97) 0%, rgba(3,18,10,0.99) 100%)' }}
                     >
-                        {/* Decorative top pulse */}
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 w-12 h-1 bg-white/20 rounded-full" />
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 w-10 h-1 bg-white/15 rounded-full z-20" />
 
-                        <div className="flex justify-center mb-8">
-                            <div className="relative">
-                                <motion.div 
-                                    animate={{ scale: [1, 1.1, 1] }}
-                                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                                    className="absolute inset-0 blur-2xl rounded-full bg-emerald-500/40" 
-                                />
-                                <div className={`relative p-6 rounded-3xl ${iconBgColor} border border-white/10 shadow-inner`}>
-                                    {isBreakIn ? (
-                                        <Coffee className={`h-12 w-12 ${iconColor} drop-shadow-md`} />
-                                    ) : (
-                                        <Icon className={`h-12 w-12 ${iconColor} drop-shadow-md`} />
+                        <div className="flex-1 overflow-y-auto scrollbar-hide py-4">
+                            {/* Top section: Icon + Title */}
+                            <div className="pt-6 pb-4 text-center">
+                                <div className="flex justify-center mb-4">
+                                    <div className="relative">
+                                        <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 3, repeat: Infinity }}
+                                            className="absolute inset-0 blur-2xl rounded-full bg-emerald-500/30" />
+                                        <div className={`relative p-5 rounded-2xl ${iconBgColor} border border-emerald-500/20`}>
+                                            {isBreakIn ? <Coffee className={`h-8 w-8 ${iconColor}`} /> : <Icon className={`h-8 w-8 ${iconColor}`} />}
+                                        </div>
+                                    </div>
+                                </div>
+                                <h1 className="text-2xl font-black text-white tracking-tight uppercase italic flex items-center justify-center gap-2">
+                                    {action}
+                                    {isOffline && (
+                                        <span className="bg-orange-500/20 border border-orange-500/30 text-orange-400 px-2 py-0.5 rounded-full text-[9px] font-black not-italic flex items-center gap-1">
+                                            <CloudOff className="w-2.5 h-2.5" /> OFFLINE
+                                        </span>
                                     )}
-                                </div>
+                                </h1>
+                                <p className="text-slate-400 text-xs mt-1">Are you sure you want to {action.toLowerCase()}?</p>
                             </div>
-                        </div>
 
-                        <h1 className="text-3xl font-black text-white mb-2 tracking-tight uppercase italic drop-shadow-sm">
-                            {action}
-                        </h1>
-                        <p className="text-slate-300 mb-10 font-medium text-sm">
-                            Are you sure you want to {action.toLowerCase()}?
-                        </p>
+                            {/* ══════ ALARM DIAL SECTION (Break-In Only) ══════ */}
+                            {isBreakIn && (
+                                <div className="px-6 pb-2">
+                                    {/* Circular Dial */}
+                                    <div className="flex justify-center mb-4">
+                                        <AlarmDial selectedIndex={selectedIdx} onSelect={handleDialSelect} />
+                                    </div>
 
-                        {isBreakIn && (
-                            <div className="mb-10 p-5 bg-black/30 backdrop-blur-md rounded-3xl border border-emerald-500/20 relative group shadow-lg shadow-emerald-500/5">
-                                <label className="text-[10px] font-black text-emerald-400 mb-4 block text-left uppercase tracking-widest opacity-80">
-                                    Reminder Interval
-                                </label>
-                                <div className="grid grid-cols-4 gap-2 relative bg-white/5 p-1.5 rounded-2xl border border-emerald-500/10">
-                                    {[0.1666, 1, 15, 30, 45, 60].map((mins) => (
-                                        <button
-                                            key={mins}
-                                            onClick={() => setBreakInterval(mins)}
-                                            className="relative py-2.5 px-1 rounded-xl text-xs font-black transition-all z-10 select-none group"
+                                    {/* Alarm Info Cards */}
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
+                                        {/* Alarm Time Card */}
+                                        <div className="rounded-2xl p-3.5"
+                                            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <Bell className="w-3 h-3 text-emerald-400" />
+                                                <span className="text-[8px] font-black text-emerald-400/80 uppercase tracking-widest">Alarm</span>
+                                            </div>
+                                            <p className="text-lg font-black text-white tabular-nums">{alarmTime}</p>
+                                        </div>
+                                        {/* Interval Card */}
+                                        <div className="rounded-2xl p-3.5"
+                                            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                            <div className="flex items-center gap-1.5 mb-2">
+                                                <Clock className="w-3 h-3 text-slate-400" />
+                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Repeat</span>
+                                            </div>
+                                            <p className="text-lg font-black text-white">
+                                                Every <span className="text-emerald-400">{PRESETS[selectedIdx].label}{PRESETS[selectedIdx].mins >= 1 ? 'm' : ''}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Set Alarm Toggle Row */}
+                                    <div className="flex items-center justify-between rounded-2xl px-5 py-4 mb-4 transition-all"
+                                        style={{ 
+                                            background: isAlarmEnabled ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.02)', 
+                                            border: isAlarmEnabled ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.06)' 
+                                        }}>
+                                        <div className="flex items-center gap-3">
+                                            <Bell className={`w-5 h-5 transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-500'}`} />
+                                            <span className={`text-sm font-bold transition-colors ${isAlarmEnabled ? 'text-slate-200' : 'text-slate-500'}`}>Set break reminder</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setIsAlarmEnabled(!isAlarmEnabled)}
+                                            className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isAlarmEnabled ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}
                                         >
-                                            <span className={`relative z-20 ${breakInterval === mins ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                {mins === 0.1666 ? '10s' : `${mins}m`}
-                                            </span>
-                                            {breakInterval === mins && (
-                                                <motion.div
-                                                    layoutId="activeInterval"
-                                                    className="absolute inset-0 bg-emerald-600 rounded-lg shadow-lg shadow-emerald-600/30 z-10"
-                                                    transition={{ type: "spring", bounce: 0, duration: 0.2 }}
-                                                />
-                                            )}
+                                            <motion.div 
+                                                animate={{ x: isAlarmEnabled ? 20 : 0 }}
+                                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                className="w-5 h-5 rounded-full bg-white shadow-lg"
+                                            />
                                         </button>
-                                    ))}
-                                </div>
-                                <div className="flex items-start gap-2 mt-4">
-                                    <Clock className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
-                                    <p className="text-[10px] text-emerald-300/70 text-left leading-relaxed font-medium">
-                                        You will receive a notification every <span className="text-white font-bold underline decoration-emerald-500/50">{breakInterval === 0.1666 ? '10 seconds' : `${breakInterval} minutes`}</span> to acknowledge your break status.
+                                    </div>
+
+                                    {/* Volume Slider Row (Matching Reference) */}
+                                    <div className={`space-y-3 mb-5 px-1 transition-opacity duration-300 ${isAlarmEnabled ? 'opacity-100' : 'opacity-30'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Volume2 className={`w-3.5 h-3.5 transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-600'}`} />
+                                                <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isAlarmEnabled ? 'text-emerald-400/80' : 'text-slate-600'}`}>Alarm sound</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-bold text-slate-500 italic">Default Tone</span>
+                                                <span className={`text-[10px] font-bold tabular-nums transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>{alarmVolume}%</span>
+                                            </div>
+                                        </div>
+                                        <div className="relative h-6 flex items-center group">
+                                            <div className="absolute inset-x-0 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                <motion.div 
+                                                    initial={false}
+                                                    animate={{ width: `${alarmVolume}%` }}
+                                                    className={`h-full transition-colors ${isAlarmEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                                                    style={{ boxShadow: isAlarmEnabled ? '0 0 10px rgba(16,185,129,0.3)' : 'none' }}
+                                                />
+                                            </div>
+                                            <input 
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                value={alarmVolume}
+                                                onChange={(e) => setAlarmVolume(parseInt(e.target.value))}
+                                                disabled={!isAlarmEnabled}
+                                                className="absolute inset-x-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
+                                            />
+                                            {/* Custom Thumb */}
+                                            <motion.div 
+                                                animate={{ left: `calc(${alarmVolume}% - 10px)` }}
+                                                className={`absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 transition-colors z-0 pointer-events-none ${isAlarmEnabled ? 'bg-white border-emerald-500' : 'bg-slate-600 border-slate-700'}`}
+                                                style={{ boxShadow: isAlarmEnabled ? '0 0 15px rgba(16,185,129,0.4)' : 'none' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Snooze Toggle Row */}
+                                    <div className={`flex items-center justify-between rounded-2xl px-5 py-4 mb-6 transition-all duration-300 ${!isAlarmEnabled ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}
+                                        style={{ 
+                                            background: isSnoozeEnabled ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.02)', 
+                                            border: isSnoozeEnabled ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.06)' 
+                                        }}>
+                                        <div className="flex items-center gap-3">
+                                            <motion.div animate={isSnoozeEnabled && isAlarmEnabled ? { rotate: [0, -10, 10, -10, 10, 0] } : {}} transition={{ duration: 0.5, repeat: isSnoozeEnabled ? Infinity : 0, repeatDelay: 2 }}>
+                                                <Bell className={`w-5 h-5 transition-colors ${isSnoozeEnabled ? 'text-emerald-400' : 'text-slate-500'}`} />
+                                            </motion.div>
+                                            <span className={`text-sm font-bold transition-colors ${isSnoozeEnabled ? 'text-slate-200' : 'text-slate-500'}`}>Snooze (5m)</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setIsSnoozeEnabled(!isSnoozeEnabled)}
+                                            disabled={!isAlarmEnabled}
+                                            className={`w-12 h-7 rounded-full transition-all duration-300 relative p-1 ${isSnoozeEnabled ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}
+                                        >
+                                            <motion.div 
+                                                animate={{ x: isSnoozeEnabled ? 20 : 0 }}
+                                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                className="w-5 h-5 rounded-full bg-white shadow-lg"
+                                            />
+                                        </button>
+                                    </div>
+
+                                    <p className="text-[8px] text-slate-600 text-center mb-4 font-medium italic">
+                                        {isAlarmEnabled 
+                                            ? "Rings until acknowledged · Works in background" 
+                                            : "Reminders are disabled for this session"}
                                     </p>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        <div className="flex flex-col gap-4">
-                            <Button
-                                onClick={() => handleConfirm()}
-                                variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
-                                className={`w-full !rounded-2xl !py-4 !text-base font-black tracking-widest uppercase italic shadow-2xl transition-all active:scale-[0.98] ${
-                                    isBreakIn ? '!bg-emerald-600 !border-emerald-700 hover:!bg-emerald-700 shadow-emerald-900/40' : 
-                                    isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
-                                    actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' : 
-                                    (isCheckIn ? '!bg-emerald-600 !border-emerald-700 shadow-emerald-900/40' : '')
-                                }`}
-                                isLoading={isSubmitting}
-                            >
-                                Confirm {action}
-                            </Button>
-                            <button
-                                onClick={handleCancel}
-                                disabled={isSubmitting}
-                                className="w-full py-4 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors cursor-pointer"
-                            >
-                                Cancel Action
-                            </button>
+                            {/* Action Buttons */}
+                            <div className="px-6 pb-6 flex flex-col gap-3">
+                                <Button
+                                    onClick={() => handleConfirm()}
+                                    variant={isCheckIn || isBreakIn || isBreakOut || actionParam === 'site-ot-in' ? "primary" : "danger"}
+                                    className={`w-full !rounded-2xl !py-4 !text-sm font-black tracking-widest uppercase italic shadow-2xl active:scale-[0.98] ${
+                                        isBreakIn ? '!bg-emerald-600 !border-emerald-700 hover:!bg-emerald-700 shadow-emerald-900/40' :
+                                        isBreakOut ? '!bg-amber-600 !border-amber-700 shadow-amber-900/40' :
+                                        actionParam?.includes('site-ot') ? '!bg-indigo-600 !border-indigo-700 shadow-indigo-900/40' :
+                                        (isCheckIn ? '!bg-emerald-600 !border-emerald-700 shadow-emerald-900/40' : '')
+                                    }`}
+                                    isLoading={isSubmitting}
+                                >
+                                    {isBreakIn ? 'Set Alarm & Break In' : `Confirm ${action}`}
+                                </Button>
+                                <button onClick={() => navigate(-1)} disabled={isSubmitting}
+                                    className="w-full py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-white transition-colors">
+                                    Cancel Action
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            <SmartFieldReportModal 
-                isOpen={isReportModalOpen}
-                onClose={() => setIsReportModalOpen(false)}
-                onConfirm={handleReportConfirm}
-                isLoading={isSubmitting}
-            />
+            <SmartFieldReportModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} onConfirm={handleReportConfirm} isLoading={isSubmitting} />
 
-            {/* Face Authentication Overlay */}
-            {showFaceAuth && (
-                <PersonalFaceAuth 
-                    userId={useAuthStore.getState().user?.id || ''}
-                    actionLabel={action}
-                    onVerified={handleFaceVerified}
-                    onCancel={() => setShowFaceAuth(false)}
-                    onFallback={() => setUsePasscodeFallback(true)}
-                />
-            )}
-
-            {/* Passcode Fallback Modal */}
+            {/* Passcode Modal */}
             <AnimatePresence>
                 {usePasscodeFallback && (
                     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-6">
-                        <motion.div 
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.9 }}
-                            className="w-full max-w-xs bg-white rounded-3xl p-8 text-center shadow-2xl"
-                        >
+                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+                            className="w-full max-w-xs bg-white rounded-3xl p-8 text-center shadow-2xl">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-lg font-black uppercase tracking-tight text-gray-900">Enter Passcode</h3>
-                                <button onClick={() => setUsePasscodeFallback(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                                    <X className="w-5 h-5 text-gray-400" />
-                                </button>
+                                <button onClick={() => setUsePasscodeFallback(false)} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-400" /></button>
                             </div>
-                            
                             <p className="text-xs text-gray-500 mb-8 font-medium">Use your 4-digit gate passcode to verify.</p>
-                            
-                            <input 
-                                type="password"
-                                maxLength={4}
-                                value={passcode}
-                                onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ''))}
-                                className="w-full text-center text-3xl font-black tracking-[0.5em] py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all mb-8"
-                                placeholder="****"
-                                autoFocus
-                            />
-
-                            <Button 
-                                onClick={handlePasscodeSubmit}
-                                isLoading={isVerifyingPasscode}
-                                disabled={passcode.length < 4}
-                                className="w-full !rounded-2xl !py-4 font-black uppercase tracking-widest italic !bg-emerald-600 !border-emerald-700"
-                            >
+                            <input type="password" maxLength={4} value={passcode} onChange={(e) => setPasscode(e.target.value.replace(/\D/g, ''))}
+                                className="w-full text-center text-3xl font-black tracking-[0.5em] py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all mb-8" placeholder="****" autoFocus />
+                            <Button onClick={handlePasscodeSubmit} isLoading={isVerifyingPasscode} disabled={passcode.length < 4}
+                                className="w-full !rounded-2xl !py-4 font-black uppercase tracking-widest italic !bg-emerald-600 !border-emerald-700">
                                 Verify Passcode
                             </Button>
                         </motion.div>

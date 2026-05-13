@@ -15,9 +15,10 @@ import { previewRingtone, stopRingtonePreview } from '../../plugins/ringtonePlug
 
 // ─── Interval options (mirrors AttendanceActionPage) ─────────────────────────
 const INTERVALS: { label: string; value: number }[] = [
-    { label: '10s', value: 0.1666 },
-    { label: '1m',  value: 1      },
+    { label: '5m',  value: 5      },
+    { label: '10m', value: 10     },
     { label: '15m', value: 15     },
+    { label: '20m', value: 20     },
     { label: '30m', value: 30     },
     { label: '45m', value: 45     },
     { label: '60m', value: 60     },
@@ -231,7 +232,7 @@ const BreakAlertModal: React.FC = () => {
                                 <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-3">
                                     Remind me again in
                                 </p>
-                                <div className="grid grid-cols-6 gap-1.5">
+                                <div className="grid grid-cols-4 gap-1.5">
                                     {INTERVALS.map(({ label, value }) => (
                                         <button
                                             key={label}

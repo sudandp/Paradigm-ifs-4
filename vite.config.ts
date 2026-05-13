@@ -10,27 +10,70 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // VitePWA({
-    //   registerType: 'autoUpdate',
-    //   includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
-    //   manifest: {
-    //     name: 'Paradigm Office',
-    //     short_name: 'Paradigm',
-    //     description: 'Paradigm Integrated Field Services Application',
-    //     theme_color: '#006B3F',
-    //     background_color: '#ffffff',
-    //     display: 'standalone',
-    //     orientation: 'portrait',
-    //     start_url: '/',
-    //     icons: [
-    //       {
-    //         src: '/Paradigm-Logo-3-1024x157.png',
-    //         sizes: '1024x157',
-    //         type: 'image/png'
-    //       }
-    //     ]
-    //   }
-    // })
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      manifest: {
+        name: 'Paradigm Office',
+        short_name: 'Paradigm',
+        description: 'Paradigm Integrated Field Services Application',
+        theme_color: '#006B3F',
+        background_color: '#ffffff',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        icons: [
+          {
+            src: '/Paradigm-Logo-3-1024x157.png',
+            sizes: '1024x157',
+            type: 'image/png'
+          },
+          {
+            src: '/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: '/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8MB standard limit
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,wasm}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-api-cache',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 24 * 60 * 60 // 24 hours
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|bin|json)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'asset-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 Days
+              }
+            }
+          }
+        ]
+      }
+    })
   ],
 
 

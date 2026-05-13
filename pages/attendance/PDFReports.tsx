@@ -1445,6 +1445,8 @@ export interface AttendanceLogDataRow {
   locationName: string;
   device?: string;
   photoUrl?: string;
+  isCached?: boolean;
+  cachedAt?: string;
 }
 
 export const AttendanceLogDocument: React.FC<{
