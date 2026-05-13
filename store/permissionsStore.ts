@@ -113,6 +113,10 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'access_support_desk', 'view_profile',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
+  technician: [
+    'create_enrollment', 'view_own_attendance', 'apply_for_leave', 'access_support_desk', 'view_profile',
+    'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
+  ],
 };
 
 export const usePermissionsStore = create(
@@ -144,7 +148,8 @@ export const usePermissionsStore = create(
           } else {
             const cleanId = role.id.toLowerCase();
             if (cleanId !== 'unverified' && !newPermissions[cleanId]) {
-              newPermissions[cleanId] = ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
+              // Fallback to technician permissions for any new/unknown role
+              newPermissions[cleanId] = [...(get().permissions['technician'] || defaultPermissions['technician'])];
               hasChanged = true;
             }
           }

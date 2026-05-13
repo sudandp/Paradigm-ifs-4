@@ -25,6 +25,7 @@
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
+    max-height: 90vh !important;
 }
 
 .device-warning-header {
@@ -57,6 +58,25 @@
     display: flex !important;
     flex-direction: column !important;
     gap: 20px !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: #22c55e rgba(255, 255, 255, 0.05) !important;
+}
+
+.device-warning-content::-webkit-scrollbar {
+    width: 5px !important;
+}
+
+.device-warning-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border-radius: 10px !important;
+}
+
+.device-warning-content::-webkit-scrollbar-thumb {
+    background: #22c55e !important;
+    border-radius: 10px !important;
 }
 
 .device-info-hero {

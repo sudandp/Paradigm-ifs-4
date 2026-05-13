@@ -110,15 +110,35 @@ const AddUserPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [orgs, fetchedRoles, fetchedDevices, structure, settings] = await Promise.all([
+        const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations] = await Promise.all([
           api.getOrganizations(),
           api.getRoles(),
           api.getBiometricDevices ? api.getBiometricDevices() : Promise.resolve([]),
           api.getOrganizationStructure(),
-          api.getAttendanceSettings()
+          api.getAttendanceSettings(),
+          api.getSiteStaffDesignations()
         ]);
+        
+        // Merge system roles with site staff designations
+        const mergedRoles: Role[] = [...fetchedRoles];
+        designations.forEach(desig => {
+          if (!desig.designation) return;
+          const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
+          if (!mergedRoles.some(r => r.id === slug)) {
+            mergedRoles.push({
+              id: slug,
+              displayName: desig.designation
+            });
+          }
+        });
+
+        // Sort roles A-Z
+        const sortedRoles = mergedRoles.sort((a, b) => 
+          (a.displayName || a.id).localeCompare(b.displayName || b.id)
+        );
+
         setOrganizations(orgs);
-        setRoles(fetchedRoles);
+        setRoles(sortedRoles);
         setAllDevices(fetchedDevices);
         setOrgStructure(structure);
         setAttendanceSettings(settings);
@@ -312,6 +332,14 @@ const AddUserPage: React.FC = () => {
     };
 
     try {
+      // Ensure the role entry exists in the database with Technician permissions
+      if (data.role) {
+        const roleObj = roles.find(r => r.id === data.role);
+        if (roleObj) {
+          await api.ensureRoleExists(roleObj.id, roleObj.displayName || roleObj.id);
+        }
+      }
+
       // Map the string geographic locationId back to the true Organization Group UUID 
       // that the database foreign key expects
       const processedData = { ...data };

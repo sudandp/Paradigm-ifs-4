@@ -7,11 +7,11 @@ export interface GateUser {
   userEmail?: string;
   userPhotoUrl?: string;
   faceDescriptor?: number[];
-  faceVersion?: number;
   qrToken: string;
   passcode: string | null;
   photoUrl: string | null;
   department?: string;
+  companyLogoUrl?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

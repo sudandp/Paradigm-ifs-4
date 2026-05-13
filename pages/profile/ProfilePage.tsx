@@ -115,7 +115,11 @@ const ProfilePage: React.FC = () => {
                     setGateUser(data);
                 } catch (err) {
                     console.error('[ProfilePage] Failed to fetch gate user data:', err);
+                } finally {
+                    setIsGateUserLoading(false);
                 }
+            } else {
+                setIsGateUserLoading(false);
             }
         };
         fetchGateData();
@@ -1168,7 +1172,6 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
-                    {createPortal(
                         <AnimatePresence>
                             {isSettingsOpen && (
                                 <motion.div 
@@ -1241,8 +1244,12 @@ const ProfilePage: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="p-4 bg-white rounded-3xl flex items-center justify-center shadow-inner">
-                                                    {gateUser?.qrToken ? (
+                                                <div className="p-4 bg-white rounded-3xl flex items-center justify-center shadow-inner min-h-[160px]">
+                                                    {isGateUserLoading ? (
+                                                        <div className="w-32 h-32 flex items-center justify-center">
+                                                            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                                                        </div>
+                                                    ) : gateUser?.qrToken ? (
                                                         <img 
                                                             src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${gateUser.qrToken}`} 
                                                             alt="Access QR" 
@@ -1311,9 +1318,18 @@ const ProfilePage: React.FC = () => {
                             </div>
                                 </motion.div>
                             )}
-                        </AnimatePresence>,
-                        document.body
-                    )}
+                        </AnimatePresence>
+
+                        {isEnrolling && (
+                            <CameraCaptureModal
+                                isOpen={isEnrolling}
+                                onClose={() => setIsEnrolling(false)}
+                                onCapture={handleEnrollmentCapture}
+                                captureGuidance="profile"
+                                isLoading={isRegistering}
+                            />
+                        )}
+
                 </div>
         );
     }
@@ -1912,6 +1928,7 @@ const ProfilePage: React.FC = () => {
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                     >
+
                         <motion.div 
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
@@ -1983,7 +2000,11 @@ const ProfilePage: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    {gateUser ? (
+                                                    {isGateUserLoading ? (
+                                                        <div className="w-full flex items-center justify-center py-2">
+                                                            <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
+                                                        </div>
+                                                    ) : gateUser ? (
                                                         <Button 
                                                             onClick={handleResetGateAccess}
                                                             variant="outline"

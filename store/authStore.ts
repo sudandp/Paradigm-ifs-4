@@ -168,7 +168,22 @@ const getTimeBasedGreeting = () => {
     return 'Good Evening';
 };
 
+// Custom storage adapter for Capacitor (matches supabase.ts logic)
+const CapacitorStorage = {
+  getItem: async (key: string): Promise<string | null> => {
+    const { value } = await Preferences.get({ key });
+    return value;
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    await Preferences.set({ key, value });
+  },
+  removeItem: async (key: string): Promise<void> => {
+    await Preferences.remove({ key });
+  },
+};
+
 export const useAuthStore = create<AuthState>()(
+
     persist(
         (set, get) => ({
         user: null,
@@ -1207,9 +1222,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
         name: 'paradigm-auth-storage',
-        storage: createJSONStorage(() => localStorage),
+        storage: createJSONStorage(() => CapacitorStorage as any),
         partialize: (state) => ({
+            user: state.user,
             isCheckedIn: state.isCheckedIn,
+
             lastCheckInTime: state.lastCheckInTime,
             lastCheckOutTime: state.lastCheckOutTime,
             firstBreakInTime: state.firstBreakInTime,

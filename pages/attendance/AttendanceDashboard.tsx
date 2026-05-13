@@ -20,6 +20,7 @@ import type {
     AttendanceSettings,
     OnboardingData,
     Organization,
+    OrganizationGroup,
     CompOffLog,
     UserHoliday,
     Role,
@@ -515,30 +516,62 @@ const AttendanceDashboard: React.FC = () => {
 
     const [selectedUser, setSelectedUser] = useState<string>('all');
     const [selectedRole, setSelectedRole] = useState<string>('all');
+    const [selectedCompany, setSelectedCompany] = useState<string>('all');
     const [selectedSite, setSelectedSite] = useState<string>('all');
-    const [selectedSociety, setSelectedSociety] = useState<string>('all');
+    const [selectedLocation, setSelectedLocation] = useState<string>('all');
     const [selectedStatus, setSelectedStatus] = useState<string>('all');
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [societies, setSocieties] = useState<any[]>([]);
+    const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
     
     // Dynamic lists derived from users (only show companies/sites that have users)
     const activeOrganizations = useMemo(() => {
-        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return organizations.sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
-        if (!users || users.length === 0) return [];
-        const orgIds = new Set(users.map(u => u.organizationId).filter(Boolean));
-        return organizations
-            .filter(org => orgIds.has(org.id))
-            .sort((a, b) => (a.fullName || a.shortName || '').localeCompare(b.fullName || b.shortName || ''));
-    }, [users, organizations, user]);
+        const comps: any[] = [];
+        orgStructure.forEach(g => {
+            if (g.companies) comps.push(...g.companies);
+        });
+        
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return comps.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        
+        const companyIds = new Set(users.map(u => u.societyId).filter(Boolean));
+        return comps
+            .filter(c => companyIds.has(c.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, orgStructure, user]);
 
     const activeSocieties = useMemo(() => {
-        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return societies.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        if (!users || users.length === 0) return [];
-        const socIds = new Set(users.map(u => u.societyId).filter(Boolean));
-        return societies
-            .filter(soc => socIds.has(soc.id))
+        const ents: any[] = [];
+        orgStructure.forEach(g => {
+            if (g.companies) {
+                g.companies.forEach((c: any) => {
+                    if (c.entities) ents.push(...c.entities);
+                });
+            }
+        });
+        
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return ents.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        
+        const siteIds = new Set(users.map(u => u.organizationId).filter(Boolean));
+        return ents
+            .filter(e => siteIds.has(e.id))
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, societies, user]);
+    }, [users, orgStructure, user]);
+    
+    const activeLocations = useMemo(() => {
+        const locations = new Set<string>();
+        orgStructure.forEach(g => {
+            if (g.companies) {
+                g.companies.forEach((c: any) => {
+                    if (c.location) locations.add(c.location);
+                });
+            }
+        });
+        users.forEach(u => {
+            if (u.location) locations.add(u.location);
+            if (u.locationName) locations.add(u.locationName);
+        });
+        return Array.from(locations).filter(Boolean).sort();
+    }, [orgStructure, users]);
     
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
@@ -559,10 +592,11 @@ const AttendanceDashboard: React.FC = () => {
     const [pendingDateRange, setPendingDateRange] = useState<Range>(dateRange);
     const [pendingActiveDateFilter, setPendingActiveDateFilter] = useState(activeDateFilter);
     const [pendingReportType, setPendingReportType] = useState<AttendanceReportType>(reportType);
+    const [pendingSelectedCompany, setPendingSelectedCompany] = useState(selectedCompany);
     const [pendingSelectedSite, setPendingSelectedSite] = useState(selectedSite);
-    const [pendingSelectedSociety, setPendingSelectedSociety] = useState(selectedSociety);
     const [pendingSelectedRole, setPendingSelectedRole] = useState(selectedRole);
     const [pendingSelectedUser, setPendingSelectedUser] = useState(selectedUser);
+    const [pendingSelectedLocation, setPendingSelectedLocation] = useState(selectedLocation);
     const [pendingSelectedStatus, setPendingSelectedStatus] = useState(selectedStatus);
     const [pendingSelectedRecordType, setPendingSelectedRecordType] = useState(selectedRecordType);
     const [pendingReportPageSize, setPendingReportPageSize] = useState(reportPageSize);
@@ -571,10 +605,11 @@ const AttendanceDashboard: React.FC = () => {
     // Watch for changes in pending filters vs applied filters
     useEffect(() => {
         const isDirty = 
+            pendingSelectedCompany !== selectedCompany ||
             pendingSelectedSite !== selectedSite ||
-            pendingSelectedSociety !== selectedSociety ||
             pendingSelectedRole !== selectedRole ||
             pendingSelectedUser !== selectedUser ||
+            pendingSelectedLocation !== selectedLocation ||
             pendingSelectedStatus !== selectedStatus ||
             pendingSelectedRecordType !== selectedRecordType ||
             pendingReportType !== reportType ||
@@ -584,8 +619,8 @@ const AttendanceDashboard: React.FC = () => {
             
         setIsFiltersDirty(isDirty);
     }, [
+        pendingSelectedCompany, selectedCompany,
         pendingSelectedSite, selectedSite,
-        pendingSelectedSociety, selectedSociety,
         pendingSelectedRole, selectedRole,
         pendingSelectedUser, selectedUser,
         pendingSelectedStatus, selectedStatus,
@@ -599,8 +634,9 @@ const AttendanceDashboard: React.FC = () => {
         setDateRange(pendingDateRange);
         setActiveDateFilter(pendingActiveDateFilter);
         setReportType(pendingReportType);
+        setSelectedCompany(pendingSelectedCompany);
         setSelectedSite(pendingSelectedSite);
-        setSelectedSociety(pendingSelectedSociety);
+        setSelectedLocation(pendingSelectedLocation);
         setSelectedRole(pendingSelectedRole);
         setSelectedUser(pendingSelectedUser);
         setSelectedStatus(pendingSelectedStatus);
@@ -761,6 +797,7 @@ const AttendanceDashboard: React.FC = () => {
                     if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
                         api.getOrganizations().then(setOrganizations);
                         api.getEntities().then(setSocieties);
+                        api.getOrganizationStructure().then(setOrgStructure);
                     }
                     api.getAllScopedSettings().then(setScopedSettings);
                 } catch (error) {
@@ -967,8 +1004,9 @@ const AttendanceDashboard: React.FC = () => {
                 }
 
                 let activeStaff = currentUsers.filter(u => u.role !== 'management');
+                if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
                 if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId === selectedSite);
-                if (selectedSociety !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedSociety);
+                if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
                 if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
@@ -1115,7 +1153,7 @@ const AttendanceDashboard: React.FC = () => {
             }
         };
         loadData();
-    }, [user, selectedSite, selectedSociety, selectedRole, users]);
+    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, users]);
 
     const reportTypeId = useId();
     const employeeId = useId();
@@ -1129,7 +1167,7 @@ const AttendanceDashboard: React.FC = () => {
         if (dateRange.startDate && dateRange.endDate) {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
-    }, [dateRange, fetchDashboardData, selectedSite, selectedSociety, selectedRole, users]);
+    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedRole, users]);
 
     const availableRoles = useMemo(() => {
         const roles = new Set(users.map(u => u.role).filter(Boolean));
@@ -1223,11 +1261,14 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedRole !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         }
+        if (selectedCompany !== 'all') {
+            filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
+        }
         if (selectedSite !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
-        if (selectedSociety !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
+        if (selectedLocation !== 'all') {
+            filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
         }
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
@@ -1486,7 +1527,7 @@ const AttendanceDashboard: React.FC = () => {
             });
         }
         return filteredData;
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays]);
 
     // 2. Attendance Log Data (Raw Events)
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
@@ -1501,11 +1542,14 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedRole !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         }
+        if (selectedCompany !== 'all') {
+            filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
+        }
         if (selectedSite !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
         }
-        if (selectedSociety !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
+        if (selectedLocation !== 'all') {
+            filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
         }
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
@@ -1573,7 +1617,7 @@ const AttendanceDashboard: React.FC = () => {
                 return b.time.localeCompare(a.time);
             });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus, kioskDevices]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices]);
 
     // 3. Monthly Report Data (Aggregated)
     // Legacy monthlyReportData removed - now handled by unified MonthlyHoursReport component
@@ -1588,8 +1632,9 @@ const AttendanceDashboard: React.FC = () => {
         let filteredUsers = users.filter(u => u.role !== 'management');
         if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
+        if (selectedCompany !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
         if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
-        if (selectedSociety !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedSociety);
+        if (selectedLocation !== 'all') filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
@@ -1643,7 +1688,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         return data.sort((a, b) => b.date.localeCompare(a.date));
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedSite, selectedSociety, selectedStatus]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus]);
 
 
     // Helper to map high-precision monthly data to the simple status grid format
@@ -1671,7 +1716,7 @@ const AttendanceDashboard: React.FC = () => {
         const renderReportContent = useCallback((isPreview: boolean = false) => {
         const reportDateRange = `${format(dateRange.startDate!, 'yyyy-MM-dd')} to ${format(dateRange.endDate!, 'yyyy-MM-dd')}`;
         const orgName = selectedSite !== 'all' ? users.find(u => u.organizationId === selectedSite)?.organizationName : 'All Sites';
-        const socName = selectedSociety !== 'all' ? users.find(u => u.societyId === selectedSociety)?.societyName : 'All Societies';
+        const socName = selectedCompany !== 'all' ? users.find(u => u.societyId === selectedCompany)?.societyName : 'All Companies';
         const logoBase64 = logoForPdf;
         const currentLogoUrl = useLogoStore.getState().currentLogo;
         const fallbackLogoUrl = logoBase64 || currentLogoUrl || pdfLogoLocalPath;
@@ -1705,7 +1750,8 @@ const AttendanceDashboard: React.FC = () => {
                                         scopedSettings={scopedSettings}
                                         selectedStatus={selectedStatus}
                                         selectedSite={selectedSite}
-                                        selectedSociety={selectedSociety}
+                                        selectedLocation={selectedLocation}
+                                        selectedCompany={selectedCompany}
                                         selectedRole={selectedRole}
                                         users={users}
                                         onDataLoaded={(data) => {
@@ -1777,7 +1823,8 @@ const AttendanceDashboard: React.FC = () => {
                                             hideHeader={false}
                                             selectedStatus={selectedStatus}
                                             selectedSite={selectedSite}
-                                            selectedSociety={selectedSociety}
+                                            selectedLocation={selectedLocation}
+                                            selectedCompany={selectedCompany}
                                             selectedRole={selectedRole}
                                             users={users}
                                         />
@@ -1823,7 +1870,7 @@ const AttendanceDashboard: React.FC = () => {
         }
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedSite, selectedSociety, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData]);
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -2441,7 +2488,7 @@ const AttendanceDashboard: React.FC = () => {
                     user: selectedUser,
                     role: selectedRole,
                     site: selectedSite,
-                    society: selectedSociety,
+                    company: selectedCompany,
                     status: selectedStatus,
                     dateRange: {
                         start: format(dateRange.startDate!, 'yyyy-MM-dd'),
@@ -2710,175 +2757,238 @@ const AttendanceDashboard: React.FC = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-x-3 gap-y-4">
                     <div className="col-span-1">
                         <label htmlFor={reportTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Report Type</label>
-                        <select
-                            id={reportTypeId}
-                            name="reportType"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingReportType}
-                            onChange={(e) => setPendingReportType(e.target.value as any)}
-                        >
-                            <option value="basic">Basic Report</option>
-                            <option value="monthly">Monthly Summary</option>
-                            <option value="work_hours">Work Hours Report</option>
-                            {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
-                                <option value="site_ot">Site OT Report</option>
-                            )}
-                            {isAdmin(user?.role) && (
-                                <>
-                                    <option value="log">Attendance Logs</option>
-                                    <option value="audit">Audit Logs</option>
-                                </>
-                            )}
-                        </select>
+                        <div className="relative">
+                            <select
+                                id={reportTypeId}
+                                name="reportType"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                value={pendingReportType}
+                                onChange={(e) => setPendingReportType(e.target.value as any)}
+                            >
+                                <option value="basic">Basic Report</option>
+                                <option value="monthly">Monthly Summary</option>
+                                <option value="work_hours">Work Hours Report</option>
+                                {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
+                                    <option value="site_ot">Site OT Report</option>
+                                )}
+                                {isAdmin(user?.role) && (
+                                    <>
+                                        <option value="log">Attendance Logs</option>
+                                        <option value="audit">Audit Logs</option>
+                                    </>
+                                )}
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
+                        </div>
                     </div>
 
                     {!isEmployeeView && (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
                         <>
-                                    <div className="col-span-1">
-                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
-                                        <select
-                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                                            value={pendingSelectedSite}
-                                            onChange={(e) => {
-                                                setPendingSelectedSite(e.target.value);
-                                                setPendingSelectedUser('all');
-                                            }}
-                                        >
-                                            <option value="all">All Companies</option>
-                                            {activeOrganizations.map(org => (
-                                                <option key={org.id} value={org.id}>{org.fullName || org.shortName}</option>
-                                            ))}
-                                        </select>
+                            <div className="col-span-1">
+                                <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Location</label>
+                                <div className="relative">
+                                    <select
+                                        className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                        value={pendingSelectedLocation}
+                                        onChange={(e) => {
+                                            setPendingSelectedLocation(e.target.value);
+                                            setPendingSelectedUser('all');
+                                        }}
+                                    >
+                                        <option value="all">All Locations</option>
+                                        {activeLocations.map(loc => (
+                                            <option key={loc} value={loc}>{loc}</option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                        <Filter className="h-3.5 w-3.5 opacity-50" />
                                     </div>
-                                    <div className="col-span-1">
-                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
-                                        <select
-                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                                            value={pendingSelectedSociety}
-                                            onChange={(e) => {
-                                                setPendingSelectedSociety(e.target.value);
-                                                setPendingSelectedUser('all');
-                                            }}
-                                        >
-                                            <option value="all">All Sites</option>
-                                            {activeSocieties
-                                                .filter(s => pendingSelectedSite === 'all' || s.organizationId === pendingSelectedSite)
-                                                .map(soc => (
-                                                    <option key={soc.id} value={soc.id}>{soc.name}</option>
-                                                ))
-                                            }
-                                        </select>
+                                </div>
+                            </div>
+
+                            <div className="col-span-1">
+                                <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
+                                <div className="relative">
+                                    <select
+                                        className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                        value={pendingSelectedCompany}
+                                        onChange={(e) => {
+                                            setPendingSelectedCompany(e.target.value);
+                                            setPendingSelectedUser('all');
+                                        }}
+                                    >
+                                        <option value="all">All Companies</option>
+                                        {activeOrganizations.map(org => (
+                                            <option key={org.id} value={org.id}>{org.name}</option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                        <Filter className="h-3.5 w-3.5 opacity-50" />
                                     </div>
-                                    <div className="col-span-1">
-                                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
-                                        <select
-                                            id={roleId}
-                                            name="role"
-                                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                                            value={pendingSelectedRole}
-                                            onChange={(e) => {
-                                                setPendingSelectedRole(e.target.value);
-                                                setPendingSelectedUser('all');
-                                            }}
-                                        >
-                                            <option value="all">All Roles</option>
-                                            {availableRoles.map(role => (
-                                                <option key={role} value={role}>
-                                                    {role ? role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                </div>
+                            </div>
+                            <div className="col-span-1">
+                                <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
+                                <div className="relative">
+                                    <select
+                                        className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                        value={pendingSelectedSite}
+                                        onChange={(e) => {
+                                            setPendingSelectedSite(e.target.value);
+                                            setPendingSelectedUser('all');
+                                        }}
+                                    >
+                                        <option value="all">All Sites</option>
+                                        {activeSocieties
+                                            .filter(s => pendingSelectedCompany === 'all' || s.companyId === pendingSelectedCompany)
+                                            .map(soc => (
+                                                <option key={soc.id} value={soc.id}>{soc.name}</option>
+                                            ))
+                                        }
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                        <Filter className="h-3.5 w-3.5 opacity-50" />
                                     </div>
-                                </>
-                            )}
+                                </div>
+                            </div>
+                            <div className="col-span-1">
+                                <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
+                                <div className="relative">
+                                    <select
+                                        id={roleId}
+                                        name="role"
+                                        className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                        value={pendingSelectedRole}
+                                        onChange={(e) => {
+                                            setPendingSelectedRole(e.target.value);
+                                            setPendingSelectedUser('all');
+                                        }}
+                                    >
+                                        <option value="all">All Roles</option>
+                                        {availableRoles.map(role => (
+                                            <option key={role} value={role}>
+                                                {role ? role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                        <Filter className="h-3.5 w-3.5 opacity-50" />
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
 
                     {(isAdmin(user?.role) || isReportingManager || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
                         <div className="col-span-1">
                             <label htmlFor={employeeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Employee</label>
-                            <select
-                                id={employeeId}
-                                name="employee"
-                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                                value={pendingSelectedUser}
-                                onChange={(e) => setPendingSelectedUser(e.target.value)}
-                            >
-                                <option value="all">All Employees</option>
-                                {users
-                                    .filter(u => 
-                                        (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
-                                        (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
-                                        (pendingSelectedSociety === 'all' || u.societyId === pendingSelectedSociety)
-                                    )
-                                    .sort((a, b) => a.name.localeCompare(b.name))
-                                    .map(u => (
-                                        <option key={u.id} value={u.id}>{u.name}</option>
-                                    ))
-                                }
-                            </select>
+                            <div className="relative">
+                                <select
+                                    id={employeeId}
+                                    name="employee"
+                                    className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                    value={pendingSelectedUser}
+                                    onChange={(e) => setPendingSelectedUser(e.target.value)}
+                                >
+                                    <option value="all">All Employees</option>
+                                    {users
+                                        .filter(u => 
+                                            (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
+                                            (pendingSelectedCompany === 'all' || u.societyId === pendingSelectedCompany) &&
+                                            (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
+                                            (pendingSelectedLocation === 'all' || (u.location || u.locationName || '').toLowerCase() === pendingSelectedLocation.toLowerCase())
+                                        )
+                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                        .map(u => (
+                                            <option key={u.id} value={u.id}>{u.name}</option>
+                                        ))
+                                    }
+                                </select>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                    <Filter className="h-3.5 w-3.5 opacity-50" />
+                                </div>
+                            </div>
                         </div>
                     )}
 
                     <div className="col-span-1">
                         <label htmlFor={statusId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Status</label>
-                        <select
-                            id={statusId}
-                            name="status"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedStatus}
-                            onChange={(e) => setPendingSelectedStatus(e.target.value)}
-                        >
-                            <option value="all">All Status</option>
-                            <option value="ACTIVE_USERS">Active Users Only</option>
-                            <option value="P">Present (P)</option>
-                            <option value="0.5P">Half Day (0.5P)</option>
-                            <option value="A">Absent (A)</option>
-                            <option value="S/L">Sick Leave (S/L)</option>
-                            <option value="E/L">Earned Leave (E/L)</option>
-                            <option value="F/H">Floating Holiday (F/H)</option>
-                            <option value="C/O">Comp Off (C/O)</option>
-                            <option value="M/L">Maternity Leave (M/L)</option>
-                            <option value="C/C">Child Care Leave (C/C)</option>
-                            <option value="P/L">Pink Leave (P/L)</option>
-                            <option value="P/M">Permission (P/M)</option>
-                            <option value="LOP">Loss of Pay (LOP)</option>
-                            <option value="W/H">Work From Home (W/H)</option>
-                            <option value="W/O">Week Off (W/O)</option>
-                            <option value="W/P">Week Off Present (W/P)</option>
-                            <option value="H">Holiday (H)</option>
-                            <option value="H/P">Holiday Present (H/P)</option>
-                        </select>
+                        <div className="relative">
+                            <select
+                                id={statusId}
+                                name="status"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                value={pendingSelectedStatus}
+                                onChange={(e) => setPendingSelectedStatus(e.target.value)}
+                            >
+                                <option value="all">All Status</option>
+                                <option value="ACTIVE_USERS">Active Users Only</option>
+                                <option value="P">Present (P)</option>
+                                <option value="0.5P">Half Day (0.5P)</option>
+                                <option value="A">Absent (A)</option>
+                                <option value="S/L">Sick Leave (S/L)</option>
+                                <option value="E/L">Earned Leave (E/L)</option>
+                                <option value="F/H">Floating Holiday (F/H)</option>
+                                <option value="C/O">Comp Off (C/O)</option>
+                                <option value="M/L">Maternity Leave (M/L)</option>
+                                <option value="C/C">Child Care Leave (C/C)</option>
+                                <option value="P/L">Pink Leave (P/L)</option>
+                                <option value="P/M">Permission (P/M)</option>
+                                <option value="LOP">Loss of Pay (LOP)</option>
+                                <option value="W/H">Work From Home (W/H)</option>
+                                <option value="W/O">Week Off (W/O)</option>
+                                <option value="W/P">Week Off Present (W/P)</option>
+                                <option value="H">Holiday (H)</option>
+                                <option value="H/P">Holiday Present (H/P)</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="col-span-2 md:col-span-1">
                         <label htmlFor={recordTypeId} className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Record Type</label>
-                        <select
-                            id={recordTypeId}
-                            name="recordType"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingSelectedRecordType}
-                            onChange={(e) => setPendingSelectedRecordType(e.target.value)}
-                        >
-                            <option value="all">All Records</option>
-                            <option value="complete">Complete (Punch-in & Punch-out)</option>
-                            <option value="missing_checkout">Missing Punch-out</option>
-                            <option value="missing_checkin">Missing Punch-in</option>
-                            <option value="incomplete">Incomplete (Any Missing)</option>
-                        </select>
+                        <div className="relative">
+                            <select
+                                id={recordTypeId}
+                                name="recordType"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                value={pendingSelectedRecordType}
+                                onChange={(e) => setPendingSelectedRecordType(e.target.value)}
+                            >
+                                <option value="all">All Records</option>
+                                <option value="complete">Complete (Punch-in & Punch-out)</option>
+                                <option value="missing_checkout">Missing Punch-out</option>
+                                <option value="missing_checkin">Missing Punch-in</option>
+                                <option value="incomplete">Incomplete (Any Missing)</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="col-span-1">
                         <label htmlFor="pageSize-select" className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Show Records</label>
-                        <select
-                            id="pageSize-select"
-                            name="pageSize"
-                            className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg px-3 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none"
-                            value={pendingReportPageSize}
-                            onChange={(e) => setPendingReportPageSize(Number(e.target.value))}
-                        >
-                            <option value={20}>20 Records</option>
-                            <option value={50}>50 Records</option>
-                            <option value={100}>100 Records</option>
-                        </select>
+                        <div className="relative">
+                            <select
+                                id="pageSize-select"
+                                name="pageSize"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
+                                value={pendingReportPageSize}
+                                onChange={(e) => setPendingReportPageSize(Number(e.target.value))}
+                            >
+                                <option value={20}>20 Records</option>
+                                <option value={50}>50 Records</option>
+                                <option value={100}>100 Records</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="col-span-2 md:col-span-1 xl:ml-auto">

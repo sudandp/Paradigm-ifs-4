@@ -1882,6 +1882,34 @@ export const api = {
     if (error) throw error;
   },
 
+  bulkUpdateUsers: async (userIds: string[], updates: Partial<User>): Promise<void> => {
+    if (userIds.length === 0) return;
+
+    const { role, organizationId, organizationName, societyId, societyName, locationId, ...rest } = updates;
+    const dbUpdates: any = toSnakeCase(rest);
+    if (role) dbUpdates.role_id = role;
+    if (organizationId !== undefined) dbUpdates.organization_id = organizationId;
+    if (organizationName !== undefined) dbUpdates.organization_name = organizationName;
+    if (societyId !== undefined) dbUpdates.society_id = societyId;
+    if (societyName !== undefined) dbUpdates.society_name = societyName;
+    if (locationId !== undefined) dbUpdates.location_id = locationId;
+
+    // Final surgical cleanup: converting empty strings and undefined to null for database compatibility.
+    // This prevents errors with non-text columns (like DATE or UUID) when optional fields are left empty.
+    Object.keys(dbUpdates).forEach(key => {
+      if (dbUpdates[key] === '' || dbUpdates[key] === undefined) {
+        dbUpdates[key] = null;
+      }
+    });
+
+    const { error } = await supabase
+      .from('users')
+      .update(dbUpdates)
+      .in('id', userIds);
+
+    if (error) throw error;
+  },
+
   updateUserReportingManager: async (userId: string, managerId: string | null, slot: 1 | 2 | 3 = 1) => {
     const columnMap = { 1: 'reporting_manager_id', 2: 'reporting_manager_2_id', 3: 'reporting_manager_3_id' };
     const { error } = await supabase.from('users').update({ [columnMap[slot]]: managerId }).eq('id', userId);
@@ -2326,6 +2354,21 @@ export const api = {
   saveRoles: async (roles: Role[]): Promise<void> => {
     const { error } = await supabase.from('roles').upsert(toSnakeCase(roles));
     if (error) throw error;
+  },
+
+  ensureRoleExists: async (roleId: string, displayName: string, templateRoleId: string = 'technician'): Promise<void> => {
+    try {
+      const { data: existing } = await supabase.from('roles').select('id').eq('id', roleId).maybeSingle();
+      if (existing) return;
+
+      const { data: template } = await supabase.from('roles').select('permissions').eq('id', templateRoleId).maybeSingle();
+      const permissions = template?.permissions || ['view_profile', 'view_own_attendance', 'view_mobile_nav_home', 'view_mobile_nav_profile'];
+
+      const newRole: Role = { id: roleId, displayName: displayName, permissions: permissions };
+      await supabase.from('roles').upsert(toSnakeCase([newRole]));
+    } catch (err) {
+      console.error('[API] Role auto-creation failed:', err);
+    }
   },
   getHolidays: async (): Promise<Holiday[]> => {
     const { data, error } = await supabase.from('holidays').select('*');

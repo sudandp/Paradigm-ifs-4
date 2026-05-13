@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import {
   registerGateUser, fetchAllGateUsers, deleteGateUser, uploadGatePhoto,
-  createGateOnlyUser
+  createGateOnlyUser, resolvePhotoUrl
 } from '../../services/gateApi';
 import type { GateUser } from '../../types/gate';
 import { useLogoStore } from '../../store/logoStore';
@@ -133,11 +133,18 @@ const RegisterGateUser: React.FC = () => {
       // 2. Load all users for the search list
       const { data: users, error } = await supabase
         .from('users')
-        .select('id, name, email, photo_url')
+        .select(`
+          id, name, email, photo_url,
+          companies:society_id (logo_url)
+        `)
         .order('name');
         
       if (error) throw error;
-      setEmployees(users || []);
+      setEmployees((users || []).map((u: any) => ({
+        ...u,
+        photo_url: resolvePhotoUrl(u.photo_url),
+        companyLogoUrl: resolvePhotoUrl(u.companies?.logo_url)
+      })));
     } catch (error) {
       console.error('Failed to load employees:', error);
     }
@@ -302,6 +309,28 @@ const RegisterGateUser: React.FC = () => {
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${token}`;
   };
 
+  const ImageWithFallback: React.FC<{ src?: string; fallbackSrc?: string | null; alt?: string; className?: string }> = ({ src, fallbackSrc, alt, className }) => {
+    const [error, setError] = useState(false);
+    const [fallbackError, setFallbackError] = useState(false);
+
+    // If main image fails or is missing
+    if (!src || error) {
+      // If we have a company logo fallback and it hasn't failed yet
+      if (fallbackSrc && !fallbackError) {
+        return <img src={fallbackSrc} alt={alt} className={`${className} object-contain p-2`} onError={() => setFallbackError(true)} />;
+      }
+      
+      // Ultimate fallback: Generic User Icon
+      return (
+        <div className={`${className} bg-white/5 md:bg-slate-100 flex items-center justify-center border border-white/10 md:border-slate-200`}>
+          <User className="w-1/2 h-1/2 text-white/20 md:text-slate-300" />
+        </div>
+      );
+    }
+
+    return <img src={src} alt={alt} className={className} onError={() => setError(true)} />;
+  };
+
   return (
     <div className="min-h-screen bg-[#011612] md:bg-slate-50 p-4 md:p-8 w-full pb-24">
       <div className="flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-10 mb-10 pb-6 border-b border-white/5 md:border-slate-200">
@@ -352,13 +381,11 @@ const RegisterGateUser: React.FC = () => {
                 <div className="flex gap-4 mb-6">
                   <div className="relative">
                     <div className="absolute -inset-1 bg-gradient-to-tr from-[#10b981] to-emerald-400 rounded-[22px] blur opacity-20 group-hover:opacity-40 transition-opacity" />
-                    {u.userPhotoUrl ? (
-                      <img src={u.userPhotoUrl} alt="" className="relative w-20 h-20 rounded-[20px] object-cover border border-white/10 md:border-slate-200" />
-                    ) : (
-                      <div className="relative w-20 h-20 rounded-[20px] bg-white/5 md:bg-slate-100 flex items-center justify-center border border-white/10 md:border-slate-200">
-                        <User className="w-8 h-8 text-white/20 md:text-slate-300" />
-                      </div>
-                    )}
+                    <ImageWithFallback 
+                      src={u.userPhotoUrl} 
+                      fallbackSrc={u.companyLogoUrl}
+                      className="relative w-20 h-20 rounded-[20px] object-cover border border-white/10 md:border-slate-200 bg-white" 
+                    />
                   </div>
                   <div className="flex-1 min-w-0 pt-1">
                     <h3 className="font-black text-white md:text-slate-900 text-lg tracking-tight truncate">{u.userName || 'Unknown'}</h3>
@@ -668,7 +695,11 @@ const RegisterGateUser: React.FC = () => {
                         >
                           <div className="relative">
                             <div className="absolute -inset-1 bg-[#10b981] rounded-2xl blur opacity-0 group-hover:opacity-20 transition-opacity" />
-                            <img src={emp.photo_url || ''} alt="" className="relative w-14 h-14 rounded-2xl object-cover border border-white/10 md:border-slate-200" />
+                            <ImageWithFallback 
+                              src={emp.photo_url || ''} 
+                              fallbackSrc={(emp as any).companyLogoUrl}
+                              className="relative w-14 h-14 rounded-2xl object-cover border border-white/10 md:border-slate-200" 
+                            />
                           </div>
                           <div className="text-left flex-1 min-w-0">
                             <p className="font-black text-white md:text-slate-900 group-hover:text-[#10b981] transition-colors truncate">{emp.name}</p>
@@ -683,9 +714,9 @@ const RegisterGateUser: React.FC = () => {
                   <div className="space-y-8">
                     <div className="flex items-center gap-5 p-6 rounded-[32px] bg-white/5 md:bg-slate-50 border border-white/10 md:border-slate-200">
                       <div className="relative">
-                        <img 
+                        <ImageWithFallback 
                           src={capturedPhoto || selectedEmployee.photo_url || ''} 
-                          alt="" 
+                          fallbackSrc={(selectedEmployee as any).companyLogoUrl}
                           className={`w-20 h-20 rounded-2xl object-cover border-2 ${capturedPhoto ? 'border-[#10b981] shadow-[0_0_20px_rgba(16,185,129,0.2)]' : 'border-white/10 md:border-slate-200'}`} 
                         />
                         {capturedPhoto && (

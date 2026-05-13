@@ -12,6 +12,7 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Pagination from '../../components/ui/Pagination';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
+import Modal from '../../components/ui/Modal';
 import { 
   getPendingDeviceRequests, 
   approveDeviceRequest, 
@@ -129,67 +130,81 @@ const DeviceApprovals: React.FC = () => {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-6">
             {requests
               .slice((currentPage - 1) * pageSize, currentPage * pageSize)
               .map((request) => (
-              <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-md transition-shadow">
-                
-                {/* User Info */}
-                <div className="flex items-center gap-4 min-w-[200px]">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                    {request.userName?.charAt(0) || 'U'}
+              <div 
+                key={request.id} 
+                className="group bg-white rounded-2xl border border-gray-100 p-1 flex flex-col transition-all duration-300 hover:shadow-card hover:border-accent/20"
+              >
+                <div className="p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
+                  
+                  {/* User Section */}
+                  <div className="flex items-center gap-4 min-w-[240px]">
+                    <div className="relative">
+                      <div className="w-14 h-14 rounded-2xl bg-accent/5 flex items-center justify-center text-accent font-bold text-xl border border-accent/10 shadow-sm transition-transform group-hover:scale-105">
+                        {request.userName?.charAt(0) || 'U'}
+                      </div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white flex items-center justify-center shadow-sm border border-gray-100">
+                        {request.deviceType === 'web' ? <Monitor className="w-3 h-3 text-blue-500" /> : <Smartphone className="w-3 h-3 text-green-500" />}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-lg leading-tight mb-1">{request.userName || 'Unknown User'}</h4>
+                      <div className="flex items-center text-xs text-muted font-medium">
+                        <Clock className="w-3.5 h-3.5 mr-1.5 text-accent/60" />
+                        Requested {formatDate(request.requestedAt)}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">{request.userName || 'Unknown User'}</h4>
-                    <p className="text-xs text-gray-500">Requested {formatDate(request.requestedAt)}</p>
-                  </div>
-                </div>
 
-                {/* Device Info */}
-                <div className="flex-1 flex items-start gap-4 p-3 bg-gray-50 rounded-lg w-full md:w-auto">
-                  <div className="mt-1">
-                    {request.deviceType === 'web' ? <Monitor className="w-5 h-5 text-blue-500" /> : <Smartphone className="w-5 h-5 text-green-500" />}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-800">{request.deviceName}</p>
-                    <p className="text-xs text-gray-500 break-all">
-                      {request.deviceType.toUpperCase()} • {request.deviceInfo?.browser || request.deviceInfo?.platform}
-                    </p>
-                    {request.currentDeviceCount !== undefined && (
-                      <p className="text-xs text-amber-600 mt-1 flex items-center">
-                         <AlertCircle className="w-3 h-3 mr-1" />
-                         User has {request.currentDeviceCount} active {request.deviceType} device(s)
+                  {/* Device Detail Section */}
+                  <div className="flex-1 w-full lg:w-auto bg-page/50 border border-gray-100/50 rounded-2xl p-4 flex items-center gap-5 transition-colors group-hover:bg-page">
+                    <div className="hidden sm:flex w-12 h-12 rounded-xl bg-white border border-gray-100 items-center justify-center text-muted group-hover:text-accent transition-colors shadow-sm">
+                      {request.deviceType === 'web' ? <Monitor className="w-6 h-6" /> : <Smartphone className="w-6 h-6" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-bold text-gray-800 truncate text-base">{request.deviceName}</p>
+                        <span className="text-[10px] font-bold text-accent px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 uppercase tracking-wider">
+                          {request.deviceType}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted font-medium truncate opacity-80">
+                        {request.deviceInfo?.browser || 'Unknown Browser'} • {request.deviceInfo?.os || request.deviceInfo?.platform || 'Unknown OS'}
                       </p>
-                    )}
+                      {request.currentDeviceCount !== undefined && (
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-100 text-[11px] font-bold text-amber-700 shadow-sm">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          <span>{request.currentDeviceCount} Existing Sessions</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Actions */}
-                <div 
-                  className="flex flex-row items-center justify-between gap-3 w-full mt-4 border-t border-gray-100 pt-4"
-                  style={{ display: 'flex', flexDirection: 'row', width: '100%', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f3f4f6' }}
-                >
-                  <div 
-                    role="button"
-                    onClick={() => { if (!processingId) handleRejectInit(request.id, request.deviceName) }}
-                    className={`flex items-center justify-center rounded-lg font-bold text-sm cursor-pointer transition-colors ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
-                    style={{ flex: 1, padding: '12px 16px', backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}
-                  >
-                    <X className="w-4 h-4 mr-1.5" /> Reject
-                  </div>
-                  <div 
-                    role="button"
-                    onClick={() => { if (!processingId) handleApproveInit(request.id, request.deviceName) }}
-                    className={`flex items-center justify-center rounded-lg font-bold text-sm cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
-                    style={{ flex: 1, padding: '12px 16px', backgroundColor: '#22c55e', color: '#ffffff', border: '1px solid #16a34a' }}
-                  >
-                    {processingId === request.id ? (
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    ) : (
-                      <Check className="w-4 h-4 mr-1.5" />
-                    )}
-                    Approve
+                  {/* Action Section */}
+                  <div className="flex items-center gap-3 w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100/80">
+                    <button 
+                      onClick={() => { if (!processingId) handleRejectInit(request.id, request.deviceName) }}
+                      disabled={!!processingId}
+                      className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 transition-all hover:shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Reject</span>
+                    </button>
+                    <button 
+                      onClick={() => { if (!processingId) handleApproveInit(request.id, request.deviceName) }}
+                      disabled={!!processingId}
+                      className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold text-sm text-white bg-accent hover:bg-accent-dark border border-accent-dark/10 transition-all shadow-md shadow-accent/10 hover:shadow-lg hover:shadow-accent/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {processingId === request.id ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" strokeWidth={3} />
+                      )}
+                      <span>Approve</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -208,87 +223,68 @@ const DeviceApprovals: React.FC = () => {
       )}
 
       {/* Approval Confirmation Modal */}
-      {approveDialog && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                <Check className="w-5 h-5 text-green-600" />
+      <Modal
+        isOpen={!!approveDialog}
+        onClose={() => setApproveDialog(null)}
+        onConfirm={handleApproveConfirm}
+        title="Approve Device Request"
+        confirmButtonText="Approve Device"
+        confirmButtonVariant="primary"
+        isLoading={processingId === approveDialog?.id}
+      >
+        {approveDialog && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 p-4 bg-accent/5 rounded-xl border border-accent/10">
+              <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center text-accent shadow-sm">
+                <Check className="w-6 h-6" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Approve Device</h3>
+              <div>
+                <p className="text-sm text-gray-500 font-medium">Authorizing Device</p>
+                <p className="font-bold text-gray-900">{approveDialog.name}</p>
+              </div>
             </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Are you sure you want to approve the device <strong>{approveDialog.name}</strong>? The user will be able to access the system from this device.
+            <p className="text-sm leading-relaxed text-muted">
+              Are you sure you want to approve this device? The user will be granted immediate access to the system from this terminal.
             </p>
-            
-            <div className="flex justify-between w-full gap-3 mt-6" style={{ display: 'flex', width: '100%', gap: '12px', marginTop: '24px' }}>
-              <div 
-                role="button"
-                onClick={() => setApproveDialog(null)}
-                className="flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors border border-red-200"
-                style={{ flex: 1, padding: '12px 16px', color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}
-              >
-                Cancel
-              </div>
-              <div 
-                role="button"
-                onClick={() => { if (!processingId) handleApproveConfirm() }}
-                className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
-                style={{ flex: 1, padding: '12px 16px', backgroundColor: '#16a34a', color: 'white', borderRadius: '8px' }}
-              >
-                {processingId === approveDialog.id ? (
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                ) : (
-                  <Check className="w-4 h-4 mr-1.5" />
-                )}
-                Approve Device
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Rejection Modal */}
-      {rejectDialog && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Reject Device Request</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Please provide a reason for rejecting access to <strong>{rejectDialog.name}</strong>.
-            </p>
+      <Modal
+        isOpen={!!rejectDialog}
+        onClose={() => setRejectDialog(null)}
+        onConfirm={handleRejectConfirm}
+        title="Reject Device Request"
+        confirmButtonText="Reject Request"
+        confirmButtonVariant="danger"
+        isLoading={processingId === rejectDialog?.id}
+      >
+        {rejectDialog && (
+          <div className="space-y-5">
+            <div>
+              <p className="text-sm text-muted mb-4 font-medium">
+                Please provide a reason for rejecting access to <span className="text-gray-900 font-bold">{rejectDialog.name}</span>.
+              </p>
+              
+              <textarea
+                className="w-full border border-gray-200 rounded-2xl p-4 min-h-[120px] focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none text-sm transition-all bg-page/30"
+                placeholder="e.g., Please use your company-provided laptop for system access..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                autoFocus
+              />
+            </div>
             
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 min-h-[100px] focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none text-sm"
-              placeholder="e.g., Use company provided laptop instead..."
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              autoFocus
-            />
-            
-            <div className="flex justify-between w-full gap-3 mt-6" style={{ display: 'flex', width: '100%', gap: '12px', marginTop: '24px' }}>
-              <div 
-                role="button"
-                onClick={() => setRejectDialog(null)}
-                className="flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors border border-red-200"
-                style={{ flex: 1, padding: '12px 16px', color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}
-              >
-                Cancel
-              </div>
-              <div 
-                role="button"
-                onClick={() => { if (!processingId) handleRejectConfirm() }}
-                className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer transition-colors shadow-sm ${processingId ? 'opacity-50 pointer-events-none' : ''}`}
-                style={{ flex: 1, padding: '12px 16px', backgroundColor: '#dc2626', color: 'white', borderRadius: '8px' }}
-              >
-                {processingId === rejectDialog.id ? (
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" style={{ color: 'white' }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                ) : null}
-                Reject Request
-              </div>
+            <div className="p-3 rounded-lg bg-red-50 border border-red-100 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5" />
+              <p className="text-[11px] text-red-700 font-medium">
+                Rejecting this request will notify the user. They will need to submit a new request if they wish to try again.
+              </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

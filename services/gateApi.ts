@@ -7,6 +7,29 @@ import { supabase } from './supabase';
 import type { GateUser, GateAttendanceLog, GateAttendanceMethod } from '../types/gate';
 import { offlineDb } from './offline/database';
 
+export function resolvePhotoUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  
+  // Handle storage paths
+  try {
+    const publicBuckets = ['avatars', 'logo', 'background', 'public'];
+    const bucket = url.split('/')[0];
+    
+    if (publicBuckets.includes(bucket)) {
+      const path = url.replace(`${bucket}/`, '');
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      return data.publicUrl;
+    }
+
+    // Default fallback to gate-captures for legacy or non-prefixed paths
+    const { data } = supabase.storage.from('gate-captures').getPublicUrl(url);
+    return data.publicUrl;
+  } catch (err) {
+    return url;
+  }
+}
+
 export function normalizeFaceDescriptor(desc: any): number[] | null {
   if (!desc) return null;
   if (typeof desc === 'string') {
@@ -44,7 +67,10 @@ export async function fetchGateUsers(): Promise<GateUser[]> {
     .select(`
       id, user_id, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
-      users:user_id (name, email, photo_url)
+      users:user_id (
+        name, email, photo_url,
+        companies:society_id (logo_url)
+      )
     `)
     .order('created_at', { ascending: false });
 
@@ -55,7 +81,8 @@ export async function fetchGateUsers(): Promise<GateUser[]> {
     userId: row.user_id,
     userName: row.users?.name || 'Unknown',
     userEmail: row.users?.email || '',
-    userPhotoUrl: row.users?.photo_url || row.photo_url,
+    userPhotoUrl: resolvePhotoUrl(row.users?.photo_url || row.photo_url),
+    companyLogoUrl: resolvePhotoUrl(row.users?.companies?.logo_url),
     qrToken: row.qr_token,
     passcode: row.passcode,
     photoUrl: row.photo_url,
@@ -72,7 +99,10 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
     .select(`
       id, user_id, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
-      users:user_id (name, email, photo_url)
+      users:user_id (
+        name, email, photo_url,
+        companies:society_id (logo_url)
+      )
     `)
     .eq('is_active', true)
     .order('created_at', { ascending: false });
@@ -84,7 +114,8 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
     userId: row.user_id,
     userName: row.users?.name || 'Unknown',
     userEmail: row.users?.email || '',
-    userPhotoUrl: row.users?.photo_url || row.photo_url,
+    userPhotoUrl: resolvePhotoUrl(row.users?.photo_url || row.photo_url),
+    companyLogoUrl: resolvePhotoUrl(row.users?.companies?.logo_url),
     qrToken: row.qr_token,
     passcode: row.passcode,
     photoUrl: row.photo_url,
@@ -102,9 +133,12 @@ export async function getGateUserByUserId(userId: string): Promise<GateUser | nu
     const { data, error } = await supabase
       .from('gate_users')
       .select(`
-        id, user_id, face_descriptor, face_version, qr_token, passcode, photo_url,
+        id, user_id, face_descriptor, qr_token, passcode, photo_url,
         department, is_active, created_at, updated_at,
-        users:user_id (name, email, photo_url)
+        users:user_id (
+          name, email, photo_url,
+          companies:society_id (logo_url)
+        )
       `)
       .eq('user_id', userId)
       .eq('is_active', true)
@@ -123,12 +157,12 @@ export async function getGateUserByUserId(userId: string): Promise<GateUser | nu
       userId: rowData.user_id,
       userName: (rowData as any).users?.name || 'Unknown',
       userEmail: (rowData as any).users?.email || '',
-      userPhotoUrl: (rowData as any).users?.photo_url || rowData.photo_url,
+      userPhotoUrl: resolvePhotoUrl((rowData as any).users?.photo_url || rowData.photo_url),
+      companyLogoUrl: resolvePhotoUrl((rowData as any).users?.companies?.logo_url),
       qrToken: rowData.qr_token,
       passcode: rowData.passcode,
       photoUrl: rowData.photo_url,
       faceDescriptor: normalizeFaceDescriptor(rowData.face_descriptor),
-      faceVersion: rowData.face_version,
       department: rowData.department,
       isActive: rowData.is_active,
       createdAt: rowData.created_at,
@@ -182,7 +216,7 @@ export async function registerGateUser(params: {
           userId: joinedData.user_id,
           userName: joinedData.users?.name || 'Unknown',
           userEmail: joinedData.users?.email || '',
-          userPhotoUrl: joinedData.users?.photo_url || joinedData.photo_url,
+          userPhotoUrl: resolvePhotoUrl(joinedData.users?.photo_url || joinedData.photo_url),
           qrToken: joinedData.qr_token,
           passcode: joinedData.passcode,
           photoUrl: joinedData.photo_url,
@@ -253,7 +287,7 @@ export async function registerGateUser(params: {
       userId: data.user_id,
       userName: data.users?.name || 'Unknown',
       userEmail: data.users?.email || '',
-      userPhotoUrl: data.users?.photo_url || data.photo_url,
+      userPhotoUrl: resolvePhotoUrl(data.users?.photo_url || data.photo_url),
       qrToken: data.qr_token,
       passcode: data.passcode,
       photoUrl: data.photo_url,
@@ -299,7 +333,7 @@ export async function registerGateUser(params: {
     userId: data.user_id,
     userName: data.users?.name || 'Unknown',
     userEmail: data.users?.email || '',
-    userPhotoUrl: data.users?.photo_url || data.photo_url,
+    userPhotoUrl: resolvePhotoUrl(data.users?.photo_url || data.photo_url),
     qrToken: data.qr_token,
     passcode: data.passcode,
     photoUrl: data.photo_url,
@@ -522,7 +556,7 @@ export async function lookupByQrToken(token: string): Promise<GateUser | null> {
   const { data, error } = await supabase
     .from('gate_users')
     .select(`
-      id, user_id, face_descriptor, face_version, qr_token, passcode, photo_url,
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
       users:user_id (name, email, photo_url)
     `)
@@ -542,7 +576,6 @@ export async function lookupByQrToken(token: string): Promise<GateUser | null> {
     passcode: data.passcode,
     photoUrl: data.photo_url,
     faceDescriptor: normalizeFaceDescriptor(data.face_descriptor),
-    faceVersion: data.face_version,
     department: data.department,
     isActive: data.is_active,
     createdAt: data.created_at,
@@ -556,7 +589,7 @@ export async function lookupByPasscode(passcode: string): Promise<GateUser | nul
   const { data, error } = await supabase
     .from('gate_users')
     .select(`
-      id, user_id, face_descriptor, face_version, qr_token, passcode, photo_url,
+      id, user_id, face_descriptor, qr_token, passcode, photo_url,
       department, is_active, created_at, updated_at,
       users:user_id (name, email, photo_url)
     `)
@@ -576,7 +609,6 @@ export async function lookupByPasscode(passcode: string): Promise<GateUser | nul
     passcode: data.passcode,
     photoUrl: data.photo_url,
     faceDescriptor: normalizeFaceDescriptor(data.face_descriptor),
-    faceVersion: data.face_version,
     department: data.department,
     isActive: data.is_active,
     createdAt: data.created_at,

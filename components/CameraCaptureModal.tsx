@@ -442,8 +442,7 @@ const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({ isOpen, onClose
     </div>
   );
 
-  // Render via portal to body
-  return ReactDOM.createPortal(modalContent, document.body);
+  return modalContent;
 };
 
 export default CameraCaptureModal;

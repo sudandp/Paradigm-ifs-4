@@ -496,7 +496,6 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
               
               console.log(JSON.stringify({
                 employeeId: userId,
-                faceVersion: currentUser.faceVersion || 1,
                 similarityScore: (1 - distance).toFixed(4),
                 matchedDescriptor: !!currentUser.faceDescriptor,
                 authSource: 'camera',
@@ -534,7 +533,6 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
             if (!faceRejected) {
               console.log(JSON.stringify({
                 employeeId: userId,
-                faceVersion: currentUser.faceVersion || 1,
                 similarityScore: (1 - distance).toFixed(4),
                 matchedDescriptor: !!currentUser.faceDescriptor,
                 authSource: 'camera',
@@ -718,7 +716,6 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
       
       console.log(JSON.stringify({
                 employeeId: userId,
-                faceVersion: newUser.faceVersion || 1,
                 similarityScore: '1.0000',
                 matchedDescriptor: true,
                 authSource: 'camera',

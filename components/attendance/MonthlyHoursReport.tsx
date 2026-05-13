@@ -75,7 +75,8 @@ interface MonthlyHoursReportProps {
   scopedSettings?: any[];
   selectedStatus?: string;
   selectedSite?: string;
-  selectedSociety?: string;
+  selectedCompany?: string;
+  selectedLocation?: string;
   selectedRole?: string;
   onDataLoaded?: (data: EmployeeMonthlyData[]) => void;
   users?: User[];
@@ -83,7 +84,7 @@ interface MonthlyHoursReportProps {
 
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
-  selectedStatus = 'all', selectedSite = 'all', selectedSociety = 'all', selectedRole = 'all',
+  selectedStatus = 'all', selectedSite = 'all', selectedCompany = 'all', selectedLocation = 'all', selectedRole = 'all',
   onDataLoaded, users: externalUsers
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
@@ -119,7 +120,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData, selectedStatus, selectedSite, selectedSociety, selectedRole]);
+  }, [month, year, userId, externalData, selectedStatus, selectedSite, selectedCompany, selectedLocation, selectedRole]);
 
   const loadReportData = async () => {
     setLoading(true);
@@ -155,7 +156,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       } else {
         if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId === selectedSite);
-        if (selectedSociety !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedSociety);
+        if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
+        if (selectedLocation !== 'all') targetUsers = targetUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
         if (selectedStatus === 'ACTIVE_USERS') {
           targetUsers = targetUsers.filter(u => (u as any).isActive !== false);
         }
