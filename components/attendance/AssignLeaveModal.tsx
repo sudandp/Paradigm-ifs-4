@@ -36,7 +36,7 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     const selectedUser = useMemo(() => users.find(u => u.id === selectedUserId), [users, selectedUserId]);
-    const isFemale = selectedUser?.gender?.toLowerCase() === 'female';
+    const isFemale = ['female', 'ladies'].includes((selectedUser?.gender || '').toLowerCase());
 
     const isSingleDay = useMemo(() => {
         if (!startDate || !endDate) return false;
@@ -250,12 +250,12 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                             >
                                 <option value="Earned">Earned</option>
                                 <option value="Sick">Sick</option>
-                                <option value="Floating">3rd Saturday Leave</option>
-                                <option value="Pink Leave">Pink Leave</option>
+                                {!isFemale && <option value="Floating">3rd Saturday Leave</option>}
+                                {isFemale && <option value="Pink Leave">Pink Leave</option>}
                                 <option value="Comp Off">Comp Off</option>
                                 <option value="Loss of Pay">Loss of Pay</option>
-                                <option value="Maternity">Maternity</option>
-                                <option value="Child Care">Child Care</option>
+                                {isFemale && <option value="Maternity">Maternity</option>}
+                                {isFemale && <option value="Child Care">Child Care</option>}
                             </select>
                         </div>
 

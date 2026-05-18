@@ -3580,7 +3580,7 @@ export const api = {
     const roleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || userData.role_id;
     const staffType = getStaffType(roleName);
     const rules = (toCamelCase(settingsData.attendance_settings) as AttendanceSettings)[staffType];
-    const isFemaleUser = (userData.gender || '').toLowerCase() === 'female';
+    const isFemaleUser = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
     console.log('[LeaveDebug] userId:', userId, 'roleName:', roleName, 'staffType:', staffType, 'enableSickLeaveAccrual:', rules?.enableSickLeaveAccrual, 'annualSickLeaves:', rules?.annualSickLeaves);
 
     const referenceDate = asOfDate ? new Date(asOfDate.replace(/-/g, '/')) : new Date();
@@ -3776,8 +3776,9 @@ export const api = {
     // This fixed the issue where unselected elective holidays were earning Comp Offs.
     
     // 1. Identify all Recurring Holiday dates in the year to support Comp Off accrual (Earned via Work)
-    // 3rd Saturday rule applies ONLY to users EXPLICITLY marked as MALE (per HR policy)
-    const isMale = (userData.gender || '').toLowerCase() === 'male';
+    // 3rd Saturday rule applies to gents/male employees (defaulting empty/null gender to gents/male as well)
+    const isFemale = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
+    const isMale = !isFemale;
     const intervalDays = eachDayOfInterval({ start: new Date(yearStart.replace(/-/g, '/')), end: endOfMonth(referenceDate) });
     intervalDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
@@ -3987,15 +3988,13 @@ export const api = {
       expiryStates
     };
 
-    const userGender = userData.gender?.toLowerCase() || '';
-
     // --- Pink Leave (Female employees only, 1/month, no carry forward) ---
-    if (userGender === 'female') {
+    if (isFemaleUser) {
       balance.pinkTotal = 1;
     }
 
     // --- Maternity & Child Care Leave (Female employees only) ---
-    if (userGender === 'female') {
+    if (isFemaleUser) {
       // Maternity: 26 weeks (182 days), requires 6 months tenure
       const maternityWeeks = rules.maternityLeaveWeeks ?? 26;
       const maternityMinTenure = rules.maternityMinTenureMonths ?? 6;
@@ -4111,17 +4110,26 @@ export const api = {
       const isPending = status === 'pending_manager_approval' || status === 'pending_hr_confirmation';
 
       // Robust matching: Check if type contains key words (earned, sick/sl, floating, comp)
-      if (type.includes('earned') || type === 'el') {
+      let adjustedType = type;
+      if (type.includes('sick') || type === 'sl' || type === 's/l') {
+        const lDate = new Date(leaveStart.replace(/-/g, '/'));
+        const is3rdSat = lDate.getDay() === 6 && Math.ceil(lDate.getDate() / 7) === 3;
+        if (is3rdSat && !isFemaleUser && isFloatingHolidayValid(leaveStart)) {
+          adjustedType = 'floating';
+        }
+      }
+
+      if (adjustedType.includes('earned') || adjustedType === 'el') {
         if (!expiryStates.earned || (rules.earnedLeavesExpiryDate && leaveStart <= rules.earnedLeavesExpiryDate)) {
           if (isApproved) balance.earnedUsed += leaveAmount;
           if (isPending) balance.earnedPending += leaveAmount;
         }
-      } else if (type.includes('sick') || type === 'sl' || type === 's/l') {
+      } else if (adjustedType.includes('sick') || adjustedType === 'sl' || adjustedType === 's/l') {
         if (!expiryStates.sick || (rules.sickLeavesExpiryDate && leaveStart <= rules.sickLeavesExpiryDate)) {
           if (isApproved) balance.sickUsed += leaveAmount;
           if (isPending) balance.sickPending += leaveAmount;
         }
-      } else if (type.includes('floating') || type === 'fh' || type === 'hp') {
+      } else if (adjustedType.includes('floating') || adjustedType === 'fh' || adjustedType === 'hp') {
         if (!expiryStates.floating || isFloatingHolidayValid(leaveStart)) {
           if (isApproved) balance.floatingUsed += leaveAmount;
           if (isPending) balance.floatingPending += leaveAmount;

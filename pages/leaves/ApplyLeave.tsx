@@ -118,7 +118,7 @@ const ApplyLeave: React.FC = () => {
     const [searchParams] = useSearchParams();
     const editId = searchParams.get('edit');
     const isEditMode = !!editId;
-    const isFemale = user?.gender?.toLowerCase() === 'female';
+    const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
     const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);

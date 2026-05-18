@@ -49,7 +49,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const recurringRules = useMemo(() => {
         const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
-        const isMale = (user?.gender || '').toLowerCase() === 'male';
+        const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+        const isMale = !isFemale;
         return recurringHolidays.filter(rule => {
             const ruleRoleType = rule.roleType || rule.type || 'office';
             if (ruleRoleType !== roleType) return false;
@@ -220,15 +221,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     finalStatus = 'present';
                 }
             } else if (isCompanyHoliday) {
-                // Always show HOLIDAY color — it's a designated company holiday
+                // Always show HOLIDAY color — it's a designated company holiday, overrides leave requests
                 finalStatus = 'company-holiday';
             } else if (isRecurringHoliday && !isFloatingExpired) {
-                // Always show FLOAT color — it's a designated Blue Leave day regardless of threshold
+                // Always show FLOAT color — it's a designated Blue Leave day, overrides leave requests (like SL applied by mistake)
                 finalStatus = 'floating-holiday';
-            } else if (isSunday) {
-                finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
             } else if (foundLeave) {
                 finalStatus = 'leave';
+            } else if (isSunday) {
+                finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
             } else if (isPast) {
                 finalStatus = 'absent';
             }
@@ -463,9 +464,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         borderColor: 'transparent'
                                     };
                                 } else if (request.dayOption === 'half') {
+                                    const isPink = String(request.leaveType).toLowerCase().includes('pink');
                                     overlayText = '0.5P';
                                     customStyle = {
-                                        background: 'linear-gradient(135deg, #10b981 50%, #2563eb 50%)', // Half Green / Half Blue
+                                        background: `linear-gradient(135deg, #10b981 50%, ${isPink ? '#ec4899' : '#2563eb'} 50%)`, // Half Green / Half Pink or Blue
                                         borderColor: 'transparent'
                                     };
                                 } else {
@@ -477,6 +479,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         case 'Maternity': overlayText = 'ML'; break;
                                         case 'Child Care': overlayText = 'CCL'; break;
                                         case 'Loss of Pay': overlayText = 'LOP'; break;
+                                        case 'Pink Leave':
+                                            overlayText = 'PL';
+                                            customStyle = {
+                                                background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)', // Premium pink gradient
+                                                borderColor: 'transparent'
+                                            };
+                                            break;
                                         default: overlayText = 'WH'; break;
                                     }
                                 }
@@ -522,6 +531,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Float</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> C.O</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div> WH</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)' }}></div> PL</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-400 rounded-full border border-white/20 shadow-sm flex-shrink-0"></div> Site OT</div>
             </div>
         </div>

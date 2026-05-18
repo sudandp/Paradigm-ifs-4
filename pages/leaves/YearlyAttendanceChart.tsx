@@ -162,7 +162,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 const isUserSelected = matchingFixed ? userHolidays.includes(matchingFixed.name) : false;
                 
                 let isRecurring = false;
-                const isFemale = user?.gender?.toLowerCase() === 'female';
+                const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
                 if (!isFemale && floatingCount < allowedFloating) {
                     for (const rule of activeRecurringRules) {
                         // Check expiry

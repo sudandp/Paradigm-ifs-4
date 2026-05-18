@@ -418,7 +418,8 @@ const LeaveDashboard: React.FC = () => {
 
     const formatTabName = (tab: string) => tab.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const filterTabs: Array<LeaveRequestStatus | 'all'> = ['all', 'pending_manager_approval', 'pending_hr_confirmation', 'approved', 'rejected'];
-    const isFemale = user?.gender?.toLowerCase() === 'female';
+    const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+    const isMale = !isFemale;
 
     const isFloatingHolidayValidForViewingDate = () => {
         if (!attendanceSettings || !user) return false;
@@ -479,9 +480,13 @@ const LeaveDashboard: React.FC = () => {
         const allRelevantLeaves = [...(yearlyData?.leaves || []), ...requests].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
 
         allRelevantLeaves.forEach(req => {
-            const type = (req.leaveType || '').toLowerCase();
+            let type = (req.leaveType || '').toLowerCase();
+            const reqStart = new Date(req.startDate.replace(/-/g, '/'));
+            const is3rdSat = reqStart.getDay() === 6 && Math.ceil(reqStart.getDate() / 7) === 3;
+            if (is3rdSat && isMale && (type.includes('sick') || type === 'sl' || type === 's/l')) {
+                type = 'floating';
+            }
             if (type.includes('floating') || type === 'fh' || type === 'blue leave' || type === 'blue') {
-                const reqStart = new Date(req.startDate.replace(/-/g, '/'));
                 if (reqStart >= monthStart && reqStart <= monthEnd) {
                     let amount = req.dayOption === 'half' ? 0.5 : (differenceInCalendarDays(new Date(req.endDate.replace(/-/g, '/')), reqStart) + 1);
                     if (req.status === 'approved' || req.status === 'correction_made') used += amount;

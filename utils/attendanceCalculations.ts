@@ -516,11 +516,12 @@ export function evaluateAttendanceStatus(params: {
       
 
 
-      // 3rd Saturday Blue Leave applies only to males
+      // 3rd Saturday Blue Leave applies to gents/male employees (defaulting empty/null gender to gents/male as well)
       if (ruleDay === 'saturday' && ruleOccurrence === 3) {
           if ((userRole || '').toLowerCase() !== 'admin') {
               const gender = (params as any).userGender || '';
-              if (gender && gender.toLowerCase() !== 'male') return false;
+              const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
+              if (isFemale) return false;
           }
       }
       // PRIORITY 1: If floatingHolidayMonths array is configured, it is the SOLE gate.
