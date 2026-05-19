@@ -29,7 +29,7 @@ const FinanceModule: React.FC = () => {
             <div className="p-4 md:p-6 space-y-4 md:space-y-6 flex-1">
                 <AdminPageHeader title="Tracker" />
                 
-                <div className="flex bg-[#06251c] md:bg-gray-100 p-1 rounded-xl w-fit -mx-4 md:mx-0 ml-0 border border-white/5 md:border-gray-200">
+                <div className="flex bg-[#06251c] md:bg-gray-100 p-1 rounded-xl w-full max-w-full overflow-x-auto hide-scrollbar border border-white/5 md:border-gray-200">
                     <button 
                         onClick={() => handleTabChange('attendance')} 
                         className={`whitespace-nowrap px-6 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-2 ${

@@ -128,6 +128,14 @@ export interface StaffAttendanceRules {
   sickLeaveCertificateThreshold: number;
   geofencingEnabled?: boolean;
   maxViolationsPerMonth?: number;
+  ctcPerMonth?: number;
+  weeklyOffsPerWeek?: number;
+  earnedLeavesPerAnnum?: number;
+  nfhPerAnnum?: number;
+  nhBillingConfig?: 'NA' | 'Actuals' | 'Double';
+  nhSalaryConfig?: 'NA' | 'Actuals' | 'Double';
+  shift?: string;
+  shiftHours?: number;
   recurringHolidays?: RecurringHolidayRule[];
   // Fixed office hours configuration
   fixedOfficeHours?: {

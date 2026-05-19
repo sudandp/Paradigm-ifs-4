@@ -316,7 +316,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     } else if (relevantLeave && relevantLeave.dayOption === 'half') {
                         normalPay = 1; 
                     } else {
-                        normalPay = (workingHours >= shiftThreshold) ? 1 : 0.5;
+                        const threeQuarterHrs = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? (shiftThreshold * 0.75);
+                        const halfDayHrs = (settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? (shiftThreshold * 0.5);
+                        const quarterDayHrs = (settings as any)?.[staffCategory]?.quarterDayHours ?? (shiftThreshold * 0.25);
+                        
+                        if (workingHours >= shiftThreshold) normalPay = 1;
+                        else if (workingHours >= threeQuarterHrs) normalPay = 0.75;
+                        else if (workingHours >= halfDayHrs) normalPay = 0.5;
+                        else if (workingHours >= quarterDayHrs) normalPay = 0.25;
+                        else normalPay = 0.5;
                     }
                 } else {
                     normalPay = 1;
@@ -439,11 +447,29 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     };
                                 }
                             } else {
-                                overlayText = status === 'holiday-present' ? 'H/0.5P' : status === 'weekend-present' ? 'W.O/0.5P' : '0.5P';
+                                const threeQuarterHrs = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? (shiftThreshold * 0.75);
+                                const halfDayHrs = (settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? (shiftThreshold * 0.5);
+                                const quarterDayHrs = (settings as any)?.[staffCategory]?.quarterDayHours ?? (shiftThreshold * 0.25);
+                                
+                                let fractionText = '0.5P';
+                                let greenPercentage = 50;
+                                
+                                if (workingHours >= threeQuarterHrs) {
+                                    fractionText = '0.75P';
+                                    greenPercentage = 75;
+                                } else if (workingHours >= halfDayHrs) {
+                                    fractionText = '0.5P';
+                                    greenPercentage = 50;
+                                } else if (workingHours >= quarterDayHrs) {
+                                    fractionText = '0.25P';
+                                    greenPercentage = 25;
+                                }
+
+                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `W.O/${fractionText}` : fractionText;
                                 const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 customStyle = {
-                                    background: `linear-gradient(135deg, ${leftColor} 50%, #ef4444 50%)`, // Split with red (#ef4444)
-                                    borderColor: 'transparent' // Hide the border
+                                    background: `linear-gradient(135deg, ${leftColor} ${greenPercentage}%, #ef4444 ${greenPercentage}%)`,
+                                    borderColor: 'transparent'
                                 };
                             }
                         } else if (status === 'company-holiday' || status === 'floating-holiday' || status === 'sunday') {

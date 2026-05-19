@@ -7,7 +7,7 @@ import type {
   LeaveBalance, LeaveRequest, Task, Notification, SiteConfiguration, Entity, Policy, Insurance,
   ManpowerDetail, BackOfficeIdSeries, SiteStaffDesignation, Asset, MasterTool, MasterToolsList,
   SiteGentsUniformConfig, MasterGentsUniforms, SiteLadiesUniformConfig, MasterLadiesUniforms, UniformRequest,
-  SiteUniformDetailsConfig, EnrollmentRules, InvoiceData, UserRole, UploadedFile, SalaryChangeRequest, SiteStaff,
+  SiteUniformDetailsConfig, EnrollmentRules, InvoiceData, UserRole, UploadedFile, SalaryChangeRequest, SiteStaff, SiteStaffConfig, SiteStaffConfigLog,
   SubmissionCostBreakdown, TaskGroup, Role, SupportTicket, TicketPost, TicketComment, VerificationResult, CompOffLog,
   ExtraWorkLog, PerfiosVerificationData, HolidayListItem, UniformRequestItem, IssuedTool, RecurringHolidayRule,
   BiometricDevice, ChecklistTemplate, FieldReport, FieldAttendanceViolation,
@@ -7835,6 +7835,66 @@ export const api = {
 
   deleteBusinessReferral: async (id: string): Promise<void> => {
     const { error } = await supabase.from('business_referrals').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  getAllSiteStaffConfigs: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('site_staff_config')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  getSiteStaffConfig: async (userId: string): Promise<any> => {
+    const { data, error } = await supabase
+      .from('site_staff_config')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? toCamelCase(data) : null;
+  },
+
+  saveSiteStaffConfig: async (config: any): Promise<void> => {
+    const record = toSnakeCase(config);
+    // Check if a config already exists for this user_id
+    const { data: existing } = await supabase
+      .from('site_staff_config')
+      .select('id')
+      .eq('user_id', config.userId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('site_staff_config')
+        .update({ ...record, updated_at: new Date().toISOString() })
+        .eq('user_id', config.userId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('site_staff_config')
+        .insert({ ...record, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      if (error) throw error;
+    }
+  },
+
+  getSiteStaffRateLogs: async (userId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('site_staff_config_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  saveSiteStaffRateLog: async (log: any): Promise<void> => {
+    const record = toSnakeCase(log);
+    const { error } = await supabase
+      .from('site_staff_config_logs')
+      .insert({ ...record, updated_at: new Date().toISOString() });
     if (error) throw error;
   }
 };

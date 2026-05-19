@@ -6,7 +6,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon, Sun, BarChart3, Briefcase, Building2, Palmtree, Shield, FileText } from 'lucide-react';
+import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon, Sun, BarChart3, Briefcase, Building2, Palmtree, Shield, FileText, IndianRupee } from 'lucide-react';
 import DatePicker from '../../components/ui/DatePicker';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
@@ -18,6 +18,8 @@ import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { supabase } from '../../services/supabase';
+import StaffBillingConfig from '../billing/StaffBillingConfig';
 
 
 const AttendanceSettings: React.FC = () => {
@@ -34,11 +36,13 @@ const AttendanceSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const [activeTab, setActiveTab] = useState<'office' | 'field' | 'site' | 'admin' | 'management' | 'selections'>('office');
-    const [subTab, setSubTab] = useState<'general' | 'policies' | 'calc_rules' | 'shifts' | 'departments' | 'holidays' | 'leaves' | 'notifications' | 'fixed_hours' | 'summary'>('general');
+    const [subTab, setSubTab] = useState<'general' | 'policies' | 'calc_rules' | 'shifts' | 'departments' | 'lumpsum' | 'holidays' | 'leaves' | 'notifications' | 'fixed_hours' | 'summary' | 'billing_config'>('general');
+    const [lumpsumItems, setLumpsumItems] = useState<{ id?: string, itemName: string, ratePerMonth: number, isActive: boolean }[]>([]);
+
 
     const handleTabChange = (tab: typeof activeTab) => {
         setActiveTab(tab);
-        if (tab !== 'site' && (subTab === 'shifts' || subTab === 'departments' || subTab === 'summary')) {
+        if (tab !== 'site' && (subTab === 'shifts' || subTab === 'departments' || subTab === 'summary' || subTab === 'billing_config')) {
             setSubTab('general');
         }
         if (tab === 'site' && subTab === 'fixed_hours') {
@@ -180,6 +184,32 @@ const AttendanceSettings: React.FC = () => {
         };
         fetchScopedSettings();
     }, [selectedLocation, selectedCompanyId, selectedEntityId, attendance]);
+
+    // Fetch lumpsum billing items
+    useEffect(() => {
+        const fetchLumpsumItems = async () => {
+            const siteId = selectedEntityId || selectedCompanyId || 'global';
+            try {
+                const { data, error } = await supabase
+                    .from('lumpsum_billing_items')
+                    .select('*')
+                    .eq('site_id', siteId);
+                if (data && !error) {
+                    setLumpsumItems(data.map(item => ({
+                        id: item.id,
+                        itemName: item.item_name,
+                        ratePerMonth: Number(item.rate_per_month),
+                        isActive: item.is_active
+                    })));
+                }
+            } catch (error) {
+                console.error('Failed to fetch lumpsum billing items:', error);
+            }
+        };
+        if (activeTab === 'site') {
+            fetchLumpsumItems();
+        }
+    }, [selectedEntityId, selectedCompanyId, activeTab]);
 
     // Reset subordinate selections when parent changes
     const handleLocationChange = (val: string) => {
@@ -427,6 +457,28 @@ const AttendanceSettings: React.FC = () => {
             } else {
                 await api.saveScopedAttendanceSettings(scope as any, scopeId, localAttendance);
             }
+
+            if (activeTab === 'site') {
+                const siteId = selectedEntityId || selectedCompanyId || 'global';
+                // Remove existing ones for this site to overwrite
+                await supabase
+                    .from('lumpsum_billing_items')
+                    .delete()
+                    .eq('site_id', siteId);
+
+                if (lumpsumItems.length > 0) {
+                    const toInsert = lumpsumItems.map(item => ({
+                        site_id: siteId,
+                        item_name: item.itemName,
+                        rate_per_month: item.ratePerMonth,
+                        is_active: item.isActive
+                    }));
+                    await supabase
+                        .from('lumpsum_billing_items')
+                        .insert(toInsert);
+                }
+            }
+
             setIsDirty(false);
             setToast({ message: 'Settings saved successfully!', type: 'success' });
         } catch (error) {
@@ -540,6 +592,8 @@ const AttendanceSettings: React.FC = () => {
                             ? [
                                 { key: 'shifts', label: 'Shift Roster', icon: Clock },
                                 { key: 'departments', label: 'Departments', icon: Building2 },
+                                { key: 'lumpsum', label: 'Lumpsum Items', icon: Briefcase },
+                                { key: 'billing_config', label: 'Staff Billing Config', icon: IndianRupee },
                                 { key: 'summary', label: 'Summary Sheet', icon: FileText }
                               ]
                             : [
@@ -713,6 +767,42 @@ const AttendanceSettings: React.FC = () => {
                                 />
                             </div>
                         )}
+
+                        {activeTab === 'site' && (
+                            <div className="mt-6 p-6 border border-emerald-500/20 bg-emerald-500/5 rounded-xl space-y-4">
+                                <h4 className="text-md font-bold text-emerald-800 flex items-center">
+                                    <Shield className="mr-2 h-5 w-5 text-emerald-600" /> Holiday (NH) Multiplier Config (Site Staff Only)
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-primary-text mb-1">NH Billing Configuration (Client Invoice)</label>
+                                        <Select
+                                            id="nhBillingConfig"
+                                            value={currentRules.nhBillingConfig || 'Actuals'}
+                                            onChange={(e) => handleSettingChange('nhBillingConfig', e.target.value)}
+                                        >
+                                            <option value="NA">NA (Zero billing addition)</option>
+                                            <option value="Actuals">Actuals (Single billing addition)</option>
+                                            <option value="Double">Double (Double billing addition)</option>
+                                        </Select>
+                                        <p className="text-xs text-muted mt-1">Defines how client is billed for work on National Holidays.</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-primary-text mb-1">NH Salary Configuration (Employee Payroll)</label>
+                                        <Select
+                                            id="nhSalaryConfig"
+                                            value={currentRules.nhSalaryConfig || 'Double'}
+                                            onChange={(e) => handleSettingChange('nhSalaryConfig', e.target.value)}
+                                        >
+                                            <option value="NA">NA (Zero salary addition)</option>
+                                            <option value="Actuals">Actuals (Single salary addition)</option>
+                                            <option value="Double">Double (Double salary addition)</option>
+                                        </Select>
+                                        <p className="text-xs text-muted mt-1">Defines how employee is paid for work on National Holidays.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </section>
 
@@ -809,6 +899,64 @@ const AttendanceSettings: React.FC = () => {
                                 checked={currentRules.enableHoursBasedFallback !== false}
                                 onChange={(e) => handleSettingChange('enableHoursBasedFallback', e.target.checked)}
                             />
+                        </div>
+                    )}
+
+                    {activeTab === 'site' && (
+                        <div className="mt-6 p-6 border border-emerald-500/20 bg-emerald-500/5 rounded-xl space-y-6">
+                            <h4 className="text-md font-bold text-emerald-800 flex items-center">
+                                <Briefcase className="mr-2 h-5 w-5 text-emerald-600" /> Contract & Billing Configuration (Site Staff Only)
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <Input
+                                    label="CTC / Month (₹)"
+                                    id="ctcPerMonth"
+                                    type="number"
+                                    min="0"
+                                    value={currentRules.ctcPerMonth ?? 0}
+                                    onChange={(e) => handleSettingChange('ctcPerMonth', parseFloat(e.target.value) || 0)}
+                                    description="Fixed contractual monthly cost to company"
+                                />
+                                <div>
+                                    <label className="block text-sm font-medium text-primary-text mb-1">Weekly Offs per Week (X)</label>
+                                    <Select
+                                        id="weeklyOffsPerWeek"
+                                        value={currentRules.weeklyOffsPerWeek ?? 1}
+                                        onChange={(e) => handleSettingChange('weeklyOffsPerWeek', parseFloat(e.target.value) || 0)}
+                                    >
+                                        <option value="0">0 (None)</option>
+                                        <option value="0.5">0.5 (2 per month)</option>
+                                        <option value="1">1 (4 per month)</option>
+                                        <option value="2">2 (8 per month)</option>
+                                    </Select>
+                                    <p className="text-[10px] text-muted mt-1">Weekly off days configured in contract</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-primary-text mb-1">Earned Leaves per Annum (Y)</label>
+                                    <Select
+                                        id="earnedLeavesPerAnnum"
+                                        value={currentRules.earnedLeavesPerAnnum ?? 0}
+                                        onChange={(e) => handleSettingChange('earnedLeavesPerAnnum', parseInt(e.target.value) || 0)}
+                                    >
+                                        <option value="0">0</option>
+                                        <option value="18">18</option>
+                                    </Select>
+                                    <p className="text-[10px] text-muted mt-1">Annual EL quota</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-primary-text mb-1">NFH per Annum (Z)</label>
+                                    <Select
+                                        id="nfhPerAnnum"
+                                        value={currentRules.nfhPerAnnum ?? 12}
+                                        onChange={(e) => handleSettingChange('nfhPerAnnum', parseInt(e.target.value) || 0)}
+                                    >
+                                        <option value="0">0</option>
+                                        <option value="10">10</option>
+                                        <option value="12">12</option>
+                                    </Select>
+                                    <p className="text-[10px] text-muted mt-1">Annual National/Festival Holidays</p>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -939,6 +1087,44 @@ const AttendanceSettings: React.FC = () => {
                         </h3>
                         <p className="text-sm text-muted mb-4">Configure shift windows for site staff. Attendance is auto-detected based on punch-in time — no duty roster needed.</p>
                         
+                        {activeTab === 'site' && (
+                            <div className="mb-6 p-4 border border-emerald-500/20 bg-emerald-500/5 rounded-xl space-y-4">
+                                <h4 className="text-sm font-bold text-emerald-800 flex items-center">
+                                    <Clock className="mr-1.5 h-4.5 w-4.5 text-emerald-600" /> Default Shift Configuration
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-primary-text mb-1">Standard Shift ID</label>
+                                        <Select
+                                            id="defaultShift"
+                                            value={currentRules.shift || 'A'}
+                                            onChange={(e) => handleSettingChange('shift', e.target.value)}
+                                        >
+                                            <option value="A">Shift A</option>
+                                            <option value="B">Shift B</option>
+                                            <option value="C">Shift C</option>
+                                            <option value="D">Shift D</option>
+                                            <option value="E">Shift E</option>
+                                        </Select>
+                                        <p className="text-[10px] text-muted mt-1">Default assigned shift identifier.</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-primary-text mb-1">Standard Shift Hours</label>
+                                        <Select
+                                            id="defaultShiftHours"
+                                            value={currentRules.shiftHours ?? 8}
+                                            onChange={(e) => handleSettingChange('shiftHours', parseInt(e.target.value) || 8)}
+                                        >
+                                            <option value="8">8 Hours</option>
+                                            <option value="10">10 Hours</option>
+                                            <option value="12">12 Hours</option>
+                                        </Select>
+                                        <p className="text-[10px] text-muted mt-1">Daily hours configured for standard shift.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mb-4">
                             <Checkbox
                                 id="enableShiftManagement"
@@ -1108,6 +1294,131 @@ const AttendanceSettings: React.FC = () => {
                             currentRules={currentRules}
                             onSettingChange={handleSettingChange}
                         />
+                    )}
+
+                    {activeTab === 'site' && subTab === 'lumpsum' && (
+                        <section className="pt-6 border-t border-border space-y-6">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-primary-text flex items-center">
+                                        <Briefcase className="mr-2 h-5 w-5 text-muted" /> Lumpsum Billing Items
+                                    </h3>
+                                    <p className="text-sm text-muted">
+                                        Manage non-attendance contractual billing items (e.g. machinery rental, consumables, management fee) for this site.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setLumpsumItems([
+                                            ...lumpsumItems,
+                                            { itemName: '', ratePerMonth: 0, isActive: true }
+                                        ]);
+                                        setIsDirty(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors shadow-sm"
+                                >
+                                    <Plus className="h-4 w-4" /> Add Lumpsum Item
+                                </button>
+                            </div>
+
+                            <div className="rounded-xl border border-border overflow-hidden bg-card">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-page border-b border-border">
+                                        <tr>
+                                            <th className="text-left px-4 py-3 font-semibold text-primary-text">Item Name</th>
+                                            <th className="text-left px-4 py-3 font-semibold text-primary-text w-1/3">Rate Per Month (₹)</th>
+                                            <th className="text-center px-4 py-3 font-semibold text-primary-text w-24">Status</th>
+                                            <th className="text-center px-4 py-3 font-semibold text-primary-text w-24">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {lumpsumItems.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="text-center py-8 text-muted">
+                                                    No lumpsum items configured. Click "Add Lumpsum Item" to add one.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            lumpsumItems.map((item, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="px-4 py-3">
+                                                        <Input
+                                                            id={`itemName-${idx}`}
+                                                            value={item.itemName}
+                                                            onChange={(e) => {
+                                                                const updated = [...lumpsumItems];
+                                                                updated[idx].itemName = e.target.value;
+                                                                setLumpsumItems(updated);
+                                                                setIsDirty(true);
+                                                            }}
+                                                            placeholder="e.g. Consumibles, Machinery Rent"
+                                                            className="w-full border-none shadow-none focus:ring-0 bg-transparent p-0"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <Input
+                                                            id={`ratePerMonth-${idx}`}
+                                                            type="number"
+                                                            min="0"
+                                                            value={item.ratePerMonth}
+                                                            onChange={(e) => {
+                                                                const updated = [...lumpsumItems];
+                                                                updated[idx].ratePerMonth = parseFloat(e.target.value) || 0;
+                                                                setLumpsumItems(updated);
+                                                                setIsDirty(true);
+                                                            }}
+                                                            placeholder="0.00"
+                                                            className="w-full border-none shadow-none focus:ring-0 bg-transparent p-0"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={item.isActive}
+                                                            onChange={(e) => {
+                                                                const updated = [...lumpsumItems];
+                                                                updated[idx].isActive = e.target.checked;
+                                                                setLumpsumItems(updated);
+                                                                setIsDirty(true);
+                                                            }}
+                                                            className="h-4 w-4 text-emerald-600 border-border rounded focus:ring-emerald-500"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = lumpsumItems.filter((_, i) => i !== idx);
+                                                                setLumpsumItems(updated);
+                                                                setIsDirty(true);
+                                                            }}
+                                                            className="text-red-500 hover:text-red-700 p-1"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    )}
+
+                    {activeTab === 'site' && subTab === 'billing_config' && (
+                        <section className="pt-6 border-t border-border space-y-4">
+                            <div>
+                                <h3 className="text-lg font-semibold text-primary-text flex items-center">
+                                    <IndianRupee className="mr-2 h-5 w-5 text-muted" /> Individual Staff Billing Parameters
+                                </h3>
+                                <p className="text-sm text-muted">
+                                    Manage individual site staff CTC, weekly offs, earned leaves, and national holiday billing configurations.
+                                </p>
+                            </div>
+                            <StaffBillingConfig />
+                        </section>
                     )}
 
 

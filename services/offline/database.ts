@@ -32,26 +32,49 @@ class OfflineDatabase {
   }
 
   private async initIDB() {
-    this.idb = await openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, newVersion, transaction) {
-        // Create outbox store
-        let outboxStore;
-        if (!db.objectStoreNames.contains('outbox')) {
-          outboxStore = db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
-        } else {
-          outboxStore = transaction.objectStore('outbox');
-        }
+    try {
+      this.idb = await openDB(DB_NAME, DB_VERSION, {
+        upgrade(db, oldVersion, newVersion, transaction) {
+          // Create outbox store
+          let outboxStore;
+          if (!db.objectStoreNames.contains('outbox')) {
+            outboxStore = db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
+          } else {
+            outboxStore = transaction.objectStore('outbox');
+          }
 
-        if (!outboxStore.indexNames.contains('status')) {
-          outboxStore.createIndex('status', 'status');
-        }
+          if (!outboxStore.indexNames.contains('status')) {
+            outboxStore.createIndex('status', 'status');
+          }
 
-        // Create cache store
-        if (!db.objectStoreNames.contains('cache')) {
-          db.createObjectStore('cache', { keyPath: 'key' });
-        }
-      },
-    });
+          // Create cache store
+          if (!db.objectStoreNames.contains('cache')) {
+            db.createObjectStore('cache', { keyPath: 'key' });
+          }
+        },
+      });
+    } catch (error) {
+      console.error('[OfflineDatabase] initIDB error:', error);
+      throw error;
+    }
+  }
+
+  private async runIDB<T>(operation: (db: IDBPDatabase) => Promise<T>): Promise<T> {
+    if (!this.idb) {
+      await this.initIDB();
+    }
+    try {
+      return await operation(this.idb!);
+    } catch (error: any) {
+      // Re-initialize and retry once if the database connection was closed or is closing (due to Vite HMR or browser issues)
+      if (error && (error.name === 'InvalidStateError' || error.message?.includes('closing') || error.message?.includes('closed'))) {
+        console.warn('[OfflineDatabase] IDB connection closed or invalid. Reinitializing and retrying...', error);
+        this.idb = null;
+        await this.initIDB();
+        return await operation(this.idb!);
+      }
+      throw error;
+    }
   }
 
   private async initSQLite() {
@@ -98,8 +121,8 @@ class OfflineDatabase {
     if (this.isMobile && this.sqlite) {
       const query = `INSERT INTO outbox (table_name, action, payload, timestamp, status) VALUES (?, ?, ?, ?, ?)`;
       await this.sqlite.run(query, [fullItem.table_name, fullItem.action, JSON.stringify(fullItem.payload), fullItem.timestamp, fullItem.status]);
-    } else if (this.idb) {
-      await this.idb.add('outbox', fullItem);
+    } else {
+      await this.runIDB(db => db.add('outbox', fullItem));
     }
   }
 
@@ -110,10 +133,9 @@ class OfflineDatabase {
         ...v,
         payload: JSON.parse(v.payload)
       }));
-    } else if (this.idb) {
-      return await this.idb.getAllFromIndex('outbox', 'status', 'pending');
+    } else {
+      return await this.runIDB(db => db.getAllFromIndex('outbox', 'status', 'pending'));
     }
-    return [];
   }
 
   async getAllOutbox(): Promise<OutboxItem[]> {
@@ -123,29 +145,30 @@ class OfflineDatabase {
         ...v,
         payload: JSON.parse(v.payload)
       }));
-    } else if (this.idb) {
-      return await this.idb.getAll('outbox');
+    } else {
+      return await this.runIDB(db => db.getAll('outbox'));
     }
-    return [];
   }
 
   async updateOutboxStatus(id: number, status: OutboxItem['status']) {
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`UPDATE outbox SET status = ? WHERE id = ?`, [status, id]);
-    } else if (this.idb) {
-      const item = await this.idb.get('outbox', id);
-      if (item) {
-        item.status = status;
-        await this.idb.put('outbox', item);
-      }
+    } else {
+      await this.runIDB(async db => {
+        const item = await db.get('outbox', id);
+        if (item) {
+          item.status = status;
+          await db.put('outbox', item);
+        }
+      });
     }
   }
 
   async deleteFromOutbox(id: number) {
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`DELETE FROM outbox WHERE id = ?`, [id]);
-    } else if (this.idb) {
-      await this.idb.delete('outbox', id);
+    } else {
+      await this.runIDB(db => db.delete('outbox', id));
     }
   }
 
@@ -153,8 +176,8 @@ class OfflineDatabase {
     const timestamp = new Date().toISOString();
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (?, ?, ?)`, [key, JSON.stringify(value), timestamp]);
-    } else if (this.idb) {
-      await this.idb.put('cache', { key, value, timestamp });
+    } else {
+      await this.runIDB(db => db.put('cache', { key, value, timestamp }));
     }
   }
 
@@ -166,8 +189,8 @@ class OfflineDatabase {
   async deleteCache(key: string): Promise<void> {
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`DELETE FROM cache WHERE key = ?`, [key]);
-    } else if (this.idb) {
-      await this.idb.delete('cache', key);
+    } else {
+      await this.runIDB(db => db.delete('cache', key));
     }
   }
 
@@ -186,8 +209,8 @@ class OfflineDatabase {
             timestamp: res.values[0].timestamp 
         };
       }
-    } else if (this.idb) {
-      const item = await this.idb.get('cache', key);
+    } else {
+      const item = await this.runIDB(db => db.get('cache', key));
       if (item) {
         return { value: item.value, timestamp: item.timestamp };
       }
@@ -199,11 +222,10 @@ class OfflineDatabase {
     if (this.isMobile && this.sqlite) {
       const res = await this.sqlite.query(`SELECT value, timestamp FROM cache WHERE key = ?`, [key]);
       return res.values?.[0] ? { value: JSON.parse(res.values[0].value), timestamp: res.values[0].timestamp } : null;
-    } else if (this.idb) {
-      const res = await this.idb.get('cache', key);
+    } else {
+      const res = await this.runIDB(db => db.get('cache', key));
       return res ? { value: res.value, timestamp: res.timestamp } : null;
     }
-    return null;
   }
 
   async setSyncTime(timestamp: string) {
@@ -246,10 +268,9 @@ class OfflineDatabase {
     if (this.isMobile && this.sqlite) {
       const res = await this.sqlite.query(`SELECT COUNT(*) as count FROM outbox`);
       return res.values?.[0]?.count ?? 0;
-    } else if (this.idb) {
-      return await this.idb.count('outbox');
+    } else {
+      return await this.runIDB(db => db.count('outbox'));
     }
-    return 0;
   }
 
   /** Purge cache entries older than maxMonths (default 3) to free storage */
@@ -261,20 +282,22 @@ class OfflineDatabase {
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`DELETE FROM cache WHERE timestamp < ? AND key LIKE 'attendance_history_%'`, [cutoffStr]);
       await this.sqlite.run(`DELETE FROM cache WHERE timestamp < ? AND key LIKE 'today_events_%'`, [cutoffStr]);
-    } else if (this.idb) {
-      const tx = this.idb.transaction('cache', 'readwrite');
-      const store = tx.objectStore('cache');
-      const allKeys = await store.getAllKeys();
-      for (const key of allKeys) {
-        const item = await store.get(key);
-        if (item && item.timestamp < cutoffStr) {
-          const k = String(key);
-          if (k.startsWith('attendance_history_') || k.startsWith('today_events_')) {
-            await store.delete(key);
+    } else {
+      await this.runIDB(async db => {
+        const tx = db.transaction('cache', 'readwrite');
+        const store = tx.objectStore('cache');
+        const allKeys = await store.getAllKeys();
+        for (const key of allKeys) {
+          const item = await store.get(key);
+          if (item && item.timestamp < cutoffStr) {
+            const k = String(key);
+            if (k.startsWith('attendance_history_') || k.startsWith('today_events_')) {
+              await store.delete(key);
+            }
           }
         }
-      }
-      await tx.done;
+        await tx.done;
+      });
     }
   }
 
@@ -282,13 +305,15 @@ class OfflineDatabase {
   async clearSyncedOutbox() {
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`DELETE FROM outbox WHERE status = 'syncing'`);
-    } else if (this.idb) {
-      const items = await this.idb.getAllFromIndex('outbox', 'status', 'syncing');
-      const tx = this.idb.transaction('outbox', 'readwrite');
-      for (const item of items) {
-        if (item.id) await tx.store.delete(item.id);
-      }
-      await tx.done;
+    } else {
+      await this.runIDB(async db => {
+        const items = await db.getAllFromIndex('outbox', 'status', 'syncing');
+        const tx = db.transaction('outbox', 'readwrite');
+        for (const item of items) {
+          if (item.id) await tx.store.delete(item.id);
+        }
+        await tx.done;
+      });
     }
   }
 }

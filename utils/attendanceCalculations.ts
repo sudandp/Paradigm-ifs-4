@@ -4,6 +4,7 @@ import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter, 
 import type { AttendanceEvent, DailyAttendanceStatus } from '../types';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
+import { evaluateSiteStaffStatus } from './siteStaffCalculations';
 
 /**
  * Robust check for roles that require night-shift/field-style session anchoring.
@@ -489,6 +490,10 @@ export function evaluateAttendanceStatus(params: {
     userGender
   } = params;
 
+  if (userCategory === 'site') {
+    return evaluateSiteStaffStatus(params);
+  }
+
   const dateStr = format(day, 'yyyy-MM-dd');
   const dayName = format(day, 'EEEE');
   const dayOfMonth = day.getDate();
@@ -551,7 +556,7 @@ export function evaluateAttendanceStatus(params: {
   // Configured Holidays (Manual additions)
   // Permissive check: Check the user's specific category list first, but fallback to ALL lists
   // to ensure global holidays (like Good Friday) are caught even if not explicitly in every list.
-  const categoryHolidays = userCategory === 'field' ? fieldHolidays : (userCategory === 'site' ? siteHolidays : officeHolidays);
+  const categoryHolidays = userCategory === 'field' ? fieldHolidays : officeHolidays;
   
   const hasHolidayMatch = (list: any) => {
       if (!Array.isArray(list)) return false;

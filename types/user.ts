@@ -325,3 +325,42 @@ export interface BiometricsData {
   signatureImage: UploadedFile | null;
   fingerprints: Fingerprints;
 }
+
+export interface SiteStaffConfig {
+  id?: string;
+  userId: string;
+  ctcPerMonth: number;
+  weeklyOffsPerWeek: number;
+  earnedLeavesPerAnnum: number;
+  nfhPerAnnum: number;
+  nhBillingConfig: 'Per Day Extra' | 'Standard Per Day';
+  nhSalaryConfig: 'Per Day Extra' | 'Standard Per Day';
+  shift: string;
+  shiftHours: number;
+  perDayBillingRate: number;
+  rateEffectiveDate: string; // YYYY-MM-DD
+  perAnnumRate: number;
+  billableDutiesInYear: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SiteStaffConfigLog {
+  id?: string;
+  userId: string;
+  ctcPerMonth: number;
+  weeklyOffsPerWeek: number;
+  earnedLeavesPerAnnum: number;
+  nfhPerAnnum: number;
+  nhBillingConfig: 'Per Day Extra' | 'Standard Per Day';
+  nhSalaryConfig: 'Per Day Extra' | 'Standard Per Day';
+  shift: string;
+  shiftHours: number;
+  perDayBillingRate: number;
+  rateEffectiveDate: string; // YYYY-MM-DD
+  perAnnumRate: number;
+  billableDutiesInYear: number;
+  updatedBy?: string | null;
+  updatedByName?: string;
+  updatedAt?: string;
+}
