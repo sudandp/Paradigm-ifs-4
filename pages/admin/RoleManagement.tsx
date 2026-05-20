@@ -19,6 +19,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // CRM & Sales
     { key: 'view_crm_pipeline', name: 'Access CRM Pipeline', description: 'View and manage the sales pipeline and leads.', category: 'CRM & Sales' },
     { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
+    { key: 'view_referrals', name: 'Access Referral Management', description: 'View and manage employee and business referrals.', category: 'CRM & Sales' },
 
     // Dashboards
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
@@ -434,9 +435,9 @@ const RoleManagement: React.FC = () => {
                                             <>
                                                 <button 
                                                     onClick={() => setActiveDropdown(activeDropdown === role.id ? null : role.id)}
-                                                    className={`p-1.5 rounded-md hover:bg-card border border-transparent opacity-0 group-hover:opacity-100 transition-opacity ${
-                                                        activeDropdown === role.id ? 'opacity-100 bg-card border-border shadow-sm' : ''
-                                                    } ${selectedRoleId === role.id ? 'text-accent' : 'text-muted'}`}
+                                                    className={`p-1.5 rounded-md hover:bg-card border border-transparent transition-opacity ${
+                                                        selectedRoleId === role.id ? 'opacity-100 text-accent' : 'opacity-0 group-hover:opacity-100 text-muted'
+                                                    } ${activeDropdown === role.id ? 'opacity-100 bg-card border-border shadow-sm' : ''}`}
                                                 >
                                                     <MoreVertical className="w-4 h-4" />
                                                 </button>
@@ -478,6 +479,19 @@ const RoleManagement: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => {
+                                                setIsEditing(false);
+                                                setIsCloning(true);
+                                                setRoleToClone(selectedRole);
+                                                setIsNameModalOpen(true);
+                                            }}
+                                            className="btn btn-secondary btn-sm flex items-center gap-1 h-7 px-3 text-xs"
+                                            title="Duplicate this role"
+                                        >
+                                            <Copy className="h-3.5 w-3.5" />
+                                            <span>Duplicate Role</span>
+                                        </button>
                                         {isSaving ? (
                                             <div className="flex items-center text-xs font-semibold text-accent bg-accent/5 px-3 py-1.5 rounded-full border border-accent/20 animate-pulse">
                                                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Saving...
