@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays, startOfToday } from 'date-fns';
-import { Download } from 'lucide-react';
+import { Download, Lock, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
@@ -89,6 +89,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
   const [loading, setLoading] = useState(!externalData);
+  const [isLocking, setIsLocking] = useState(false);
   const [, setUsers] = useState<User[]>([]); 
   const [, setLeaves] = useState<any[]>([]); 
   const { user: currentUser } = useAuthStore();
@@ -130,7 +131,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const today = startOfToday();
       if (isAfter(endDate, today)) endDate = today;
 
-      const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes] = await Promise.all([
+      const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes, allSiteHolidays] = await Promise.all([
         externalUsers || api.getUsers(),
         api.getLeaveRequests({ 
           startDate: format(subDays(startDate, 1), 'yyyy-MM-dd'),
@@ -138,7 +139,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         }),
         api.getAllUserHolidays({ year }),
         api.getRoles(),
-        api.getInitialAppData() 
+        api.getInitialAppData(),
+        api.getAllSiteSpecificHolidays()
       ]);
 
       const leavesData = leavesDataResponse?.data || [];
@@ -150,12 +152,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         setMasterHolidays(globalHolidaysRes.holidays);
       }
 
+
       let targetUsers = usersData;
       if (userId && userId !== 'all') {
         targetUsers = usersData.filter(u => u.id === userId);
       } else {
         if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
-        if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId === selectedSite);
+        if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
         if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
         if (selectedLocation !== 'all') targetUsers = targetUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
         if (selectedStatus === 'ACTIVE_USERS') {
@@ -219,6 +222,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             }
         }
 
+        const specificSiteHolidays = allSiteHolidays.filter((sh: any) => sh.siteId === user.organizationId);
+
         return processEmployeeMonth(
           user, 
           userEvents, 
@@ -228,7 +233,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           month, 
           currentOfficeHolidays, 
           currentFieldHolidays, 
-          currentSiteHolidays, 
+          specificSiteHolidays.length > 0 ? specificSiteHolidays : currentSiteHolidays, // fallback to global if none allocated
           currentRecurringHolidays,
           leavesData || [], 
           resolvedRole
@@ -554,6 +559,59 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const monthEnd = endOfMonth(monthStart);
   const effectiveEnd = isAfter(monthEnd, startOfToday()) ? startOfToday() : monthEnd;
 
+  const handleLockMonth = async () => {
+    if (!reportData || reportData.length === 0) return;
+    setIsLocking(true);
+    try {
+      // Find previous month
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevYear = month === 1 ? year - 1 : year;
+      
+      const employeeIds = reportData.map(r => r.employeeId);
+      
+      // Fetch previous month's balances to use as opening balances
+      const prevBalances = await api.getLeaveBalancesBulk(employeeIds, prevYear, prevMonth);
+      const balanceMap = new Map();
+      prevBalances.forEach((b: any) => balanceMap.set(b.employee_id, b));
+      
+      // Create new balance records
+      const newBalances = reportData.map(emp => {
+        const prev = balanceMap.get(emp.employeeId);
+        
+        // Compute Earned
+        // WO: 1 per 6 days present
+        const woEarned = (emp.presentDays + emp.halfDays) * (1 / 6);
+        const woAllotted = emp.weekOffs;
+        
+        // EL: 0.05 per qualifying day. Assuming 18 per annum config for all as default for now if site staff. 
+        // We'll calculate eligible days = present + weekoffs allotted + holidays
+        const qualifyingDays = emp.presentDays + emp.halfDays + emp.weekOffs + emp.holidays;
+        const elEarned = qualifyingDays * 0.05;
+        const elAvailed = emp.earnedLeaves;
+        
+        return {
+          employee_id: emp.employeeId,
+          year,
+          month,
+          el_opening: prev ? prev.el_closing : 0,
+          el_earned_this_month: elEarned,
+          el_availed_this_month: elAvailed,
+          wo_opening: prev ? prev.wo_closing : 0,
+          wo_earned_this_month: woEarned,
+          wo_allotted_this_month: woAllotted
+        };
+      });
+      
+      await api.saveLeaveBalances(newBalances);
+      alert('Balances successfully calculated and pushed to the database.');
+    } catch (error) {
+      console.error('Error locking month balances:', error);
+      alert('Failed to lock balances. Check console for details.');
+    } finally {
+      setIsLocking(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center">Loading report...</div>;
 
   return (
@@ -580,7 +638,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                )}
                <p>Date: {format(new Date(), 'dd MMM yyyy HH:mm')}</p>
             </div>
-            <Button onClick={exportToExcel} variant="secondary" className="mt-2"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+            <div className="flex gap-2 justify-end mt-2">
+                <Button onClick={exportToExcel} variant="secondary"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
+                {currentUser?.role === 'admin' && (
+                    <Button onClick={handleLockMonth} disabled={isLocking} className="bg-rose-600 hover:bg-rose-700 text-white border-none">
+                        {isLocking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
+                        {isLocking ? 'Locking...' : 'Lock Month & Push Balances'}
+                    </Button>
+                )}
+            </div>
           </div>
         </div>
       )}

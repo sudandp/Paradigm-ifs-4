@@ -242,12 +242,18 @@ export function evaluateSiteStaffStatus(params: any): string {
   }
 
   // 4. Layer Site Staff Specific Marks
+  const dayOfWeek = day.getDay();
+  const weeklyOffDays = userRules?.weeklyOffDays || [0];
+  const isWeeklyOffDay = weeklyOffDays.includes(dayOfWeek);
+
   if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P') {
     if (isHoliday) {
       // Overtime Rule: Only one HP or 1/2HP per day. 
-      // This function evaluates a single day's primary shift. Overtime shifts would be handled by a separate aggregator, 
-      // but for the daily mark, we return HP or 1/2HP.
       return baseWorkStatus === 'P' ? 'HP' : '1/2HP';
+    }
+    if (isWeeklyOffDay) {
+      // Worked on weekly off -> W/P or W/0.5P
+      return baseWorkStatus === 'P' ? 'W/P' : 'W/0.5P';
     }
     return baseWorkStatus;
   }
@@ -257,26 +263,30 @@ export function evaluateSiteStaffStatus(params: any): string {
     const lType = String(approvedLeave.leaveType || approvedLeave.type || '').toLowerCase();
     const isHalf = approvedLeave.dayOption === 'half' || approvedLeave.day_option === 'half';
     
-    // For Site Staff, 'EL' is the standard paid leave mark
     if (lType.includes('earned') || lType === 'e/l' || lType === 'el') {
-       // Note: Consumption validation (Opening Balance > 0) is enforced during leave approval and monthly processing.
-       return isHalf ? '1/2EL' : 'EL'; // Though standard rules specify EL
+       return isHalf ? '1/2EL' : 'EL';
     }
-    if (lType.includes('comp') || lType === 'c/o') {
-      return 'WO'; // Comp off converts to a Weekly Off consumption in some setups, or keep as WO
+    if (lType.includes('sick') || lType === 's/l' || lType === 'sl') {
+       return 'SL';
     }
-    // Any other leave type defaults to EL or specific type if needed, but rules say 'EL' is availed
+    if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') {
+       return 'CL';
+    }
+    if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
+      return 'C/O';
+    }
+    // Default leave mark if specific match not found
     return 'EL';
   }
 
   // Weekly Off logic
-  // "A WO mark is only valid if WO_Opening_Balance > 0."
-  // Since this is evaluated daily, if they didn't work, and it's their scheduled weekly off day, we mark it WO.
-  // The monthly aggregator will cap the actual allotted WO based on balance.
-  const dayOfWeek = day.getDay();
-  const weeklyOffDays = userRules?.weeklyOffDays || [0];
-  if (weeklyOffDays.includes(dayOfWeek)) {
+  if (isWeeklyOffDay) {
     return 'WO';
+  }
+
+  // Non-working Holiday logic (if it is a holiday but they didn't work)
+  if (isHoliday) {
+    return 'H'; // Or 0.5H if it's a half-day holiday
   }
 
   // Default to Absent

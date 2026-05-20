@@ -32,8 +32,8 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
     weeklyOffsPerWeek: existingConfig?.weeklyOffsPerWeek ?? 1,
     earnedLeavesPerAnnum: existingConfig?.earnedLeavesPerAnnum ?? 0,
     nfhPerAnnum: existingConfig?.nfhPerAnnum ?? 12,
-    nhBillingConfig: existingConfig?.nhBillingConfig ?? 'Per Day Extra',
-    nhSalaryConfig: existingConfig?.nhSalaryConfig ?? 'Standard Per Day',
+    nhBillingConfig: existingConfig?.nhBillingConfig ?? 'Actuals',
+    nhSalaryConfig: existingConfig?.nhSalaryConfig ?? 'Double',
     shift: existingConfig?.shift ?? 'A',
     shiftHours: existingConfig?.shiftHours ?? 8,
     rateEffectiveDate: existingConfig?.rateEffectiveDate ?? new Date().toISOString().split('T')[0],
@@ -238,8 +238,9 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
                   value={form.nhBillingConfig}
                   onChange={(e) => handleChange('nhBillingConfig', e.target.value)}
                 >
-                  <option value="Per Day Extra">Per Day Extra</option>
-                  <option value="Standard Per Day">Standard Per Day</option>
+                  <option value="NA">NA (Zero addition)</option>
+                  <option value="Actuals">Actuals (Single addition)</option>
+                  <option value="Double">Double (Double addition)</option>
                 </Select>
               </div>
               <div>
@@ -249,8 +250,9 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
                   value={form.nhSalaryConfig}
                   onChange={(e) => handleChange('nhSalaryConfig', e.target.value)}
                 >
-                  <option value="Per Day Extra">Per Day Extra</option>
-                  <option value="Standard Per Day">Standard Per Day</option>
+                  <option value="NA">NA (Zero addition)</option>
+                  <option value="Actuals">Actuals (Single addition)</option>
+                  <option value="Double">Double (Double addition)</option>
                 </Select>
               </div>
             </div>

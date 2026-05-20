@@ -86,7 +86,7 @@ import {
     GenericReportColumn,
     LeaveBalanceRow
 } from '../../utils/excelExport';
-import { calculateWorkingHours, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { exportToCsv } from '../../utils/fastExport';
@@ -122,6 +122,20 @@ Chart.register(
     Legend,
     Filler
 );
+
+const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
+    if (user.location || user.locationName) return user.location || user.locationName;
+    if (!user.societyId || orgStructure.length === 0) return '';
+
+    for (const group of orgStructure) {
+        for (const company of group.companies) {
+            if (company.id === user.societyId) {
+                return company.location || '';
+            }
+        }
+    }
+    return '';
+};
 
 
 // --- Reusable Dashboard Components ---
@@ -333,6 +347,102 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
         </div>
     );
 };
+    
+const RoleDistributionChart: React.FC<{ data: { labels: string[], values: number[] } }> = ({ data }) => {
+    const chartRef = useRef<HTMLCanvasElement>(null);
+    const chartInstance = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (chartRef.current) {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx) {
+                chartInstance.current = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            data: data.values,
+                            backgroundColor: [
+                                '#1d63ff', '#0eb161', '#f59e0b', '#df0637', '#8b5cf6', '#0ea5e9'
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20,
+                                    font: { family: "'Inter', sans-serif", size: 12 }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                titleFont: { size: 13, family: "'Inter', sans-serif" },
+                                bodyFont: { size: 13, family: "'Inter', sans-serif" },
+                                padding: 12,
+                                cornerRadius: 8,
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        return () => {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+        };
+    }, [data]);
+
+    return (
+        <div className="w-full h-full flex flex-col pt-2">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[15px] font-bold text-gray-800">Attendance by Role</h3>
+            </div>
+            <div className="flex-grow relative min-h-[200px]">
+                <canvas ref={chartRef}></canvas>
+            </div>
+        </div>
+    );
+};
+
+const TopPerformersList: React.FC<{ performers?: { name: string; role: string; value: string }[] }> = ({ performers }) => {
+    return (
+        <div className="w-full h-full flex flex-col pt-2">
+            <h3 className="text-[15px] font-bold text-gray-800 mb-4">Top Performers</h3>
+            <div className="flex-grow overflow-y-auto">
+                <ul className="space-y-4">
+                    {(performers || []).map((p, i) => (
+                        <li key={i} className="flex justify-between items-center">
+                            <div>
+                                <p className="text-sm font-bold text-gray-900 leading-tight">{p.name}</p>
+                                <p className="text-xs text-gray-500 capitalize">{p.role.replace(/_/g, ' ')}</p>
+                            </div>
+                            <div className="flex items-center text-emerald-600 font-bold text-sm">
+                                <TrendingUp className="w-3.5 h-3.5 mr-1" />
+                                {p.value}
+                            </div>
+                        </li>
+                    ))}
+                    {(!performers || performers.length === 0) && (
+                        <div className="text-sm text-gray-400 text-center py-6">No data available</div>
+                    )}
+                </ul>
+            </div>
+        </div>
+    );
+};
 
 
 interface DashboardData {
@@ -343,6 +453,12 @@ interface DashboardData {
     inactiveCount: number;
     attendanceTrend: { labels: string[]; present: number[]; absent: number[] };
     productivityTrend: { labels: string[]; hours: number[] };
+    // Client View specific
+    lateArrivalsToday?: number;
+    pendingLeavesToday?: number;
+    approvedLeavesToday?: number;
+    roleDistribution?: { labels: string[]; values: number[] };
+    topPerformers?: { name: string; role: string; value: string }[];
 }
 
 
@@ -551,7 +667,12 @@ const AttendanceDashboard: React.FC = () => {
         
         if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return ents.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         
-        const siteIds = new Set(users.map(u => u.organizationId).filter(Boolean));
+        const siteIds = new Set<string>();
+        users.forEach(u => {
+            if (u.organizationId) {
+                u.organizationId.split(',').forEach(id => siteIds.add(id.trim()));
+            }
+        });
         return ents
             .filter(e => siteIds.has(e.id))
             .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -567,8 +688,8 @@ const AttendanceDashboard: React.FC = () => {
             }
         });
         users.forEach(u => {
-            if (u.location) locations.add(u.location);
-            if (u.locationName) locations.add(u.locationName);
+            const loc = resolveUserLocation(u, orgStructure);
+            if (loc) locations.add(loc);
         });
         return Array.from(locations).filter(Boolean).sort();
     }, [orgStructure, users]);
@@ -709,7 +830,8 @@ const AttendanceDashboard: React.FC = () => {
     
     // Reporting Manager logic
     const [isReportingManager, setIsReportingManager] = useState(false);
-    const isEmployeeView = !canViewAllAttendance && !isReportingManager;
+    const isClientOrManagerView = user?.role === 'client' || user?.role === 'manager';
+    const isEmployeeView = !canViewAllAttendance && !isReportingManager && !isClientOrManagerView;
 
     // Check if user is a reporting manager
     useEffect(() => {
@@ -732,7 +854,7 @@ const AttendanceDashboard: React.FC = () => {
     }, [user]);
 
     // Employee View State
-    const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0 });
+    const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0, elBalance: 0, woBalance: 0 });
     const [employeeLogs, setEmployeeLogs] = useState<any[]>([]);
 
     const resolveUserRules = useCallback((userId?: string, userCategoryOverride?: 'office' | 'field' | 'site') => {
@@ -828,7 +950,7 @@ const AttendanceDashboard: React.FC = () => {
                 // Add 12-hour lookahead to capture night shift completions
                 const endStr = new Date(dateRange.endDate.getTime() + 12 * 60 * 60 * 1000).toISOString();
 
-                const [events, compOffs, userHolidays, userLeaves] = await Promise.all([
+                const [events, compOffs, userHolidays, userLeaves, siteSpecificHolidays, leaveBalances] = await Promise.all([
                     api.getAttendanceEvents(user.id, startStr, endStr),
                     api.getCompOffLogs(user.id),
                     api.getUserHolidays(user.id),
@@ -837,7 +959,9 @@ const AttendanceDashboard: React.FC = () => {
                         startDate: startStr, 
                         endDate: endStr, 
                         status: ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'] 
-                    })
+                    }),
+                    user.organizationId ? api.getSiteSpecificHolidays(user.organizationId) : Promise.resolve([]),
+                    api.getLeaveBalances(user.id, dateRange.endDate.getFullYear(), dateRange.endDate.getMonth() + 1)
                 ]);
                 
                 const leavesData = Array.isArray(userLeaves) ? userLeaves : (userLeaves as any).data || [];
@@ -898,7 +1022,7 @@ const AttendanceDashboard: React.FC = () => {
                         dayEvents,
                         officeHolidays,
                         fieldHolidays,
-                        siteHolidays,
+                        siteHolidays: siteSpecificHolidays.length > 0 ? siteSpecificHolidays : siteHolidays,
                         recurringHolidays,
                         userHolidaysPool: userHolidays || [],
                         leaves: leavesData,
@@ -970,7 +1094,14 @@ const AttendanceDashboard: React.FC = () => {
                     return d >= dateRange.startDate! && d <= dateRange.endDate! && log.status === 'earned';
                 }).length;
 
-                setEmployeeStats({ present, absent, ot: Math.round(otHours * 10) / 10, compOff: compOffCount });
+                setEmployeeStats({ 
+                    present, 
+                    absent, 
+                    ot: Math.round(otHours * 10) / 10, 
+                    compOff: compOffCount,
+                    elBalance: leaveBalances ? leaveBalances.el_closing : 0,
+                    woBalance: leaveBalances ? leaveBalances.wo_closing : 0
+                });
                 setEmployeeLogs(displayLogs.reverse()); // Newest first
 
             } catch (error) {
@@ -1004,10 +1135,19 @@ const AttendanceDashboard: React.FC = () => {
                 }
 
                 let activeStaff = currentUsers.filter(u => u.role !== 'management');
-                if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
-                if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId === selectedSite);
-                if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
-                if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
+                if (isClientOrManagerView && user?.organizationId) {
+                    const managerOrgs = user.organizationId.split(',').map(s => s.trim());
+                    activeStaff = activeStaff.filter(u => {
+                        if (!u.organizationId) return false;
+                        const userOrgs = u.organizationId.split(',').map(s => s.trim());
+                        return managerOrgs.some(org => userOrgs.includes(org));
+                    });
+                } else {
+                    if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
+                    if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
+                    if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
+                    if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
+                }
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
@@ -1015,12 +1155,11 @@ const AttendanceDashboard: React.FC = () => {
                 // Add 12-hour lookahead to capture night shift completions
                 const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
 
-                const [events, leavesResponse, holidaysResponse, rolesResponse, kioskDevicesResponse] = await Promise.all([
+                const [events, allLeavesResponse, holidaysResponse, rolesResponse, kioskDevicesResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
                     api.getLeaveRequests({ 
                         startDate: queryStart.toISOString(), 
-                        endDate: queryEnd.toISOString(), 
-                        status: ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'] 
+                        endDate: queryEnd.toISOString()
                     }),
                     api.getAllUserHolidays(),
                     api.getRoles(),
@@ -1029,7 +1168,8 @@ const AttendanceDashboard: React.FC = () => {
 
                 setAttendanceEvents(events);
                 setKioskDevices(kioskDevicesResponse || []);
-                const leavesData = (Array.isArray(leavesResponse) ? leavesResponse : leavesResponse.data || []).filter(Boolean);
+                const allLeaves = (Array.isArray(allLeavesResponse) ? allLeavesResponse : allLeavesResponse.data || []).filter(Boolean);
+                const leavesData = allLeaves.filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase()));
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
                 setAllRoles(rolesResponse || []);
@@ -1137,6 +1277,90 @@ const AttendanceDashboard: React.FC = () => {
                 setRecentlyActiveUserIds(recentlyActiveIds);
                 const inactiveCount = Math.max(0, activeStaff.length - recentlyActiveIds.size);
 
+                // --- Client/Manager Metrics Calculation ---
+                let lateArrivalsToday = 0;
+                let roleDistribution: { labels: string[], values: number[] } | undefined;
+                let topPerformers: { name: string, role: string, value: string }[] | undefined;
+                let pendingLeavesToday = 0;
+                let approvedLeavesToday = 0;
+
+                if (isClientOrManagerView) {
+                    // Late Arrivals
+                    const userTodayEvents: Record<string, AttendanceEvent[]> = {};
+                    todayEvents.forEach(e => {
+                        if (!userTodayEvents[e.userId]) userTodayEvents[e.userId] = [];
+                        userTodayEvents[e.userId].push(e);
+                    });
+                    Object.values(userTodayEvents).forEach(ue => {
+                        const punchIns = ue.filter(e => e.type === 'punch-in' || e.type === 'site-in');
+                        if (punchIns.length > 0) {
+                            punchIns.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                            const firstPunchIn = punchIns[0];
+                            const { isLate } = isLateCheckIn(new Date(firstPunchIn.timestamp).toISOString(), '09:30');
+                            if (isLate) lateArrivalsToday++;
+                        }
+                    });
+
+                    // Leaves logic (for the selected date range)
+                    const rangeLeaves = allLeaves.filter(l => {
+                        const dStart = new Date(l.startDate);
+                        const dEnd = new Date(l.endDate);
+                        return dStart <= endDate && dEnd >= startDate && activeStaffIds.has(l.userId);
+                    });
+                    pendingLeavesToday = rangeLeaves.filter(l => String(l.status).toLowerCase() === 'pending').length;
+                    approvedLeavesToday = rangeLeaves.filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase())).length;
+
+                    // Role Distribution (Donut Chart) for today's present users
+                    const roleCounts: Record<string, number> = {};
+                    const presentUsers = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId))]);
+                    presentUsers.forEach(uid => {
+                        const u = activeStaff.find(st => st.id === uid);
+                        if (u) {
+                            let rName = u.role ? u.role.replace(/_/g, ' ') : 'Unknown';
+                            if (u.role && u.role.length > 20 && rolesResponse) {
+                                const rObj = rolesResponse.find(r => r.id === u.role);
+                                if (rObj) rName = rObj.displayName.replace(/_/g, ' ');
+                            }
+                            roleCounts[rName] = (roleCounts[rName] || 0) + 1;
+                        }
+                    });
+                    const labelsDist = Object.keys(roleCounts).map(k => k.charAt(0).toUpperCase() + k.slice(1));
+                    const valuesDist = Object.values(roleCounts);
+                    roleDistribution = { labels: labelsDist, values: valuesDist };
+
+                    // Top Performers (Total hours worked in range)
+                    const userTotalHours: Record<string, number> = {};
+                    days.forEach(day => {
+                        const dateStr = format(day, 'yyyy-MM-dd');
+                        const dayEvts = eventsByDate.get(dateStr) || [];
+                        const uEvts: Record<string, AttendanceEvent[]> = {};
+                        dayEvts.filter(e => activeStaffIds.has(e.userId)).forEach(e => {
+                            if (!uEvts[e.userId]) uEvts[e.userId] = [];
+                            uEvts[e.userId].push(e);
+                        });
+                        Object.entries(uEvts).forEach(([uid, ue]) => {
+                            const { workingHours } = calculateWorkingHours(ue, day);
+                            userTotalHours[uid] = (userTotalHours[uid] || 0) + workingHours;
+                        });
+                    });
+                    topPerformers = Object.entries(userTotalHours)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 4)
+                        .map(([uid, hrs]) => {
+                            const u = activeStaff.find(st => st.id === uid);
+                            let rName = u?.role ? u.role.replace(/_/g, ' ') : 'Staff';
+                            if (u?.role && u.role.length > 20 && rolesResponse) {
+                                const rObj = rolesResponse.find(r => r.id === u.role);
+                                if (rObj) rName = rObj.displayName.replace(/_/g, ' ');
+                            }
+                            return {
+                                name: u ? u.name : 'Unknown User',
+                                role: rName,
+                                value: `${hrs.toFixed(1)}h`
+                            };
+                        });
+                }
+
                 setDashboardData({
                     totalEmployees: activeStaff.length,
                     presentToday: isRangeLong ? avgPresent : presentToday,
@@ -1144,7 +1368,12 @@ const AttendanceDashboard: React.FC = () => {
                     onLeaveToday: isRangeLong ? avgOnLeave : onLeaveToday,
                     inactiveCount,
                     attendanceTrend: { labels, present: presentTrend, absent: absentTrend },
-                    productivityTrend: { labels, hours: productivityTrend }
+                    productivityTrend: { labels, hours: productivityTrend },
+                    lateArrivalsToday,
+                    pendingLeavesToday,
+                    approvedLeavesToday,
+                    roleDistribution,
+                    topPerformers
                 });
             } catch (error) {
                 console.error("Failed to load dashboard data", error);
@@ -1265,10 +1494,10 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
         }
         if (selectedSite !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+            filteredUsers = filteredUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
         }
         if (selectedLocation !== 'all') {
-            filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
+            filteredUsers = filteredUsers.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
         }
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
@@ -1527,7 +1756,7 @@ const AttendanceDashboard: React.FC = () => {
             });
         }
         return filteredData;
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRecordType, recurringHolidays, leaves, userHolidaysPool, officeHolidays, fieldHolidays, siteHolidays, orgStructure]);
 
     // 2. Attendance Log Data (Raw Events)
     const attendanceLogData: AttendanceLogDataRow[] = useMemo(() => {
@@ -1546,10 +1775,10 @@ const AttendanceDashboard: React.FC = () => {
             filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
         }
         if (selectedSite !== 'all') {
-            filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
+            filteredUsers = filteredUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
         }
         if (selectedLocation !== 'all') {
-            filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
+            filteredUsers = filteredUsers.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
         }
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
@@ -1617,7 +1846,7 @@ const AttendanceDashboard: React.FC = () => {
                 return b.time.localeCompare(a.time);
             });
 
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices, orgStructure]);
 
     // 3. Monthly Report Data (Aggregated)
     // Legacy monthlyReportData removed - now handled by unified MonthlyHoursReport component
@@ -1633,8 +1862,8 @@ const AttendanceDashboard: React.FC = () => {
         if (selectedUser !== 'all') filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
         if (selectedRole !== 'all') filteredUsers = filteredUsers.filter(u => u.role === selectedRole);
         if (selectedCompany !== 'all') filteredUsers = filteredUsers.filter(u => u.societyId === selectedCompany);
-        if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId === selectedSite);
-        if (selectedLocation !== 'all') filteredUsers = filteredUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
+        if (selectedSite !== 'all') filteredUsers = filteredUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
+        if (selectedLocation !== 'all') filteredUsers = filteredUsers.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
 
         const activeInPeriodIds = new Set(attendanceEvents.map(e => String(e.userId).toLowerCase()));
         if (selectedStatus === 'ACTIVE_USERS') {
@@ -1688,7 +1917,7 @@ const AttendanceDashboard: React.FC = () => {
         });
 
         return data.sort((a, b) => b.date.localeCompare(a.date));
-    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus]);
+    }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, orgStructure]);
 
 
     // Helper to map high-precision monthly data to the simple status grid format
@@ -1715,7 +1944,16 @@ const AttendanceDashboard: React.FC = () => {
     // Determine which PDF component to render
         const renderReportContent = useCallback((isPreview: boolean = false) => {
         const reportDateRange = `${format(dateRange.startDate!, 'yyyy-MM-dd')} to ${format(dateRange.endDate!, 'yyyy-MM-dd')}`;
-        const orgName = selectedSite !== 'all' ? users.find(u => u.organizationId === selectedSite)?.organizationName : 'All Sites';
+        const orgName = selectedSite !== 'all' 
+            ? (() => {
+                const matchedUser = users.find(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
+                if (!matchedUser) return 'All Sites';
+                const ids = (matchedUser.organizationId || '').split(',').map(s => s.trim());
+                const names = (matchedUser.organizationName || '').split(',').map(s => s.trim());
+                const idx = ids.indexOf(selectedSite);
+                return idx !== -1 && names[idx] ? names[idx] : (matchedUser.organizationName || 'All Sites');
+              })()
+            : 'All Sites';
         const socName = selectedCompany !== 'all' ? users.find(u => u.societyId === selectedCompany)?.societyName : 'All Companies';
         const logoBase64 = logoForPdf;
         const currentLogoUrl = useLogoStore.getState().currentLogo;
@@ -2255,7 +2493,7 @@ const AttendanceDashboard: React.FC = () => {
                 targetUsers = targetUsers.filter(u => u.role === selectedRole);
             }
             if (selectedSite !== 'all') {
-                targetUsers = targetUsers.filter(u => u.organizationId === selectedSite);
+                targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
             }
 
             if (selectedStatus === 'ACTIVE_USERS') {
@@ -2897,8 +3135,8 @@ const AttendanceDashboard: React.FC = () => {
                                         .filter(u => 
                                             (pendingSelectedRole === 'all' || u.role === pendingSelectedRole) && 
                                             (pendingSelectedCompany === 'all' || u.societyId === pendingSelectedCompany) &&
-                                            (pendingSelectedSite === 'all' || u.organizationId === pendingSelectedSite) &&
-                                            (pendingSelectedLocation === 'all' || (u.location || u.locationName || '').toLowerCase() === pendingSelectedLocation.toLowerCase())
+                                            (pendingSelectedSite === 'all' || (u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(pendingSelectedSite))) &&
+                                            (pendingSelectedLocation === 'all' || resolveUserLocation(u, orgStructure).toLowerCase() === pendingSelectedLocation.toLowerCase())
                                         )
                                         .sort((a, b) => a.name.localeCompare(b.name))
                                         .map(u => (
@@ -3008,27 +3246,52 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className="flex flex-col gap-8 md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl">
+            <div className={`flex flex-col gap-8 md:grid md:grid-cols-2 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl`}>
                 {isEmployeeView ? (
                     // Personal Stats for Normal Users
                     [
                         { title: "Present", value: employeeStats.present, icon: UserCheck, color: "bg-emerald-500" },
                         { title: "Absent", value: employeeStats.absent, icon: UserX, color: "bg-[#df0637]" },
                         { title: "Overtime", value: `${employeeStats.ot}h`, icon: Clock, color: "bg-[#1d63ff]" },
-                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "bg-purple-600" }
+                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "bg-purple-600" },
+                        { title: "Leave Bal.", value: employeeStats.elBalance.toFixed(1), icon: TrendingUp, color: "bg-orange-500" },
+                        { title: "WO Bal.", value: employeeStats.woBalance.toFixed(1), icon: TrendingUp, color: "bg-teal-500" }
                     ].map((stat, i) => (
                         <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
-                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
+                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none flex-shrink-0`}>
                                 <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
                             </div>
-                            <div className="flex flex-col">
-                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1">{stat.title}</p>
+                            <div className="flex flex-col min-w-0">
+                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1 truncate">{stat.title}</p>
                                 <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
                             </div>
                         </div>
                     ))
+                ) : isClientOrManagerView ? (
+                    // Organizational Stats for Clients and Managers
+                    [
+                        { title: "Total Present", value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-emerald-500", suffix: `Employees` },
+                        { title: "Total Absent", value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-rose-100 text-rose-500", suffix: `Employees` },
+                        { title: "Late Arrivals", value: dashboardData?.lateArrivalsToday || 0, icon: Clock, color: "bg-amber-100 text-amber-500", suffix: `Employees` },
+                        { title: "Leave Requests", value: dashboardData?.pendingLeavesToday || 0, icon: Users, color: "bg-blue-100 text-blue-500", suffix: `Pending` }
+                    ].map((stat, i) => (
+                        <div key={i} className="flex flex-col bg-[#0b291a] md:bg-white p-5 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm relative overflow-hidden">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${stat.color.includes('text-') ? stat.color : `${stat.color} text-white`}`}>
+                                        <stat.icon className="h-5 w-5" />
+                                    </div>
+                                    <p className="text-sm font-semibold text-gray-300 md:text-gray-600">{stat.title}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <h3 className="text-4xl font-bold text-white md:text-gray-900">{stat.value}</h3>
+                                <span className="text-sm font-medium text-gray-400">{stat.suffix}</span>
+                            </div>
+                        </div>
+                    ))
                 ) : (
-                    // Organizational Stats for Admins/Managers
+                    // Organizational Stats for Admins/HR
                     [
                         { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-emerald-500" },
                         { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
@@ -3049,26 +3312,51 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Charts Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
-                    <div className="flex items-center mb-6">
-                        <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
-                        <h3 className="font-semibold text-white md:text-primary-text">Attendance Trend</h3>
+            {isClientOrManagerView ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-base font-bold text-white md:text-gray-900">Weekly Attendance Trends</h3>
+                            <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
+                                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-[#1d63ff]"></div> Present</div>
+                                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100"></div> Absent</div>
+                            </div>
+                        </div>
+                        <div className="h-64 md:h-[320px] relative mt-4">
+                            {dashboardData ? <AttendanceTrendChart data={dashboardData.attendanceTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        </div>
                     </div>
-                    <div className="h-64 md:h-80 relative">
-                        {dashboardData ? <AttendanceTrendChart data={dashboardData.attendanceTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                    <div className="lg:col-span-1 flex flex-col gap-6">
+                        <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
+                            {dashboardData?.roleDistribution ? <RoleDistributionChart data={dashboardData.roleDistribution} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        </div>
+                        <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
+                            {dashboardData?.topPerformers ? <TopPerformersList performers={dashboardData.topPerformers} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        </div>
                     </div>
                 </div>
-                <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
-                    <div className="flex items-center mb-6">
-                        <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
-                        <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
+                        <div className="flex items-center mb-6">
+                            <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
+                            <h3 className="font-semibold text-white md:text-primary-text">Attendance Trend</h3>
+                        </div>
+                        <div className="h-64 md:h-80 relative">
+                            {dashboardData ? <AttendanceTrendChart data={dashboardData.attendanceTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        </div>
                     </div>
-                    <div className="h-64 md:h-80 relative">
-                        {dashboardData ? <ProductivityChart data={dashboardData.productivityTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                    <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
+                        <div className="flex items-center mb-6">
+                            <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
+                            <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
+                        </div>
+                        <div className="h-64 md:h-80 relative">
+                            {dashboardData ? <ProductivityChart data={dashboardData.productivityTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
 
             {/* Report Preview Section */}

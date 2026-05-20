@@ -20,6 +20,7 @@ import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { supabase } from '../../services/supabase';
 import StaffBillingConfig from '../billing/StaffBillingConfig';
+import SiteHolidayAllocator from '../../components/billing/SiteHolidayAllocator';
 
 
 const AttendanceSettings: React.FC = () => {
@@ -771,36 +772,11 @@ const AttendanceSettings: React.FC = () => {
                         {activeTab === 'site' && (
                             <div className="mt-6 p-6 border border-emerald-500/20 bg-emerald-500/5 rounded-xl space-y-4">
                                 <h4 className="text-md font-bold text-emerald-800 flex items-center">
-                                    <Shield className="mr-2 h-5 w-5 text-emerald-600" /> Holiday (NH) Multiplier Config (Site Staff Only)
+                                    <Shield className="mr-2 h-5 w-5 text-emerald-600" /> Holiday Configuration (Moved to Staff Billing Config)
                                 </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-primary-text mb-1">NH Billing Configuration (Client Invoice)</label>
-                                        <Select
-                                            id="nhBillingConfig"
-                                            value={currentRules.nhBillingConfig || 'Actuals'}
-                                            onChange={(e) => handleSettingChange('nhBillingConfig', e.target.value)}
-                                        >
-                                            <option value="NA">NA (Zero billing addition)</option>
-                                            <option value="Actuals">Actuals (Single billing addition)</option>
-                                            <option value="Double">Double (Double billing addition)</option>
-                                        </Select>
-                                        <p className="text-xs text-muted mt-1">Defines how client is billed for work on National Holidays.</p>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-primary-text mb-1">NH Salary Configuration (Employee Payroll)</label>
-                                        <Select
-                                            id="nhSalaryConfig"
-                                            value={currentRules.nhSalaryConfig || 'Double'}
-                                            onChange={(e) => handleSettingChange('nhSalaryConfig', e.target.value)}
-                                        >
-                                            <option value="NA">NA (Zero salary addition)</option>
-                                            <option value="Actuals">Actuals (Single salary addition)</option>
-                                            <option value="Double">Double (Double salary addition)</option>
-                                        </Select>
-                                        <p className="text-xs text-muted mt-1">Defines how employee is paid for work on National Holidays.</p>
-                                    </div>
-                                </div>
+                                <p className="text-sm text-emerald-700">
+                                    NH Billing Configuration and NH Salary Configuration are now managed at the individual staff level under the <strong>Staff Billing Config</strong> tab.
+                                </p>
                             </div>
                         )}
                     </div>
@@ -1947,9 +1923,14 @@ const AttendanceSettings: React.FC = () => {
                 </section>
 
                 <section className="pt-6 border-t border-border" style={{ display: subTab === 'holidays' ? undefined : 'none' }}>
-                    <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Holiday List</h3>
                     
-                    <div className="mb-6 space-y-4">
+                    {activeTab === 'site' ? (
+                        <SiteHolidayAllocator />
+                    ) : (
+                        <>
+                            <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Holiday List</h3>
+                            
+                            <div className="mb-6 space-y-4">
                         <Checkbox
                             id="enableCustomHolidays"
                             label="Enable Custom Holiday Selection"
@@ -2146,6 +2127,8 @@ const AttendanceSettings: React.FC = () => {
                             )}
                         </div>
                     </div>
+                        </>
+                    )}
                 </section>
             </>
             )}

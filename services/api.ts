@@ -7896,5 +7896,98 @@ export const api = {
       .from('site_staff_config_logs')
       .insert({ ...record, updated_at: new Date().toISOString() });
     if (error) throw error;
+  },
+
+  getSiteSpecificHolidays: async (siteId: string): Promise<{ date: string, name: string }[]> => {
+    const { data, error } = await supabase
+      .from('site_holidays')
+      .select('holiday_date, name')
+      .eq('site_id', siteId);
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      date: row.holiday_date,
+      name: row.name
+    }));
+  },
+
+  getAllSiteSpecificHolidays: async (): Promise<{ siteId: string, date: string, name: string }[]> => {
+    const { data, error } = await supabase
+      .from('site_holidays')
+      .select('site_id, holiday_date, name');
+    if (error) throw error;
+    return (data || []).map((row: any) => ({
+      siteId: row.site_id,
+      date: row.holiday_date,
+      name: row.name
+    }));
+  },
+
+  getLeaveBalances: async (employeeId: string, year: number, month: number) => {
+    const { data, error } = await supabase
+      .from('leave_balances')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle();
+      
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  },
+
+  getLeaveBalancesBulk: async (employeeIds: string[], year: number, month: number) => {
+    if (employeeIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('leave_balances')
+      .select('*')
+      .in('employee_id', employeeIds)
+      .eq('year', year)
+      .eq('month', month);
+      
+    if (error) throw error;
+    return data || [];
+  },
+
+
+  saveLeaveBalances: async (records: {
+    employee_id: string;
+    year: number;
+    month: number;
+    el_opening: number;
+    el_earned_this_month: number;
+    el_availed_this_month: number;
+    wo_opening: number;
+    wo_earned_this_month: number;
+    wo_allotted_this_month: number;
+  }[]) => {
+    if (records.length === 0) return;
+    const { error } = await supabase
+      .from('leave_balances')
+      .upsert(records, { onConflict: 'employee_id,year,month' });
+    if (error) throw error;
+  },
+
+
+
+  saveSiteSpecificHolidays: async (siteId: string, holidays: { date: string, name: string }[]): Promise<void> => {
+    // 1. Delete all existing holidays for this site
+    const { error: deleteError } = await supabase
+      .from('site_holidays')
+      .delete()
+      .eq('site_id', siteId);
+    if (deleteError) throw deleteError;
+
+    // 2. Insert new holidays if any
+    if (holidays.length > 0) {
+      const recordsToInsert = holidays.map(h => ({
+        site_id: siteId,
+        holiday_date: h.date,
+        name: h.name
+      }));
+      const { error: insertError } = await supabase
+        .from('site_holidays')
+        .insert(recordsToInsert);
+      if (insertError) throw insertError;
+    }
   }
 };

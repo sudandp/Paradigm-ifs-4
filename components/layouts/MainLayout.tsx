@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, Mail, UserX, LayoutTemplate, FileSpreadsheet } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -35,6 +35,7 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/referral/management', label: 'Referral Management', icon: Users, permission: 'view_referrals', category: 'CRM & Sales' },
 
     // Dashboards
+    { to: '/client/dashboard', label: 'Client Dashboard', icon: BarChart3, permission: 'view_client_dashboard', category: 'Dashboards' },
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
     { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
     { to: '/verification/dashboard', label: 'All Submissions', icon: LayoutDashboard, permission: 'view_all_submissions', category: 'Dashboards' },

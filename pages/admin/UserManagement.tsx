@@ -41,6 +41,20 @@ const getRoleBadgeClass = (role: string) => {
     }
 };
 
+const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
+    if (user.location || user.locationName) return user.location || user.locationName;
+    if (!user.societyId || orgStructure.length === 0) return '';
+
+    for (const group of orgStructure) {
+        for (const company of group.companies) {
+            if (company.id === user.societyId) {
+                return company.location || '';
+            }
+        }
+    }
+    return '';
+};
+
 interface UserActionProps {
     user: User;
     isSelected: boolean;
@@ -56,20 +70,6 @@ interface UserActionProps {
 const UserRow = React.memo(({ 
     user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
-    const resolveLocation = () => {
-        if (user.location || user.locationName) return user.location || user.locationName;
-        if (!user.societyId || orgStructure.length === 0) return '-';
-
-        for (const group of orgStructure) {
-            for (const company of group.companies) {
-                if (company.id === user.societyId) {
-                    return company.location || '-';
-                }
-            }
-        }
-        return '-';
-    };
-
     return (
         <tr className={`hover:bg-slate-50 transition-colors border-b border-slate-100 ${isSelected ? 'bg-emerald-50/50' : ''}`}>
             <td className="px-6 py-4 whitespace-nowrap">
@@ -97,7 +97,7 @@ const UserRow = React.memo(({
                 {user.societyName || '-'}
             </td>
             <td data-label="Location" className="px-6 py-4 text-base text-primary-text font-medium">
-                {resolveLocation()}
+                {resolveUserLocation(user, orgStructure) || '-'}
             </td>
             <td data-label="Biometric ID" className="px-6 py-4 text-base font-mono text-muted/80">
                 {user.biometricId || '-'}
@@ -157,20 +157,6 @@ const UserRow = React.memo(({
 const UserCard = React.memo(({ 
     user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
-    const resolveLocation = () => {
-        if (user.location || user.locationName) return user.location || user.locationName;
-        if (!user.societyId || orgStructure.length === 0) return '-';
-
-        for (const group of orgStructure) {
-            for (const company of group.companies) {
-                if (company.id === user.societyId) {
-                    return company.location || '-';
-                }
-            }
-        }
-        return '-';
-    };
-
     return (
         <div className={`bg-card p-4 rounded-xl border shadow-sm flex flex-col gap-3 h-full transition-all ${isSelected ? 'border-emerald-500 bg-emerald-50/5 ring-1 ring-emerald-500' : 'border-border'}`}>
             <div className="flex justify-between items-start">
@@ -198,7 +184,7 @@ const UserCard = React.memo(({
                 </div>
                 <div>
                     <span className="text-xs text-muted block">Location</span>
-                    <span className="font-medium text-primary-text truncate block">{resolveLocation()}</span>
+                    <span className="font-medium text-primary-text truncate block">{resolveUserLocation(user, orgStructure) || '-'}</span>
                 </div>
                 <div>
                     <span className="text-xs text-muted block">Biometric ID</span>
@@ -256,6 +242,7 @@ const UserCard = React.memo(({
 const UserManagement: React.FC = () => {
     const navigate = useNavigate();
     const [users, setUsers] = useState<User[]>([]);
+    const [dbUsers, setDbUsers] = useState<User[]>([]);
     const [totalUsers, setTotalUsers] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
@@ -354,12 +341,12 @@ const UserManagement: React.FC = () => {
         allCompanies.forEach(c => {
             if (c.location) locations.add(c.location);
         });
-        users.forEach(u => {
-            if (u.location) locations.add(u.location);
-            if (u.locationName) locations.add(u.locationName);
+        dbUsers.forEach(u => {
+            const loc = resolveUserLocation(u, orgStructure);
+            if (loc) locations.add(loc);
         });
         return Array.from(locations).sort();
-    }, [allCompanies, users]);
+    }, [allCompanies, dbUsers, orgStructure]);
 
     const allSites = useMemo(() => {
         const sites: any[] = [];
@@ -371,10 +358,26 @@ const UserManagement: React.FC = () => {
         return sites;
     }, [allCompanies]);
 
+    // Cascading filter: Company options based on Location
+    const filteredCompanies = useMemo(() => {
+        if (!pendingFilters.location) return allCompanies;
+        return allCompanies.filter(company => 
+            company.location === pendingFilters.location ||
+            dbUsers.some(u => u.societyId === company.id && resolveUserLocation(u, orgStructure) === pendingFilters.location)
+        );
+    }, [allCompanies, pendingFilters.location, dbUsers, orgStructure]);
+
+    // Cascading filter: Site options based on Location and Company
     const filteredSites = useMemo(() => {
-        if (pendingFilters.company === 'all') return allSites;
-        return allSites.filter(site => site.companyId === pendingFilters.company);
-    }, [allSites, pendingFilters.company]);
+        let sites = allSites;
+        if (pendingFilters.company !== 'all') {
+            sites = sites.filter(site => site.companyId === pendingFilters.company);
+        } else if (pendingFilters.location) {
+            const validCompanyIds = new Set(filteredCompanies.map(c => c.id));
+            sites = sites.filter(site => validCompanyIds.has(site.companyId));
+        }
+        return sites;
+    }, [allSites, pendingFilters.company, pendingFilters.location, filteredCompanies]);
 
     const fetchUsers = useCallback(async () => {
         // Only show full-page skeleton if we have no users yet
@@ -394,11 +397,14 @@ const UserManagement: React.FC = () => {
                 setAllRoles(roles);
             }
 
+            // Always fetch the full list of users for dropdowns/caching
+            const allUsers = await api.getUsers();
+            setDbUsers(allUsers);
+
             if (hasActiveFilters) {
                 // If we've already fetched all users for filtering, don't fetch again
                 if (fetchedAllFiltered) return;
 
-                const allUsers = await api.getUsers();
                 setUsers(allUsers);
                 setTotalUsers(allUsers.length);
                 setFetchedAllFiltered(true);
@@ -419,7 +425,7 @@ const UserManagement: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [currentPage, pageSize, hasActiveFilters, fetchedAllFiltered, users.length]);
+    }, [currentPage, pageSize, hasActiveFilters, fetchedAllFiltered, users.length, orgStructure.length, allRoles.length]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -555,10 +561,33 @@ const UserManagement: React.FC = () => {
         const { name, value } = e.target;
         setPendingFilters(prev => {
             const next = { ...prev, [name]: value };
-            // Reset site if company changes
-            if (name === 'company') {
+            
+            // Strict downward reset propagation when selecting "All" options
+            if (name === 'location' && value === '') {
+                next.company = 'all';
+                next.site = 'all';
+                next.role = 'all';
+                next.status = 'all';
+                next.employee = '';
+            } else if (name === 'company' && value === 'all') {
+                next.site = 'all';
+                next.role = 'all';
+                next.status = 'all';
+                next.employee = '';
+            } else if (name === 'site' && value === 'all') {
+                next.role = 'all';
+                next.status = 'all';
+                next.employee = '';
+            } else if (name === 'role' && value === 'all') {
+                next.status = 'all';
+                next.employee = '';
+            } else if (name === 'status' && value === 'all') {
+                next.employee = '';
+            } else if (name === 'company') {
+                // Default fallback: reset site when company changes to a specific value
                 next.site = 'all';
             }
+            
             return next;
         });
     };
@@ -590,19 +619,137 @@ const UserManagement: React.FC = () => {
         if (allRoles.length > 0) {
             return allRoles.map(r => r.displayName || r.id).sort();
         }
-        // Fallback to current users if roles list is empty for some reason
-        return Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort();
-    }, [allRoles, users]);
+        // Fallback to current dbUsers if roles list is empty for some reason
+        return Array.from(new Set(dbUsers.map(u => u.role).filter(Boolean))).sort();
+    }, [allRoles, dbUsers]);
+
+    // Cascading filter: Role options based on Location, Company, and Site
+    const filteredRolesCascade = useMemo(() => {
+        const matchingUsers = dbUsers.filter(u => {
+            if (pendingFilters.location && resolveUserLocation(u, orgStructure).toLowerCase() !== pendingFilters.location.toLowerCase()) return false;
+            if (pendingFilters.company !== 'all' && u.societyId !== pendingFilters.company) return false;
+            if (pendingFilters.site !== 'all' && (!u.organizationId || !u.organizationId.split(',').map(s => s.trim()).includes(pendingFilters.site))) return false;
+            return true;
+        });
+        const rolesInUse = new Set(matchingUsers.map(u => u.role).filter(Boolean));
+        return sortedRoles.filter(role => rolesInUse.has(role.id));
+    }, [dbUsers, sortedRoles, pendingFilters.location, pendingFilters.company, pendingFilters.site, orgStructure]);
+
+    // Cascading filter: Status options based on Location, Company, Site, and Role
+    const filteredStatusesCascade = useMemo(() => {
+        const matchingUsers = dbUsers.filter(u => {
+            if (pendingFilters.location && resolveUserLocation(u, orgStructure).toLowerCase() !== pendingFilters.location.toLowerCase()) return false;
+            if (pendingFilters.company !== 'all' && u.societyId !== pendingFilters.company) return false;
+            if (pendingFilters.site !== 'all' && (!u.organizationId || !u.organizationId.split(',').map(s => s.trim()).includes(pendingFilters.site))) return false;
+            if (pendingFilters.role !== 'all' && u.roleId !== pendingFilters.role && u.role !== pendingFilters.role) return false;
+            return true;
+        });
+        const statusesInUse = new Set<string>();
+        matchingUsers.forEach(u => {
+            if (u.role === 'unverified') statusesInUse.add('pending');
+            else if (u.role === 'gate_only') statusesInUse.add('gate');
+            else statusesInUse.add('active');
+        });
+        return {
+            active: statusesInUse.has('active'),
+            pending: statusesInUse.has('pending'),
+            gate: statusesInUse.has('gate')
+        };
+    }, [dbUsers, pendingFilters.location, pendingFilters.company, pendingFilters.site, pendingFilters.role, orgStructure]);
+
+    // Cascading filter: Employee options based on Location, Company, Site, Role, and Status
+    const filteredEmployeesCascade = useMemo(() => {
+        return dbUsers.filter(u => {
+            if (pendingFilters.location && resolveUserLocation(u, orgStructure).toLowerCase() !== pendingFilters.location.toLowerCase()) return false;
+            if (pendingFilters.company !== 'all' && u.societyId !== pendingFilters.company) return false;
+            if (pendingFilters.site !== 'all' && (!u.organizationId || !u.organizationId.split(',').map(s => s.trim()).includes(pendingFilters.site))) return false;
+            if (pendingFilters.role !== 'all' && u.roleId !== pendingFilters.role && u.role !== pendingFilters.role) return false;
+            if (pendingFilters.status !== 'all') {
+                if (pendingFilters.status === 'pending' && u.role !== 'unverified') return false;
+                if (pendingFilters.status === 'gate' && u.role !== 'gate_only') return false;
+                if (pendingFilters.status === 'active' && u.role === 'unverified') return false;
+            }
+            return true;
+        }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [dbUsers, pendingFilters.location, pendingFilters.company, pendingFilters.site, pendingFilters.role, pendingFilters.status, orgStructure]);
+
+    // Auto-reset dependent cascading filters when a parent filter changes and makes the selection invalid
+    useEffect(() => {
+        setPendingFilters(prev => {
+            let updated = false;
+            const next = { ...prev };
+
+            // 1. Validate Company
+            if (next.company !== 'all') {
+                const isValidCompany = filteredCompanies.some(c => c.id === next.company);
+                if (!isValidCompany) {
+                    next.company = 'all';
+                    next.site = 'all';
+                    next.role = 'all';
+                    next.status = 'all';
+                    next.employee = '';
+                    updated = true;
+                }
+            }
+
+            // 2. Validate Site
+            if (next.site !== 'all') {
+                const isValidSite = filteredSites.some(s => s.id === next.site);
+                if (!isValidSite) {
+                    next.site = 'all';
+                    next.role = 'all';
+                    next.status = 'all';
+                    next.employee = '';
+                    updated = true;
+                }
+            }
+
+            // 3. Validate Role
+            if (next.role !== 'all') {
+                const isValidRole = filteredRolesCascade.some(r => r.id === next.role);
+                if (!isValidRole) {
+                    next.role = 'all';
+                    next.status = 'all';
+                    next.employee = '';
+                    updated = true;
+                }
+            }
+
+            // 4. Validate Status
+            if (next.status !== 'all') {
+                const isValidStatus = 
+                    (next.status === 'active' && filteredStatusesCascade.active) ||
+                    (next.status === 'pending' && filteredStatusesCascade.pending) ||
+                    (next.status === 'gate' && filteredStatusesCascade.gate);
+                if (!isValidStatus) {
+                    next.status = 'all';
+                    next.employee = '';
+                    updated = true;
+                }
+            }
+
+            // 5. Validate Employee
+            if (next.employee !== '') {
+                const isValidEmployee = filteredEmployeesCascade.some(e => e.id === next.employee);
+                if (!isValidEmployee) {
+                    next.employee = '';
+                    updated = true;
+                }
+            }
+
+            return updated ? next : prev;
+        });
+    }, [filteredCompanies, filteredSites, filteredRolesCascade, filteredStatusesCascade, filteredEmployeesCascade]);
 
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
             // Hide kiosk service accounts from normal admin view unless searching/filtering
             if (user.role === 'kiosk' && !hasActiveFilters) return false;
             
-            if (activeFilters.company !== 'all' && user.organizationId !== activeFilters.company) return false;
-            if (activeFilters.site !== 'all' && user.societyId !== activeFilters.site) return false;
+            if (activeFilters.company !== 'all' && user.societyId !== activeFilters.company) return false;
+            if (activeFilters.site !== 'all' && (!user.organizationId || !user.organizationId.split(',').map(s => s.trim()).includes(activeFilters.site))) return false;
             if (activeFilters.role !== 'all' && user.roleId !== activeFilters.role && user.role !== activeFilters.role) return false;
-            if (activeFilters.location && (user.location || user.locationName || '').toLowerCase() !== activeFilters.location.toLowerCase()) return false;
+            if (activeFilters.location && resolveUserLocation(user, orgStructure).toLowerCase() !== activeFilters.location.toLowerCase()) return false;
             
             if (activeFilters.status !== 'all') {
                 if (activeFilters.status === 'pending' && user.role !== 'unverified') return false;
@@ -610,11 +757,11 @@ const UserManagement: React.FC = () => {
                 if (activeFilters.status === 'active' && user.role === 'unverified') return false;
             }
 
-            if (activeFilters.employee && !user.name?.toLowerCase().includes(activeFilters.employee.toLowerCase()) && !user.email?.toLowerCase().includes(activeFilters.employee.toLowerCase())) return false;
+            if (activeFilters.employee && user.id !== activeFilters.employee) return false;
             
             return true;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, activeFilters, hasActiveFilters]);
+    }, [users, activeFilters, hasActiveFilters, orgStructure]);
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
@@ -776,7 +923,7 @@ const UserManagement: React.FC = () => {
                                 onChange={handleFilterChange}
                             >
                                 <option value="all">All Companies</option>
-                                {allCompanies.map(org => (
+                                {filteredCompanies.map(org => (
                                     <option key={org.id} value={org.id}>{org.name}</option>
                                 ))}
                             </select>
@@ -816,7 +963,7 @@ const UserManagement: React.FC = () => {
                                 onChange={handleFilterChange}
                             >
                                 <option value="all">All Roles</option>
-                                {sortedRoles.map(role => (
+                                {filteredRolesCascade.map(role => (
                                     <option key={role.id} value={role.id}>{role.displayName || role.id}</option>
                                 ))}
                             </select>
@@ -836,9 +983,9 @@ const UserManagement: React.FC = () => {
                                 onChange={handleFilterChange}
                             >
                                 <option value="all">All Status</option>
-                                <option value="active">Active</option>
-                                <option value="pending">Pending Approval</option>
-                                <option value="gate">Gate Only</option>
+                                {filteredStatusesCascade.active && <option value="active">Active</option>}
+                                {filteredStatusesCascade.pending && <option value="pending">Pending Approval</option>}
+                                {filteredStatusesCascade.gate && <option value="gate">Gate Only</option>}
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />
@@ -847,17 +994,22 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-2 md:col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Employee / Email</label>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Employee</label>
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <input
+                            <select
                                 name="employee"
-                                type="text"
-                                placeholder="Search name or email..."
+                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.employee}
                                 onChange={handleFilterChange}
-                                className="w-full pl-9 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm"
-                            />
+                            >
+                                <option value="">All Employees</option>
+                                {filteredEmployeesCascade.map(u => (
+                                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                                ))}
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <Filter className="h-3.5 w-3.5 opacity-50" />
+                            </div>
                         </div>
                     </div>
 

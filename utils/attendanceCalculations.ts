@@ -423,34 +423,33 @@ export function getStaffCategory(
 
   const roleLower = String(roleId || '').toLowerCase();
 
-  // RULE: Explicit role mapping ALWAYS takes priority over society-based classification.
-  // We check for both exact matches and common slugs to handle display name vs ID scenarios.
-  const isOffice = mapping.office?.some((r: string) => r.toLowerCase() === roleLower) || 
-                   ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect'].includes(roleLower) ||
-                   roleLower.includes('admin') || roleLower.includes('management');
+  // 1. Explicit mappings from settings ALWAYS take absolute priority
+  const explicitOffice = mapping.office?.some((r: string) => r.toLowerCase() === roleLower);
+  const explicitField = mapping.field?.some((r: string) => r.toLowerCase() === roleLower);
+  const explicitSite = mapping.site?.some((r: string) => r.toLowerCase() === roleLower);
+
+  if (explicitOffice) return 'office';
+  if (explicitField) return 'field';
+  if (explicitSite) return 'site';
+
+  // 2. Default/Fallback hardcoded rules
+  const isOfficeDefault = ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'super_admin', 'iot_architect'].includes(roleLower) ||
+                          roleLower.includes('admin') || roleLower.includes('management');
+  if (isOfficeDefault) return 'office';
+
+  const isFieldDefault = isTechnicalRole(roleId) ||
+                         ['field_staff', 'field_officer', 'technical_reliever', 'operations_manager'].includes(roleLower);
+  if (isFieldDefault) return 'field';
+
+  const isSiteDefault = ['site_manager', 'security_guard', 'supervisor'].includes(roleLower);
+  if (isSiteDefault) return 'site';
   
-  if (isOffice) return 'office';
+  // 3. Fallback based on Site Assignment (societyId)
+  if (societyId && !societyId.endsWith('_head_office')) {
+    return 'site';
+  }
 
-  const isField = mapping.field?.some((r: string) => r.toLowerCase() === roleLower) || 
-                  isTechnicalRole(roleId) ||
-                  ['field_staff', 'field_officer', 'technical_reliever', 'operations_manager'].includes(roleLower);
-                  
-  if (isField) return 'field';
-
-  const isSite = mapping.site?.some((r: string) => r.toLowerCase() === roleLower) ||
-                 ['site_manager', 'security_guard', 'supervisor'].includes(roleLower);
-
-  if (isSite) return 'site';
-  
-  const result = (() => {
-    // FALLBACK: If role not in any explicit mapping, use society-based classification
-    // If user is assigned to a society (Site), they are treated as site staff.
-    if (societyId && !societyId.endsWith('_head_office')) return 'site';
-    return 'office';
-  })();
-
-
-  return result;
+  return 'office';
 }
 
 

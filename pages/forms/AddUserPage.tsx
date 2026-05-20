@@ -97,6 +97,7 @@ const AddUserPage: React.FC = () => {
   const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [selectedSociety, setSelectedSociety] = useState<string>('');
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
 
   const schema = isEditing ? editUserSchema : createUserSchema;
@@ -106,6 +107,20 @@ const AddUserPage: React.FC = () => {
 
   const role = watch('role');
   const organizationId = watch('organizationId');
+  const locationId = watch('locationId');
+  const societyId = watch('societyId');
+
+  useEffect(() => {
+    if (locationId !== undefined) {
+      setSelectedLocation(locationId || '');
+    }
+  }, [locationId]);
+
+  useEffect(() => {
+    if (societyId !== undefined) {
+      setSelectedSociety(societyId || '');
+    }
+  }, [societyId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -152,28 +167,32 @@ const AddUserPage: React.FC = () => {
 
             // Auto-resolve hierarchy for edit mode
             if (user.organizationId) {
-              const site = orgs.find(o => o.id === user.organizationId);
-              if (site && site.parentId) {
-                const uniqueLocations = new Set<string>();
-                structure.forEach(group => {
-                  group.companies.forEach(company => {
-                    if (company.location) uniqueLocations.add(company.location);
-                    company.entities.forEach(entity => {
-                      if (entity.location) uniqueLocations.add(entity.location);
-                    });
+              const ids = user.organizationId.split(',').map(s => s.trim()).filter(Boolean);
+              setSelectedSiteIds(ids);
+
+              // Find the entity in the structure
+              let foundEntity: any = null;
+              let foundSociety: any = null;
+              let foundLocation: string | null = null;
+
+              const uniqueLocations = new Set<string>();
+              structure.forEach(group => {
+                group.companies.forEach(company => {
+                  if (company.location) uniqueLocations.add(company.location);
+                  company.entities.forEach(entity => {
+                    if (entity.location) uniqueLocations.add(entity.location);
                   });
                 });
-                
-                // Find if the site belongs to a company that matches a location
-                let foundLocation: string | null = null;
-                let foundSociety: any = null;
+              });
 
+              for (const siteId of ids) {
                 for (const group of structure) {
                   for (const company of group.companies) {
-                    if (company.id === site.parentId) {
+                    const ent = company.entities.find(e => e.id === siteId);
+                    if (ent) {
+                      foundEntity = ent;
                       foundSociety = company;
-                      // Determine the best location for this society
-                      foundLocation = company.location || site.location || null;
+                      foundLocation = company.location || ent.location || null;
                       if (!foundLocation) {
                         // fallback to finding matching location
                         const availableLocs = Array.from(uniqueLocations);
@@ -182,17 +201,42 @@ const AddUserPage: React.FC = () => {
                       break;
                     }
                   }
+                  if (foundEntity) break;
+                }
+                if (foundEntity) break;
+              }
+
+              // Fallback to checking legacy orgs list
+              if (!foundEntity) {
+                for (const siteId of ids) {
+                  const site = orgs.find(o => o.id === siteId);
+                  if (site && site.parentId) {
+                    for (const group of structure) {
+                      for (const company of group.companies) {
+                        if (company.id === site.parentId) {
+                          foundSociety = company;
+                          foundLocation = company.location || site.location || null;
+                          if (!foundLocation) {
+                            const availableLocs = Array.from(uniqueLocations);
+                            if (availableLocs.length > 0) foundLocation = availableLocs[0];
+                          }
+                          break;
+                        }
+                      }
+                      if (foundSociety) break;
+                    }
+                  }
                   if (foundSociety) break;
                 }
+              }
 
-                if (foundSociety && foundLocation) {
-                  setSelectedSociety(foundSociety.id);
-                  setSelectedLocation(foundLocation);
-                  setValue('societyId', foundSociety.id);
-                  setValue('societyName', foundSociety.name);
-                  // Location name is now the string location
-                  setValue('locationId', foundLocation);
-                }
+              if (foundSociety && foundLocation) {
+                setSelectedSociety(foundSociety.id);
+                setSelectedLocation(foundLocation);
+                setValue('societyId', foundSociety.id);
+                setValue('societyName', foundSociety.name);
+                // Location name is now the string location
+                setValue('locationId', foundLocation);
               }
             } else if (user.societyId) {
               // User has a company but no specific site (Entity). Treat as Head Office.
@@ -228,9 +272,7 @@ const AddUserPage: React.FC = () => {
                 setValue('societyName', foundSociety.name);
                 setValue('locationId', foundLocation);
                 
-                // Map to the exact pseudo-id used by the dropdown so it selects properly
-                setValue('organizationId', `${foundSociety.id}_head_office`);
-                setValue('organizationName', 'Head Office');
+                setSelectedSiteIds([`${foundSociety.id}_head_office`]);
               }
             }
           }
@@ -299,22 +341,97 @@ const AddUserPage: React.FC = () => {
     return entities;
   }, [orgStructure, selectedSociety]);
 
-  const handleOrgChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const orgId = e.target.value;
-    const org = organizations.find(o => o.id === orgId);
-    
-    // Find name from structure as fallback
-    let entityName = org?.shortName || '';
-    if (!entityName && orgId) {
-      const entity = availableEntities.find(ent => ent.id === orgId);
-      entityName = entity?.name || '';
+  // Synchronize selectedSiteIds changes to form values
+  useEffect(() => {
+    if (selectedSiteIds.length > 0) {
+      setValue('organizationId', selectedSiteIds.join(','));
+      
+      const names: string[] = [];
+      selectedSiteIds.forEach(id => {
+        if (id.endsWith('_head_office')) {
+          names.push('Head Office');
+        } else {
+          // Check organizations first
+          const org = organizations.find(o => o.id === id);
+          if (org?.shortName) {
+            names.push(org.shortName);
+          } else {
+            const ent = availableEntities.find(e => e.id === id);
+            if (ent) names.push(ent.name);
+          }
+        }
+      });
+      setValue('organizationName', names.join(', '));
+      setValue('noSiteAssignment', false);
+    } else {
+      setValue('organizationId', '');
+      setValue('organizationName', '');
+    }
+  }, [selectedSiteIds, availableEntities, organizations, setValue]);
+
+  const handleSocietyChange = (socId: string) => {
+    setSelectedSociety(socId);
+    setSelectedSiteIds([]); // Clear selections when company changes
+    setValue('societyId', socId);
+    const socName = availableCompanies.find(c => c.id === socId)?.name || '';
+    setValue('societyName', socName);
+  };
+
+  const renderSiteMultiSelect = () => {
+    if (!selectedSociety) {
+      return (
+        <div>
+          <label className="block text-sm font-medium text-muted">Assigned Site(s) (Entity)</label>
+          <div className="mt-1 border border-gray-200 rounded-lg p-3 bg-gray-50 text-xs text-muted italic text-center">
+            Please select a Society first.
+          </div>
+        </div>
+      );
     }
 
-    setValue('organizationId', orgId);
-    setValue('organizationName', entityName);
-    if (orgId) {
-      setValue('noSiteAssignment', false);
-    }
+    const options = [
+      { id: `${selectedSociety}_head_office`, name: 'Head Office' },
+      ...availableEntities
+    ];
+
+    return (
+      <div>
+        <label className="block text-sm font-medium text-muted mb-1 flex justify-between items-center">
+          <span>Assigned Site(s) (Entity)</span>
+          <span className="text-xs text-emerald-600 font-bold">({selectedSiteIds.length} selected)</span>
+        </label>
+        <div className="border border-gray-200 rounded-xl p-3 bg-white max-h-48 overflow-y-auto space-y-2 shadow-sm transition-all focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500">
+          {options.map(opt => {
+            const isChecked = selectedSiteIds.includes(opt.id);
+            return (
+              <label 
+                key={opt.id} 
+                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors ${
+                  isChecked ? 'bg-emerald-50/45 border-l-2 border-emerald-500 font-medium' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedSiteIds(prev => [...prev, opt.id]);
+                    } else {
+                      setSelectedSiteIds(prev => prev.filter(id => id !== opt.id));
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-sm text-gray-700 select-none">{opt.name}</span>
+              </label>
+            );
+          })}
+        </div>
+        {errors.organizationId?.message && (
+          <p className="mt-1 text-xs text-red-600">{errors.organizationId.message}</p>
+        )}
+      </div>
+    );
   };
   const onSubmit: SubmitHandler<Partial<User> & { password?: string; noSiteAssignment?: boolean }> = async (data) => {
     setIsSubmitting(true);
@@ -358,11 +475,14 @@ const AddUserPage: React.FC = () => {
          processedData.locationId = '';
       }
 
-      // Intercept Head Office pseudo-entity IDs and convert them to null
+      // Intercept Head Office pseudo-entity IDs and convert them to null/filter them
       // so the database doesn't throw a foreign key error on organization_id
-      if (processedData.organizationId && processedData.organizationId.endsWith('_head_office')) {
-        processedData.organizationId = '';
-        processedData.organizationName = '';
+      if (processedData.organizationId) {
+        const ids = processedData.organizationId.split(',').filter(id => !id.endsWith('_head_office'));
+        processedData.organizationId = ids.join(',');
+        
+        const names = (processedData.organizationName || '').split(', ').filter(name => name !== 'Head Office');
+        processedData.organizationName = names.join(', ');
       }
 
       if (isEditing && id) {
@@ -439,9 +559,13 @@ const AddUserPage: React.FC = () => {
                   <option key={r.id} value={r.id}>{r.displayName}</option>
                 ))}
               </Select>
-              {watch('organizationId') && allDevices.filter(d => d.organizationId === watch('organizationId')).length > 0 && (
-                <Input label="Biometric Device ID (eSSL ID) (Optional)" id="biometricId" registration={register('biometricId')} error={(errors as any).biometricId?.message} placeholder="e.g. 101" />
-              )}
+              {(() => {
+                const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
+                const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
+                return watch('organizationId') && siteDevices.length > 0 && (
+                  <Input label="Biometric Device ID (eSSL ID) (Optional)" id="biometricId" registration={register('biometricId')} error={(errors as any).biometricId?.message} placeholder="e.g. 101" />
+                );
+              })()}
               {!isEditing && (
                 <Input
                   label="Password"
@@ -451,35 +575,19 @@ const AddUserPage: React.FC = () => {
                   error={(errors as any).password?.message}
                 />
               )}
-              <Select label="Location (Region)" id="locationId" registration={register('locationId')} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+              <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
                 <option value="">Select a Location</option>
                 {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
               </Select>
               
-              <Select label="Society (Company)" id="societyId" registration={register('societyId')} onChange={(e) => {
-                const socId = e.target.value;
-                setSelectedSociety(socId);
-                setValue('organizationId', '');
-                setValue('organizationName', '');
-                setValue('societyId', socId);
-                const socName = availableCompanies.find(c => c.id === socId)?.name || '';
-                setValue('societyName', socName);
-              }} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
+              <Select label="Society (Company)" id="societyId" registration={register('societyId')} value={societyId || ''} onChange={(e) => handleSocietyChange(e.target.value)} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
                 <option value="">Select a Society</option>
                 {availableCompanies.map(soc => (
                   <option key={soc.id} value={soc.id}>{soc.name}</option>
                 ))}
               </Select>
 
-              <Select label="Assigned Site (Entity)" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={!selectedSociety || watch('noSiteAssignment')}>
-                <option value="">Select a Site</option>
-                {selectedSociety && (
-                  <option value={`${selectedSociety}_head_office`}>Head Office</option>
-                )}
-                {availableEntities.map(ent => (
-                  <option key={ent.id} value={ent.id}>{ent.name}</option>
-                ))}
-              </Select>
+              {renderSiteMultiSelect()}
               
               {role && (
                 <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2 flex items-start gap-2">
@@ -516,21 +624,25 @@ const AddUserPage: React.FC = () => {
                     Devices at Site
                   </h4>
                   <div className="space-y-1">
-                    {allDevices.filter(d => d.organizationId === watch('organizationId')).length > 0 ? (
-                      allDevices.filter(d => d.organizationId === watch('organizationId')).map(device => (
-                        <p key={device.id} className="text-xs text-muted flex justify-between">
-                          <span>{device.name}</span>
-                          <span className="font-mono">{device.sn}</span>
-                        </p>
-                      ))
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs text-muted italic">No biometric devices found.</p>
-                        <p className="text-[10px] text-accent-dark bg-accent/5 p-2 rounded border border-accent/10">
-                          Mobile app check-in/out will be used for this site. Biometric ID is not mandatory.
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
+                      const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
+                      return siteDevices.length > 0 ? (
+                        siteDevices.map(device => (
+                          <p key={device.id} className="text-xs text-muted flex justify-between">
+                            <span>{device.name}</span>
+                            <span className="font-mono">{device.sn}</span>
+                          </p>
+                        ))
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted italic">No biometric devices found.</p>
+                          <p className="text-[10px] text-accent-dark bg-accent/5 p-2 rounded border border-accent/10">
+                            Mobile app check-in/out will be used for this site. Biometric ID is not mandatory.
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -661,9 +773,13 @@ const AddUserPage: React.FC = () => {
               <option key={r.id} value={r.id}>{r.displayName}</option>
             ))}
           </Select>
-          {watch('organizationId') && allDevices.filter(d => d.organizationId === watch('organizationId')).length > 0 && (
-            <Input label="Biometric Device ID (eSSL ID) (Optional)" id="biometricId" registration={register('biometricId')} error={(errors as any).biometricId?.message} placeholder="e.g. 101" />
-          )}
+          {(() => {
+            const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
+            const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
+            return watch('organizationId') && siteDevices.length > 0 && (
+              <Input label="Biometric Device ID (eSSL ID) (Optional)" id="biometricId" registration={register('biometricId')} error={(errors as any).biometricId?.message} placeholder="e.g. 101" />
+            );
+          })()}
           {!isEditing && (
             <Input
               label="Password"
@@ -673,35 +789,19 @@ const AddUserPage: React.FC = () => {
               error={(errors as any).password?.message}
             />
           )}
-          <Select label="Location (Region)" id="locationId" registration={register('locationId')} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
+          <Select label="Location (Region)" id="locationId" registration={register('locationId')} value={locationId || ''} onChange={handleLocationChange} error={(errors as any).locationId?.message}>
             <option value="">Select a Location</option>
             {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
           </Select>
           
-          <Select label="Society (Company)" id="societyId" registration={register('societyId')} onChange={(e) => {
-            const socId = e.target.value;
-            setSelectedSociety(socId);
-            setValue('organizationId', '');
-            setValue('organizationName', '');
-            setValue('societyId', socId);
-            const socName = availableCompanies.find(c => c.id === socId)?.name || '';
-            setValue('societyName', socName);
-          }} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
+          <Select label="Society (Company)" id="societyId" registration={register('societyId')} value={societyId || ''} onChange={(e) => handleSocietyChange(e.target.value)} error={(errors as any).societyId?.message} disabled={!selectedLocation}>
             <option value="">Select a Society</option>
             {availableCompanies.map(soc => (
               <option key={soc.id} value={soc.id}>{soc.name}</option>
             ))}
           </Select>
 
-          <Select label="Assigned Site (Entity)" id="organizationId" registration={register('organizationId')} error={errors.organizationId?.message} onChange={handleOrgChange} disabled={!selectedSociety || watch('noSiteAssignment')}>
-            <option value="">Select a Site (Location)</option>
-            {selectedSociety && (
-              <option value={`${selectedSociety}_head_office`}>Head Office</option>
-            )}
-            {availableEntities.map(ent => (
-              <option key={ent.id} value={ent.id}>{ent.name}</option>
-            ))}
-          </Select>
+          {renderSiteMultiSelect()}
 
           {role && (
             <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-start gap-3 shadow-sm">
@@ -741,21 +841,25 @@ const AddUserPage: React.FC = () => {
                 Biometric Devices at this Site
               </h4>
               <div className="space-y-2">
-                {allDevices.filter(d => d.organizationId === watch('organizationId')).length > 0 ? (
-                  allDevices.filter(d => d.organizationId === watch('organizationId')).map(device => (
-                    <div key={device.id} className="text-xs flex justify-between items-center bg-white p-2 rounded border border-gray-100">
-                      <span className="font-medium">{device.name}</span>
-                      <span className="text-muted font-mono">{device.sn}</span>
+                {(() => {
+                  const selectedIds = watch('organizationId') ? watch('organizationId').split(',').map(s => s.trim()) : [];
+                  const siteDevices = allDevices.filter(d => selectedIds.includes(d.organizationId));
+                  return siteDevices.length > 0 ? (
+                    siteDevices.map(device => (
+                      <div key={device.id} className="text-xs flex justify-between items-center bg-white p-2 rounded border border-gray-100">
+                        <span className="font-medium">{device.name}</span>
+                        <span className="text-muted font-mono">{device.sn}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted italic">No biometric devices found at this site.</p>
+                      <p className="text-xs text-accent-dark bg-accent/5 p-3 rounded-lg border border-accent/20">
+                        <strong>Note:</strong> Mobile app check-in/out will be used for this site as no biometric devices are available. You can leave the Biometric Device ID empty.
+                      </p>
                     </div>
-                  ))
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted italic">No biometric devices found at this site.</p>
-                    <p className="text-xs text-accent-dark bg-accent/5 p-3 rounded-lg border border-accent/20">
-                      <strong>Note:</strong> Mobile app check-in/out will be used for this site as no biometric devices are available. You can leave the Biometric Device ID empty.
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
           )}

@@ -86,6 +86,7 @@ const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').
 const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/OperationsDashboard'));
 const TeamActivity = lazyWithRetry(() => import('./pages/operations/TeamActivity'));
 const SiteDashboard = lazyWithRetry(() => import('./pages/site/OrganizationDashboard'));
+const ClientDashboard = lazyWithRetry(() => import('./pages/client/ClientDashboard'));
 const ProfilePage = lazyWithRetry(() => import('./pages/profile/ProfilePage'));
 const AttendanceDashboard = lazyWithRetry(() => import('./pages/attendance/AttendanceDashboard'));
 const DeviceManagement = lazyWithRetry(() => import('./pages/settings/DeviceManagement'));
@@ -1404,6 +1405,9 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_site_dashboard" />}>
             <Route path="site/dashboard" element={<SiteDashboard />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_client_dashboard" />}>
+            <Route path="client/dashboard" element={<ClientDashboard />} />
           </Route>
 
           {/* Attendance & Leave */}

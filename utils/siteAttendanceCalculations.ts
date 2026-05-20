@@ -107,7 +107,8 @@ export function calcOTDuties(dailyCodes: string[]): number {
 export function calcHolidaysPayable(
   dailyCodes: string[],
   isExcluded: boolean,
-  holidayToggle: boolean
+  holidayToggle: boolean,
+  nhBillingConfig: 'NA' | 'Actuals' | 'Double' = 'Actuals'
 ): number {
   if (isExcluded || !holidayToggle) return 0;
 
@@ -115,9 +116,25 @@ export function calcHolidaysPayable(
   for (const code of dailyCodes) {
     if (!code) continue;
     const c = code.toUpperCase();
-    if (c === 'O/H' || c === '0.5H') total += 1;
-    else if (c === 'O/H.5') total += 0.5;
-    else if (c === 'H') total += 1;
+
+    if (nhBillingConfig === 'NA') {
+      if (c === 'HP') total += 1.0;
+      else if (c === '1/2HP') total += 0.5;
+    } 
+    else if (nhBillingConfig === 'Actuals') {
+      if (c === 'H' || c === '0.5H') total += 1.0; // 0.5H bills as 1 in existing logic but let's stick to H=1
+      else if (c === 'HP') total += 2.0; // Base (1) + Actual (1)
+      else if (c === '1/2HP') total += 1.5; // Base (1) + Actual (0.5)
+      else if (c === 'O/H') total += 1.0;
+      else if (c === 'O/H.5') total += 0.5;
+    }
+    else if (nhBillingConfig === 'Double') {
+      if (c === 'H' || c === '0.5H') total += 1.0;
+      else if (c === 'HP') total += 3.0; // Base (1) + 2*Actual (1)
+      else if (c === '1/2HP') total += 2.0; // Base (1) + 2*Actual (0.5)
+      else if (c === 'O/H') total += 1.0;
+      else if (c === 'O/H.5') total += 0.5;
+    }
   }
   return total;
 }
@@ -161,15 +178,16 @@ export function calculateAllDuties(params: {
   isExcluded: boolean;
   daysInMonth: number;
   holidayToggle: boolean;
+  nhBillingConfig?: 'NA' | 'Actuals' | 'Double';
 }): SiteDutySummary {
-  const { dailyCodes, designation, isExcluded, daysInMonth, holidayToggle } = params;
+  const { dailyCodes, designation, isExcluded, daysInMonth, holidayToggle, nhBillingConfig = 'Actuals' } = params;
 
   const netDuties = calcNetDuties(dailyCodes);
   const weekOffOT = calcWeekOffDuties(dailyCodes);
   const leaveCount = calcLeaveCount(dailyCodes);
   const absenceCount = calcAbsenceCount(dailyCodes);
   const otDuties = calcOTDuties(dailyCodes);
-  const holidaysPayable = calcHolidaysPayable(dailyCodes, isExcluded, holidayToggle);
+  const holidaysPayable = calcHolidaysPayable(dailyCodes, isExcluded, holidayToggle, nhBillingConfig);
   const totalPayable = calcTotalPayable(netDuties, weekOffOT, leaveCount, otDuties, holidaysPayable);
   const finalCapped = calcFinalCapped(totalPayable, designation, daysInMonth);
 
