@@ -9,6 +9,56 @@ import { euclideanDistance, getEAR, getHeadYaw, FACE_THRESHOLDS, FACE_TIMING, fi
 import { playFeedbackSound } from '../../utils/audioFeedback';
 import Button from '../ui/Button';
 
+// ─── Singleton face-api model loader (loads once, reused across mounts) ───
+let _modelLoadPromise: Promise<void> | null = null;
+
+async function ensureModelsLoaded(): Promise<void> {
+  if (_modelLoadPromise) return _modelLoadPromise;
+
+  _modelLoadPromise = (async () => {
+    const faceapi = await import('@vladmandic/face-api');
+
+    // If already loaded (e.g. HMR), skip
+    if (faceapi.nets.tinyFaceDetector.isLoaded &&
+        faceapi.nets.faceLandmark68TinyNet.isLoaded &&
+        faceapi.nets.faceRecognitionNet.isLoaded) {
+      console.log('FaceAuth: Models already loaded (singleton)');
+      return;
+    }
+
+    const getModelUrl = () => {
+      if (Capacitor.isNativePlatform()) {
+        return 'capacitor://localhost/models';
+      }
+      return '/models';
+    };
+
+    const MODEL_URL = getModelUrl();
+    console.log('FaceAuth: Loading models from:', MODEL_URL);
+
+    try {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+      ]);
+    } catch (loadErr) {
+      console.error('FaceAuth: Primary model load failed, trying absolute fallback...', loadErr);
+      const fallbackUrl = Capacitor.isNativePlatform() ? 'capacitor://localhost/models' : '/models';
+      await faceapi.nets.tinyFaceDetector.loadFromUri(fallbackUrl);
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(fallbackUrl);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(fallbackUrl);
+    }
+
+    console.log('FaceAuth: Models loaded successfully (singleton)');
+  })();
+
+  // If loading fails, allow retry
+  _modelLoadPromise.catch(() => { _modelLoadPromise = null; });
+
+  return _modelLoadPromise;
+}
+
 // Thresholds from shared utility
 const BLINK_EAR_THRESHOLD = FACE_THRESHOLDS.BLINK_EAR_THRESHOLD;
 const FACE_MATCH_THRESHOLD = FACE_THRESHOLDS.EMPLOYEE_MATCH;
@@ -152,41 +202,11 @@ const PersonalFaceAuth: React.FC<PersonalFaceAuthProps> = ({
         setGateUser(user);
         addDebug(`INIT: GateUser found=${!!user}, hasDescriptor=${!!user?.faceDescriptor}`);
         
-        // Load face-api models
+        // Load face-api models (singleton — skips if already loaded)
         console.log('FaceAuth: Initializing models. Platform:', Capacitor.getPlatform());
         addDebug(`INIT: Loading models... Platform=${Capacitor.getPlatform()}`);
-        const faceapi = await import('@vladmandic/face-api');
-        
-        // Robust model path resolution
-        const getModelUrl = () => {
-          // If native, use the localhost origin (handles both iOS capacitor:// and Android https://)
-          if (Capacitor.isNativePlatform()) {
-            return window.location.origin + '/models';
-          }
-          // For PWA/Web, try relative path first as it's most portable
-          return '/models';
-        };
-
-        const MODEL_URL = getModelUrl();
-        
-        try {
-          console.log('FaceAuth: Loading models from:', MODEL_URL);
-          // Try loading all at once
-          await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-            faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
-            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-          ]);
-          console.log('FaceAuth: Models loaded successfully');
-          addDebug('INIT: Models loaded ✅');
-        } catch (loadErr) {
-          console.error('FaceAuth: Primary model load failed, trying absolute fallback...', loadErr);
-          // Fallback to absolute origin path if relative failed
-          const fallbackUrl = window.location.origin + '/models';
-          await faceapi.nets.tinyFaceDetector.loadFromUri(fallbackUrl);
-          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(fallbackUrl);
-          await faceapi.nets.faceRecognitionNet.loadFromUri(fallbackUrl);
-        }
+        await ensureModelsLoaded();
+        addDebug('INIT: Models loaded ✅');
         setModelsLoaded(true);
         
         if (isReEnroll) {

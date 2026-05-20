@@ -36,6 +36,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_client_dashboard',
+    'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   hr: [
@@ -45,6 +46,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_policies', 'manage_insurance', 'manage_enrollment_rules',
     'manage_uniforms', 'view_invoice_summary', 'view_verification_costing', 'access_support_desk',
     'view_profile', 'view_referrals', 'manage_device_approvals', 'manage_gate_registration', 'view_gate_logs', 'manage_gate_kiosk',
+    'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   finance: [
@@ -69,6 +71,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_client_dashboard',
+    'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   operation_manager: [
@@ -100,6 +103,7 @@ const defaultPermissions: Record<UserRole, Permission[]> = {
     'manage_geo_locations', 'view_my_locations', 'view_profile',
     'view_referrals',
     'view_client_dashboard',
+    'view_management_dashboard',
     'view_mobile_nav_home', 'view_mobile_nav_tasks', 'view_mobile_nav_profile'
   ],
   hr_ops: [

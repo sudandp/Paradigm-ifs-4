@@ -118,7 +118,8 @@ const reportGenerators = {
 };
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+// [SECURITY FIX] Removed fallback to VITE_SUPABASE_ANON_KEY (matches send-email.ts fix C7)
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -186,7 +187,8 @@ async function processSchedules(req: VercelRequest) {
       const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_active', true);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
     } else if (rule.recipient_type === 'users') {
-      const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []);
+      // [SECURITY FIX] Added is_active + is_deleted filters (matches send-email.ts fix H11)
+      const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []).eq('is_active', true).eq('is_deleted', false);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
     }
     

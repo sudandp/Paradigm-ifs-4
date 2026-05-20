@@ -18,12 +18,26 @@ class OfflineDatabase {
   private idb: IDBPDatabase | null = null;
   private sqlite: SQLiteDBConnection | null = null;
   private isMobile: boolean;
+  private _initPromise: Promise<void> | null = null;
 
   constructor() {
     this.isMobile = Capacitor.getPlatform() !== 'web';
   }
 
   async init() {
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this._doInit();
+    this._initPromise.catch(() => { this._initPromise = null; }); // allow retry on failure
+    return this._initPromise;
+  }
+
+  /** Lazy-init guard — ensures DB is ready before any operation */
+  private async ensureInit() {
+    if (!this._initPromise) await this.init();
+    else await this._initPromise;
+  }
+
+  private async _doInit() {
     if (this.isMobile) {
       await this.initSQLite();
     } else {
@@ -112,6 +126,7 @@ class OfflineDatabase {
   }
 
   async addToOutbox(item: Omit<OutboxItem, 'id' | 'status' | 'timestamp'>) {
+    await this.ensureInit();
     const fullItem: OutboxItem = {
       ...item,
       timestamp: new Date().toISOString(),
@@ -127,6 +142,7 @@ class OfflineDatabase {
   }
 
   async getPendingOutbox(): Promise<OutboxItem[]> {
+    await this.ensureInit();
     if (this.isMobile && this.sqlite) {
       const res = await this.sqlite.query(`SELECT * FROM outbox WHERE status = 'pending' ORDER BY timestamp ASC`);
       return (res.values || []).map(v => ({
@@ -139,6 +155,7 @@ class OfflineDatabase {
   }
 
   async getAllOutbox(): Promise<OutboxItem[]> {
+    await this.ensureInit();
     if (this.isMobile && this.sqlite) {
       const res = await this.sqlite.query(`SELECT * FROM outbox ORDER BY timestamp DESC`);
       return (res.values || []).map(v => ({
@@ -151,6 +168,7 @@ class OfflineDatabase {
   }
 
   async updateOutboxStatus(id: number, status: OutboxItem['status']) {
+    await this.ensureInit();
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`UPDATE outbox SET status = ? WHERE id = ?`, [status, id]);
     } else {
@@ -165,6 +183,7 @@ class OfflineDatabase {
   }
 
   async deleteFromOutbox(id: number) {
+    await this.ensureInit();
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`DELETE FROM outbox WHERE id = ?`, [id]);
     } else {
@@ -173,6 +192,7 @@ class OfflineDatabase {
   }
 
   async setCache(key: string, value: any) {
+    await this.ensureInit();
     const timestamp = new Date().toISOString();
     if (this.isMobile && this.sqlite) {
       await this.sqlite.run(`INSERT OR REPLACE INTO cache (key, value, timestamp) VALUES (?, ?, ?)`, [key, JSON.stringify(value), timestamp]);
@@ -201,6 +221,7 @@ class OfflineDatabase {
   }
 
   async getCacheWithMeta(key: string): Promise<{ value: any; timestamp: string } | null> {
+    await this.ensureInit();
     if (this.isMobile && this.sqlite) {
       const res = await this.sqlite.query(`SELECT value, timestamp FROM cache WHERE key = ?`, [key]);
       if (res.values && res.values.length > 0) {

@@ -38,7 +38,8 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/client/dashboard', label: 'Client Dashboard', icon: BarChart3, permission: 'view_client_dashboard', category: 'Dashboards' },
     { to: '/site/dashboard', label: 'Site Dashboard', icon: Home, permission: 'view_site_dashboard', category: 'Dashboards' },
     { to: '/operations/dashboard', label: 'Operations', icon: BriefcaseBusiness, permission: 'view_operations_dashboard', category: 'Dashboards' },
-    { to: '/verification/dashboard', label: 'All Submissions', icon: LayoutDashboard, permission: 'view_all_submissions', category: 'Dashboards' },
+    { to: '/management/dashboard', label: 'Management Dashboard', icon: LayoutDashboard, permission: 'view_management_dashboard', category: 'Dashboards' },
+    { to: '/verification/dashboard', label: 'All Submissions', icon: ClipboardList, permission: 'view_all_submissions', category: 'Dashboards' },
 
     // Operations Hub (Phase 2)
     { to: '/operations/tickets', label: 'Helpdesk Tickets', icon: Ticket, permission: 'view_operations', category: 'Operations Hub' },

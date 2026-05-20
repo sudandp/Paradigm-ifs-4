@@ -10,9 +10,11 @@
 
 import CryptoJS from 'crypto-js';
 import { Preferences } from '@capacitor/preferences';
+import { Capacitor } from '@capacitor/core';
 
 const SALT_KEY = '_app_enc_salt_';
-const APP_ID = 'com.paradigm.services.onboarding'; // matches capacitor.config.ts appId
+const APP_ID = 'com.paradigm.ifs'; // must match capacitor.config.ts appId
+const IS_NATIVE = Capacitor.isNativePlatform();
 
 // ---------- Key Derivation ----------
 
@@ -99,9 +101,9 @@ export function secureLocalSet(key: string, value: string): void {
     try {
         const ciphertext = CryptoJS.AES.encrypt(value, LS_STATIC_KEY).toString();
         localStorage.setItem(`_sec_${key}`, ciphertext);
-    } catch {
-        // Fallback to plaintext if crypto fails (should never happen)
-        localStorage.setItem(key, value);
+    } catch (err) {
+        // Never fall back to plaintext — that silently downgrades security
+        console.error('[secureStorage] secureLocalSet encryption failed:', err);
     }
 }
 

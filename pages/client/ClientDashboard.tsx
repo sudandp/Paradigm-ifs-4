@@ -138,7 +138,7 @@ const DESIGNATION_COLORS = [
     '#F59E0B', // Amber / Orange
     '#EF4444', // Red
     '#EC4899', // Pink
-    '#8B5CF6', // Violet
+    '#06B6D4', // Cyan
     '#006B3F', // Paradigm Emerald
     '#6B7280', // Gray
 ];
@@ -241,11 +241,11 @@ const DesignationBreakdownChart: React.FC<{ data: { labels: string[], values: nu
     }, [displayEntries, isEmpty, total]);
 
     return (
-        <div className="flex items-center gap-6 w-full">
+        <div className="flex items-center gap-6 w-full" data-lpignore="true" data-form-type="other" data-autofill="false">
             {/* Multi-Ring Radial Chart */}
-            <div className="relative flex-shrink-0" style={{ width: 160, height: 160 }}>
+            <div className="relative flex-shrink-0" style={{ width: 160, height: 160 }} data-lpignore="true" data-form-type="other" data-autofill="false">
                 <canvas ref={chartRef} width={160} height={160} />
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" data-lpignore="true" data-form-type="other" data-autofill="false">
                     <span className="text-[26px] font-bold text-slate-800 leading-none">{isEmpty ? 0 : total}</span>
                 </div>
             </div>
@@ -292,6 +292,7 @@ const ClientDashboard: React.FC = () => {
     const [siteUsers, setSiteUsers] = useState<any[]>([]);
     const [attendanceEvents, setAttendanceEvents] = useState<any[]>([]);
     const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
+    const [approvedLeavesCount, setApprovedLeavesCount] = useState<number>(0);
     const [siteStaffConfigs, setSiteStaffConfigs] = useState<any[]>([]);
     const [siteHolidays, setSiteHolidays] = useState<any[]>([]);
 
@@ -363,7 +364,7 @@ const ClientDashboard: React.FC = () => {
             ] = await Promise.all([
                 api.getUsers({ fetchAll: true }),
                 api.getAllAttendanceEvents(startStr, endStr),
-                api.getLeaveRequests({ status: 'pending' }),
+                api.getLeaveRequests({ status: ['pending_manager_approval', 'pending_hr_confirmation', 'approved'] }),
                 api.getAllSiteStaffConfigs(),
                 api.getSiteSpecificHolidays && selectedSiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedSiteId)
                     ? api.getSiteSpecificHolidays(selectedSiteId) 
@@ -388,10 +389,35 @@ const ClientDashboard: React.FC = () => {
             setAttendanceEvents(filteredEvents);
 
             const normalizedLeaves = (Array.isArray(leavesList) ? leavesList : (leavesList as any)?.data || []).filter(Boolean);
-            const filteredLeaves = normalizedLeaves.filter((l: any) => 
-                siteUserIds.has(l.userId) && String(l.status).toLowerCase() === 'pending'
+            
+            // Filter pending leaves (awaiting manager or HR approval)
+            const filteredPendingLeaves = normalizedLeaves.filter((l: any) => 
+                siteUserIds.has(l.userId) && 
+                (l.status === 'pending_manager_approval' || l.status === 'pending_hr_confirmation')
             );
-            setLeaveRequests(filteredLeaves);
+            setLeaveRequests(filteredPendingLeaves);
+
+            // Compute dynamic approved leaves count in the current date range
+            const countApproved = normalizedLeaves.filter((l: any) => {
+                if (!siteUserIds.has(l.userId)) return false;
+                if (l.status !== 'approved') return false;
+                
+                const start = l.startDate || l.start_date;
+                const end = l.endDate || l.end_date;
+                if (!start || !end) return false;
+                
+                const lStart = new Date(start);
+                const lEnd = new Date(end);
+                
+                // Normalise the dashboard date range
+                const rangeStart = new Date(startDate);
+                rangeStart.setHours(0, 0, 0, 0);
+                const rangeEnd = new Date(endDate);
+                rangeEnd.setHours(23, 59, 59, 999);
+                
+                return lStart <= rangeEnd && lEnd >= rangeStart;
+            }).length;
+            setApprovedLeavesCount(countApproved);
 
             // Set billing configurations
             setSiteStaffConfigs(billingConfigs || []);
@@ -614,7 +640,7 @@ const ClientDashboard: React.FC = () => {
             )}
 
             {/* Dashboard Header Bar */}
-            <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 bg-white p-5 border border-slate-200 mb-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 bg-white p-5 border-l-4 border-l-[#006B3F] border-y border-r border-slate-100 rounded-2xl mb-6 shadow-sm">
                 <div>
                     <h2 className="text-xl font-extrabold tracking-tight text-slate-900 uppercase">
                         Client Control Center
@@ -633,6 +659,7 @@ const ClientDashboard: React.FC = () => {
                                 id="client-site-selector" 
                                 value={selectedSiteId} 
                                 onChange={e => setSelectedSiteId(e.target.value)}
+                                className="!rounded-xl !border-slate-200 focus:!border-[#006B3F]"
                             >
                                 <option value="all">All Sites</option>
                                 {sites.map(site => (
@@ -643,7 +670,7 @@ const ClientDashboard: React.FC = () => {
                     )}
 
                     {/* Date Pickers (Clamped to 30 days max) */}
-                    <div className="flex items-center gap-2 border border-slate-200 p-2 bg-slate-50">
+                    <div className="flex items-center gap-2 border border-slate-200 rounded-xl p-2 bg-slate-50 hover:bg-white focus-within:bg-white focus-within:border-[#006B3F] focus-within:ring-2 focus-within:ring-[#006B3F]/10 transition-all">
                         <Calendar className="h-4 w-4 text-slate-400" />
                         <input 
                             type="date" 
@@ -651,7 +678,7 @@ const ClientDashboard: React.FC = () => {
                             value={format(startDate, 'yyyy-MM-dd')}
                             onChange={e => setStartDate(new Date(e.target.value))}
                         />
-                        <span className="text-slate-400 text-xs">to</span>
+                        <span className="text-slate-400 text-xs font-semibold">to</span>
                         <input 
                             type="date" 
                             className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer"
@@ -662,7 +689,7 @@ const ClientDashboard: React.FC = () => {
 
                     <button 
                         onClick={fetchDashboardData}
-                        className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+                        className="p-2.5 border border-slate-200 rounded-xl bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 active:scale-95 transition-all shadow-sm"
                         title="Reload Dashboard"
                     >
                         <RefreshCw className="h-4 w-4" />
@@ -673,7 +700,7 @@ const ClientDashboard: React.FC = () => {
             {/* KPI Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {/* Card 1: Total Present */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px]">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-emerald-100/50 rounded-lg text-emerald-500">
                             <CheckCircle2 className="h-5 w-5 stroke-[2.5]" />
@@ -692,7 +719,7 @@ const ClientDashboard: React.FC = () => {
                 </div>
 
                 {/* Card 2: Total Absent */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px]">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-rose-100/50 rounded-lg text-rose-500">
                             <Ban className="h-5 w-5 stroke-[2.5]" />
@@ -711,7 +738,7 @@ const ClientDashboard: React.FC = () => {
                 </div>
 
                 {/* Card 3: Late Arrivals */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px]">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-amber-100/50 rounded-lg text-amber-500">
                             <Clock className="h-5 w-5 stroke-[2.5]" />
@@ -730,7 +757,7 @@ const ClientDashboard: React.FC = () => {
                 </div>
 
                 {/* Card 4: Leave Requests */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px]">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-[120px] hover:shadow-md hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-100/50 rounded-lg text-blue-500">
                             <Users className="h-5 w-5 stroke-[2.5]" />
@@ -744,7 +771,7 @@ const ClientDashboard: React.FC = () => {
                         </div>
                         <div className="w-[1px] h-6 bg-slate-200 mx-2"></div>
                         <div className="flex items-baseline gap-1.5">
-                            <span className="text-xl font-extrabold text-slate-900 leading-none">0</span>
+                            <span className="text-xl font-extrabold text-slate-900 leading-none">{approvedLeavesCount}</span>
                             <span className="text-[13px] font-semibold text-slate-500">Approved</span>
                         </div>
                     </div>
@@ -756,7 +783,7 @@ const ClientDashboard: React.FC = () => {
                 {/* Left Column - Trend Charts & Financials (3/5 Width) */}
                 <div className="lg:col-span-3 space-y-6">
                     {/* Weekly Trend Chart */}
-                    <div className="bg-white p-6 border border-slate-200 shadow-sm">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300">
                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
                             <BarChart3 className="h-5 w-5 text-[#006B3F]" />
                             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
@@ -767,7 +794,7 @@ const ClientDashboard: React.FC = () => {
                     </div>
 
                     {/* Costing & Billing Summary */}
-                    <div className="bg-white p-6 border border-slate-200 shadow-sm">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
                             <div className="flex items-center gap-2">
                                 <IndianRupee className="h-5 w-5 text-[#006B3F]" />
@@ -775,13 +802,13 @@ const ClientDashboard: React.FC = () => {
                                     Billing & Financial Summary
                                 </h3>
                             </div>
-                            <span className="text-xs font-semibold px-2 py-0.5 bg-emerald-50 text-[#006B3F] border border-emerald-200">
+                            <span className="text-xs font-bold px-2.5 py-1 bg-emerald-50 text-[#006B3F] border border-emerald-100 rounded-full">
                                 Active Period
                             </span>
                         </div>
 
                         {!billingSummary.isRatesConfigured ? (
-                            <div className="flex flex-col items-center justify-center p-8 bg-amber-50/50 border border-amber-200 text-center">
+                            <div className="flex flex-col items-center justify-center p-8 bg-amber-50/50 border border-amber-100 rounded-xl text-center">
                                 <AlertTriangle className="h-8 w-8 text-amber-500 mb-2" />
                                 <h4 className="text-sm font-bold text-amber-900">Rates Not Configured</h4>
                                 <p className="text-xs text-amber-700 mt-1 max-w-sm">
@@ -792,19 +819,19 @@ const ClientDashboard: React.FC = () => {
                         ) : (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div className="bg-slate-50 p-4 border border-slate-100">
+                                    <div className="bg-slate-50/50 p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estimated Subtotal</p>
                                         <p className="text-2xl font-extrabold text-slate-900 mt-1">
                                             ₹{billingSummary.totalCost.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                         </p>
                                     </div>
-                                    <div className="bg-slate-50 p-4 border border-slate-100">
+                                    <div className="bg-slate-50/50 p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Billable Duties</p>
                                         <p className="text-2xl font-extrabold text-slate-900 mt-1">
                                             {billingSummary.totalDuties.toFixed(1)}
                                         </p>
                                     </div>
-                                    <div className="bg-slate-50 p-4 border border-slate-100">
+                                    <div className="bg-slate-50/50 p-4 border border-slate-100 rounded-xl hover:bg-slate-50 transition-colors">
                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Configured Staff</p>
                                         <p className="text-2xl font-extrabold text-slate-900 mt-1">
                                             {billingSummary.configuredUsersCount} / {siteUsers.length}
@@ -812,14 +839,14 @@ const ClientDashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="border border-slate-200">
-                                    <div className="bg-slate-100 p-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-b border-slate-200">
+                                <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                                    <div className="bg-slate-50 p-3.5 text-xs font-extrabold uppercase tracking-wider text-slate-700 border-b border-slate-100">
                                         Staff Cost Breakdown
                                     </div>
                                     <div className="divide-y divide-slate-100 overflow-x-auto">
                                         <table className="min-w-full text-left text-xs">
                                             <thead>
-                                                <tr className="bg-slate-50 border-b border-slate-200">
+                                                <tr className="bg-slate-50/70 border-b border-slate-100">
                                                     <th className="p-3 font-semibold text-slate-600">Employee</th>
                                                     <th className="p-3 font-semibold text-slate-600 text-right">Daily Rate</th>
                                                     <th className="p-3 font-semibold text-slate-600 text-right">Duties</th>
@@ -831,12 +858,12 @@ const ClientDashboard: React.FC = () => {
                                                     const config = siteStaffConfigs.find(c => c.userId === u.id);
                                                     if (!config) {
                                                         return (
-                                                            <tr key={u.id} className="hover:bg-slate-50/50 bg-amber-50/10">
+                                                            <tr key={u.id} className="hover:bg-slate-50/50 bg-amber-50/5">
                                                                 <td className="p-3">
                                                                     <p className="font-semibold text-slate-950">{u.name}</p>
                                                                     <p className="text-[10px] text-slate-500">{u.designation || 'Staff'}</p>
                                                                 </td>
-                                                                <td colSpan={3} className="p-3 text-right text-amber-600 font-medium">
+                                                                <td colSpan={3} className="p-3 text-right text-amber-600 font-medium italic">
                                                                     Rates Not Configured
                                                                 </td>
                                                             </tr>
@@ -867,7 +894,7 @@ const ClientDashboard: React.FC = () => {
                                                     });
 
                                                     return (
-                                                        <tr key={u.id} className="hover:bg-slate-50/50">
+                                                        <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                                                             <td className="p-3">
                                                                 <p className="font-bold text-slate-900">{u.name}</p>
                                                                 <p className="text-[10px] text-slate-500">{u.designation || 'Staff'}</p>
@@ -909,7 +936,7 @@ const ClientDashboard: React.FC = () => {
 
                     {/* Site Attendance Trend — visible only when "All Sites" selected */}
                     {selectedSiteId === 'all' && siteTrendData.length > 0 && (
-                        <div className="bg-white p-6 border border-slate-200 shadow-sm rounded-lg">
+                        <div className="bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300">
                             <div className="pb-4 mb-4">
                                 <h3 className="text-[15px] font-bold text-slate-800">
                                     Top Performers by Location
@@ -929,10 +956,10 @@ const ClientDashboard: React.FC = () => {
                                                 </span>
                                                 
                                                 <div className="flex items-center gap-3 ml-auto shrink-0">
-                                                    {/* Trend icon (Always Blue in the reference image) */}
+                                                    {/* Trend icon (Dynamically Green/Red based on up/down) */}
                                                     {isUp
-                                                        ? <TrendingUp className="h-[22px] w-[22px] text-blue-500 stroke-[2.5]" />
-                                                        : <TrendingDown className="h-[22px] w-[22px] text-blue-500 stroke-[2.5]" />
+                                                        ? <TrendingUp className="h-5 w-5 text-emerald-500 stroke-[2.5]" />
+                                                        : <TrendingDown className="h-5 w-5 text-rose-500 stroke-[2.5]" />
                                                     }
                                                     {/* Percentage */}
                                                     <span className={`text-[13px] font-bold w-16 text-right ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
@@ -948,7 +975,7 @@ const ClientDashboard: React.FC = () => {
                     )}
 
                     {/* View-Only Pending Leaves List */}
-                    <div className="bg-white p-6 border border-slate-200 shadow-sm">
+                    <div className="bg-white p-6 border border-slate-100 shadow-sm rounded-2xl hover:shadow-md transition-all duration-300">
                         <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
                             <Calendar className="h-5 w-5 text-[#006B3F]" />
                             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
@@ -957,7 +984,7 @@ const ClientDashboard: React.FC = () => {
                         </div>
 
                         {leaveRequests.length === 0 ? (
-                            <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-200">
+                            <div className="p-8 text-center text-xs text-slate-500 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl">
                                 No pending leave requests found for this site.
                             </div>
                         ) : (
@@ -967,7 +994,7 @@ const ClientDashboard: React.FC = () => {
                                     return (
                                         <div 
                                             key={leave.id} 
-                                            className="p-3 border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors text-xs"
+                                            className="p-3.5 border border-slate-100 bg-slate-50/50 rounded-xl hover:bg-slate-50 hover:border-slate-200 hover:shadow-sm transition-all text-xs"
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div>
@@ -976,17 +1003,17 @@ const ClientDashboard: React.FC = () => {
                                                         Role: {userObj?.designation || 'Staff'}
                                                     </p>
                                                 </div>
-                                                <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] uppercase font-bold tracking-wider">
+                                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-[9px] uppercase font-bold tracking-wider">
                                                     {leave.leaveType}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200 text-slate-500">
+                                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 text-slate-500">
                                                 <span className="font-medium">
                                                     {leave.startDate} to {leave.endDate}
                                                 </span>
                                             </div>
                                             {leave.reason && (
-                                                <p className="mt-1.5 text-[10px] text-slate-600 bg-white p-1.5 border border-slate-200 italic">
+                                                <p className="mt-1.5 text-[10px] text-slate-600 bg-white p-2 border border-slate-100 rounded-lg italic">
                                                     "{leave.reason}"
                                                 </p>
                                             )}

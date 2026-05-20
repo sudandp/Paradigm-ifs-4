@@ -23,6 +23,7 @@ export const allPermissions: { key: Permission; name: string; description: strin
     // Dashboards
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },
+    { key: 'view_management_dashboard', name: 'Management Dashboard', description: 'View the dashboard for head office/back office management.', category: 'Dashboards' },
     { key: 'view_all_submissions', name: 'View All Submissions', description: 'Access the main dashboard to view all employee submissions.', category: 'Dashboards' },
 
     // Operations Hub
