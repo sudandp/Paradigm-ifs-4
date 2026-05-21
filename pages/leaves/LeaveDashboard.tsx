@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
+import { offlineDb } from '../../services/offline/database';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild } from '../../types';
 import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator } from 'lucide-react';
@@ -110,7 +111,7 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
 
 // --- Main Dashboard ---
 const LeaveDashboard: React.FC = () => {
-    const { user } = useAuthStore();
+    const { user, isCheckedIn, dailyPunchCount } = useAuthStore();
     const [balanceDataState, setBalance] = useState<LeaveBalance | null>(null);
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [compOffLogs, setCompOffLogs] = useState<CompOffLog[]>([]);
@@ -232,16 +233,32 @@ const LeaveDashboard: React.FC = () => {
 
     const fetchData = useCallback(async () => {
         if (!user) return;
-        setIsLoading(true);
         setError(null);
         
-        try {
-            const dateStr = format(viewingDate, 'yyyy-MM-dd');
-            const startOfMonthDate = startOfMonth(viewingDate);
-            // Expand range to catch night shifts at the start and end of the month
-            const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
-            const endStr = new Date(endOfMonth(viewingDate).getTime() + 12 * 60 * 60 * 1000).toISOString();
+        const dateStr = format(viewingDate, 'yyyy-MM-dd');
+        const startOfMonthDate = startOfMonth(viewingDate);
+        // Expand range to catch night shifts at the start and end of the month
+        const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
+        const endStr = new Date(endOfMonth(viewingDate).getTime() + 12 * 60 * 60 * 1000).toISOString();
 
+        // ── Cache-first: render cached data instantly while live fetch runs ──
+        try {
+            const cachedEvents = await offlineDb.getCache(`attendance_${user.id}_${startStr.split('T')[0]}`);
+            if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
+                setEvents(cachedEvents);
+                // If we have cached events, allow the UI to render immediately
+                setIsLoading(false);
+            }
+        } catch (cacheErr) {
+            // Cache miss is fine — we'll fetch live data below
+        }
+        
+        // Set loading only if we didn't get cache
+        if (events.length === 0) {
+            setIsLoading(true);
+        }
+
+        try {
             const startOfYearStr = startOfYear(viewingDate).toISOString();
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
@@ -366,7 +383,7 @@ const LeaveDashboard: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [user?.id, user?.role, filter, viewingDate]);
+    }, [user?.id, user?.role, filter, viewingDate, isCheckedIn, dailyPunchCount]);
 
     useEffect(() => {
         fetchData();

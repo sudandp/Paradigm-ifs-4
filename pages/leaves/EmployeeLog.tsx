@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
+import { offlineDb } from '../../services/offline/database';
 import type { AttendanceEvent } from '../../types';
 import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
@@ -26,7 +27,7 @@ interface EmployeeLogProps {
 }
 
 const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
-    const { user } = useAuthStore();
+    const { user, isCheckedIn, dailyPunchCount } = useAuthStore();
     const [events, setEvents] = useState<AttendanceEvent[]>(initialEvents);
     const [isLoading, setIsLoading] = useState(initialEvents.length === 0);
     const [selectedRange, setSelectedRange] = useState<TimeRange>('day');
@@ -65,7 +66,23 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
             return;
         }
 
-        setIsLoading(true);
+        // ── Cache-first: render cached data instantly while live fetch runs ──
+        const cacheKey = `attendance_${user.id}_${startDate.toISOString().split('T')[0]}`;
+        try {
+            const cachedEvents = await offlineDb.getCache(cacheKey);
+            if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
+                setEvents(cachedEvents);
+                setIsLoading(false);
+            }
+        } catch (cacheErr) {
+            // Cache miss is fine — we'll fetch live data below
+        }
+
+        // Only show loading spinner if no cached data is available
+        if (events.length === 0 && initialEvents.length === 0) {
+            setIsLoading(true);
+        }
+
         try {
             const data = await api.getAttendanceEvents(
                 user.id,
@@ -84,7 +101,7 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         // Only fetch if we don't have events or if range/date changed
         // Exception: on first mount, if initialEvents is provided for current month, we already handled it
         fetchAttendanceEvents();
-    }, [user, selectedRange, selectedDate]);
+    }, [user, selectedRange, selectedDate, isCheckedIn, dailyPunchCount]);
 
     // Update internal events if initialEvents changes (e.g. parent refetch)
     useEffect(() => {

@@ -48,7 +48,12 @@ class OfflineAttendanceService {
     if (status.connected) {
       return this.punchOnline(payload);
     } else {
-      return this.punchOffline(payload);
+      // Offline mode disabled — inform user immediately instead of queuing
+      return {
+        success: false,
+        message: 'Not connected to the internet. Please check your connection and try again.',
+        isOffline: false
+      };
     }
   }
 
@@ -61,9 +66,13 @@ class OfflineAttendanceService {
       await this.appendToLocalEvents(payload);
       return { success: true, message: 'Attendance recorded.', isOffline: false };
     } catch (err: any) {
-      console.error('[OfflineAttendance] Online punch failed, falling back to offline queue:', err);
-      // Network might have dropped mid-request — queue offline
-      return this.punchOffline(payload);
+      console.error('[OfflineAttendance] Online punch failed:', err);
+      // Offline mode disabled — return error immediately instead of queuing
+      return {
+        success: false,
+        message: 'Network error — could not reach the server. Please try again.',
+        isOffline: false
+      };
     }
   }
 
@@ -109,21 +118,26 @@ class OfflineAttendanceService {
    */
   async queueLeaveRequest(payload: any): Promise<{ success: boolean; message: string; isOffline: boolean }> {
     const status = await Network.getStatus();
-    if (status.connected) {
-      try {
-        await api.submitLeaveRequest(payload);
-        return { success: true, message: 'Leave request submitted.', isOffline: false };
-      } catch (err) {
-        console.warn('[OfflineAttendance] Leave request online submit failed, queuing offline');
-      }
+    if (!status.connected) {
+      // Offline mode disabled — inform user immediately instead of queuing
+      return {
+        success: false,
+        message: 'Not connected to the internet. Please check your connection and try again.',
+        isOffline: false
+      };
     }
 
-    await offlineDb.addToOutbox({
-      table_name: 'leave_requests',
-      action: 'INSERT',
-      payload
-    });
-    return { success: true, message: 'Leave request saved offline — will sync when connected.', isOffline: true };
+    try {
+      await api.submitLeaveRequest(payload);
+      return { success: true, message: 'Leave request submitted.', isOffline: false };
+    } catch (err) {
+      console.error('[OfflineAttendance] Leave request online submit failed:', err);
+      return {
+        success: false,
+        message: 'Failed to submit leave request. Please check your connection and try again.',
+        isOffline: false
+      };
+    }
   }
 
   /**
