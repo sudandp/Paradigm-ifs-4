@@ -841,6 +841,7 @@ const App: React.FC = () => {
       // Helper: restore user session from offline cache (14-day window)
       const restoreFromOfflineCache = async () => {
         try {
+          const cachedUser: any = null;
 
           if (false) {
             console.log('[App] Offline session expired (>14 days). Requiring re-login.');

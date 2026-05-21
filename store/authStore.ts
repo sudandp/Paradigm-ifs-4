@@ -362,7 +362,7 @@ export const useAuthStore = create<AuthState>()(
                     // [SECURITY] Log successful login
                     logSecurityEvent({
                         event_type: 'login_success',
-                        userId: appUser.id,
+                        user_id: appUser.id,
                         user_email: cleanEmail,
                         severity: 'info',
                         details: { role: appUser.role, method: 'email' }
@@ -372,7 +372,7 @@ export const useAuthStore = create<AuthState>()(
                         get().forceLogout('Your session has expired due to inactivity. Please log in again.');
                         logSecurityEvent({
                             event_type: 'session_expired',
-                            userId: appUser.id,
+                            user_id: appUser.id,
                             severity: 'info',
                             details: { reason: 'inactivity_timeout' }
                         });
@@ -538,7 +538,7 @@ export const useAuthStore = create<AuthState>()(
             if (currentUser) {
                 logSecurityEvent({
                     event_type: 'logout',
-                    userId: currentUser.id,
+                    user_id: currentUser.id,
                     severity: 'info'
                 });
             }
@@ -567,7 +567,7 @@ export const useAuthStore = create<AuthState>()(
 
                 set({
                     geofencingSettings: geoSettings || null,
-                    breakLimit: fullSettings?.breakLimit || 60
+                    breakLimit: (fullSettings as any)?.breakLimit || 60
                 });
             } catch (error) {
                 console.error('Failed to fetch geofencing settings:', error);
@@ -624,11 +624,7 @@ export const useAuthStore = create<AuthState>()(
 
                 let events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
                 
-                if (eventsResult.status === 'fulfilled') {
-                    const today = getLocalDateKey(new Date());
-                    const events = await api.getAttendanceEvents(user.id, today);
-                    const parsedEvents = processDailyEvents(events);;
-                } else {
+                if (eventsResult.status === 'rejected') {
                     // Fallback to offline cache
                     console.warn('[authStore] Failed to fetch events');
                 }

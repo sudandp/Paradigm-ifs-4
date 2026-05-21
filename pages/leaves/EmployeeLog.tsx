@@ -68,6 +68,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         // ── Cache-first: render cached data instantly while live fetch runs ──
         const cacheKey = `attendance_${user.id}_${startDate.toISOString().split('T')[0]}`;
         try {
+            const cachedEventsStr = localStorage.getItem(cacheKey);
+            const cachedEvents = cachedEventsStr ? JSON.parse(cachedEventsStr) : null;
             if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
                 setEvents(cachedEvents);
                 setIsLoading(false);
