@@ -999,12 +999,17 @@ const ProfilePage: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {/* ── 2. Unified Action Grid (Site / Break) ── */}
-                                    <div className="grid grid-cols-2 gap-3 w-full">
+                                    {/* ── 2. Unified Action Links (Site / Break) ── */}
+                                    <div className="flex justify-center items-center gap-8 md:gap-12 mt-8 mb-4 w-full">
                                         {/* Site Toggle Card */}
                                         {(isFieldStaffRole || isSiteStaffRole) && (
                                             <motion.button
                                                 whileTap={isOnBreak ? {} : { scale: 0.95 }}
+                                                animate={(isFieldCheckedIn || isSiteOtCheckedIn) && !isOnBreak ? { 
+                                                    scale: [1, 1.05, 1],
+                                                    opacity: [0.8, 1, 0.8] 
+                                                } : { scale: 1, opacity: 1 }}
+                                                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                                 disabled={isOnBreak}
                                                 onClick={() => {
                                                     triggerHaptic();
@@ -1017,59 +1022,56 @@ const ProfilePage: React.FC = () => {
                                                     }
                                                 }}
                                                 className={`
-                                                    relative overflow-hidden p-5 rounded-[32px] border transition-all duration-300 flex flex-col items-center gap-2.5
+                                                    flex items-center gap-2 transition-colors
                                                     ${isOnBreak 
-                                                        ? 'bg-white/5 border-white/10 text-gray-500 opacity-40 grayscale' 
+                                                        ? 'text-gray-500 opacity-40 cursor-not-allowed' 
                                                         : (isFieldCheckedIn || isSiteOtCheckedIn
-                                                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' 
-                                                            : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400')}
-                                                    backdrop-blur-xl shadow-2xl shadow-black/40
+                                                            ? 'text-rose-500/80 hover:text-rose-500' 
+                                                            : 'text-emerald-500/80 hover:text-emerald-500')}
                                                 `}
                                             >
-                                                <div className={`p-3 rounded-2xl ${isOnBreak ? 'bg-white/5' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'bg-rose-500/20' : 'bg-emerald-500/20')}`}>
-                                                    {isOnBreak ? <Lock className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
-                                                </div>
-                                                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
+                                                {isOnBreak ? <Lock className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
+                                                <span className="text-[11px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
                                                     {isOnBreak ? 'Site Locked' : (isFieldCheckedIn || isSiteOtCheckedIn ? 'Site Out' : 'Site In')}
-                                                </span>
-                                                {/* Status Indicator */}
-                                                {(isFieldCheckedIn || isSiteOtCheckedIn) && (
-                                                    <div className="absolute top-4 right-4">
+                                                    {(isFieldCheckedIn || isSiteOtCheckedIn) && (
                                                         <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                                                    </div>
-                                                )}
+                                                    )}
+                                                </span>
                                             </motion.button>
+                                        )}
+
+                                        {/* Divider */}
+                                        {(isFieldStaffRole || isSiteStaffRole) && (
+                                            <div className="w-[1px] h-5 bg-white/10 rounded-full" />
                                         )}
 
                                         {/* Break Toggle Card */}
                                         <motion.button
                                             whileTap={{ scale: 0.95 }}
+                                            animate={isOnBreak ? { 
+                                                scale: [1, 1.05, 1],
+                                                opacity: [0.8, 1, 0.8] 
+                                            } : { scale: 1, opacity: 1 }}
+                                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                             onClick={() => {
                                                 triggerHaptic();
                                                 if (isOnBreak) navigate('/attendance/break-out');
                                                 else navigate('/attendance/break-in');
                                             }}
                                             className={`
-                                                relative overflow-hidden p-5 rounded-[32px] border transition-all duration-300 flex flex-col items-center gap-2.5
+                                                flex items-center gap-2 transition-colors
                                                 ${isOnBreak
-                                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
-                                                    : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}
-                                                backdrop-blur-xl shadow-2xl shadow-black/40
-                                                ${(isFieldStaffRole || isSiteStaffRole) ? '' : 'col-span-2'}
+                                                    ? 'text-amber-500/80 hover:text-amber-500' 
+                                                    : 'text-blue-500/80 hover:text-blue-500'}
                                             `}
                                         >
-                                            <div className={`p-3 rounded-2xl ${isOnBreak ? 'bg-amber-500/20' : 'bg-blue-500/20'}`}>
-                                                <Coffee className="h-5 w-5" />
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-center leading-tight">
+                                            <Coffee className="h-4 w-4" />
+                                            <span className="text-[11px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
                                                 {isOnBreak ? 'Resume Work' : 'Take Break'}
-                                            </span>
-                                            {/* Status Indicator */}
-                                            {isOnBreak && (
-                                                <div className="absolute top-4 right-4">
+                                                {isOnBreak && (
                                                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                                </div>
-                                            )}
+                                                )}
+                                            </span>
                                         </motion.button>
                                     </div>
 
@@ -1103,14 +1105,15 @@ const ProfilePage: React.FC = () => {
                     )}
 
                     {/* Floating Logout Button */}
-                    <div className="flex justify-center mt-8 mb-4 w-full px-8">
-                        <button 
+                    <div className="flex justify-center mt-4 mb-2 w-full px-8">
+                        <motion.button 
+                            whileTap={{ scale: 0.95 }}
                             onClick={handleLogoutClick}
-                            className="w-full max-w-[220px] flex items-center justify-center gap-3 py-4 bg-rose-500/10 border border-rose-500/50 rounded-full text-rose-500 text-[12px] font-black uppercase tracking-[0.25em] shadow-[0_8px_30px_rgb(225,29,72,0.25)] hover:bg-rose-500/20 active:scale-95 hover:-translate-y-1 transition-all backdrop-blur-xl"
+                            className="flex items-center justify-center gap-3 py-2 text-rose-500/80 hover:text-rose-500 transition-colors"
                         >
                             <LogOut className="w-4 h-4" />
-                            Log Out
-                        </button>
+                            <span className="text-[11px] font-black uppercase tracking-[0.3em]">Log Out</span>
+                        </motion.button>
                     </div>
 
                     {/* Secondary Management Sections - MOVED to Settings Modal */}
@@ -1333,7 +1336,7 @@ const ProfilePage: React.FC = () => {
                     </div>
                     
                     {/* User Info aligned next to the avatar */}
-                    <div className="text-center md:text-left flex-1 md:pb-0">
+                    <div className="text-center md:text-left flex-1 md:pb-0 md:pr-[260px] lg:pr-[300px]">
                         <div className="flex flex-col md:flex-row md:items-center gap-3">
                              <h2 className="text-2xl font-bold text-gray-900 md:text-white tracking-tight">{user.name}</h2>
                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-white/20 text-white text-xs font-bold uppercase tracking-widest shadow-sm">
@@ -1346,7 +1349,7 @@ const ProfilePage: React.FC = () => {
                         </div>
                         
                         {/* Desktop Avatar Controls — standardized design system */}
-                        <div className="mt-5 hidden md:flex items-center justify-start gap-3">
+                        <div className="mt-5 hidden md:flex flex-wrap items-center justify-start gap-3">
                             <label htmlFor="avatar-upload" className="cursor-pointer inline-flex items-center justify-center h-9 px-4 rounded-lg border-2 border-transparent bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                                 <Edit className="w-4 h-4 mr-2 flex-shrink-0" />
                                 {avatarFile ? 'Change' : 'Upload'}

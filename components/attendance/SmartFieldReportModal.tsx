@@ -62,11 +62,27 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             fetchTemplates();
-            // Auto-populate site name from user's last session or location if available
-            // For now, we'll let the user type or we can infer from the last check-in event.
-            if (lastCheckInTime) {
-                // In a real app, we'd fetch the location name from the database for that event
-                setSiteName('Current Site'); 
+            // Auto-populate site name using precise location
+            if (!siteName || siteName === 'Current Site') {
+                setSiteName('Locating...');
+                import('../../utils/locationUtils').then(async ({ getPrecisePosition, reverseGeocode }) => {
+                    try {
+                        const pos = await getPrecisePosition(150, 15000);
+                        if (pos) {
+                            const address = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+                            if (address) {
+                                setSiteName(address);
+                                return;
+                            }
+                        }
+                        setSiteName(lastCheckInTime ? 'Current Site' : '');
+                    } catch (err) {
+                        console.warn('Failed to auto-select location:', err);
+                        setSiteName(lastCheckInTime ? 'Current Site' : '');
+                    }
+                }).catch(() => {
+                    setSiteName(lastCheckInTime ? 'Current Site' : '');
+                });
             }
         }
     }, [isOpen, jobType]);
@@ -148,9 +164,11 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
     };
     const handleCapture = async (base64: string, mime: string) => {
         // In a real app, we'd upload to Supabase Storage here and get a URL
-        // For this demo, we'll use the base64 string as the URL.
+        // For this demo, we'll construct a data URL.
+        const dataUrl = `data:${mime};base64,${base64}`;
+        
         const newEvidence: FieldReportEvidence = {
-            url: base64,
+            url: dataUrl,
             type: 'image',
             timestamp: new Date().toISOString(),
             category: 'general'
@@ -162,7 +180,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                 ...prev,
                 [activeCameraTarget]: {
                     ...prev[activeCameraTarget],
-                    photoUrls: [...(prev[activeCameraTarget].photoUrls || []), base64]
+                    photoUrls: [...(prev[activeCameraTarget].photoUrls || []), dataUrl]
                 }
             }));
         } else {
@@ -307,12 +325,12 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-0 md:p-4">
+        <div className="fixed inset-x-0 bottom-0 top-[calc(6.5rem+env(safe-area-inset-top))] md:inset-0 z-[1000] flex flex-col justify-end md:justify-center items-center p-0 md:p-4">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/90 backdrop-blur-md transition-opacity" onClick={onClose}></div>
             
             {/* Modal Content */}
-            <div className="relative w-full h-full md:h-[85vh] md:max-w-2xl bg-card border-x md:border border-border md:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+            <div className="relative w-full h-full md:h-[85vh] md:max-w-2xl bg-card border-x md:border border-border md:rounded-[2rem] rounded-t-[2.5rem] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 md:zoom-in-95 duration-300 mt-auto md:mt-0">
                 
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-border bg-muted/5">
@@ -360,12 +378,12 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                         onChange={(e) => handleJobTypeChange(e.target.value)}
                                         className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-12 pr-12 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none appearance-none"
                                     >
-                                        <option value="PPM">PPM (Preventive Maintenance)</option>
-                                        <option value="Breakdown/Repair">Breakdown / Repair</option>
-                                        <option value="Site Training">Site Training</option>
-                                        <option value="Site Visit">Site Visit</option>
-                                        <option value="Meeting with Association">Meeting with Association</option>
-                                        <option value="Site Inspection">Site Inspection</option>
+                                        <option value="PPM" className="bg-card text-primary-text">PPM (Preventive Maintenance)</option>
+                                        <option value="Breakdown/Repair" className="bg-card text-primary-text">Breakdown / Repair</option>
+                                        <option value="Site Training" className="bg-card text-primary-text">Site Training</option>
+                                        <option value="Site Visit" className="bg-card text-primary-text">Site Visit</option>
+                                        <option value="Meeting with Association" className="bg-card text-primary-text">Meeting with Association</option>
+                                        <option value="Site Inspection" className="bg-card text-primary-text">Site Inspection</option>
                                     </select>
                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-600 pointer-events-none" />
                                 </div>
