@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     X, AlertCircle, Wrench, ShieldCheck, Search, CheckCircle, 
     Camera, MapPin, Clock, ArrowRight, ArrowLeft, Loader2,
@@ -275,7 +276,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
         ];
 
         return (
-            <div className="flex items-center justify-between px-6 py-6 border-b border-border bg-gray-50/50">
+            <div className="flex items-center justify-between px-6 py-6 border-b border-border bg-muted/5">
                 {steps.map((s, i) => {
                     const isActive = step === s.key;
                     const isCompleted = steps.findIndex(st => st.key === step) > i;
@@ -305,7 +306,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
         );
     };
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-0 md:p-4">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/90 backdrop-blur-md transition-opacity" onClick={onClose}></div>
@@ -314,7 +315,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
             <div className="relative w-full h-full md:h-[85vh] md:max-w-2xl bg-card border-x md:border border-border md:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300">
                 
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-border bg-gray-50/30">
+                <div className="flex items-center justify-between p-6 border-b border-border bg-muted/5">
                     <div>
                         <h3 className="text-xl font-bold text-primary-text tracking-tight">Field Report Redesign</h3>
                         <p className="text-xs text-accent font-medium uppercase tracking-widest mt-0.5">Verified Audit Shield</p>
@@ -357,7 +358,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                     <select 
                                         value={jobType}
                                         onChange={(e) => handleJobTypeChange(e.target.value)}
-                                        className="w-full bg-gray-50 border border-border rounded-2xl py-4 pl-12 pr-12 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none appearance-none"
+                                        className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-12 pr-12 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none appearance-none"
                                     >
                                         <option value="PPM">PPM (Preventive Maintenance)</option>
                                         <option value="Breakdown/Repair">Breakdown / Repair</option>
@@ -379,7 +380,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                             type="text"
                                             value={siteName}
                                             onChange={(e) => setSiteName(e.target.value)}
-                                            className="w-full bg-gray-50 border border-border rounded-2xl py-4 pl-12 pr-4 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
+                                            className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-12 pr-4 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
                                             placeholder="Enter Site Name"
                                         />
                                     </div>
@@ -393,14 +394,14 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                             type="text"
                                             value={assetArea}
                                             onChange={(e) => setAssetArea(e.target.value)}
-                                            className="w-full bg-gray-50 border border-border rounded-2xl py-4 pl-12 pr-4 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
+                                            className="w-full bg-muted/5 border border-border rounded-2xl py-4 pl-12 pr-4 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
                                             placeholder="e.g., AHU-01, Server Room"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="bg-gray-50 border border-border rounded-2xl p-5 flex items-center justify-between text-muted text-sm font-medium">
+                            <div className="bg-muted/5 border border-border rounded-2xl p-5 flex items-center justify-between text-muted text-sm font-medium">
                                 <div className="flex items-center gap-3">
                                     <Clock className="h-5 w-5 text-accent/50" />
                                     <span>Started: {lastCheckInTime ? format(new Date(lastCheckInTime), 'HH:mm') : '--:--'}</span>
@@ -446,7 +447,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                             
                                             return (
                                                 <div key={item.id} className={`p-5 rounded-3xl border transition-all ${
-                                                    resp?.value ? 'bg-accent/5 border-accent/20' : 'bg-gray-50 border-border'
+                                                    resp?.value ? 'bg-accent/5 border-accent/20' : 'bg-muted/5 border-border'
                                                 }`}>
                                                     <div className="flex items-start justify-between gap-4 mb-4">
                                                         <p className="text-sm font-bold text-primary-text leading-relaxed">{item.label}</p>
@@ -464,7 +465,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                                                             ? opt === 'Yes' ? 'bg-accent border-accent text-white shadow-lg shadow-accent/40' :
                                                                               opt === 'No' ? 'bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-900/40' :
                                                                               'bg-gray-500 border-gray-500 text-white'
-                                                                            : 'md:bg-white bg-gray-50 border-border text-muted hover:text-primary-text'
+                                                                              : 'md:bg-card bg-muted/5 border-border text-muted hover:text-primary-text'
                                                                     }`}
                                                                 >
                                                                     {opt}
@@ -479,7 +480,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                                                 type="number"
                                                                 value={resp?.value || ''}
                                                                 onChange={(e) => handleResponseChange(item.id, e.target.value)}
-                                                                className="flex-1 bg-gray-50 border border-border rounded-xl px-4 py-2 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
+                                                                className="flex-1 bg-muted/5 border border-border rounded-xl px-4 py-2 text-primary-text font-medium focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none"
                                                                 placeholder="Enter value"
                                                             />
                                                         </div>
@@ -497,7 +498,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                                                     value={resp?.remarks || ''}
                                                                     onChange={(e) => handleConditionalResponseChange(item.id, 'remarks', e.target.value)}
                                                                     placeholder="Describe the issue / corrective action / reason for 'No'..."
-                                                                    className="w-full bg-gray-50 border border-border rounded-xl py-3 px-4 text-primary-text text-sm focus:ring-2 focus:ring-rose-500/10 focus:border-rose-500/50 outline-none h-24 resize-none"
+                                                                    className="w-full bg-muted/5 border border-border rounded-xl py-3 px-4 text-primary-text text-sm focus:ring-2 focus:ring-rose-500/10 focus:border-rose-500/50 outline-none h-24 resize-none"
                                                                 />
                                                                 <div className="flex flex-wrap gap-2">
                                                                     {(resp?.photoUrls || []).map((p, idx) => (
@@ -520,7 +521,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                                                             setActiveCameraTarget(item.id);
                                                                             setIsCameraOpen(true);
                                                                         }}
-                                                                        className="h-16 w-16 rounded-xl border-2 border-dashed border-border bg-gray-50 flex flex-col items-center justify-center text-muted hover:text-accent hover:border-accent/30 transition-all"
+                                                                        className="h-16 w-16 rounded-xl border-2 border-dashed border-border bg-muted/5 flex flex-col items-center justify-center text-muted hover:text-accent hover:border-accent/30 transition-all"
                                                                     >
                                                                         <Camera className="h-6 w-6 mb-1" />
                                                                         <span className="text-[10px] font-bold uppercase">Add Photo</span>
@@ -554,7 +555,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
 
                             <button 
                                 onClick={addEvidence}
-                                className="w-full py-8 border-2 border-dashed border-border rounded-[2rem] bg-gray-50 flex flex-col items-center justify-center text-muted hover:text-accent hover:border-accent/40 transition-all group"
+                                className="w-full py-8 border-2 border-dashed border-border rounded-[2rem] bg-muted/5 flex flex-col items-center justify-center text-muted hover:text-accent hover:border-accent/40 transition-all group"
                             >
                                 <div className="h-16 w-16 rounded-full bg-accent/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                                     <Camera className="h-8 w-8 text-accent" />
@@ -587,7 +588,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="space-y-2">
                                 <label className="block text-sm font-bold text-muted ml-1 uppercase tracking-wider">Auto-Generated Summary</label>
-                                 <div className="bg-gray-50 border border-border rounded-2xl p-6 font-mono text-xs text-accent font-bold leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto custom-scrollbar">
+                                 <div className="bg-muted/5 border border-border rounded-2xl p-6 font-mono text-xs text-accent font-bold leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto custom-scrollbar">
                                     {generatedSummary}
                                 </div>
                             </div>
@@ -603,7 +604,7 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                                     value={userRemarks}
                                     onChange={(e) => setUserRemarks(e.target.value.slice(0, 300))}
                                     placeholder="Add any additional notes or technical observations..."
-                                    className="w-full bg-gray-50 border border-border rounded-2xl p-5 text-primary-text text-sm focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none h-32 resize-none"
+                                    className="w-full bg-muted/5 border border-border rounded-2xl p-5 text-primary-text text-sm focus:ring-2 focus:ring-accent/10 focus:border-accent/50 transition-all outline-none h-32 resize-none"
                                 />
                             </div>
 
@@ -620,11 +621,11 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-border bg-gray-50/50 flex gap-4">
+                <div className="p-6 border-t border-border bg-muted/5 flex gap-4">
                     {step !== 'context' && (
                         <button 
                             onClick={handleBack}
-                            className="flex-1 py-4 px-6 rounded-2xl font-bold text-muted bg-white border border-border hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                            className="flex-1 py-4 px-6 rounded-2xl font-bold text-muted bg-card border border-border hover:bg-muted/5 transition-all flex items-center justify-center gap-2"
                         >
                             <ArrowLeft className="h-5 w-5" />
                             <span>Back</span>
@@ -657,7 +658,8 @@ const SmartFieldReportModal: React.FC<SmartFieldReportModalProps> = ({
                 onClose={() => setIsCameraOpen(false)}
                 onCapture={handleCapture}
             />
-        </div>
+        </div>,
+        document.body
     );
 };
 

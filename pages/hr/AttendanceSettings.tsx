@@ -709,6 +709,13 @@ const AttendanceSettings: React.FC = () => {
                             onChange={(e) => handleSettingChange('enableViolationBlocking', e.target.checked)}
                         />
                         <Checkbox
+                            id="enableFieldReport"
+                            label="Enable Field Reports"
+                            description="Automatically trigger field report submission upon check-out when geofencing is enabled."
+                            checked={currentRules.enableFieldReport ?? true}
+                            onChange={(e) => handleSettingChange('enableFieldReport', e.target.checked)}
+                        />
+                        <Checkbox
                             id="enablePermission"
                             label="Enable Permissions"
                             description="Allow users to request short permissions (e.g. arriving late or leaving early) up to a specific time limit. Approval required from reporting manager."
@@ -1833,7 +1840,13 @@ const AttendanceSettings: React.FC = () => {
                                         : "Verify site staff are at their assigned site during check-in/out. Geofencing is strictly enforced."
                             }
                             checked={currentRules.geofencingEnabled}
-                            onChange={(e) => handleSettingChange('geofencingEnabled', e.target.checked)}
+                            onChange={(e) => {
+                                const isChecked = e.target.checked;
+                                handleSettingChange('geofencingEnabled', isChecked);
+                                if (isChecked && activeTab === 'field') {
+                                    handleSettingChange('enableFieldReport', true);
+                                }
+                            }}
                         />
                         <Input
                             label="Maximum Violations Per Month"

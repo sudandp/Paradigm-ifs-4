@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { LogIn, LogOut, Clock, Coffee, X, CloudOff, Bell, Volume2 } from 'lucide-react';
@@ -214,7 +215,11 @@ const AttendanceActionPage: React.FC = () => {
 
             if (requiresVerification && !isVerified && !isAutoConfirm) { setUsePasscodeFallback(true); setIsSubmitting(false); return; }
             const settings = geofencingSettings || { enabled: false };
-            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && workType === 'field') {
+            const { attendance } = useSettingsStore.getState();
+            const currentWorkTypeCategory = workType === 'site-ot' ? 'site' : (workType as 'office' | 'field' | 'site');
+            const enableFieldReport = attendance?.[currentWorkTypeCategory]?.enableFieldReport ?? true;
+            
+            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && enableFieldReport) {
                 setIsReportModalOpen(true); setIsSubmitting(false); return;
             }
 

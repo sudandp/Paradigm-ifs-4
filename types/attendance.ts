@@ -127,6 +127,7 @@ export interface StaffAttendanceRules {
   enableAttendanceNotifications: boolean;
   sickLeaveCertificateThreshold: number;
   geofencingEnabled?: boolean;
+  enableFieldReport?: boolean;
   maxViolationsPerMonth?: number;
   ctcPerMonth?: number;
   weeklyOffsPerWeek?: number;
