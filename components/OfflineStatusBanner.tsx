@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
-import { offlineDb } from '../services/offline/database';
 import { WifiOff, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -11,10 +10,6 @@ const OfflineStatusBanner: React.FC = () => {
 
   useEffect(() => {
     if (!isOnline) {
-      offlineDb.getSyncTime().then(time => {
-        setLastSync(time);
-        setIsVisible(true);
-      });
     } else {
       setIsVisible(false);
     }

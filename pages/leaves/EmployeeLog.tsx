@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import { offlineDb } from '../../services/offline/database';
 import type { AttendanceEvent } from '../../types';
 import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
@@ -69,7 +68,6 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         // ── Cache-first: render cached data instantly while live fetch runs ──
         const cacheKey = `attendance_${user.id}_${startDate.toISOString().split('T')[0]}`;
         try {
-            const cachedEvents = await offlineDb.getCache(cacheKey);
             if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
                 setEvents(cachedEvents);
                 setIsLoading(false);

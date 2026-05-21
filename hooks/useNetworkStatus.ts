@@ -1,7 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
 import { Network, ConnectionStatus } from '@capacitor/network';
-import { offlineDb } from '../services/offline/database';
-import { syncService } from '../services/offline/syncService';
 
 export const useNetworkStatus = () => {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
@@ -19,12 +17,9 @@ export const useNetworkStatus = () => {
       const handler = await Network.addListener('networkStatusChange', s => {
         setStatus(s);
 
-        // Detect offline → online transition
+        // Transition detected
         if (s.connected && prevConnected.current === false) {
-          offlineDb.setLastOnlineTimestamp().catch(() => {});
-          syncService.sync().catch(err =>
-            console.warn('[useNetworkStatus] Auto-sync on reconnect failed:', err)
-          );
+          console.log('[useNetworkStatus] Back online');
         }
 
         prevConnected.current = s.connected;

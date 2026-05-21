@@ -4,7 +4,6 @@ import { getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalcula
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import { offlineAttendanceService } from '../../services/offline/offlineAttendanceService';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus } from '../../types';
 import { ArrowLeft, Clock, CloudOff } from 'lucide-react';
 import Button from '../../components/ui/Button';
@@ -612,7 +611,6 @@ const ApplyLeave: React.FC = () => {
                 });
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
-                const result = await offlineAttendanceService.queueLeaveRequest(basePayload);
                 setToast({ 
                     message: result.isOffline ? 'You are offline. Request saved and will sync later!' : 'Leave request submitted successfully!', 
                     type: result.success ? 'success' : 'error' 

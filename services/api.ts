@@ -23,7 +23,7 @@ import {
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-import { offlineDb } from './offline/database';
+const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
 import { Network } from '@capacitor/network';
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
 import { isTechnicalRole, calculateWorkingHours } from '../utils/attendanceCalculations';

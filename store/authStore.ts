@@ -13,8 +13,7 @@ import { supabase } from '../services/supabase';
 import type { RealtimeChannel, Subscription } from '@supabase/supabase-js';
 // FIX: Import the 'api' object to resolve 'Cannot find name' errors.
 import { api } from '../services/api';
-import { offlineDb } from '../services/offline/database';
-import { offlineAttendanceService } from '../services/offline/offlineAttendanceService';
+
 import { withTimeout } from '../utils/async';
 import { format } from 'date-fns';
 import { routeTrackingService } from '../services/routeTrackingService';
@@ -231,10 +230,6 @@ export const useAuthStore = create<AuthState>()(
         
         setIsOffline: (isOffline: boolean) => {
             set({ isOffline });
-            if (!isOffline) {
-                // Update last online timestamp whenever we come back online
-                offlineDb.setLastOnlineTimestamp().catch(() => {});
-            }
         },
 
         resetAttendance: () => set({
@@ -263,16 +258,7 @@ export const useAuthStore = create<AuthState>()(
         setError: (error) => set({ error }),
 
         checkOfflineSession: async () => {
-            const { isOffline, user } = get();
-            if (isOffline && user) {
-                const isValid = await offlineDb.isOfflineSessionValid(14);
-                if (!isValid) {
-                    console.warn('[authStore] Offline session expired (14+ days since last online). Forcing logout.');
-                    get().forceLogout('Your offline session has expired. Please connect to the internet to log in again.');
-                    return false;
-                }
-            }
-            return true;
+            return false;
         },
 
         syncRouteTracking: async () => {
@@ -372,13 +358,11 @@ export const useAuthStore = create<AuthState>()(
                 if (appUser) {
                     // Success case: profile fetched
                     set({ user: appUser, error: null, loading: false });
-                    // Cache user profile for offline use
-                    offlineAttendanceService.cacheUserProfile(appUser).catch(e => console.warn('[authStore] Failed to cache user profile on login:', e));
                     
                     // [SECURITY] Log successful login
                     logSecurityEvent({
                         event_type: 'login_success',
-                        user_id: appUser.id,
+                        userId: appUser.id,
                         user_email: cleanEmail,
                         severity: 'info',
                         details: { role: appUser.role, method: 'email' }
@@ -388,7 +372,7 @@ export const useAuthStore = create<AuthState>()(
                         get().forceLogout('Your session has expired due to inactivity. Please log in again.');
                         logSecurityEvent({
                             event_type: 'session_expired',
-                            user_id: appUser.id,
+                            userId: appUser.id,
                             severity: 'info',
                             details: { reason: 'inactivity_timeout' }
                         });
@@ -554,7 +538,7 @@ export const useAuthStore = create<AuthState>()(
             if (currentUser) {
                 logSecurityEvent({
                     event_type: 'logout',
-                    user_id: currentUser.id,
+                    userId: currentUser.id,
                     severity: 'info'
                 });
             }
@@ -577,36 +561,16 @@ export const useAuthStore = create<AuthState>()(
             const { user } = get();
             if (!user) return;
             try {
-                const fullSettings = await api.getAttendanceSettings();
-                const isOfficeUser = ['admin', 'hr', 'finance', 'developer'].includes(user.role);
-                const rules = isOfficeUser ? fullSettings.office : fullSettings.field;
-                const geoSettings = {
-                    enabled: rules.geofencingEnabled ?? false,
-                    maxViolationsPerMonth: rules.maxViolationsPerMonth ?? 3
-                };
-                const breakLimitVal = rules.lunchBreakDuration ?? 60;
-                set({ 
-                    geofencingSettings: geoSettings,
-                    breakLimit: breakLimitVal
+                const geoSettings = await api.getGeofencingSettings(user.organizationId);
+                const breakLimitVal = await api.getBreakLimit(user.organizationId);
+                const fullSettings = await api.getAttendanceSettings(user.organizationId);
+
+                set({
+                    geofencingSettings: geoSettings || null,
+                    breakLimit: breakLimitVal || 60
                 });
-                // Cache for offline use
-                offlineAttendanceService.cacheGeofencingSettings({ geoSettings, breakLimit: breakLimitVal }).catch(() => {});
-                offlineAttendanceService.cacheAttendanceSettings(fullSettings).catch(() => {});
             } catch (error) {
                 console.error('Failed to fetch geofencing settings:', error);
-                // Try to restore from offline cache
-                try {
-                    const cached = await offlineAttendanceService.getCachedGeofencingSettings();
-                    if (cached) {
-                        set({ 
-                            geofencingSettings: cached.geoSettings,
-                            breakLimit: cached.breakLimit
-                        });
-                        console.log('[authStore] Restored geofencing settings from offline cache');
-                    }
-                } catch (cacheErr) {
-                    console.warn('[authStore] No cached geofencing settings available');
-                }
             }
         },
 
@@ -661,19 +625,16 @@ export const useAuthStore = create<AuthState>()(
                 let events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
                 
                 if (eventsResult.status === 'fulfilled') {
-                    // Cache successful fetch for offline use
-                    offlineAttendanceService.updateLocalEventCache(user.id, events).catch(e => console.warn('Failed to cache today events', e));
+                    const today = getLocalDateKey(new Date());
+                    const events = await api.getAttendanceEvents(user.id, today);
+                    const parsedEvents = processDailyEvents(events);;
                 } else {
                     // Fallback to offline cache
-                    const cachedEvents = await offlineAttendanceService.getLocalTodayEvents(user.id);
-                    if (cachedEvents && cachedEvents.length > 0) {
-                        events = cachedEvents;
-                        console.log('[authStore] Loaded attendance events from offline cache');
-                    }
+                    console.warn('[authStore] Failed to fetch events');
                 }
                 
                 const approvedUnlockCount = unlockCountResult.status === 'fulfilled' ? unlockCountResult.value : 0;
-                const dailyUnlockRequestCount = dailyUnlockCountResult.status === 'fulfilled' ? dailyUnlockCountResult.value : 0;
+                const dailyUnlockRequestCount = 0;
 
                 if (events.length === 0) {
                     set({
@@ -891,26 +852,26 @@ export const useAuthStore = create<AuthState>()(
                     const currentDailyPunchCount = get().dailyPunchCount;
                     const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
 
-                    const punchResult = await offlineAttendanceService.punchAction({
-                        userId: user.id,
-                        timestamp: new Date().toISOString(),
-                        type: newType,
-                        latitude: lat,
-                        longitude: lng,
-                        locationId: locId,
-                        locationName: locName,
-                        checkoutNote: newType === 'punch-out' ? note : undefined,
-                        attachmentUrl: newType === 'punch-out' ? (attachmentUrl || undefined) : undefined,
-                        workType,
-                        fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
-                        isOt: isOtCycle || undefined
-                    });
-
-                    if (!punchResult.success) {
-                        return { success: false, message: punchResult.message };
+                    try {
+                        await api.addAttendanceEvent({
+                            userId: user.id,
+                            timestamp: new Date().toISOString(),
+                            type: newType,
+                            latitude: lat,
+                            longitude: lng,
+                            locationId: locId,
+                            locationName: locName,
+                            checkoutNote: newType === 'punch-out' ? note : undefined,
+                            attachmentUrl: newType === 'punch-out' ? (attachmentUrl || undefined) : undefined,
+                            workType: workType,
+                            fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
+                            isOt: isOtCycle ? true : undefined
+                        });
+                    } catch (err: any) {
+                        return { success: false, message: err.message || 'Failed to record attendance' };
                     }
 
-                    // Small delay to allow Supabase to index the new record (or outbox to save)
+                    // Small delay to allow Supabase to index the new record
                     await new Promise(resolve => setTimeout(resolve, 300));
                     await get().checkAttendanceStatus(true); // Silent refresh
 
@@ -1027,9 +988,7 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     const actionLabel = getActionTextForType(newType, workType);
-                    const finalMessage = punchResult.isOffline 
-                        ? punchResult.message 
-                        : `Successfully ${actionLabel}!`;
+                    const finalMessage = `Successfully ${actionLabel}!`;
                         
                     return { success: true, message: finalMessage };
                 };
@@ -1055,9 +1014,9 @@ export const useAuthStore = create<AuthState>()(
                     let userLocations: any[] = [];
                     try {
                         userLocations = await api.getUserLocations(user.id);
-                        offlineAttendanceService.cacheUserLocations(user.id, userLocations).catch(() => {});
-                    } catch (e) {
-                        userLocations = await offlineAttendanceService.getCachedUserLocations(user.id) || [];
+                    } catch (err) {
+                        console.warn('[Location] Failed to fetch live locations:', err);
+                        userLocations = [];
                     }
 
                     for (const loc of userLocations) {
@@ -1187,7 +1146,7 @@ export const useAuthStore = create<AuthState>()(
                         event: 'INSERT',
                         schema: 'public',
                         table: 'attendance_events',
-                        filter: `user_id=eq.${user.id}`,
+                        filter: `userId=eq.${user.id}`,
                     },
                     () => {
                         console.log('Realtime: Attendance event detected, refreshing status...');
@@ -1204,7 +1163,7 @@ export const useAuthStore = create<AuthState>()(
                         event: 'UPDATE',
                         schema: 'public',
                         table: 'attendance_unlock_requests',
-                        filter: `user_id=eq.${user.id}`,
+                        filter: `userId=eq.${user.id}`,
                     },
                     (payload) => {
                         console.log('Realtime: Unlock request change detected:', payload);

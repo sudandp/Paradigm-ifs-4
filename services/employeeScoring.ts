@@ -15,7 +15,7 @@ import { supabase } from './supabase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInMinutes, differenceInDays } from 'date-fns';
 import type { EmployeeScore, RoleCategory, RoleWeights, Task, AttendanceEvent } from '../types';
 import { isLateCheckIn } from '../utils/attendanceCalculations';
-import { offlineDb } from './offline/database';
+const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
 import { Network } from '@capacitor/network';
 
 // Role-based weight configuration

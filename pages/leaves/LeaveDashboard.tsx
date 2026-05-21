@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import { offlineDb } from '../../services/offline/database';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild } from '../../types';
 import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator } from 'lucide-react';
@@ -243,7 +242,6 @@ const LeaveDashboard: React.FC = () => {
 
         // ── Cache-first: render cached data instantly while live fetch runs ──
         try {
-            const cachedEvents = await offlineDb.getCache(`attendance_${user.id}_${startStr.split('T')[0]}`);
             if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
                 setEvents(cachedEvents);
                 // If we have cached events, allow the UI to render immediately

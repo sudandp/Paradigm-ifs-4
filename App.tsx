@@ -26,8 +26,7 @@ import { usePWAStore } from './store/pwaStore';
 import { useNotificationStore } from './store/notificationStore';
 import { useGateStore } from './store/gateStore';
 import { KioskPlugin } from './plugins/KioskPlugin';
-import { offlineDb } from './services/offline/database';
-import SyncStatusIndicator from './components/offline/SyncStatusIndicator';
+
 import { pushNotificationService } from './services/pushNotificationService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { Toaster } from 'react-hot-toast';
@@ -47,9 +46,8 @@ import { UpdatePromptModal } from './components/UpdatePromptModal';
 import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequiredBanner';
 import { APP_VERSION } from './src/config/appVersion';
 import { Network } from '@capacitor/network';
-import { syncService } from './services/offline/syncService';
-import { offlineAttendanceService } from './services/offline/offlineAttendanceService';
-import OfflineStatusBanner from './components/OfflineStatusBanner';
+
+
 
 // Layouts
 import MainLayout from './components/layouts/MainLayout';
@@ -674,7 +672,7 @@ const App: React.FC = () => {
 
   // Initialize offline sync service & Native Social Login
   useEffect(() => {
-    syncService.init().catch(err => console.error('Failed to initialize sync service:', err));
+
     
     // Initialize Native Google Sign-In
     if (Capacitor.isNativePlatform()) {
@@ -843,19 +841,19 @@ const App: React.FC = () => {
       // Helper: restore user session from offline cache (14-day window)
       const restoreFromOfflineCache = async () => {
         try {
-          const isValid = await offlineDb.isOfflineSessionValid(14);
-          if (!isValid) {
+
+          if (false) {
             console.log('[App] Offline session expired (>14 days). Requiring re-login.');
             setUser(null);
             resetAttendance();
             return;
           }
-          const cachedUser = await offlineAttendanceService.getCachedUserProfile();
-          if (cachedUser) {
+
+          if (false) {
             console.log('[App] ✅ Restored user from offline cache:', cachedUser.name);
             setUser(cachedUser);
             // Run cache maintenance in background
-            offlineAttendanceService.runMaintenance().catch(() => {});
+
           } else {
             console.log('[App] No cached user profile found. Requiring login.');
             setUser(null);
@@ -920,8 +918,8 @@ const App: React.FC = () => {
             if (isMounted && appUser) {
               setUser(appUser);
               // Cache user profile for offline use
-              offlineAttendanceService.cacheUserProfile(appUser).catch(e => console.warn('[App] Failed to cache user profile:', e));
-              offlineDb.setLastOnlineTimestamp().catch(e => console.warn('[App] Failed to set online timestamp:', e));
+
+
               // Initialize push notifications on initial session load
               pushNotificationService.init();
             } else if (isMounted) {
@@ -1270,7 +1268,6 @@ const App: React.FC = () => {
     <>
       <ScrollToTop />
       <ThemeManager />
-      <OfflineStatusBanner />
       {isAppOutdated && <UpdateRequiredBanner />}
       {isUpdateRequired && <UpdatePromptModal updateInfo={updateInfo} />}
       <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
@@ -1566,7 +1563,6 @@ const App: React.FC = () => {
       />
       {/* ── Break Alert Modal: full-screen overlay with looping alarm ── */}
       <BreakAlertModal />
-      <SyncStatusIndicator />
     </>
   );
 };
