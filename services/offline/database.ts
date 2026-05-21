@@ -149,20 +149,8 @@ class OfflineDatabase {
   }
 
   async addToOutbox(item: Omit<OutboxItem, 'id' | 'status' | 'timestamp' | 'retryCount'>) {
-    await this.ensureInit();
-    const fullItem: OutboxItem = {
-      ...item,
-      timestamp: new Date().toISOString(),
-      status: 'pending',
-      retryCount: 0,
-    };
-
-    if (this.isMobile && this.sqlite) {
-      const query = `INSERT INTO outbox (table_name, action, payload, timestamp, status, retry_count) VALUES (?, ?, ?, ?, ?, ?)`;
-      await this.sqlite.run(query, [fullItem.table_name, fullItem.action, JSON.stringify(fullItem.payload), fullItem.timestamp, fullItem.status, 0]);
-    } else {
-      await this.runIDB(db => db.add('outbox', fullItem));
-    }
+    // Offline mode disabled — inform user immediately instead of queuing
+    throw new Error('Not connected to the internet. Please check your connection and try again.');
   }
 
   async getPendingOutbox(): Promise<OutboxItem[]> {

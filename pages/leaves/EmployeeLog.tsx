@@ -393,14 +393,42 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
                             {/* Summary Footer */}
                             <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                     <div className="flex items-center">
                                         <span className="text-gray-500">Punch Ins:</span>
-                                        <span className="ml-1 font-bold text-emerald-600">{group.checkIns.length}</span>
+                                        <span className="ml-1 font-bold text-emerald-600">
+                                            {group.events.filter(e => e.type === 'punch-in' && e.workType !== 'field').length}
+                                        </span>
                                     </div>
                                     <div className="flex items-center">
                                         <span className="text-gray-500">Punch Outs:</span>
-                                        <span className="ml-1 font-bold text-rose-600">{group.checkOuts.length}</span>
+                                        <span className="ml-1 font-bold text-rose-600">
+                                            {group.events.filter(e => e.type === 'punch-out' && e.workType !== 'field').length}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500">Site Check Ins:</span>
+                                        <span className="ml-1 font-bold text-emerald-600">
+                                            {group.events.filter(e => e.type === 'punch-in' && e.workType === 'field').length}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500">Site Check Outs:</span>
+                                        <span className="ml-1 font-bold text-rose-600">
+                                            {group.events.filter(e => e.type === 'punch-out' && e.workType === 'field').length}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500">Site OT In:</span>
+                                        <span className="ml-1 font-bold text-indigo-600">
+                                            {group.events.filter(e => e.type === 'site-ot-in').length}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500">Site OT Out:</span>
+                                        <span className="ml-1 font-bold text-indigo-600">
+                                            {group.events.filter(e => e.type === 'site-ot-out').length}
+                                        </span>
                                     </div>
                                     <div className="flex items-center">
                                         <span className="text-gray-500">Breaks In:</span>
