@@ -123,6 +123,9 @@ const ApplyLeave: React.FC = () => {
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
     const [leaveBalance, setLeaveBalance] = React.useState<number>(0);
     const [fullBalance, setFullBalance] = React.useState<LeaveBalance | null>(null);
+    const [correctionUsage, setCorrectionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
+    const [permissionUsage, setPermissionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
+    const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
 
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -182,12 +185,47 @@ const ApplyLeave: React.FC = () => {
                 const used = (balance[usedKeyStr as keyof LeaveBalance] as number) || 0;
                 const pending = (balance[pendingKeyStr as keyof LeaveBalance] as number) || 0;
                 setLeaveBalance(total - used - pending);
+
+                // Fetch All Leave Requests Once
+                try {
+                    const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
+                    setAllLeaveRequests(allReqs || []);
+                } catch (e) {
+                    console.error('Failed to fetch requests for usage tracking:', e);
+                }
             } catch (err) {
                 console.error('Failed to fetch initial data:', err);
             }
         };
         fetchData();
     }, [user, watchLeaveType]);
+
+    React.useEffect(() => {
+        if (rules) {
+            setCorrectionUsage(prev => ({ ...prev, limit: rules.maxCorrectionsPerMonth || 3, enabled: !!rules.enableCorrectionLimits }));
+            setPermissionUsage(prev => ({ ...prev, limit: rules.maxPermissionsPerMonth || 3, enabled: rules.enablePermission !== false }));
+        }
+    }, [rules]);
+
+    // Recalculate usage based on the selected date's month
+    React.useEffect(() => {
+        const monthPrefix = watchStartDate ? watchStartDate.substring(0, 7) : new Date().toISOString().substring(0, 7);
+        const monthCorrections = allLeaveRequests.filter((r: any) => 
+            r.leaveType === 'Correction' && 
+            r.status !== 'rejected' &&
+            r.status !== 'withdrawn' &&
+            r.startDate.startsWith(monthPrefix)
+        );
+        const monthPerms = allLeaveRequests.filter((r: any) => 
+            r.leaveType === 'Permission' && 
+            r.status !== 'rejected' &&
+            r.status !== 'withdrawn' &&
+            r.startDate.startsWith(monthPrefix)
+        );
+        
+        setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length }));
+        setPermissionUsage(prev => ({ ...prev, used: monthPerms.length }));
+    }, [watchStartDate, allLeaveRequests]);
 
     // Sync endDate with startDate for corrections/permissions
     React.useEffect(() => {
@@ -611,9 +649,10 @@ const ApplyLeave: React.FC = () => {
                 });
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
+                await api.submitLeaveRequest(basePayload);
                 setToast({ 
-                    message: result.isOffline ? 'You are offline. Request saved and will sync later!' : 'Leave request submitted successfully!', 
-                    type: result.success ? 'success' : 'error' 
+                    message: isOffline ? 'You are offline. Request saved and will sync later!' : 'Leave request submitted successfully!', 
+                    type: 'success' 
                 });
             }
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
@@ -713,6 +752,40 @@ const ApplyLeave: React.FC = () => {
                                     </Select>
                                 )} 
                             />
+
+                            {watchLeaveType === 'Correction' && correctionUsage.enabled && (
+                                <div className={`p-4 rounded-xl border ${correctionUsage.used >= correctionUsage.limit ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Clock className="w-5 h-5" />
+                                        <h4 className="font-bold text-sm">Monthly Correction Limit</h4>
+                                    </div>
+                                    <p className="text-xs opacity-90 leading-relaxed mb-2">
+                                        You have used <strong>{correctionUsage.used}</strong> out of <strong>{correctionUsage.limit}</strong> allowed corrections this month.
+                                    </p>
+                                    {correctionUsage.used >= correctionUsage.limit && (
+                                        <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
+                                            Limit Exceeded. Please contact admin for manual corrections.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {watchLeaveType === 'Permission' && permissionUsage.enabled && (
+                                <div className={`p-4 rounded-xl border ${permissionUsage.used >= permissionUsage.limit ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Clock className="w-5 h-5" />
+                                        <h4 className="font-bold text-sm">Monthly Permission Limit</h4>
+                                    </div>
+                                    <p className="text-xs opacity-90 leading-relaxed mb-2">
+                                        You have used <strong>{permissionUsage.used}</strong> out of <strong>{permissionUsage.limit}</strong> allowed permissions this month.
+                                    </p>
+                                    {permissionUsage.used >= permissionUsage.limit && (
+                                        <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
+                                            Limit Exceeded. Please contact admin for manual permission.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {isMobile ? (
                                 <div className="space-y-6">
@@ -982,7 +1055,19 @@ const ApplyLeave: React.FC = () => {
 
                         <div className={`flex items-center gap-4 ${isMobile ? 'pb-10 pt-4' : 'pt-6 justify-end'}`}>
                             <Button type="button" variant="danger" onClick={() => navigate(-1)} disabled={isSubmitting} className="flex-1 md:flex-none md:w-32">Cancel</Button>
-                            <Button type="submit" form="leave-form" isLoading={isSubmitting} className="flex-1 md:flex-none md:w-48">{isEditMode ? 'Update Request' : 'Submit'}</Button>
+                            <Button 
+                                type="submit" 
+                                form="leave-form" 
+                                isLoading={isSubmitting} 
+                                disabled={
+                                    isSubmitting || 
+                                    (watchLeaveType === 'Correction' && correctionUsage.enabled && correctionUsage.used >= correctionUsage.limit) || 
+                                    (watchLeaveType === 'Permission' && permissionUsage.enabled && permissionUsage.used >= permissionUsage.limit)
+                                }
+                                className="flex-1 md:flex-none md:w-48"
+                            >
+                                {isEditMode ? 'Update Request' : 'Submit'}
+                            </Button>
                         </div>
                     </form>
                 </div>
