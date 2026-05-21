@@ -3,7 +3,7 @@ import { SQLiteConnection, SQLiteDBConnection, CapacitorSQLite } from '@capacito
 import { Capacitor } from '@capacitor/core';
 
 const DB_NAME = 'paradigm_offline_db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export interface OutboxItem {
   id?: number;
@@ -12,6 +12,7 @@ export interface OutboxItem {
   payload: any;
   timestamp: string;
   status: 'pending' | 'syncing' | 'failed';
+  retryCount: number;
 }
 
 class OfflineDatabase {
@@ -59,6 +60,20 @@ class OfflineDatabase {
 
           if (!outboxStore.indexNames.contains('status')) {
             outboxStore.createIndex('status', 'status');
+          }
+
+          // v7: Ensure retryCount field exists on existing records
+          if (oldVersion < 7) {
+            const cursor = outboxStore.openCursor();
+            cursor.then(async (c) => {
+              while (c) {
+                if (c.value.retryCount === undefined) {
+                  const updated = { ...c.value, retryCount: 0 };
+                  c.update(updated);
+                }
+                c = await c.continue();
+              }
+            }).catch(() => { /* best-effort migration */ });
           }
 
           // Create cache store
@@ -110,7 +125,8 @@ class OfflineDatabase {
         action TEXT NOT NULL,
         payload TEXT NOT NULL,
         timestamp TEXT NOT NULL,
-        status TEXT NOT NULL
+        status TEXT NOT NULL,
+        retry_count INTEGER NOT NULL DEFAULT 0
       );
     `;
     const createCacheTable = `
@@ -123,19 +139,27 @@ class OfflineDatabase {
 
     await this.sqlite.execute(createOutboxTable);
     await this.sqlite.execute(createCacheTable);
+
+    // v7 migration: add retry_count column to existing outbox tables
+    try {
+      await this.sqlite.execute(`ALTER TABLE outbox ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      // Column already exists — safe to ignore
+    }
   }
 
-  async addToOutbox(item: Omit<OutboxItem, 'id' | 'status' | 'timestamp'>) {
+  async addToOutbox(item: Omit<OutboxItem, 'id' | 'status' | 'timestamp' | 'retryCount'>) {
     await this.ensureInit();
     const fullItem: OutboxItem = {
       ...item,
       timestamp: new Date().toISOString(),
       status: 'pending',
+      retryCount: 0,
     };
 
     if (this.isMobile && this.sqlite) {
-      const query = `INSERT INTO outbox (table_name, action, payload, timestamp, status) VALUES (?, ?, ?, ?, ?)`;
-      await this.sqlite.run(query, [fullItem.table_name, fullItem.action, JSON.stringify(fullItem.payload), fullItem.timestamp, fullItem.status]);
+      const query = `INSERT INTO outbox (table_name, action, payload, timestamp, status, retry_count) VALUES (?, ?, ?, ?, ?, ?)`;
+      await this.sqlite.run(query, [fullItem.table_name, fullItem.action, JSON.stringify(fullItem.payload), fullItem.timestamp, fullItem.status, 0]);
     } else {
       await this.runIDB(db => db.add('outbox', fullItem));
     }
@@ -147,7 +171,8 @@ class OfflineDatabase {
       const res = await this.sqlite.query(`SELECT * FROM outbox WHERE status = 'pending' ORDER BY timestamp ASC`);
       return (res.values || []).map(v => ({
         ...v,
-        payload: JSON.parse(v.payload)
+        payload: JSON.parse(v.payload),
+        retryCount: v.retry_count ?? 0,
       }));
     } else {
       return await this.runIDB(db => db.getAllFromIndex('outbox', 'status', 'pending'));
@@ -160,7 +185,8 @@ class OfflineDatabase {
       const res = await this.sqlite.query(`SELECT * FROM outbox ORDER BY timestamp DESC`);
       return (res.values || []).map(v => ({
         ...v,
-        payload: JSON.parse(v.payload)
+        payload: JSON.parse(v.payload),
+        retryCount: v.retry_count ?? 0,
       }));
     } else {
       return await this.runIDB(db => db.getAll('outbox'));
@@ -188,6 +214,27 @@ class OfflineDatabase {
       await this.sqlite.run(`DELETE FROM outbox WHERE id = ?`, [id]);
     } else {
       await this.runIDB(db => db.delete('outbox', id));
+    }
+  }
+
+  /** Alias for deleteFromOutbox (spec naming) */
+  async deleteOutboxItem(id: number) {
+    return this.deleteFromOutbox(id);
+  }
+
+  /** Update retry count for an outbox item */
+  async updateOutboxRetryCount(id: number, retryCount: number) {
+    await this.ensureInit();
+    if (this.isMobile && this.sqlite) {
+      await this.sqlite.run(`UPDATE outbox SET retry_count = ? WHERE id = ?`, [retryCount, id]);
+    } else {
+      await this.runIDB(async db => {
+        const item = await db.get('outbox', id);
+        if (item) {
+          item.retryCount = retryCount;
+          await db.put('outbox', item);
+        }
+      });
     }
   }
 
@@ -320,6 +367,11 @@ class OfflineDatabase {
         await tx.done;
       });
     }
+  }
+
+  /** Alias for purgeOldCache (spec naming) */
+  async clearOldCache(months = 3) {
+    return this.purgeOldCache(months);
   }
 
   /** Delete all completed (synced) outbox items to free space */

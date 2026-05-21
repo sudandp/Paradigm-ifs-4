@@ -186,8 +186,20 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
                 id={`ctc-${userId}`}
                 type="number"
                 min="0"
-                value={form.ctcPerMonth}
-                onChange={(e) => handleChange('ctcPerMonth', parseFloat(e.target.value) || 0)}
+                step="any"
+                inputMode="decimal"
+                value={form.ctcPerMonth || ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '').replace(/^0+(?=\d)/, '');
+                  handleChange('ctcPerMonth', parseFloat(val) || 0);
+                }}
+                onKeyDown={(e) => {
+                  if (['e', 'E', '+', '-', ','].includes(e.key)) e.preventDefault();
+                }}
+                onPaste={(e) => {
+                  const paste = e.clipboardData.getData('text');
+                  if (!/^[\d.]+$/.test(paste)) e.preventDefault();
+                }}
               />
               <div>
                 <label className="block text-sm font-medium text-primary-text mb-1">Weekly Offs / Week</label>
@@ -279,8 +291,21 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
                 type="number"
                 min="1"
                 max="24"
+                step="any"
+                inputMode="decimal"
                 value={form.shiftHours}
-                onChange={(e) => handleChange('shiftHours', parseInt(e.target.value) || 8)}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                  const num = parseFloat(val) || 0;
+                  handleChange('shiftHours', num > 24 ? 24 : num);
+                }}
+                onKeyDown={(e) => {
+                  if (['e', 'E', '+', '-', ','].includes(e.key)) e.preventDefault();
+                }}
+                onPaste={(e) => {
+                  const paste = e.clipboardData.getData('text');
+                  if (!/^[\d.]+$/.test(paste)) e.preventDefault();
+                }}
               />
               <Input
                 label="Rate Effective Date"
@@ -310,6 +335,49 @@ const StaffConfigEditor: React.FC<StaffConfigEditorProps> = ({
                   <p className="font-bold text-emerald-900 text-lg">{fmtCurrency(ratePreview.perDayBillingRate)}</p>
                 </div>
               </div>
+
+              {/* NH Holiday Calculation Preview */}
+              {Number(form.nfhPerAnnum) > 0 && (
+                <div className="mt-3 pt-3 border-t border-emerald-200">
+                  <p className="text-xs font-semibold text-emerald-700 mb-2">Per Holiday Pay (×{form.nfhPerAnnum} holidays/year)</p>
+                  <div className="overflow-hidden rounded-lg border border-emerald-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-emerald-100">
+                          <th className="px-2 py-1.5 text-left text-emerald-700 font-semibold">Config</th>
+                          <th className="px-2 py-1.5 text-center text-emerald-700 font-semibold">Not Worked</th>
+                          <th className="px-2 py-1.5 text-center text-emerald-700 font-semibold">Half Day (½HP)</th>
+                          <th className="px-2 py-1.5 text-center text-emerald-700 font-semibold">Full Day (HP)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { label: 'NH Billing', config: form.nhBillingConfig },
+                          { label: 'NH Salary', config: form.nhSalaryConfig },
+                        ].map(({ label, config }) => {
+                          const vals = config === 'NA'
+                            ? { nw: 0, half: 0.5, full: 1 }
+                            : config === 'Actuals'
+                              ? { nw: 1, half: 1.5, full: 2 }
+                              : { nw: 1, half: 2, full: 3 };
+                          const configLabel = config === 'NA' ? 'NA' : config === 'Actuals' ? 'Actuals (1+work)' : 'Double (1+2×work)';
+                          return (
+                            <tr key={label} className="border-t border-emerald-100">
+                              <td className="px-2 py-1.5 text-emerald-800 font-medium">{label} <span className="text-emerald-500 font-normal">({configLabel})</span></td>
+                              <td className="px-2 py-1.5 text-center font-bold text-emerald-900">{vals.nw}</td>
+                              <td className="px-2 py-1.5 text-center font-bold text-emerald-900">{vals.half}</td>
+                              <td className="px-2 py-1.5 text-center font-bold text-emerald-900">{vals.full}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[10px] text-emerald-500 mt-1.5">
+                    {form.nhBillingConfig === 'NA' ? '⚠ NA: Holidays not deducted from billable duties. Pay only for duties performed.' : `✓ ${form.nfhPerAnnum} holidays deducted from billable duties (${ratePreview.billableDutiesInYear.toFixed(0)} days/year).`}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Save Button */}

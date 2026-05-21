@@ -6,27 +6,48 @@ import Toast from '../ui/Toast';
 import Select from '../ui/Select';
 import { Calendar, Save, Loader2, Check } from 'lucide-react';
 
-const SiteHolidayAllocator: React.FC = () => {
-    const [sites, setSites] = useState<any[]>([]);
+interface SiteHolidayAllocatorProps {
+    initialSiteId?: string;
+    filteredSites?: { id: string; name: string }[];
+}
+
+const SiteHolidayAllocator: React.FC<SiteHolidayAllocatorProps> = ({ initialSiteId, filteredSites }) => {
+    const [allSites, setAllSites] = useState<any[]>([]);
     const [selectedSiteId, setSelectedSiteId] = useState<string>('');
     const [allocatedHolidays, setAllocatedHolidays] = useState<{date: string, name: string}[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+    const [targetCount, setTargetCount] = useState<10 | 12>(10);
 
     const currentYear = new Date().getFullYear();
 
+    // Use filtered sites from parent if provided, otherwise fetch all
+    const sites = filteredSites && filteredSites.length > 0 ? filteredSites : allSites;
+
     useEffect(() => {
+        // Only fetch all organizations if parent doesn't provide filtered list
+        if (filteredSites && filteredSites.length > 0) return;
         const fetchSites = async () => {
             try {
                 const orgs = await api.getOrganizations();
-                setSites(orgs || []);
+                setAllSites(orgs || []);
             } catch (err) {
                 console.error("Failed to fetch sites", err);
             }
         };
         fetchSites();
-    }, []);
+    }, [filteredSites]);
+
+    // Sync with parent entity filter — only after sites are loaded and ID is valid
+    useEffect(() => {
+        if (initialSiteId && sites.length > 0) {
+            const isValidSite = sites.some(s => s.id === initialSiteId);
+            if (isValidSite) {
+                setSelectedSiteId(initialSiteId);
+            }
+        }
+    }, [initialSiteId, sites]);
 
     useEffect(() => {
         if (!selectedSiteId) {
@@ -39,8 +60,14 @@ const SiteHolidayAllocator: React.FC = () => {
             try {
                 const holidays = await api.getSiteSpecificHolidays(selectedSiteId);
                 setAllocatedHolidays(holidays);
+                if (holidays.length > 10) {
+                    setTargetCount(12);
+                } else {
+                    setTargetCount(10);
+                }
             } catch (err) {
-                setToast({ message: 'Failed to load holidays for site', type: 'error' });
+                console.error('Failed to load holidays for site:', err);
+                setAllocatedHolidays([]);
             } finally {
                 setIsLoading(false);
             }
@@ -49,7 +76,14 @@ const SiteHolidayAllocator: React.FC = () => {
         fetchHolidays();
     }, [selectedSiteId]);
 
+    const selectedSite = sites.find(s => s.id === selectedSiteId);
+    const holidayType = selectedSite?.holidayConfig?.holidayType || 'custom';
+    const isFixedCompanyHoliday = holidayType === 'company_10' || holidayType === 'company_12';
+    const fixedCount = holidayType === 'company_12' ? 12 : 10;
+
     const handleToggleHoliday = (ph: {date: string, name: string}) => {
+        if (isFixedCompanyHoliday) return;
+        
         const poolDate = `${currentYear}${ph.date}`;
         setAllocatedHolidays(prev => {
             const exists = prev.some(h => h.date === poolDate && h.name === ph.name);
@@ -101,14 +135,47 @@ const SiteHolidayAllocator: React.FC = () => {
 
             {selectedSiteId && (
                 <div className="p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/20 animate-fade-in">
-                    <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold flex items-center text-emerald-800">
-                            <Check className="mr-2 h-4 w-4" /> Allocated Dates
-                        </h4>
-                        <div className="bg-white px-3 py-1 rounded-full text-sm font-bold text-emerald-700 shadow-sm border border-emerald-100">
-                            {allocatedHolidays.length} Days Allocated
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                        <div className="flex items-center gap-4">
+                            <h4 className="font-semibold flex items-center text-emerald-800">
+                                <Check className="mr-2 h-4 w-4" /> Allocated Dates
+                            </h4>
+                            {!isFixedCompanyHoliday && (
+                                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-border">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTargetCount(10)}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${targetCount === 10 ? 'bg-emerald-100 text-emerald-800' : 'text-muted hover:bg-gray-50'}`}
+                                    >
+                                        10 Days Package
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTargetCount(12)}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${targetCount === 12 ? 'bg-emerald-100 text-emerald-800' : 'text-muted hover:bg-gray-50'}`}
+                                    >
+                                        12 Days Package
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-sm font-bold shadow-sm border whitespace-nowrap ${
+                            allocatedHolidays.length === (isFixedCompanyHoliday ? fixedCount : targetCount)
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                                : allocatedHolidays.length > (isFixedCompanyHoliday ? fixedCount : targetCount)
+                                    ? 'bg-red-100 text-red-700 border-red-200'
+                                    : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }`}>
+                            {allocatedHolidays.length} / {isFixedCompanyHoliday ? fixedCount : targetCount} Selected
                         </div>
                     </div>
+                    
+                    {isFixedCompanyHoliday && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                            This site uses a Fixed Company Holiday Package ({fixedCount} Days) defined in Client Management. 
+                            Manual allocation is disabled.
+                        </div>
+                    )}
 
                     {isLoading ? (
                         <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div>
@@ -142,12 +209,14 @@ const SiteHolidayAllocator: React.FC = () => {
                         </div>
                     )}
 
-                    <div className="mt-6 flex justify-end">
-                        <Button onClick={handleSave} disabled={isSaving || isLoading} style={{backgroundColor: '#006B3F', color: '#FFF'}} className="px-6 border-0 shadow-md">
-                            {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-                            Save Package to Site
-                        </Button>
-                    </div>
+                    {!isFixedCompanyHoliday && (
+                        <div className="mt-6 flex justify-end">
+                            <Button onClick={handleSave} disabled={isSaving || isLoading} style={{backgroundColor: '#006B3F', color: '#FFF'}} className="px-6 border-0 shadow-md">
+                                {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                                Save Package to Site
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

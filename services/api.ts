@@ -3566,10 +3566,20 @@ export const api = {
       userData = await offlineDb.getCache(`user_profile_leave_${userId}`);
     }
     
-    // Always get settings from cache if cloud fails (we likely have them from getInitialAppData)
+    // Always get settings from cache if cloud fails
     if (!settingsData) {
+      // Try 1: From initial_app_data bundle
       const initialData = await offlineDb.getCache('initial_app_data');
-      settingsData = initialData?.settings ? { attendance_settings: toSnakeCase(initialData.settings) } : null;
+      if (initialData?.settings) {
+        settingsData = { attendance_settings: toSnakeCase(initialData.settings) };
+      }
+    }
+    if (!settingsData) {
+      // Try 2: From dedicated attendance_settings cache (populated by getAttendanceSettings)
+      const cachedSettings = await offlineDb.getCache('attendance_settings');
+      if (cachedSettings) {
+        settingsData = { attendance_settings: toSnakeCase(cachedSettings) };
+      }
     }
 
     if (!settingsData?.attendance_settings) throw new Error('Could not load attendance rules.');
@@ -4432,6 +4442,7 @@ export const api = {
       query = query.range(from, to);
     }
 
+    try {
     const { data, count, error } = (await withTimeout(
       query.order('start_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }) as any,
       15000,
@@ -4492,6 +4503,11 @@ export const api = {
     });
 
     return { data: formattedData, total: count || 0 };
+    } catch (err) {
+      console.warn('Failed to fetch leave requests from cloud, falling back to cache:', err);
+      const cached = await offlineDb.getCache('leave_requests') || [];
+      return { data: cached, total: cached.length };
+    }
   },
   getTasks: async (filter?: { page?: number, pageSize?: number }): Promise<any> => {
     // 1. Try to get from cloud if online

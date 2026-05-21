@@ -230,8 +230,9 @@ class OfflineAttendanceService {
   /** Run periodic maintenance (auto-purge old cache, etc.) */
   async runMaintenance() {
     try {
-      await offlineDb.purgeOldCache(3);
-      console.log('[OfflineAttendance] Maintenance: purged old cache entries');
+      await offlineDb.clearOldCache(3);
+      await offlineDb.clearSyncedOutbox();
+      console.log('[OfflineAttendance] Maintenance: purged old cache and synced outbox entries');
     } catch (err) {
       console.warn('[OfflineAttendance] Maintenance failed:', err);
     }

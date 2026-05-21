@@ -15,8 +15,8 @@ const SyncStatusIndicator: React.FC = () => {
 
     useEffect(() => {
         const checkPending = async () => {
-            const pending = await offlineDb.getPendingOutbox();
-            setPendingCount(pending.length);
+            const items = await offlineDb.getAllOutbox();
+            setPendingCount(items.filter(i => i.status === 'pending' || i.status === 'syncing').length);
             
             const time = await offlineDb.getSyncTime();
             setLastSync(time);

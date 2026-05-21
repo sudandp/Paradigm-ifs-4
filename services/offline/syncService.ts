@@ -36,23 +36,14 @@ class SyncService {
     console.log('[SyncService] Starting sync...');
 
     try {
-      // 1. Push pending changes (Outbox) — skip items that have exceeded max retries
+      // 1. Push pending changes (Outbox)
       const pendingItems = await offlineDb.getPendingOutbox();
       for (const item of pendingItems) {
-        const retryCount = (item as any).retry_count || 0;
-        if (retryCount >= SyncService.MAX_RETRIES) {
-          console.warn(`[SyncService] Item ${item.id} exceeded max retries (${retryCount}), marking permanently failed`);
+        // Skip items that have exceeded max retries
+        if (item.retryCount >= SyncService.MAX_RETRIES) {
+          console.warn(`[SyncService] Item ${item.id} exceeded max retries (${item.retryCount}), marking permanently failed`);
           await offlineDb.updateOutboxStatus(item.id!, 'failed');
           continue;
-        }
-        
-        // Exponential backoff: skip if item was recently retried
-        if (retryCount > 0) {
-          const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 60000); // max 60s
-          const lastAttempt = (item as any).last_attempt || 0;
-          if (Date.now() - lastAttempt < backoffMs) {
-            continue; // Skip — not enough time has passed since last retry
-          }
         }
         
         await this.processItem(item);
@@ -86,6 +77,7 @@ class SyncService {
       const { data: { session } } = await api.auth.getSession();
       if (session?.user?.id) {
           const userId = session.user.id;
+          await api.getAttendanceSettings().catch(() => {}); // Ensure settings cached for offline leave calc
           await api.getLeaveBalancesForUser(userId);
           await api.getLeaveRequests({ userId });
           await api.getUserChildren(userId);
@@ -177,16 +169,7 @@ class SyncService {
           break;
         case 'attendance_events':
           if (item.action === 'INSERT') {
-            try {
-              await api.addAttendanceEvent({ ...item.payload, is_offline_sync: true });
-            } catch (attErr: any) {
-              // 409 = duplicate event (idempotency) — treat as success
-              if (attErr?.status === 409 || attErr?.code === '23505') {
-                console.warn(`[SyncService] Attendance event ${item.id} already exists, skipping duplicate`);
-              } else {
-                throw attErr;
-              }
-            }
+            await api.addAttendanceEvent({ ...item.payload, is_offline_sync: true });
           }
           break;
         case 'notification_dispatch':
@@ -211,12 +194,36 @@ class SyncService {
           break;
       }
 
+      // Success — remove from outbox
       await offlineDb.deleteFromOutbox(item.id);
-    } catch (error) {
-      console.error(`[SyncService] Failed to sync item ${item.id}:`, error);
-      await offlineDb.updateOutboxStatus(item.id, 'failed');
+    } catch (error: any) {
+      // Universal duplicate detection: 409 Conflict or unique_violation (23505)
+      // Treat as success — the record already exists on the server
+      if (error?.status === 409 || error?.code === '23505') {
+        console.warn(`[SyncService] Item ${item.id} (${item.table_name}) is a duplicate, removing from outbox`);
+        await offlineDb.deleteFromOutbox(item.id);
+        return;
+      }
+
+      console.error(`[SyncService] Failed to sync item ${item.id} (${item.table_name}):`, error);
+
+      // Increment retry count and apply backoff
+      const newRetryCount = (item.retryCount || 0) + 1;
+      await offlineDb.updateOutboxRetryCount(item.id, newRetryCount);
+
+      if (newRetryCount >= SyncService.MAX_RETRIES) {
+        console.warn(`[SyncService] Item ${item.id} reached max retries (${newRetryCount}), marking failed`);
+        await offlineDb.updateOutboxStatus(item.id, 'failed');
+      } else {
+        // Reset to pending so it's retried on next sync cycle
+        await offlineDb.updateOutboxStatus(item.id, 'pending');
+        // Exponential backoff delay before processing next item
+        const delay = Math.min(1000 * Math.pow(2, newRetryCount), 60000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
   }
+
 }
 
 export const syncService = new SyncService();

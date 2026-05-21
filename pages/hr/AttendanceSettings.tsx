@@ -131,12 +131,12 @@ const AttendanceSettings: React.FC = () => {
 
     const availableEntities = useMemo(() => {
         if (!selectedCompanyId) return [];
-        const entities: { id: string, name: string }[] = [];
+        const entities: { id: string, name: string, holidayConfig?: any }[] = [];
         orgStructure.forEach(group => {
             group.companies.forEach(company => {
                 if (company.id === selectedCompanyId) {
                     company.entities.forEach(entity => {
-                        entities.push({ id: entity.id, name: entity.name });
+                        entities.push({ id: entity.id, name: entity.name, holidayConfig: entity.holidayConfig });
                     });
                 }
             });
@@ -1925,7 +1925,7 @@ const AttendanceSettings: React.FC = () => {
                 <section className="pt-6 border-t border-border" style={{ display: subTab === 'holidays' ? undefined : 'none' }}>
                     
                     {activeTab === 'site' ? (
-                        <SiteHolidayAllocator />
+                        <SiteHolidayAllocator initialSiteId={selectedEntityId} filteredSites={availableEntities} />
                     ) : (
                         <>
                             <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Holiday List</h3>

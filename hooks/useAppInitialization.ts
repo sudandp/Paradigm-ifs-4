@@ -10,6 +10,7 @@ import { GOOGLE_CONFIG } from '../config/authConfig';
 import { api as apiService } from '../services/api';
 import { pushNotificationService } from '../services/pushNotificationService';
 import { syncService } from '../services/offline/syncService';
+import { offlineAttendanceService } from '../services/offline/offlineAttendanceService';
 import { usePWAStore } from '../store/pwaStore';
 import { useAuthStore } from '../store/authStore';
 import { useScreenOrientation } from './useScreenOrientation';
@@ -95,6 +96,9 @@ export const useAppInitialization = (permissionsComplete: boolean) => {
   // Sync Service & Social Login
   useEffect(() => {
     syncService.init().catch(err => console.error('Failed to initialize sync service:', err));
+    
+    // Run once per app init — safe to call every launch
+    offlineAttendanceService.runMaintenance().catch(console.warn);
     
     if (Capacitor.isNativePlatform()) {
       const webClientId = GOOGLE_CONFIG.clientId;

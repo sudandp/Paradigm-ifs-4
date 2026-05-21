@@ -101,7 +101,11 @@ export function calcOTDuties(dailyCodes: string[]): number {
 
 /**
  * Column AT — Holidays Payable
- * O/H = 1, O/H.5 = 0.5, 0.5H = 1
+ * 
+ * NA:      H (not worked) = 0, HP (worked full) = 1, 1/2HP (worked half) = 0.5  (duty only)
+ * Actuals: H (not worked) = 1, HP (worked full) = 1+1 = 2, 1/2HP (worked half) = 1+0.5 = 1.5
+ * Double:  H (not worked) = 1, HP (worked full) = 1+2*1 = 3, 1/2HP (worked half) = 1+2*0.5 = 2
+ * 
  * Returns 0 if staff has exclusion remarks or site holiday toggle is OFF
  */
 export function calcHolidaysPayable(
@@ -118,20 +122,27 @@ export function calcHolidaysPayable(
     const c = code.toUpperCase();
 
     if (nhBillingConfig === 'NA') {
+      // NA: No base holiday pay. Only duty performed counts.
+      // H (not worked) = 0 (not counted), HP = 1, 1/2HP = 0.5
       if (c === 'HP') total += 1.0;
       else if (c === '1/2HP') total += 0.5;
+      // H, O/H etc. = 0 (not counted for NA)
     } 
     else if (nhBillingConfig === 'Actuals') {
-      if (c === 'H' || c === '0.5H') total += 1.0; // 0.5H bills as 1 in existing logic but let's stick to H=1
-      else if (c === 'HP') total += 2.0; // Base (1) + Actual (1)
-      else if (c === '1/2HP') total += 1.5; // Base (1) + Actual (0.5)
+      // Actuals: Base (1) for every holiday + actual work value
+      // H (not worked) = 1, HP = 1+1 = 2, 1/2HP = 1+0.5 = 1.5
+      if (c === 'H') total += 1.0;
+      else if (c === 'HP') total += 2.0;     // Base (1) + Actual (1)
+      else if (c === '1/2HP') total += 1.5;  // Base (1) + Actual (0.5)
       else if (c === 'O/H') total += 1.0;
       else if (c === 'O/H.5') total += 0.5;
     }
     else if (nhBillingConfig === 'Double') {
-      if (c === 'H' || c === '0.5H') total += 1.0;
-      else if (c === 'HP') total += 3.0; // Base (1) + 2*Actual (1)
-      else if (c === '1/2HP') total += 2.0; // Base (1) + 2*Actual (0.5)
+      // Double: Base (1) for every holiday + 2x actual work value
+      // H (not worked) = 1, HP = 1+2*1 = 3, 1/2HP = 1+2*0.5 = 2
+      if (c === 'H') total += 1.0;
+      else if (c === 'HP') total += 3.0;     // Base (1) + 2*Actual (1)
+      else if (c === '1/2HP') total += 2.0;  // Base (1) + 2*Actual (0.5)
       else if (c === 'O/H') total += 1.0;
       else if (c === 'O/H.5') total += 0.5;
     }

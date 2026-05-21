@@ -6,6 +6,7 @@
 import { supabase } from './supabase';
 import type { GateUser, GateAttendanceLog, GateAttendanceMethod } from '../types/gate';
 import { offlineDb } from './offline/database';
+import { Network } from '@capacitor/network';
 
 export function resolvePhotoUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -129,6 +130,22 @@ export async function fetchAllGateUsers(): Promise<GateUser[]> {
 export async function getGateUserByUserId(userId: string): Promise<GateUser | null> {
   const cacheKey = `gate_user_${userId}`;
   
+  // Proactive network check — skip Supabase when offline
+  try {
+    const { connected } = await Network.getStatus();
+    if (!connected) {
+      const cached = await offlineDb.getCache(cacheKey);
+      if (cached) {
+        console.log('[gateApi] Offline — returning cached gate user for', userId);
+        return cached as GateUser;
+      }
+      console.warn('[gateApi] Offline and no cached gate user for', userId);
+      return null;
+    }
+  } catch {
+    // Network plugin may fail on some platforms — proceed with Supabase attempt
+  }
+
   try {
     const { data, error } = await supabase
       .from('gate_users')
@@ -169,7 +186,7 @@ export async function getGateUserByUserId(userId: string): Promise<GateUser | nu
       updatedAt: rowData.updated_at,
     };
     
-    // Cache for offline use
+    // Cache for offline use (faceDescriptor is already number[] — JSON-safe)
     offlineDb.setCache(cacheKey, gateUser).catch(e => console.warn('[gateApi] Failed to cache gate user', e));
     return gateUser;
   } catch (err) {

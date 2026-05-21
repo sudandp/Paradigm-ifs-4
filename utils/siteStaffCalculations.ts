@@ -42,7 +42,11 @@ export function calculatePerDayRate(config: SiteStaffConfig): {
   perDayBillingRate: number;
 } {
   const perAnnumRate = config.ctcPerMonth * 12;
-  const billableDutiesInYear = 365 - ((365 / 7) * config.weeklyOffsPerWeek) - config.earnedLeavesPerAnnum - config.nfhPerAnnum;
+  // When NH Billing Config is NA, holidays are NOT separately paid,
+  // so they should NOT be deducted from billable duties.
+  // Only deduct NFH when Actuals or Double (holidays are independently payable).
+  const nfhDeduction = config.nhBillingConfig === 'NA' ? 0 : config.nfhPerAnnum;
+  const billableDutiesInYear = 365 - ((365 / 7) * config.weeklyOffsPerWeek) - config.earnedLeavesPerAnnum - nfhDeduction;
   const perDayBillingRate = perAnnumRate / billableDutiesInYear;
 
   return { perAnnumRate, billableDutiesInYear, perDayBillingRate };
@@ -87,6 +91,15 @@ export function accrueELBalance(
 
 /**
  * 4B & 4C. Holiday (NH) Billing & Salary Logic
+ * 
+ * NA:      Not worked = 0, Worked half = 0.5, Worked full = 1   (duty pay only, no base holiday pay)
+ * Actuals: Not worked = 1, Worked half = 1 + 0.5 = 1.5, Worked full = 1 + 1 = 2   (base + actual work)
+ * Double:  Not worked = 1, Worked half = 1 + 2*(0.5) = 2, Worked full = 1 + 2*(1) = 3  (base + double work)
+ * 
+ * holidaysInPeriod = total holidays (worked + not-worked)
+ * countHP = holidays where employee worked full day
+ * countHalfHP = holidays where employee worked half day
+ * notWorkedHolidays = holidaysInPeriod - countHP - countHalfHP
  */
 export function calculateNHAddition(
   config: 'NA' | 'Actuals' | 'Double',
@@ -94,14 +107,22 @@ export function calculateNHAddition(
   countHalfHP: number,
   countHP: number
 ): number {
+  const notWorked = holidaysInPeriod - countHP - countHalfHP;
+
   if (config === 'NA') {
-    return (countHalfHP / 2) + countHP;
+    // NA: No pay for non-worked holidays, only duty value for worked ones
+    // Not worked = 0, Half = 0.5, Full = 1
+    return (countHalfHP * 0.5) + countHP;
   }
   if (config === 'Actuals') {
-    return holidaysInPeriod + (countHalfHP * 0.5) + countHP;
+    // Actuals: Base pay (1) for every holiday + actual work on top
+    // Not worked = 1, Half = 1 + 0.5, Full = 1 + 1
+    return (notWorked * 1) + (countHalfHP * 1.5) + (countHP * 2);
   }
   if (config === 'Double') {
-    return holidaysInPeriod + countHalfHP + (countHP * 2);
+    // Double: Base pay (1) for every holiday + 2x work on top
+    // Not worked = 1, Half = 1 + 2*0.5 = 2, Full = 1 + 2*1 = 3
+    return (notWorked * 1) + (countHalfHP * 2) + (countHP * 3);
   }
   return 0;
 }

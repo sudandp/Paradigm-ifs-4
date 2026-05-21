@@ -248,23 +248,23 @@ const LeaveDashboard: React.FC = () => {
             // Fetch base data points
             const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData] = await Promise.all([
                 // Use the selected calendar month for balance calculation
-                api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')),
+                api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
                 api.getLeaveRequests({
                     userId: user.id,
                     status: filter === 'all' ? undefined : filter
-                }).then(res => res.data),
+                }).then(res => res.data).catch(() => []),
                 api.getCompOffLogs(user.id).catch(() => []),
                 api.getAttendanceEvents(user.id, startStr, endStr),
-                api.getAttendanceSettings(),
-                api.getRecurringHolidays(),
+                api.getAttendanceSettings().catch(err => { console.warn('Attendance settings fetch failed (offline?):', err.message); return null; }),
+                api.getRecurringHolidays().catch(() => []),
                 api.getUserHolidays(user.id).catch(() => []),
-                api.getAttendanceEvents(user.id, startOfYearStr, endOfYearStr),
+                api.getAttendanceEvents(user.id, startOfYearStr, endOfYearStr).catch(() => []),
                 api.getLeaveRequests({
                     userId: user.id,
                     status: 'approved',
                     startDate: startOfYearStr,
                     endDate: endOfYearStr
-                }).then(res => res.data),
+                }).then(res => res.data).catch(() => []),
                 api.getUserChildren(user.id).catch(() => [])
             ]);
 

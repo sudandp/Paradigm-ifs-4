@@ -21,12 +21,21 @@ describe('Site Staff Calculations', () => {
     shiftHours: 8
   };
 
-  it('calculates per day billing rate correctly (X=1, Y=0, Z=12)', () => {
+  it('calculates per day billing rate correctly when nhBillingConfig=Actuals (NFH deducted)', () => {
     const result = calculatePerDayRate(baseConfig);
     expect(result.perAnnumRate).toBe(337800);
     // 365 - (365/7*1) - 0 - 12 = 365 - 52.1428 - 12 = 300.857
     expect(result.billableDutiesInYear).toBeCloseTo(300.857, 2);
     expect(result.perDayBillingRate).toBeCloseTo(1122.79, 2);
+  });
+
+  it('does NOT deduct NFH from billable duties when nhBillingConfig=NA', () => {
+    const naConfig = { ...baseConfig, nhBillingConfig: 'NA' as const };
+    const result = calculatePerDayRate(naConfig);
+    expect(result.perAnnumRate).toBe(337800);
+    // NA: 365 - (365/7*1) - 0 - 0 = 365 - 52.1428 = 312.857 (NFH NOT deducted)
+    expect(result.billableDutiesInYear).toBeCloseTo(312.857, 2);
+    expect(result.perDayBillingRate).toBeCloseTo(1079.73, 1);
   });
 
   it('accrues WO balance correctly with floored allotment and fractional carry-forward', () => {
@@ -59,10 +68,33 @@ describe('Site Staff Calculations', () => {
   });
 
   it('calculates NH additions for all configs correctly', () => {
-    // 1 holiday, 2 half HP, 1 HP
-    expect(calculateNHAddition('NA', 1, 2, 1)).toBe(2); // 2/2 + 1 = 2
-    expect(calculateNHAddition('Actuals', 1, 2, 1)).toBe(3); // 1 + 2*0.5 + 1 = 3
-    expect(calculateNHAddition('Double', 1, 2, 1)).toBe(5); // 1 + 2 + 1*2 = 5
+    // Scenario: 3 holidays total, 1 half-HP worked, 1 full-HP worked, 1 not worked
+    // NA:      notWorked=0, half=0.5, full=1   => 0 + 0.5 + 1 = 1.5
+    expect(calculateNHAddition('NA', 3, 1, 1)).toBe(1.5);
+    // Actuals: notWorked=1, half=1.5, full=2   => 1 + 1.5 + 2 = 4.5
+    expect(calculateNHAddition('Actuals', 3, 1, 1)).toBe(4.5);
+    // Double:  notWorked=1, half=2, full=3     => 1 + 2 + 3 = 6
+    expect(calculateNHAddition('Double', 3, 1, 1)).toBe(6);
+  });
+
+  it('calculates NH additions - simple: 1 holiday worked full day', () => {
+    // 1 holiday total, 0 half-HP, 1 full-HP worked => not-worked = 0
+    // NA:      0 + 0 + 1 = 1  (duty only)
+    expect(calculateNHAddition('NA', 1, 0, 1)).toBe(1);
+    // Actuals: 0 + 0 + 2 = 2  (1 base + 1 actual = 1+1)
+    expect(calculateNHAddition('Actuals', 1, 0, 1)).toBe(2);
+    // Double:  0 + 0 + 3 = 3  (1 base + 2*actual = 1+1+1)
+    expect(calculateNHAddition('Double', 1, 0, 1)).toBe(3);
+  });
+
+  it('calculates NH additions - 1 holiday NOT worked', () => {
+    // 1 holiday total, 0 half-HP, 0 full-HP => not-worked = 1
+    // NA:      0  (no pay for non-worked)
+    expect(calculateNHAddition('NA', 1, 0, 0)).toBe(0);
+    // Actuals: 1  (base only)
+    expect(calculateNHAddition('Actuals', 1, 0, 0)).toBe(1);
+    // Double:  1  (base only)
+    expect(calculateNHAddition('Double', 1, 0, 0)).toBe(1);
   });
 
   it('generates accurate monthly output combining all logic', () => {
@@ -81,7 +113,7 @@ describe('Site Staff Calculations', () => {
       '2026-05-20',
       baseConfig,
       marks,
-      1, // 1 holiday in period
+      1, // 1 holiday in period (the one HP day)
       2.0, // el opening
       0.33 // wo opening
     );
@@ -89,9 +121,11 @@ describe('Site Staff Calculations', () => {
     // Days present: 26 (P) + 1 (1/2P + 1/2P) = 27
     expect(output.attendance_summary.days_present).toBe(27);
     
-    // NH Billing: config='Actuals' => 1 (holiday in period) + 0 (1/2hp) + 1 (hp) = 2 addition
+    // NH Billing: config='Actuals', 1 holiday total, 0 half-HP, 1 HP
+    // notWorked=0, HP = 1+1 = 2 => total = 2
     expect(output.attendance_summary.nh_billing_addition).toBe(2);
-    // NH Salary: config='Double' => 1 (holiday in period) + 0 (1/2hp) + 2 (hp) = 3 addition
+    // NH Salary: config='Double', 1 holiday total, 0 half-HP, 1 HP
+    // notWorked=0, HP = 1+1+1 = 3 => total = 3
     expect(output.attendance_summary.nh_salary_addition).toBe(3);
 
     // Billable days count: 27 present + 2 nh billing = 29

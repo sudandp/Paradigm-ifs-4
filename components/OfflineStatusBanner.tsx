@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { offlineDb } from '../services/offline/database';
 import { WifiOff, RefreshCcw, AlertTriangle } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 
 const OfflineStatusBanner: React.FC = () => {
   const { isOnline } = useNetworkStatus();
@@ -31,7 +31,7 @@ const OfflineStatusBanner: React.FC = () => {
             <span className="font-bold text-sm">Working Offline</span>
             {lastSync && (
               <span className="text-xs opacity-90">
-                Last synced: {format(new Date(lastSync), 'MMM d, h:mm a')}
+                Last synced: {formatDistanceToNow(new Date(lastSync), { addSuffix: true })}
               </span>
             )}
           </div>

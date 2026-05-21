@@ -33,6 +33,7 @@ import NotificationTemplateConfig from '../../components/hr/NotificationTemplate
 import OnboardRejectReasonConfig from '../../components/hr/OnboardRejectReasonConfig';
 import SalaryTemplateConfig from '../../components/hr/SalaryTemplateConfig';
 import SalaryLineItemConfig from '../../components/hr/SalaryLineItemConfig';
+import CompanyHolidaySelectionConfig from '../../components/hr/CompanyHolidaySelectionConfig';
 import TemplatesHub from '../../components/hr/TemplatesHub';
 
 
@@ -89,6 +90,7 @@ const subcategories = [
     { key: 'tools_list', label: 'Tools List', icon: Wrench },
     { key: 'attendance_format', label: 'Attendance Format', icon: CalendarDays },
     { key: 'attendance_overview', label: 'Attendance Overview', icon: BarChart },
+    { key: 'company_holiday_selection', label: 'Company Holiday Selection', icon: Sun },
     { key: 'notification_template', label: 'Notification & Mail', icon: Mail },
     { key: 'onboard_reject_reason', label: 'Onboarding Rejection Reasons', icon: UserX },
     { key: 'salary_template', label: 'Salary Breakup', icon: IndianRupee },
@@ -850,8 +852,17 @@ const EntityManagement: React.FC = () => {
             case 'asset': return <AssetConfig />;
             case 'tools_list': return <ToolsListConfig />;
             case 'attendance_format': return <AttendanceFormatConfig />;
-            case 'attendance_overview': return <AttendanceOverviewConfig />;
-            case 'daily_attendance': return <DailyAttendanceConfig />;
+            case 'attendance_overview':
+                return <AttendanceOverviewConfig />;
+            case 'company_holiday_selection':
+                return (
+                    <CompanyHolidaySelectionConfig 
+                        searchTerm={searchTerm}
+                        selectedLocation={selectedLocation}
+                    />
+                );
+            case 'daily_attendance':
+                return <DailyAttendanceConfig />;
             case 'notification_template': return <NotificationTemplateConfig />;
             case 'onboard_reject_reason': return <OnboardRejectReasonConfig />;
             case 'salary_template': return <SalaryTemplateConfig />;

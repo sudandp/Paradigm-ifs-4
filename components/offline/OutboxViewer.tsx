@@ -21,6 +21,7 @@ const OutboxViewer: React.FC<OutboxViewerProps> = ({ onClose }) => {
     const [items, setItems] = useState<OutboxItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedItem, setSelectedItem] = useState<OutboxItem | null>(null);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'syncing' | 'failed'>('all');
 
     const loadItems = async () => {
         setIsLoading(true);
@@ -62,36 +63,65 @@ const OutboxViewer: React.FC<OutboxViewerProps> = ({ onClose }) => {
         }
     };
 
+    const filteredItems = statusFilter === 'all'
+        ? items
+        : items.filter(item => item.status === statusFilter);
+
+    const filterTabs: { key: typeof statusFilter; label: string }[] = [
+        { key: 'all', label: `All (${items.length})` },
+        { key: 'pending', label: `Pending (${items.filter(i => i.status === 'pending').length})` },
+        { key: 'syncing', label: `Syncing (${items.filter(i => i.status === 'syncing').length})` },
+        { key: 'failed', label: `Failed (${items.filter(i => i.status === 'failed').length})` },
+    ];
+
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-100">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-100 rounded-lg">
-                        <Database className="w-5 h-5 text-emerald-600" />
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-100 rounded-lg">
+                            <Database className="w-5 h-5 text-emerald-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-black text-gray-900 tracking-tight">Sync Outbox</h2>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">
+                                {filteredItems.length} Actions
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-lg font-black text-gray-900 tracking-tight">Sync Outbox</h2>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">
-                            {items.length} Pending Actions
-                        </p>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={loadItems}
+                            className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-emerald-600 border border-transparent hover:border-gray-100"
+                        >
+                            <RefreshCcw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                        {onClose && (
+                            <button 
+                                onClick={onClose}
+                                className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-red-600 border border-transparent hover:border-gray-100"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        )}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={loadItems}
-                        className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-emerald-600 border border-transparent hover:border-gray-100"
-                    >
-                        <RefreshCcw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                    {onClose && (
-                        <button 
-                            onClick={onClose}
-                            className="p-2 hover:bg-white rounded-full transition-colors text-gray-400 hover:text-red-600 border border-transparent hover:border-gray-100"
+                {/* Filter Tabs */}
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+                    {filterTabs.map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setStatusFilter(tab.key)}
+                            className={`flex-1 px-2 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
+                                statusFilter === tab.key
+                                    ? 'bg-white text-emerald-700 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
                         >
-                            <X className="w-5 h-5" />
+                            {tab.label}
                         </button>
-                    )}
+                    ))}
                 </div>
             </div>
 
@@ -99,13 +129,15 @@ const OutboxViewer: React.FC<OutboxViewerProps> = ({ onClose }) => {
             <div className="flex-1 overflow-hidden flex">
                 {/* List */}
                 <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${selectedItem ? 'hidden md:block' : 'block'}`}>
-                    {items.length === 0 ? (
+                    {filteredItems.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                             <CheckCircle2 className="w-12 h-12 mb-4 opacity-20" />
-                            <p className="font-bold text-sm tracking-widest uppercase">Everything Synced</p>
+                            <p className="font-bold text-sm tracking-widest uppercase">
+                                {statusFilter === 'all' ? 'Everything Synced' : `No ${statusFilter} items`}
+                            </p>
                         </div>
                     ) : (
-                        items.map((item) => (
+                        filteredItems.map((item) => (
                             <div 
                                 key={item.id}
                                 onClick={() => setSelectedItem(item)}
