@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Home, ClipboardCheck, Calendar, User, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,6 +14,7 @@ const BottomNav: React.FC = () => {
     const { permissions } = usePermissionsStore();
     const { setIsPanelOpen, unreadCount } = useNotificationStore();
     const { setReferralModalOpen } = useUiSettingsStore();
+    const [showReferBadge, setShowReferBadge] = useState(true);
 
     if (!user) return null;
 
@@ -129,21 +130,62 @@ const BottomNav: React.FC = () => {
                             className="absolute flex items-center justify-center"
                             style={{ top: -36, width: 72, height: 72 }}
                         >
+                            {/* "Refer & Earn" Floating Badge & Sparks */}
+                            <AnimatePresence>
+                                {showReferBadge && (
+                                    <>
+                                        <motion.div 
+                                            className="absolute -top-6 bg-gradient-to-r from-amber-500 to-orange-600 text-white text-[9px] font-black uppercase tracking-[0.1em] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.6)] whitespace-nowrap z-50 border border-amber-200/40 flex items-center gap-1 pointer-events-none"
+                                            initial={{ opacity: 0, y: 10, scale: 0.8 }}
+                                            animate={{ opacity: 1, y: [0, -4, 0], scale: 1 }}
+                                            exit={{ opacity: 0, y: -10, scale: 0.8 }}
+                                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                                        >
+                                            🧨 REFER & EARN 🎇
+                                        </motion.div>
+
+                                        {/* Firecracker Sparks Animation */}
+                                        {[...Array(8)].map((_, i) => (
+                                            <motion.div
+                                                key={`spark-${i}`}
+                                                className="absolute w-1.5 h-1.5 rounded-full z-0 pointer-events-none"
+                                                style={{ 
+                                                    backgroundColor: i % 2 === 0 ? '#fbbf24' : '#f87171',
+                                                    boxShadow: i % 2 === 0 ? '0 0 8px #fbbf24' : '0 0 8px #f87171'
+                                                }}
+                                                initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
+                                                animate={{ 
+                                                    opacity: [0, 1, 0],
+                                                    scale: [0, 1.5, 0],
+                                                    x: [0, Math.cos(i * 45 * (Math.PI / 180)) * 45],
+                                                    y: [0, Math.sin(i * 45 * (Math.PI / 180)) * 45],
+                                                }}
+                                                exit={{ opacity: 0, scale: 0 }}
+                                                transition={{ 
+                                                    duration: 1.2, 
+                                                    repeat: Infinity, 
+                                                    repeatDelay: 0.8,
+                                                    ease: "easeOut",
+                                                    delay: Math.random() * 0.5
+                                                }}
+                                            />
+                                        ))}
+                                    </>
+                                )}
+                            </AnimatePresence>
+
                             {/* Outer ring — same color as bar, acts as notch border */}
-                            <div className="w-[72px] h-[72px] rounded-full bg-[#041b0f] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
+                            <div className="w-[72px] h-[72px] rounded-full bg-[#041b0f] flex items-center justify-center shadow-[0_-4px_20px_rgba(0,0,0,0.4)] relative z-10">
                                 {/* Inner green circle — 52px */}
                                 <motion.button
                                     onClick={() => setReferralModalOpen(true)}
                                     className="w-[52px] h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-all duration-200 group relative overflow-hidden"
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
                                     style={{
                                         background: 'radial-gradient(circle at 40% 35%, #1a9a6a, #006b3f 60%, #004d2d)',
                                         boxShadow: 'inset 0 2px 6px rgba(255,255,255,0.15), 0 4px 12px rgba(0,107,63,0.4)',
                                     }}
                                     aria-label="Referral Program"
                                 >
-                                    {/* Reverse rotate the icon to keep it upright if desired, or let it rotate with button */}
                                     <Plus className="text-white w-7 h-7 group-hover:rotate-90 transition-transform duration-300" strokeWidth={2.5} />
                                 </motion.button>
                             </div>

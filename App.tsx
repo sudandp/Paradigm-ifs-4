@@ -1008,11 +1008,16 @@ const App: React.FC = () => {
               if (isMounted && appUser) {
                 setUser(appUser);
                 // Greeting logic — only once per session
-                const greetKey = `greetingSent_${appUser.id}`;
+                const greetKey = `greeting_${new Date().toDateString()}_${appUser.id}`;
                 if (!localStorage.getItem(greetKey)) {
+                  const hour = new Date().getHours();
+                  let greetingText = 'Good evening';
+                  if (hour < 12) greetingText = 'Good morning';
+                  else if (hour < 17) greetingText = 'Good afternoon';
+
                   apiService.createNotification({
                     userId: appUser.id,
-                    message: `Good morning, ${appUser.name || 'there'}! Welcome to Paradigm Services.`,
+                    message: `${greetingText}, ${appUser.name || 'there'}! Welcome to Paradigm Services.`,
                     type: 'greeting',
                   }).catch(e => console.warn('[App] Push notification init failed:', e));
                   localStorage.setItem(greetKey, '1');

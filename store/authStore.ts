@@ -258,7 +258,7 @@ export const useAuthStore = create<AuthState>()(
         setError: (error) => set({ error }),
 
         checkOfflineSession: async () => {
-            return false;
+            return true;
         },
 
         syncRouteTracking: async () => {
@@ -561,13 +561,13 @@ export const useAuthStore = create<AuthState>()(
             const { user } = get();
             if (!user) return;
             try {
-                const geoSettings = await api.getGeofencingSettings(user.organizationId);
-                const breakLimitVal = await api.getBreakLimit(user.organizationId);
-                const fullSettings = await api.getAttendanceSettings(user.organizationId);
+                // api.getGeofencingSettings doesn't need an orgId, it fetches the global one
+                const geoSettings = await api.getGeofencingSettings();
+                const fullSettings = await api.getAttendanceSettings();
 
                 set({
                     geofencingSettings: geoSettings || null,
-                    breakLimit: breakLimitVal || 60
+                    breakLimit: fullSettings?.breakLimit || 60
                 });
             } catch (error) {
                 console.error('Failed to fetch geofencing settings:', error);
@@ -641,6 +641,12 @@ export const useAuthStore = create<AuthState>()(
                         isCheckedIn: false,
                         lastCheckInTime: null,
                         lastCheckOutTime: null,
+                        firstBreakInTime: null,
+                        lastBreakInTime: null,
+                        lastBreakOutTime: null,
+                        totalBreakDurationToday: 0,
+                        totalWorkingDurationToday: 0,
+                        breakIntervals: [],
                         isAttendanceLoading: false,
                         dailyPunchCount: 0,
                         approvedUnlockCount,
@@ -648,7 +654,9 @@ export const useAuthStore = create<AuthState>()(
                         isPunchUnlocked: approvedUnlockCount > 0,
                         isFieldCheckedIn: false,
                         isFieldCheckedOut: false,
-                        isSiteOtCheckedIn: false
+                        isSiteOtCheckedIn: false,
+                        hasPreviousDayOpenSession: false,
+                        previousDaySessionInfo: null
                     });
                     return;
                 }

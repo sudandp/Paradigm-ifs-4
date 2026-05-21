@@ -591,7 +591,7 @@ const ProfilePage: React.FC = () => {
 
     if (isMobileView) {
         return (
-            <div className="p-4 space-y-8 md:bg-transparent bg-[#041b0f] min-h-screen overflow-x-hidden relative">
+            <div className="p-4 space-y-8 md:bg-transparent bg-[#041b0f] w-full overflow-x-hidden relative">
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
                 {/* Editorial Watermark Background (Role Title) */}
@@ -871,7 +871,11 @@ const ProfilePage: React.FC = () => {
                                         />
                                     </div>
                                     <motion.button
-                                        whileTap={{ scale: 0.93 }}
+                                        whileTap={{ 
+                                            scale: 0.88, 
+                                            rotate: -2,
+                                            transition: { type: "spring", stiffness: 400, damping: 10 } 
+                                        }}
                                         onClick={() => {
                                             triggerHaptic(ImpactStyle.Heavy);
                                             if (isPunchBlocked) {
@@ -1098,41 +1102,16 @@ const ProfilePage: React.FC = () => {
                         </section>
                     )}
 
-
-
-                    {/* Native-style Utility Grid */}
-                    <section className="space-y-4 px-2">
-                        <div className="flex items-center justify-between mb-5 px-3">
-                            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white/40">Core Utilities</h2>
-                            <div className="h-[1px] flex-1 bg-white/[0.05] ml-4" />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                             <button 
-                                onClick={() => navigate('/leaves/dashboard')} 
-                                className="group flex flex-col items-center justify-center p-5 bg-white/[0.03] backdrop-blur-xl border border-white/[0.05] rounded-[32px] transition-all duration-300 shadow-xl active:scale-95"
-                            >
-                                <div className="p-3 bg-emerald-500/10 rounded-2xl mb-3 text-emerald-400 group-active:text-white transition-colors shadow-inner">
-                                    <Crosshair className="h-6 w-6" />
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-white/80 font-black text-[10px] uppercase tracking-widest leading-none">Leave Tracker</p>
-                                </div>
-                            </button>
-
-                            <button 
-                                onClick={handleLogoutClick} 
-                                className="group flex flex-col items-center justify-center p-5 bg-rose-500/5 backdrop-blur-xl border border-rose-500/10 rounded-[32px] transition-all duration-300 shadow-xl active:scale-95"
-                            >
-                                <div className="p-3 bg-rose-500/10 rounded-2xl mb-3 text-rose-500 group-active:text-white transition-colors shadow-inner">
-                                    <LogOut className="h-6 w-6" />
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-rose-500/80 font-black text-[10px] uppercase tracking-widest leading-none">Terminate</p>
-                                </div>
-                            </button>
-                        </div>
-                    </section>
+                    {/* Floating Logout Button */}
+                    <div className="flex justify-center mt-8 mb-4 w-full px-8">
+                        <button 
+                            onClick={handleLogoutClick}
+                            className="w-full max-w-[220px] flex items-center justify-center gap-3 py-4 bg-rose-500/10 border border-rose-500/50 rounded-full text-rose-500 text-[12px] font-black uppercase tracking-[0.25em] shadow-[0_8px_30px_rgb(225,29,72,0.25)] hover:bg-rose-500/20 active:scale-95 hover:-translate-y-1 transition-all backdrop-blur-xl"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Log Out
+                        </button>
+                    </div>
 
                     {/* Secondary Management Sections - MOVED to Settings Modal */}
 
