@@ -19,26 +19,18 @@ import { isAdmin } from '../../utils/auth';
 // --- Constants & Helpers ---
 
 const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): string => {
-    if (workType === 'field' || workType === 'site') {
-        const fieldLabels: Record<string, string> = {
-            'punch-in': 'Punch In',
-            'punch-out': 'Punch Out',
-            'site-in': 'Site Entry',
-            'site-out': 'Site Exit',
-            'site-ot-in': 'Site OT Start',
-            'site-ot-out': 'Site OT End',
-            'break-in': 'Break-In',
-            'break-out': 'Break-Out',
-        };
-        return fieldLabels[type] || type.replace('-', ' ');
-    }
-    const officeLabels: Record<string, string> = {
-        'punch-in': 'Punch-In',
-        'punch-out': 'Punch-Out',
-        'break-in': 'Break-In',
-        'break-out': 'Break-Out',
+    const labels: Record<string, string> = {
+        'punch-in': 'Punch In',
+        'punch-out': 'Punch Out',
+        'site-in': 'Site In',
+        'site-out': 'Site Out',
+        'site-ot-in': 'Site OT In',
+        'site-ot-out': 'Site OT Out',
+        'break-in': 'Break In',
+        'break-out': 'Break Out',
+        'live-location': 'Live Tracking',
     };
-    return officeLabels[type] || type.replace('-', ' ');
+    return labels[type] || type.replace(/-/g, ' ');
 };
 
 const getEventColor = (type: string) => {
@@ -51,6 +43,7 @@ const getEventColor = (type: string) => {
         case 'site-ot-out': return 'text-orange-500 bg-orange-500/10 border-orange-500/20';
         case 'break-in': return 'text-sky-500 bg-sky-500/10 border-sky-500/20';
         case 'break-out': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
+        case 'live-location': return 'text-cyan-500 bg-cyan-500/10 border-cyan-500/20';
         default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
 };
@@ -633,13 +626,14 @@ const RouteView: React.FC<{
 }> = ({ events, selectedUser, startDate, endDate, users, knownLocations, onSelectUser }) => {
     const mapRef = useRef<L.Map | null>(null);
     const mapContainerRef = useRef<HTMLDivElement>(null);
-    const polylineRef = useRef<L.Polyline | null>(null);
+    const polylineRef = useRef<L.FeatureGroup | L.Polyline | null>(null);
     const markersRef = useRef<L.LayerGroup>(L.layerGroup());
     const tileLayerRef = useRef<L.TileLayer | null>(null);
     const { theme } = useThemeStore();
     const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
     const [snappedRoute, setSnappedRoute] = useState<L.LatLngTuple[] | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+    const [isSnappingRoute, setIsSnappingRoute] = useState(false);
 
     const userEvents = useMemo(() => {
         return events
@@ -647,31 +641,74 @@ const RouteView: React.FC<{
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [events, selectedUser]);
 
+    const combinedPathPoints = useMemo(() => {
+        const eventCoords = userEvents.map(e => ({
+            id: `event-${e.id}`,
+            latitude: e.latitude as number,
+            longitude: e.longitude as number,
+            timestamp: e.timestamp,
+            isEvent: true,
+            speed: undefined as number | undefined,
+            batteryLevel: undefined as number | undefined,
+            deviceName: undefined as string | undefined,
+            networkType: undefined as string | undefined,
+            ipAddress: undefined as string | undefined
+        }));
+
+        const routeCoords = routePoints.map(p => ({
+            id: p.id,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            timestamp: p.timestamp,
+            isEvent: false,
+            speed: p.speed,
+            batteryLevel: p.batteryLevel,
+            deviceName: p.deviceName,
+            networkType: p.networkType,
+            ipAddress: p.ipAddress
+        }));
+
+        const combined = [...eventCoords, ...routeCoords].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+
+        const deduped: typeof combined = [];
+        for (const pt of combined) {
+            if (deduped.length === 0) {
+                deduped.push(pt);
+            } else {
+                const prev = deduped[deduped.length - 1];
+                const dist = calculateDistanceMeters(prev.latitude, prev.longitude, pt.latitude, pt.longitude);
+                if (dist > 5 || pt.isEvent || prev.isEvent) {
+                    deduped.push(pt);
+                }
+            }
+        }
+        return deduped;
+    }, [userEvents, routePoints]);
+
     const routeStats = useMemo(() => {
-        if (routePoints.length < 2) return null;
+        if (combinedPathPoints.length < 2) return null;
         let totalDist = 0;
         let movingTimeMs = 0;
         
-        for (let i = 0; i < routePoints.length - 1; i++) {
+        for (let i = 0; i < combinedPathPoints.length - 1; i++) {
             const distMeters = calculateDistanceMeters(
-                routePoints[i].latitude, routePoints[i].longitude,
-                routePoints[i+1].latitude, routePoints[i+1].longitude
+                combinedPathPoints[i].latitude, combinedPathPoints[i].longitude,
+                combinedPathPoints[i+1].latitude, combinedPathPoints[i+1].longitude
             );
             totalDist += distMeters;
             
-            // Only count time if they actually moved a reasonable distance (e.g., > 10 meters) 
-            // between pings, to exclude stationary time at a site
-            const timeDiffMs = new Date(routePoints[i+1].timestamp).getTime() - new Date(routePoints[i].timestamp).getTime();
+            const timeDiffMs = new Date(combinedPathPoints[i+1].timestamp).getTime() - new Date(combinedPathPoints[i].timestamp).getTime();
             if (distMeters > 15) {
                 movingTimeMs += timeDiffMs;
             }
         }
         
-        const startTime = new Date(routePoints[0].timestamp).getTime();
-        const endTime = new Date(routePoints[routePoints.length - 1].timestamp).getTime();
+        const startTime = new Date(combinedPathPoints[0].timestamp).getTime();
+        const endTime = new Date(combinedPathPoints[combinedPathPoints.length - 1].timestamp).getTime();
         const totalDurationMs = endTime - startTime;
         
-        // Use moving time for speed if available, otherwise fallback to total duration
         const speedDurationHrs = movingTimeMs > 0 ? movingTimeMs / (1000 * 60 * 60) : totalDurationMs / (1000 * 60 * 60);
         const avgSpeed = speedDurationHrs > 0 ? (totalDist / 1000) / speedDurationHrs : 0;
 
@@ -680,22 +717,44 @@ const RouteView: React.FC<{
             duration: (totalDurationMs / (1000 * 60)).toFixed(0),
             avgSpeed: avgSpeed.toFixed(1)
         };
-    }, [routePoints]);
+    }, [combinedPathPoints]);
 
     useEffect(() => {
-        if (routePoints.length < 2) {
+        if (combinedPathPoints.length < 2) {
             setSnappedRoute(null);
+            setIsSnappingRoute(false);
             return;
         }
 
         const fetchSnappedRoute = async () => {
             try {
-                // Chunk points to respect OSRM limit (using 25 to be safe)
+                const cleanPoints: typeof combinedPathPoints = [combinedPathPoints[0]];
+                let lastAdded = combinedPathPoints[0];
+                
+                for (let i = 1; i < combinedPathPoints.length; i++) {
+                    const p = combinedPathPoints[i];
+                    const dist = calculateDistanceMeters(
+                        lastAdded.latitude, lastAdded.longitude,
+                        p.latitude, p.longitude
+                    );
+                    
+                    if (dist >= 40 || i === combinedPathPoints.length - 1) {
+                        cleanPoints.push(p);
+                        lastAdded = p;
+                    }
+                }
+
+                if (cleanPoints.length < 2) {
+                    setSnappedRoute(null);
+                    setIsSnappingRoute(false);
+                    return;
+                }
+
                 const chunkSize = 25;
                 let allSnapped: L.LatLngTuple[] = [];
 
-                for (let i = 0; i < routePoints.length; i += chunkSize - 1) {
-                    const chunk = routePoints.slice(i, i + chunkSize);
+                for (let i = 0; i < cleanPoints.length; i += chunkSize - 1) {
+                    const chunk = cleanPoints.slice(i, i + chunkSize);
                     if (chunk.length < 2) break;
                     
                     const coordsString = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
@@ -708,7 +767,6 @@ const RouteView: React.FC<{
                         const route = data.routes[0];
                         if (route.geometry && route.geometry.coordinates) {
                             route.geometry.coordinates.forEach((coord: [number, number]) => {
-                                // GeoJSON is [lng, lat], Leaflet wants [lat, lng]
                                 allSnapped.push([coord[1], coord[0]]);
                             });
                         }
@@ -720,22 +778,25 @@ const RouteView: React.FC<{
                 if (allSnapped.length > 0) {
                     setSnappedRoute(allSnapped);
                 } else {
-                    setSnappedRoute(null); // Fallback to raw points
+                    setSnappedRoute(null);
                 }
             } catch (error) {
                 console.warn('Failed to fetch snapped route, falling back to raw points', error);
                 setSnappedRoute(null);
+            } finally {
+                setIsSnappingRoute(false);
             }
         };
 
         fetchSnappedRoute();
-    }, [routePoints]);
+    }, [combinedPathPoints]);
 
     useEffect(() => {
         if (!selectedUser || selectedUser === 'all') return;
         
         const fetchRoute = async () => {
             setIsLoadingRoute(true);
+            setIsSnappingRoute(true); // Eagerly prevent fallback line from showing during transition
             try {
                 const start = new Date(startDate);
                 start.setHours(0,0,0,0);
@@ -807,47 +868,141 @@ const RouteView: React.FC<{
 
         const addArrows = (points: {latitude: number, longitude: number}[]) => {
             if (points.length < 2) return;
-            // Add arrows every few points based on length to prevent clutter, up to 20 arrows
-            const step = Math.max(1, Math.floor(points.length / 15)); 
+            
+            // Calculate total path distance to determine mode
+            let totalPathDistance = 0;
+            for (let i = 0; i < points.length - 1; i++) {
+                totalPathDistance += calculateDistanceMeters(
+                    points[i].latitude, points[i].longitude,
+                    points[i+1].latitude, points[i+1].longitude
+                );
+            }
+            
+            const isShortRoute = totalPathDistance < 1000;
+            // Minimum physical distance between arrows to prevent overlap
+            const minSpacingMeters = isShortRoute ? 50 : 800;
+            
+            // Target around 15-20 arrows maximum along the entire route
+            const step = Math.max(1, Math.floor(points.length / 20));
+            
+            let lastArrowPoint = points[0];
+            let firstArrowPlaced = false;
             
             for (let i = 0; i < points.length - 1; i += step) {
                 const p1 = points[i];
                 const p2 = points[i + 1];
                 
-                // Calculate distance, skip if too close to avoid overlapping erratic arrows
-                const dist = Math.sqrt(Math.pow(p2.latitude - p1.latitude, 2) + Math.pow(p2.longitude - p1.longitude, 2));
-                if (dist < 0.0001) continue;
+                // For subsequent arrows, verify we have traveled enough physical distance to avoid clustering
+                if (firstArrowPlaced) {
+                    const distFromLastArrow = calculateDistanceMeters(
+                        lastArrowPoint.latitude, lastArrowPoint.longitude,
+                        p1.latitude, p1.longitude
+                    );
+                    if (distFromLastArrow < minSpacingMeters) {
+                        continue; // Skip this index to prevent clustering
+                    }
+                }
                 
                 const dy = p2.latitude - p1.latitude;
                 const dx = (p2.longitude - p1.longitude) * Math.cos(p1.latitude * Math.PI / 180);
-                const angle = -(Math.atan2(dy, dx) * 180 / Math.PI);
                 
-                const arrowIcon = L.divIcon({
-                    className: '',
-                    html: `<div style="transform: rotate(${angle}deg); color: #1E40AF; font-size: 14px; font-weight: 900; text-shadow: 0px 0px 3px white, 0px 0px 3px white; text-align: center; width: 14px; height: 14px; line-height: 14px; margin-top: -7px; margin-left: -7px; pointer-events: none;">➤</div>`,
-                    iconSize: [0, 0]
-                });
-                
-                // Place arrow slightly along the path
-                const midLat = p1.latitude + (p2.latitude - p1.latitude) * 0.5;
-                const midLng = p1.longitude + (p2.longitude - p1.longitude) * 0.5;
-                L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(markersRef.current);
+                if (Math.abs(dy) > 1e-7 || Math.abs(dx) > 1e-7) {
+                    const angle = -(Math.atan2(dy, dx) * 180 / Math.PI);
+                    
+                    const arrowIcon = L.divIcon({
+                        className: '',
+                        html: `<div style="transform: rotate(${angle}deg); color: #1E3A8A; font-size: 16px; font-weight: 900; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; text-align: center; width: 16px; height: 16px; line-height: 16px; margin-top: -8px; margin-left: -8px; pointer-events: none;">➤</div>`,
+                        iconSize: [0, 0]
+                    });
+                    
+                    const midLat = p1.latitude + (p2.latitude - p1.latitude) * 0.5;
+                    const midLng = p1.longitude + (p2.longitude - p1.longitude) * 0.5;
+                    L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(markersRef.current);
+                    
+                    lastArrowPoint = p1;
+                    firstArrowPlaced = true;
+                }
             }
         };
 
-        const routeLatLngs: L.LatLngTuple[] = routePoints.map(p => [p.latitude, p.longitude]);
+        const routeLatLngs: L.LatLngTuple[] = combinedPathPoints.map(p => [p.latitude, p.longitude]);
         
-        if (snappedRoute && snappedRoute.length > 0) {
-            polylineRef.current = L.polyline(snappedRoute, { 
-                color: '#3B82F6', 
-                weight: 6, 
-                opacity: 0.9,
-                smoothFactor: 1.5 
-            }).addTo(mapRef.current);
+        if (routeLatLngs.length > 0) {
+            const layers: L.Layer[] = [];
             
-            // Draw arrows along the snapped route
-            const snappedPoints = snappedRoute.map(p => ({ latitude: p[0], longitude: p[1] }));
-            addArrows(snappedPoints);
+            // 1. If snapped driving route is available, show the solid snapped road route
+            if (snappedRoute && snappedRoute.length > 0) {
+                const snappedPolyline = L.polyline(snappedRoute, { 
+                    color: '#2563EB', // premium solid deep blue for snapped driving route
+                    weight: 6, 
+                    opacity: 0.85,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    smoothFactor: 1.5 
+                });
+                layers.push(snappedPolyline);
+                
+                // Draw directional arrows along the snapped driving route
+                const snappedPoints = snappedRoute.map(p => ({ latitude: p[0], longitude: p[1] }));
+                addArrows(snappedPoints);
+                
+                // Draw local walking segments (where consecutive points are close, e.g. < 150m)
+                // This ensures walking inside compounds is shown, but eliminates long city-crossing straight dashed lines.
+                let currentSegment: L.LatLngTuple[] = [];
+                for (let i = 0; i < routeLatLngs.length; i++) {
+                    if (currentSegment.length === 0) {
+                        currentSegment.push(routeLatLngs[i]);
+                    } else {
+                        const prev = currentSegment[currentSegment.length - 1];
+                        const dist = calculateDistanceMeters(prev[0], prev[1], routeLatLngs[i][0], routeLatLngs[i][1]);
+                        if (dist < 150) {
+                            currentSegment.push(routeLatLngs[i]);
+                        } else {
+                            if (currentSegment.length > 1) {
+                                const walkPolyline = L.polyline(currentSegment, {
+                                    color: '#0EA5E9',
+                                    weight: 4,
+                                    opacity: 0.8,
+                                    dashArray: '5, 8',
+                                    lineCap: 'round',
+                                    lineJoin: 'round'
+                                });
+                                layers.push(walkPolyline);
+                            }
+                            currentSegment = [routeLatLngs[i]];
+                        }
+                    }
+                }
+                if (currentSegment.length > 1) {
+                    const walkPolyline = L.polyline(currentSegment, {
+                        color: '#0EA5E9',
+                        weight: 4,
+                        opacity: 0.8,
+                        dashArray: '5, 8',
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    });
+                    layers.push(walkPolyline);
+                }
+            } else {
+                // 2. Otherwise (e.g. OSRM failed, walking inside compound), fall back to raw walked dashed path entirely
+                const rawPolyline = L.polyline(routeLatLngs, {
+                    color: '#0EA5E9', // vibrant sky blue for walking path
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: '5, 8', // elegant dashed pattern
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    smoothFactor: 1.0
+                });
+                layers.push(rawPolyline);
+                
+                // Draw directional arrows along the raw walking path
+                addArrows(combinedPathPoints as {latitude: number, longitude: number}[]);
+            }
+
+            // Create a feature group containing the line layers and add it to the map
+            polylineRef.current = L.featureGroup(layers).addTo(mapRef.current);
             
             // Draw original GPS pings as dots so we know where the actual pings were
             routePoints.forEach((p, idx) => {
@@ -873,41 +1028,7 @@ const RouteView: React.FC<{
                     markersRef.current.addLayer(dot);
                 }
             });
-        } else if (routeLatLngs.length > 0) {
-            // Fallback to straight lines if OSRM failed or is loading
-            polylineRef.current = L.polyline(routeLatLngs, { 
-                color: '#3B82F6', 
-                weight: 6, 
-                opacity: 0.9,
-                smoothFactor: 1.5 
-            }).addTo(mapRef.current);
-            
-            addArrows(routePoints);
-            
-            routePoints.forEach((p, idx) => {
-                if (idx % 3 === 0 || idx === routePoints.length - 1) { 
-                    const dot = L.circleMarker([p.latitude, p.longitude], {
-                        radius: 4,
-                        fillColor: '#3B82F6',
-                        fillOpacity: 0.6,
-                        color: 'white',
-                        weight: 2
-                    });
-                    
-                    const time = format(new Date(p.timestamp), 'hh:mm:ss a');
-                    const speed = p.speed ? `${(p.speed * 3.6).toFixed(1)} km/h` : 'Stationary';
-                    dot.bindTooltip(`
-                        <div class="px-2 py-1 font-sans">
-                            <p class="font-bold text-[10px] text-slate-500 uppercase">GPS Ping</p>
-                            <p class="text-xs font-black text-slate-900">${time}</p>
-                            <p class="text-[10px] text-blue-600 mt-1">${speed}</p>
-                        </div>
-                    `, { sticky: true });
-                    
-                    markersRef.current.addLayer(dot);
-                }
-            });
-        } else if (userEvents.length > 1) {
+        } else if (userEvents.length > 1 && !isLoadingRoute && !isSnappingRoute) {
             // Fallback for when there are no continuous route points, just event check-ins
             const eventLatLngs: L.LatLngTuple[] = userEvents.map(e => [e.latitude as number, e.longitude as number]);
             polylineRef.current = L.polyline(eventLatLngs, { 
@@ -921,28 +1042,75 @@ const RouteView: React.FC<{
         }
 
         // First sort all user's events to find chronological order
-        const allUserEvents = events
-            .filter(e => e.userId === selectedUser)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const rawUserEvents = events.filter(e => e.userId === selectedUser)
+                                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-        userEvents.forEach((e) => {
-            const pos: L.LatLngTuple = [e.latitude as number, e.longitude as number];
-            
-            // Find the index of this event in the FULL chronological list
-            const fullIdx = allUserEvents.findIndex(ev => ev.id === e.id);
-            const isFirst = fullIdx === 0;
-            const isLast = fullIdx === allUserEvents.length - 1;
-            
+        const processedRawUserEvents = rawUserEvents.map((e, index) => {
+            const isLast = index === rawUserEvents.length - 1;
             let displayType = e.type;
-            
-            // Smart Pin Interpretation: Treat intermediate punches as site entries/exits 
-            // since field staff often press the wrong buttons on the mobile app
-            if (e.type === 'punch-in' && !isFirst) {
+            const wType = e.workType || (e as any).work_type;
+            if (displayType === 'punch-in' && (wType === 'field' || wType === 'site')) {
                 displayType = 'site-in';
-            }
-            if (e.type === 'punch-out' && !isLast) {
+            } else if (displayType === 'punch-out' && (wType === 'field' || wType === 'site')) {
                 displayType = 'site-out';
             }
+            return { ...e, displayType, isFirst: index === 0, isLast };
+        });
+
+        // Second pass lookahead loop to dynamically override 'punch-in' to 'site-in'
+        // when followed directly by a 'site-out' (ignoring 'live-location' pings)
+        for (let i = 0; i < processedRawUserEvents.length; i++) {
+            if (processedRawUserEvents[i].displayType === 'punch-in') {
+                let nextActiveEvent = null;
+                for (let j = i + 1; j < processedRawUserEvents.length; j++) {
+                    if (processedRawUserEvents[j].displayType !== 'live-location') {
+                        nextActiveEvent = processedRawUserEvents[j];
+                        break;
+                    }
+                }
+                if (nextActiveEvent && nextActiveEvent.displayType === 'site-out') {
+                    processedRawUserEvents[i].displayType = 'site-in';
+                }
+            }
+        }
+
+        const allUserEvents = processedRawUserEvents.sort((a, b) => {
+            const timeDiff = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            if (a.displayType === 'live-location' && b.displayType !== 'live-location') return 1;
+            if (b.displayType === 'live-location' && a.displayType !== 'live-location') return -1;
+            return 0;
+        });
+
+        // Filter to only events that have map coordinates, then number them
+        const mappableEvents = allUserEvents.filter(ev => {
+            const src = userEvents.find(e => e.id === ev.id);
+            return src && src.latitude && src.longitude;
+        });
+
+        const coordinateCount = new Map<string, number>();
+
+        mappableEvents.forEach((fullEv, pinIndex) => {
+            const sourceEv = userEvents.find(e => e.id === fullEv.id)!;
+
+            let lat = sourceEv.latitude as number;
+            let lng = sourceEv.longitude as number;
+
+            // Shift overlapping markers slightly to make them all visible
+            const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+            const count = coordinateCount.get(key) || 0;
+            coordinateCount.set(key, count + 1);
+
+            if (count > 0) {
+                const angle = (count * 2 * Math.PI) / 8;
+                const radius = 0.00008 * count; // shift by ~8-10 meters per overlap
+                lat += Math.sin(angle) * radius;
+                lng += Math.cos(angle) * radius;
+            }
+
+            const pos: L.LatLngTuple = [lat, lng];
+            const displayType = fullEv.displayType;
+            const pinNumber = pinIndex + 1;
 
             const color = displayType === 'punch-in' ? '#10B981' 
                         : displayType === 'punch-out' ? '#EF4444' 
@@ -950,27 +1118,58 @@ const RouteView: React.FC<{
                         : displayType === 'site-out' ? '#64748B'
                         : displayType === 'site-ot-in' ? '#F59E0B'
                         : displayType === 'site-ot-out' ? '#EA580C'
+                        : displayType === 'break-in' ? '#0EA5E9'
+                        : displayType === 'break-out' ? '#6366F1'
+                        : displayType === 'live-location' ? '#06B6D4'
                         : '#94A3B8';
+
             const icon = L.divIcon({
                 className: '',
-                html: `<div class="w-8 h-8 rounded-full border-4 border-white shadow-lg flex items-center justify-center" style="background-color: ${color}; color: white">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                      </div>`,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
+                html: `<div style="position:relative;width:36px;height:46px;display:flex;flex-direction:column;align-items:center;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="46" viewBox="0 0 36 46" style="position:absolute;top:0;left:0;">
+                        <path d="M18 2 C9.16 2 2 9.16 2 18 C2 28.5 18 44 18 44 C18 44 34 28.5 34 18 C34 9.16 26.84 2 18 2 Z"
+                            fill="${color}" stroke="white" stroke-width="2.5"/>
+                        <text x="18" y="22" text-anchor="middle" dominant-baseline="middle"
+                            font-family="sans-serif" font-size="13" font-weight="900" fill="white">${pinNumber}</text>
+                    </svg>
+                </div>`,
+                iconSize: [36, 46],
+                iconAnchor: [18, 44]
             });
 
+            const eventLabel = getEventLabel(displayType, fullEv.workType);
             const marker = L.marker(pos, { icon });
-            marker.bindPopup(`<div class="p-2">
-                <p class="font-bold uppercase text-[10px] text-slate-500 tracking-widest">${getEventLabel(e.type, e.workType)}</p>
-                <p class="text-sm font-black text-slate-800">${format(new Date(e.timestamp), 'hh:mm a')}</p>
-                <p class="text-[10px] text-slate-400 mt-1">${e.locationName || 'GPS Location'}</p>
+            marker.bindPopup(`<div style="font-family:sans-serif; padding:6px 8px; min-width:120px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                    <span style="
+                        width:20px; height:20px; border-radius:50%;
+                        background:${color}; color:white;
+                        display:inline-flex; align-items:center; justify-content:center;
+                        font-size:10px; font-weight:900; flex-shrink:0;
+                    ">${pinNumber}</span>
+                    <span style="font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.05em; color:#64748b;">${eventLabel}</span>
+                </div>
+                <p style="font-size:14px; font-weight:900; color:#1e293b; margin:0 0 2px 0;">${format(new Date(fullEv.timestamp), 'hh:mm a')}</p>
+                <p style="font-size:10px; color:#94a3b8; margin:0;">${fullEv.locationName || 'GPS Location'}</p>
             </div>`);
             markersRef.current.addLayer(marker);
         });
 
         if (routeLatLngs.length > 0 && mapRef.current) {
-            mapRef.current.fitBounds(polylineRef.current!.getBounds().pad(0.2));
+            const polylineBounds = polylineRef.current!.getBounds();
+            const markerLatLngs = mappableEvents.map(fullEv => {
+                const sourceEv = userEvents.find(e => e.id === fullEv.id);
+                return sourceEv && sourceEv.latitude && sourceEv.longitude 
+                    ? L.latLng(sourceEv.latitude, sourceEv.longitude) 
+                    : null;
+            }).filter(Boolean) as L.LatLng[];
+            
+            if (markerLatLngs.length > 0) {
+                const combinedBounds = polylineBounds.extend(L.latLngBounds(markerLatLngs));
+                mapRef.current.fitBounds(combinedBounds.pad(0.2));
+            } else {
+                mapRef.current.fitBounds(polylineBounds.pad(0.2));
+            }
         } else if (userEvents.length > 0 && mapRef.current) {
             const group = L.featureGroup(userEvents.map(e => L.marker([e.latitude!, e.longitude!])));
             mapRef.current.fitBounds(group.getBounds().pad(0.2));
@@ -1140,6 +1339,14 @@ const RouteView: React.FC<{
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Punch Out</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <div className="h-3 w-3 rounded-full bg-sky-500 border-2 border-white shadow-[0_0_10px_rgba(14,165,233,0.5)]" />
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Break In</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="h-3 w-3 rounded-full bg-indigo-500 border-2 border-white shadow-[0_0_10px_rgba(99,102,241,0.5)]" />
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Break Out</span>
+                    </div>
+                    <div className="flex items-center gap-3">
                         <div className="h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Site In/Out</span>
                     </div>
@@ -1148,6 +1355,10 @@ const RouteView: React.FC<{
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Site OT</span>
                     </div>
                     <div className="flex items-center gap-3">
+                        <div className="h-3 w-3 rounded-full bg-cyan-500 border-2 border-white shadow-[0_0_10px_rgba(6,182,212,0.5)]" />
+                        <span className="text-[10px] font-bold text-white uppercase tracking-tight">Live Tracking</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 pt-2 border-t border-white/5">
                         <div className="h-1 w-6 bg-indigo-500/50 rounded-full border border-indigo-400/30" />
                         <span className="text-[10px] font-bold text-white uppercase tracking-tight">Movement Path</span>
                     </div>
@@ -1158,7 +1369,7 @@ const RouteView: React.FC<{
 };
 
 const ActivityItem: React.FC<{ 
-    event: (AttendanceEvent & { userName: string, userPhoto?: string | null, userRole?: string }), 
+    event: AttendanceEvent & { userName: string, userPhoto?: string | null, userRole?: string, displayType?: string }, 
     isFirst: boolean, 
     isLast: boolean, 
     knownLocations: Location[],
@@ -1168,7 +1379,9 @@ const ActivityItem: React.FC<{
     onSelect: (userId: string) => void,
     userPlatforms?: string[]
 }> = ({ event, isFirst, isLast, knownLocations, isSelected, onToggle, onFind, onSelect, userPlatforms = [] }) => {
-    const badgeStyles = getEventColor(event.type);
+    
+    const displayType = event.displayType || event.type;
+    const badgeStyles = getEventColor(displayType);
     const [isPinging, setIsPinging] = useState(false);
 
     // Default selection: prefer mobile (android/ios) over web/laptop.
@@ -1212,7 +1425,11 @@ const ActivityItem: React.FC<{
                 />
             </div>
 
-            <div className="absolute left-[10px] top-[48px] bottom-0 w-[1.5px] bg-slate-200 group-last:hidden" />
+            <div className="absolute left-[155px] top-[52px] bottom-[-4px] w-[2px] bg-slate-200 group-last:hidden flex flex-col items-center justify-center z-0">
+                <div className="text-slate-300 transform -translate-y-2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                </div>
+            </div>
 
             <div className="w-20 pt-2 flex flex-col items-end flex-shrink-0">
                 <span className="text-[14px] font-mono font-bold text-primary-text tracking-tighter">
@@ -1243,7 +1460,7 @@ const ActivityItem: React.FC<{
                             <div className="flex items-center gap-3">
                                 <h4 className="text-sm font-black text-primary-text uppercase tracking-tight">{event.userName}</h4>
                                 <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-widest border ${badgeStyles}`}>
-                                    {getEventLabel(event.type, event.workType)}
+                                    {getEventLabel(displayType, event.workType)}
                                 </span>
                             </div>
                             {event.userRole && (
@@ -1491,12 +1708,20 @@ const FieldStaffTracking: React.FC = () => {
             // Filter out any existing 'Current Position' events to avoid duplicates
             let combinedEvents = eventsData.filter(e => !e.id.startsWith('route-'));
             
-            // Map route points to AttendanceEvent format and add them all
-            const mappedRoutePoints = routePoints.map(point => ({
+            // Map ONLY the latest route point per user to AttendanceEvent format
+            const latestRoutePointsMap = new Map<string, typeof routePoints[0]>();
+            routePoints.forEach(point => {
+                const existing = latestRoutePointsMap.get(point.userId);
+                if (!existing || new Date(point.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+                    latestRoutePointsMap.set(point.userId, point);
+                }
+            });
+
+            const mappedRoutePoints = Array.from(latestRoutePointsMap.values()).map(point => ({
                 id: `route-${point.id}`,
                 userId: point.userId,
                 timestamp: point.timestamp,
-                type: 'punch-in', // Treat as a signal event
+                type: 'live-location', // Use distinct type
                 latitude: point.latitude,
                 longitude: point.longitude,
                 locationName: 'Current Position (Live Tracking)',
@@ -1563,16 +1788,67 @@ const FieldStaffTracking: React.FC = () => {
         }
 
         const userMap = new Map<string, User>(users.map(u => [u.id, u]));
-        return results.map(e => {
-            const user = userMap.get(e.userId);
-            return { 
-                ...e, 
-                userName: user?.name || 'System Operator',
-                userPhoto: user?.photoUrl,
-                userRole: user ? roleLabelsMap[user.role] : 'System Operator'
-            };
-        })
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        
+        const eventsByUser = new Map<string, typeof results>();
+        results.forEach(e => {
+            if (!eventsByUser.has(e.userId)) eventsByUser.set(e.userId, []);
+            eventsByUser.get(e.userId)!.push(e);
+        });
+
+        const allDeduplicated: (AttendanceEvent & { userName: string, userPhoto?: string, userRole: string, displayType: string })[] = [];
+
+        eventsByUser.forEach((userEvents, userId) => {
+            const user = userMap.get(userId);
+            
+            // Sort Oldest to Newest to process sequences
+            userEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+            const processedUserEvents = userEvents.map((e, index) => {
+                const isLast = index === userEvents.length - 1;
+                let displayType = e.type;
+                const wType = e.workType || (e as any).work_type;
+                if (displayType === 'punch-in' && (wType === 'field' || wType === 'site')) {
+                    displayType = 'site-in';
+                } else if (displayType === 'punch-out' && (wType === 'field' || wType === 'site')) {
+                    displayType = 'site-out';
+                }
+                
+                return {
+                    ...e,
+                    displayType,
+                    userName: user?.name || 'System Operator',
+                    userPhoto: user?.photoUrl,
+                    userRole: user ? roleLabelsMap[user.role] : 'System Operator'
+                };
+            });
+
+            // Second pass lookahead loop to dynamically override 'punch-in' to 'site-in'
+            // when followed directly by a 'site-out' (ignoring 'live-location' pings)
+            for (let i = 0; i < processedUserEvents.length; i++) {
+                if (processedUserEvents[i].displayType === 'punch-in') {
+                    let nextActiveEvent = null;
+                    for (let j = i + 1; j < processedUserEvents.length; j++) {
+                        if (processedUserEvents[j].displayType !== 'live-location') {
+                            nextActiveEvent = processedUserEvents[j];
+                            break;
+                        }
+                    }
+                    if (nextActiveEvent && nextActiveEvent.displayType === 'site-out') {
+                        processedUserEvents[i].displayType = 'site-in';
+                    }
+                }
+            }
+
+            allDeduplicated.push(...processedUserEvents);
+        });
+
+        return allDeduplicated.sort((a, b) => {
+            const timeDiff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            if (a.displayType === 'live-location' && b.displayType !== 'live-location') return -1;
+            if (b.displayType === 'live-location' && a.displayType !== 'live-location') return 1;
+            return 0;
+        });
     }, [events, users, trackingUsers, selectedUser, selectedRole]);
 
     const paginatedEvents = useMemo(() => {

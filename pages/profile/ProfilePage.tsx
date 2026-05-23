@@ -1666,7 +1666,7 @@ const ProfilePage: React.FC = () => {
                                                                 )}
                                                             </div>
                                                             <Button
-                                                                onClick={() => navigate(siteWorkMode === 'duty' ? '/attendance/check-in?workType=field' : '/attendance/check-in?action=site-ot-in')}
+                                                                onClick={() => navigate(siteWorkMode === 'duty' ? '/attendance/check-in?workType=field&action=site-in' : '/attendance/check-in?workType=site-ot&action=site-ot-in')}
                                                                 className={`w-full !h-11 !rounded-2xl transition-all font-bold uppercase tracking-widest text-[12px] shadow-lg ${siteWorkMode === 'duty' ? '!bg-emerald-600 shadow-emerald-900/10' : '!bg-indigo-600 shadow-indigo-900/10'} ${isOnBreak || isActionInProgress || isPunchBlocked ? 'opacity-50 pointer-events-none' : ''}`}
                                                                 disabled={isOnBreak || isActionInProgress || isPunchBlocked}
                                                             >
@@ -1675,7 +1675,7 @@ const ProfilePage: React.FC = () => {
                                                          </div>
                                                      ) : (
                                                          <Button
-                                                             onClick={() => navigate(isFieldCheckedIn ? '/attendance/check-out?workType=field' : '/attendance/check-out?action=site-ot-out')}
+                                                             onClick={() => navigate(isFieldCheckedIn ? '/attendance/check-out?workType=field&action=site-out' : '/attendance/check-out?workType=site-ot&action=site-ot-out')}
                                                              variant="secondary"
                                                              className="w-full !h-11 !rounded-2xl !bg-red-50 !border-red-100 !text-red-700 font-bold uppercase tracking-widest text-[12px] hover:!bg-red-100"
                                                              disabled={isOnBreak || isActionInProgress || isPunchBlocked}

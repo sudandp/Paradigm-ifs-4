@@ -51,9 +51,9 @@ serve(async (req: Request) => {
     // Get all check-ins and check-outs for today
     const { data: events, error: eventsError } = await supabase
       .from('attendance_events')
-      .select('user_id, event_type, created_at')
-      .gte('created_at', `${todayStr}T00:00:00Z`)
-      .order('created_at', { ascending: false });
+      .select('user_id, type, timestamp')
+      .gte('timestamp', `${todayStr}T00:00:00Z`)
+      .order('timestamp', { ascending: false });
 
     if (eventsError) {
       throw new Error("Failed to fetch events: " + eventsError.message);
@@ -63,15 +63,17 @@ serve(async (req: Request) => {
     const userStatus = new Map<string, string>(); // user_id -> latest event_type
     if (events) {
       for (const event of events) {
-        if (!userStatus.has(event.user_id)) {
-          userStatus.set(event.user_id, event.event_type);
+        if (event.type === 'punch-in' || event.type === 'punch-out') {
+          if (!userStatus.has(event.user_id)) {
+            userStatus.set(event.user_id, event.type);
+          }
         }
       }
     }
 
     const activeUserIds = [];
     for (const [userId, eventType] of userStatus.entries()) {
-      if (eventType === 'check_in') {
+      if (eventType === 'punch-in') {
         activeUserIds.push(userId);
       }
     }
@@ -91,10 +93,10 @@ serve(async (req: Request) => {
     // Check tracking_audit_logs
     const { data: recentLogs, error: logsError } = await supabase
       .from('tracking_audit_logs')
-      .select('user_id, created_at')
-      .in('user_id', activeUserIds)
-      .gte('created_at', timeThreshold)
-      .order('created_at', { ascending: false });
+      .select('target_user_id, requested_at')
+      .in('target_user_id', activeUserIds)
+      .gte('requested_at', timeThreshold)
+      .order('requested_at', { ascending: false });
 
     if (logsError && logsError.code !== '42P01') { // Ignore if table doesn't exist
        console.warn("Could not fetch tracking_audit_logs:", logsError);
@@ -102,7 +104,7 @@ serve(async (req: Request) => {
 
     if (recentLogs) {
       for (const log of recentLogs) {
-        recentlyPingedUsers.add(log.user_id);
+        recentlyPingedUsers.add(log.target_user_id);
       }
     }
 

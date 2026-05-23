@@ -1800,51 +1800,91 @@ const AttendanceDashboard: React.FC = () => {
         const startStr = format(dateRange.startDate, 'yyyy-MM-dd');
         const endStr = format(dateRange.endDate, 'yyyy-MM-dd');
 
-        return attendanceEvents
-            .filter(e => {
-                if (!targetUserIds.has(e.userId)) return false;
-                const sessionDateStr = dayKeyMapLogs[e.id];
-                return sessionDateStr && sessionDateStr >= startStr && sessionDateStr <= endStr;
-            })
-            .map(e => {
-                const user = usersMap.get(e.userId) as any;
-                // Priority: 1) event.locationName (stored in DB), 2) fallback to lat/lon if present
-                const location = e.locationName || 
-                                (e.latitude && e.longitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : 'N/A');
+        const filteredEvents = attendanceEvents.filter(e => {
+            if (!targetUserIds.has(e.userId)) return false;
+            const sessionDateStr = dayKeyMapLogs[e.id];
+            return sessionDateStr && sessionDateStr >= startStr && sessionDateStr <= endStr;
+        });
 
-                let displayType = e.type.replace('-', ' ');
-                if (e.workType === 'field') {
-                    if (e.type === 'punch-in') displayType = 'Site Check In';
-                    else if (e.type === 'punch-out') displayType = 'Site Check Out';
+        const eventsByUserLog = new Map<string, typeof filteredEvents>();
+        filteredEvents.forEach(e => {
+            if (!eventsByUserLog.has(e.userId)) eventsByUserLog.set(e.userId, []);
+            eventsByUserLog.get(e.userId)!.push(e);
+        });
+
+        const processedLogEvents: typeof filteredEvents = [];
+
+        eventsByUserLog.forEach((userEvents, userId) => {
+            // Sort chronologically for sequence logic
+            userEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+            const processedUserEvents = userEvents.map(e => {
+                let displayType = e.type;
+                let wType = String(e.workType).toLowerCase();
+                if (displayType === 'punch-in' && (wType === 'field' || wType === 'site')) {
+                    displayType = 'site-in';
+                } else if (displayType === 'punch-out' && (wType === 'field' || wType === 'site')) {
+                    displayType = 'site-out';
                 }
-
-                // Use session-anchored date for night shifts
-                const sessionDateStr = dayKeyMapLogs[e.id];
-                const displayDate = sessionDateStr ? format(new Date(sessionDateStr.replace(/-/g, '/')), 'dd MMM yyyy') : '-';
-
-                return {
-                    userName: user?.name || 'Unknown',
-                    date: displayDate,
-                    time: format(new Date(e.timestamp), 'HH:mm:ss'),
-                    type: displayType,
-                    locationName: location,
-                    latitude: e.latitude,
-                    longitude: e.longitude,
-                    workType: e.workType,
-                    device: e.deviceId && kioskDeviceMap.has(e.deviceId) 
-                        ? kioskDeviceMap.get(e.deviceId) 
-                        : (e.source === 'gate-kiosk' && e.locationId && kioskLocationMap.has(e.locationId))
-                            ? kioskLocationMap.get(e.locationId)
-                            : (e.deviceName || (e as any).device || '-'),
-                    isCached: e.isCached,
-                    cachedAt: (e as any).cachedAt
-                };
-            })
-            .sort((a, b) => {
-                // Newest first: Sort by date then time descending
-                if (a.date !== b.date) return b.date.localeCompare(a.date);
-                return b.time.localeCompare(a.time);
+                return { ...e, displayType };
             });
+
+            // Second pass lookahead
+            for (let i = 0; i < processedUserEvents.length; i++) {
+                if (processedUserEvents[i].displayType === 'punch-in') {
+                    let nextActiveEvent = null;
+                    for (let j = i + 1; j < processedUserEvents.length; j++) {
+                        if (processedUserEvents[j].displayType !== 'live-location') {
+                            nextActiveEvent = processedUserEvents[j];
+                            break;
+                        }
+                    }
+                    if (nextActiveEvent && nextActiveEvent.displayType === 'site-out') {
+                        processedUserEvents[i].displayType = 'site-in';
+                    }
+                }
+            }
+
+            processedLogEvents.push(...processedUserEvents);
+        });
+
+        return processedLogEvents.map(e => {
+            const user = usersMap.get(e.userId) as any;
+            const location = e.locationName || 
+                            (e.latitude && e.longitude ? `${e.latitude.toFixed(4)}, ${e.longitude.toFixed(4)}` : 'N/A');
+
+            let finalType = (e as any).displayType.replace('-', ' ');
+            if (finalType === 'site in') finalType = 'Site Check In';
+            if (finalType === 'site out') finalType = 'Site Check Out';
+            if (finalType === 'punch in') finalType = 'Punch In';
+            if (finalType === 'punch out') finalType = 'Punch Out';
+
+            // Use session-anchored date for night shifts
+            const sessionDateStr = dayKeyMapLogs[e.id];
+            const displayDate = sessionDateStr ? format(new Date(sessionDateStr.replace(/-/g, '/')), 'dd MMM yyyy') : '-';
+
+            return {
+                userName: user?.name || 'Unknown',
+                date: displayDate,
+                time: format(new Date(e.timestamp), 'HH:mm:ss'),
+                type: finalType,
+                locationName: location,
+                latitude: e.latitude,
+                longitude: e.longitude,
+                workType: e.workType,
+                device: e.deviceId && kioskDeviceMap.has(e.deviceId) 
+                    ? kioskDeviceMap.get(e.deviceId) 
+                    : (e.source === 'gate-kiosk' && e.locationId && kioskLocationMap.has(e.locationId))
+                        ? kioskLocationMap.get(e.locationId)
+                        : (e.deviceName || (e as any).device || '-'),
+                isCached: e.isCached,
+                cachedAt: (e as any).cachedAt
+            };
+        }).sort((a, b) => {
+            // Newest first: Sort by date then time descending
+            if (a.date !== b.date) return b.date.localeCompare(a.date);
+            return b.time.localeCompare(a.time);
+        });
 
     }, [users, attendanceEvents, dateRange, selectedUser, selectedRole, selectedCompany, selectedSite, selectedLocation, selectedStatus, kioskDevices, orgStructure]);
 
