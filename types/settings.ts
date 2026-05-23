@@ -41,6 +41,10 @@ export interface ApiSettings {
   autoBackupEnabled: boolean;
   backupSchedule?: BackupSchedule;
   appVersion?: string;
+  automatedTracking?: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
 }
 
 export interface NotificationSettings {

@@ -119,7 +119,8 @@ Deno.serve(async (req: Request) => {
       }
 
       // Check Timing for this specific group
-      const checkoutTime = rules.fixedOfficeHours?.checkOutTime || '19:30';
+      const triggerTimes = config?.triggerTimes || {};
+      const checkoutTime = triggerTimes[group] || rules.fixedOfficeHours?.checkOutTime || '19:30';
       // Handle both ':' and '.' as separators
       const timeParts = checkoutTime.includes('.') ? checkoutTime.split('.') : checkoutTime.split(':');
       const [confHour, confMinute] = timeParts.map(Number);

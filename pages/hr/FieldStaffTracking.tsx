@@ -21,8 +21,8 @@ import { isAdmin } from '../../utils/auth';
 const getEventLabel = (type: string, workType?: 'office' | 'field' | 'site'): string => {
     if (workType === 'field' || workType === 'site') {
         const fieldLabels: Record<string, string> = {
-            'punch-in': 'Site Check In',
-            'punch-out': 'Site Check Out',
+            'punch-in': 'Punch In',
+            'punch-out': 'Punch Out',
             'site-in': 'Site Entry',
             'site-out': 'Site Exit',
             'site-ot-in': 'Site OT Start',
@@ -638,6 +638,7 @@ const RouteView: React.FC<{
     const tileLayerRef = useRef<L.TileLayer | null>(null);
     const { theme } = useThemeStore();
     const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
+    const [snappedRoute, setSnappedRoute] = useState<L.LatLngTuple[] | null>(null);
     const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
     const userEvents = useMemo(() => {
@@ -649,23 +650,85 @@ const RouteView: React.FC<{
     const routeStats = useMemo(() => {
         if (routePoints.length < 2) return null;
         let totalDist = 0;
+        let movingTimeMs = 0;
+        
         for (let i = 0; i < routePoints.length - 1; i++) {
-            totalDist += calculateDistanceMeters(
+            const distMeters = calculateDistanceMeters(
                 routePoints[i].latitude, routePoints[i].longitude,
                 routePoints[i+1].latitude, routePoints[i+1].longitude
             );
+            totalDist += distMeters;
+            
+            // Only count time if they actually moved a reasonable distance (e.g., > 10 meters) 
+            // between pings, to exclude stationary time at a site
+            const timeDiffMs = new Date(routePoints[i+1].timestamp).getTime() - new Date(routePoints[i].timestamp).getTime();
+            if (distMeters > 15) {
+                movingTimeMs += timeDiffMs;
+            }
         }
+        
         const startTime = new Date(routePoints[0].timestamp).getTime();
         const endTime = new Date(routePoints[routePoints.length - 1].timestamp).getTime();
-        const durationMs = endTime - startTime;
-        const durationHrs = durationMs / (1000 * 60 * 60);
-        const avgSpeed = durationHrs > 0 ? (totalDist / 1000) / durationHrs : 0;
+        const totalDurationMs = endTime - startTime;
+        
+        // Use moving time for speed if available, otherwise fallback to total duration
+        const speedDurationHrs = movingTimeMs > 0 ? movingTimeMs / (1000 * 60 * 60) : totalDurationMs / (1000 * 60 * 60);
+        const avgSpeed = speedDurationHrs > 0 ? (totalDist / 1000) / speedDurationHrs : 0;
 
         return {
             distance: (totalDist / 1000).toFixed(2),
-            duration: (durationMs / (1000 * 60)).toFixed(0),
+            duration: (totalDurationMs / (1000 * 60)).toFixed(0),
             avgSpeed: avgSpeed.toFixed(1)
         };
+    }, [routePoints]);
+
+    useEffect(() => {
+        if (routePoints.length < 2) {
+            setSnappedRoute(null);
+            return;
+        }
+
+        const fetchSnappedRoute = async () => {
+            try {
+                // Chunk points to respect OSRM limit (using 25 to be safe)
+                const chunkSize = 25;
+                let allSnapped: L.LatLngTuple[] = [];
+
+                for (let i = 0; i < routePoints.length; i += chunkSize - 1) {
+                    const chunk = routePoints.slice(i, i + chunkSize);
+                    if (chunk.length < 2) break;
+                    
+                    const coordsString = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
+                    const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`);
+                    
+                    if (!response.ok) throw new Error('OSRM API failed');
+                    
+                    const data = await response.json();
+                    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                        const route = data.routes[0];
+                        if (route.geometry && route.geometry.coordinates) {
+                            route.geometry.coordinates.forEach((coord: [number, number]) => {
+                                // GeoJSON is [lng, lat], Leaflet wants [lat, lng]
+                                allSnapped.push([coord[1], coord[0]]);
+                            });
+                        }
+                    } else {
+                        throw new Error('No valid route found in chunk');
+                    }
+                }
+                
+                if (allSnapped.length > 0) {
+                    setSnappedRoute(allSnapped);
+                } else {
+                    setSnappedRoute(null); // Fallback to raw points
+                }
+            } catch (error) {
+                console.warn('Failed to fetch snapped route, falling back to raw points', error);
+                setSnappedRoute(null);
+            }
+        };
+
+        fetchSnappedRoute();
     }, [routePoints]);
 
     useEffect(() => {
@@ -742,14 +805,84 @@ const RouteView: React.FC<{
         markersRef.current.clearLayers();
         if (polylineRef.current) mapRef.current.removeLayer(polylineRef.current);
 
+        const addArrows = (points: {latitude: number, longitude: number}[]) => {
+            if (points.length < 2) return;
+            // Add arrows every few points based on length to prevent clutter, up to 20 arrows
+            const step = Math.max(1, Math.floor(points.length / 15)); 
+            
+            for (let i = 0; i < points.length - 1; i += step) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                
+                // Calculate distance, skip if too close to avoid overlapping erratic arrows
+                const dist = Math.sqrt(Math.pow(p2.latitude - p1.latitude, 2) + Math.pow(p2.longitude - p1.longitude, 2));
+                if (dist < 0.0001) continue;
+                
+                const dy = p2.latitude - p1.latitude;
+                const dx = (p2.longitude - p1.longitude) * Math.cos(p1.latitude * Math.PI / 180);
+                const angle = -(Math.atan2(dy, dx) * 180 / Math.PI);
+                
+                const arrowIcon = L.divIcon({
+                    className: '',
+                    html: `<div style="transform: rotate(${angle}deg); color: #1E40AF; font-size: 14px; font-weight: 900; text-shadow: 0px 0px 3px white, 0px 0px 3px white; text-align: center; width: 14px; height: 14px; line-height: 14px; margin-top: -7px; margin-left: -7px; pointer-events: none;">➤</div>`,
+                    iconSize: [0, 0]
+                });
+                
+                // Place arrow slightly along the path
+                const midLat = p1.latitude + (p2.latitude - p1.latitude) * 0.5;
+                const midLng = p1.longitude + (p2.longitude - p1.longitude) * 0.5;
+                L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(markersRef.current);
+            }
+        };
+
         const routeLatLngs: L.LatLngTuple[] = routePoints.map(p => [p.latitude, p.longitude]);
-        if (routeLatLngs.length > 0) {
+        
+        if (snappedRoute && snappedRoute.length > 0) {
+            polylineRef.current = L.polyline(snappedRoute, { 
+                color: '#3B82F6', 
+                weight: 6, 
+                opacity: 0.9,
+                smoothFactor: 1.5 
+            }).addTo(mapRef.current);
+            
+            // Draw arrows along the snapped route
+            const snappedPoints = snappedRoute.map(p => ({ latitude: p[0], longitude: p[1] }));
+            addArrows(snappedPoints);
+            
+            // Draw original GPS pings as dots so we know where the actual pings were
+            routePoints.forEach((p, idx) => {
+                if (idx % 3 === 0 || idx === routePoints.length - 1) { 
+                    const dot = L.circleMarker([p.latitude, p.longitude], {
+                        radius: 4,
+                        fillColor: '#3B82F6',
+                        fillOpacity: 0.6,
+                        color: 'white',
+                        weight: 2
+                    });
+                    
+                    const time = format(new Date(p.timestamp), 'hh:mm:ss a');
+                    const speed = p.speed ? `${(p.speed * 3.6).toFixed(1)} km/h` : 'Stationary';
+                    dot.bindTooltip(`
+                        <div class="px-2 py-1 font-sans">
+                            <p class="font-bold text-[10px] text-slate-500 uppercase">GPS Ping</p>
+                            <p class="text-xs font-black text-slate-900">${time}</p>
+                            <p class="text-[10px] text-blue-600 mt-1">${speed}</p>
+                        </div>
+                    `, { sticky: true });
+                    
+                    markersRef.current.addLayer(dot);
+                }
+            });
+        } else if (routeLatLngs.length > 0) {
+            // Fallback to straight lines if OSRM failed or is loading
             polylineRef.current = L.polyline(routeLatLngs, { 
                 color: '#3B82F6', 
                 weight: 6, 
                 opacity: 0.9,
                 smoothFactor: 1.5 
             }).addTo(mapRef.current);
+            
+            addArrows(routePoints);
             
             routePoints.forEach((p, idx) => {
                 if (idx % 3 === 0 || idx === routePoints.length - 1) { 
@@ -775,6 +908,7 @@ const RouteView: React.FC<{
                 }
             });
         } else if (userEvents.length > 1) {
+            // Fallback for when there are no continuous route points, just event check-ins
             const eventLatLngs: L.LatLngTuple[] = userEvents.map(e => [e.latitude as number, e.longitude as number]);
             polylineRef.current = L.polyline(eventLatLngs, { 
                 color: '#3B82F6', 
@@ -782,16 +916,40 @@ const RouteView: React.FC<{
                 opacity: 0.8,
                 lineJoin: 'round'
             }).addTo(mapRef.current);
+            
+            addArrows(userEvents as {latitude: number, longitude: number}[]);
         }
+
+        // First sort all user's events to find chronological order
+        const allUserEvents = events
+            .filter(e => e.userId === selectedUser)
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         userEvents.forEach((e) => {
             const pos: L.LatLngTuple = [e.latitude as number, e.longitude as number];
-            const color = e.type === 'punch-in' ? '#10B981' 
-                        : e.type === 'punch-out' ? '#EF4444' 
-                        : e.type === 'site-in' ? '#3B82F6' 
-                        : e.type === 'site-out' ? '#64748B'
-                        : e.type === 'site-ot-in' ? '#F59E0B'
-                        : e.type === 'site-ot-out' ? '#EA580C'
+            
+            // Find the index of this event in the FULL chronological list
+            const fullIdx = allUserEvents.findIndex(ev => ev.id === e.id);
+            const isFirst = fullIdx === 0;
+            const isLast = fullIdx === allUserEvents.length - 1;
+            
+            let displayType = e.type;
+            
+            // Smart Pin Interpretation: Treat intermediate punches as site entries/exits 
+            // since field staff often press the wrong buttons on the mobile app
+            if (e.type === 'punch-in' && !isFirst) {
+                displayType = 'site-in';
+            }
+            if (e.type === 'punch-out' && !isLast) {
+                displayType = 'site-out';
+            }
+
+            const color = displayType === 'punch-in' ? '#10B981' 
+                        : displayType === 'punch-out' ? '#EF4444' 
+                        : displayType === 'site-in' ? '#3B82F6' 
+                        : displayType === 'site-out' ? '#64748B'
+                        : displayType === 'site-ot-in' ? '#F59E0B'
+                        : displayType === 'site-ot-out' ? '#EA580C'
                         : '#94A3B8';
             const icon = L.divIcon({
                 className: '',
@@ -817,7 +975,7 @@ const RouteView: React.FC<{
             const group = L.featureGroup(userEvents.map(e => L.marker([e.latitude!, e.longitude!])));
             mapRef.current.fitBounds(group.getBounds().pad(0.2));
         }
-    }, [routePoints, userEvents, selectedUser, users]);
+    }, [routePoints, userEvents, selectedUser, users, snappedRoute]);
 
     return (
         <div className="relative group">

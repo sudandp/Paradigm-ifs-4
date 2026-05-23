@@ -214,7 +214,40 @@ export const ApiSettings: React.FC = () => {
                                 </div>
                             </div>
 
-
+                            <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
+                                <Checkbox 
+                                    id="auto-tracking-enabled" 
+                                    label="Enable Automated Background Tracking Pings" 
+                                    description="Automatically request location updates from active field staff in the background via silent push notifications." 
+                                    checked={store.apiSettings.automatedTracking?.enabled || false} 
+                                    onChange={e => store.updateApiSettings({ 
+                                        automatedTracking: { 
+                                            ...(store.apiSettings.automatedTracking || { intervalMinutes: 15 }), 
+                                            enabled: e.target.checked 
+                                        } 
+                                    })} 
+                                />
+                                
+                                {store.apiSettings.automatedTracking?.enabled && (
+                                    <div className="mt-4 pt-4 border-t border-border">
+                                        <label htmlFor="tracking-interval" className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isMobile ? 'text-white/70' : 'text-muted'}`}>Ping Interval (Minutes)</label>
+                                        <Input 
+                                            id="tracking-interval"
+                                            type="number"
+                                            min={1}
+                                            className="max-w-[150px]"
+                                            value={store.apiSettings.automatedTracking?.intervalMinutes || 15}
+                                            onChange={e => store.updateApiSettings({ 
+                                                automatedTracking: { 
+                                                    ...(store.apiSettings.automatedTracking || { enabled: true }), 
+                                                    intervalMinutes: parseInt(e.target.value) || 15
+                                                } 
+                                            })}
+                                        />
+                                        <p className="text-xs text-muted italic mt-2">How frequently should the system ping active employees for location updates. (Default: 15 minutes)</p>
+                                    </div>
+                                )}
+                            </div>
 
                             <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
 

@@ -2298,6 +2298,40 @@ const AttendanceSettings: React.FC = () => {
                                 </div>
                             )}
                         </div>
+
+                        <div className="mt-8">
+                            <h4 className="text-sm font-medium text-muted mb-3 uppercase tracking-wider">3. Set Auto Check-out Times</h4>
+                            <p className="text-sm text-muted mb-4">Set the specific time each staff category should be automatically checked out if they miss their check-out.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {(['office', 'field', 'site'] as const).map(group => {
+                                    if (!localAttendance.missedCheckoutConfig?.enabledGroups?.includes(group)) return null;
+                                    const triggerTimes = localAttendance.missedCheckoutConfig?.triggerTimes || {};
+                                    const value = triggerTimes[group] || localAttendance[group]?.fixedOfficeHours?.checkOutTime || '19:30';
+                                    return (
+                                        <div key={group} className="bg-page rounded-lg border border-border/50 p-4">
+                                            <Input
+                                                id={`checkout-time-${group}`}
+                                                label={`${group.charAt(0).toUpperCase() + group.slice(1)} Auto Check-out Time`}
+                                                type="time"
+                                                value={value}
+                                                onChange={(e) => {
+                                                    setLocalAttendance(prev => ({
+                                                        ...prev,
+                                                        missedCheckoutConfig: {
+                                                            ...(prev.missedCheckoutConfig || { enabledGroups: ['office'] }),
+                                                            triggerTimes: {
+                                                                ...(prev.missedCheckoutConfig?.triggerTimes || {}),
+                                                                [group]: e.target.value
+                                                            }
+                                                        }
+                                                    }));
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
                         <div className="pt-6 border-t border-border/50">
@@ -2308,7 +2342,7 @@ const AttendanceSettings: React.FC = () => {
                                     Auto-Checkout Active
                                 </p>
                                 <p className="text-xs text-muted mt-1">
-                                    The system automatically checks out eligible staff at your configured <strong>Check-out End Time</strong> (currently {localAttendance.office.fixedOfficeHours?.checkOutTime || '19:30'}).
+                                    The system automatically checks out eligible staff at their configured <strong>Auto Check-out Time</strong>.
                                     This check runs every 15 minutes. You can also use the button below to manually run the trigger immediately for testing or overrides.
                                 </p>
                             </div>

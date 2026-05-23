@@ -259,6 +259,13 @@ export interface AttendanceSettings {
       admin?: string[];
       management?: string[];
     };
+    triggerTimes?: {
+      office?: string;
+      field?: string;
+      site?: string;
+      admin?: string;
+      management?: string;
+    };
   };
 }
 

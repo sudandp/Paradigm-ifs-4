@@ -242,11 +242,11 @@ const LeaveDashboard: React.FC = () => {
 
         // ── Cache-first: render cached data instantly while live fetch runs ──
         try {
-            if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
-                setEvents(cachedEvents);
-                // If we have cached events, allow the UI to render immediately
-                setIsLoading(false);
-            }
+            // if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
+            //     setEvents(cachedEvents);
+            //     // If we have cached events, allow the UI to render immediately
+            //     setIsLoading(false);
+            // }
         } catch (cacheErr) {
             // Cache miss is fine — we'll fetch live data below
         }
