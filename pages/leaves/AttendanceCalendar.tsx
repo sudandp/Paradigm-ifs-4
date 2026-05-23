@@ -211,21 +211,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             const visuallyActivePrev = (daysPresentInPreviousWeek >= threshold);
             const visuallyActiveCurr = (daysActiveInWeek >= threshold);
 
-            if (isDetailedPresent) {
-                // If worked on a Sunday or Holiday, set a special status
-                if (isCompanyHoliday) {
-                    finalStatus = 'holiday-present';
-                } else if (isSunday || (isRecurringHoliday && !isFloatingExpired)) {
+            if (isCompanyHoliday) {
+                finalStatus = isDetailedPresent ? 'holiday-present' : 'company-holiday';
+            } else if (isRecurringHoliday && !isFloatingExpired) {
+                finalStatus = isDetailedPresent ? 'weekend-present' : 'floating-holiday';
+            } else if (foundLeave && foundLeave.dayOption !== 'half' && (foundLeave as any).day_option !== 'half') {
+                // Full-day approved/active leave takes priority over any presence/attendance logs
+                finalStatus = 'leave';
+            } else if (isDetailedPresent) {
+                if (isSunday) {
                     finalStatus = 'weekend-present';
                 } else {
                     finalStatus = 'present';
                 }
-            } else if (isCompanyHoliday) {
-                // Always show HOLIDAY color — it's a designated company holiday, overrides leave requests
-                finalStatus = 'company-holiday';
-            } else if (isRecurringHoliday && !isFloatingExpired) {
-                // Always show FLOAT color — it's a designated Blue Leave day, overrides leave requests (like SL applied by mistake)
-                finalStatus = 'floating-holiday';
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isSunday) {

@@ -708,8 +708,10 @@ export function evaluateAttendanceStatus(params: {
       String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
   );
 
+  const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && (approvedLeave as any).day_option !== 'half';
+
   // B. Handle Combinations or pure status
-  if (workStatus && workStatus !== 'A') {
+  if (workStatus && workStatus !== 'A' && !isFullDayLeave) {
       const lType = String(approvedLeave?.leaveType || (approvedLeave as any)?.type || '').toLowerCase();
       const isWFH = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
 

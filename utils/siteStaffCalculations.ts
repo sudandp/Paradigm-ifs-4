@@ -267,7 +267,9 @@ export function evaluateSiteStaffStatus(params: any): string {
   const weeklyOffDays = userRules?.weeklyOffDays || [0];
   const isWeeklyOffDay = weeklyOffDays.includes(dayOfWeek);
 
-  if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P') {
+  const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && approvedLeave.day_option !== 'half';
+
+  if ((baseWorkStatus === 'P' || baseWorkStatus === '1/2P') && !isFullDayLeave) {
     if (isHoliday) {
       // Overtime Rule: Only one HP or 1/2HP per day. 
       return baseWorkStatus === 'P' ? 'HP' : '1/2HP';
