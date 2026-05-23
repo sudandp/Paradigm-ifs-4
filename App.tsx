@@ -621,7 +621,7 @@ const App: React.FC = () => {
                 } catch (e) {}
                 
                 const { breakReminderInterval } = useAuthStore.getState();
-                const elapsed: number = (notification as any).extra?.elapsedMinutes ?? breakReminderInterval ?? 0.1666;
+                const elapsed: number = (notification as any).extra?.elapsedMinutes ?? breakReminderInterval ?? 5;
                 console.log('[App] Triggering break alert modal directly (foreground):', elapsed);
                 triggerBreakAlert(elapsed);
             }
@@ -644,7 +644,7 @@ const App: React.FC = () => {
                 if (success) navigate('/profile', { replace: true });
             } else if (actionId === 'CONTINUE_BREAK' || actionId === 'OPEN_MODAL') {
                 const { breakReminderInterval } = useAuthStore.getState();
-                const elapsedMins = elapsed || breakReminderInterval || 0.1666;
+                const elapsedMins = elapsed || breakReminderInterval || 5;
                 console.log('[App] Triggering break alert modal directly:', elapsedMins);
                 triggerBreakAlert(elapsedMins);
             }

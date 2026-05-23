@@ -381,8 +381,9 @@ const AttendanceActionPage: React.FC = () => {
                                                 <span className={`text-[10px] font-bold tabular-nums transition-colors ${isAlarmEnabled ? 'text-emerald-400' : 'text-slate-600'}`}>{alarmVolume}%</span>
                                             </div>
                                         </div>
-                                        <div className="relative h-6 flex items-center group">
-                                            <div className="absolute inset-x-0 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                        <div className="relative h-8 flex items-center group">
+                                            {/* Visual track — pointer-events-none so touch goes to the range input */}
+                                            <div className="absolute inset-x-0 h-1.5 bg-white/5 rounded-full overflow-hidden pointer-events-none">
                                                 <motion.div 
                                                     initial={false}
                                                     animate={{ width: `${alarmVolume}%` }}
@@ -390,6 +391,13 @@ const AttendanceActionPage: React.FC = () => {
                                                     style={{ boxShadow: isAlarmEnabled ? '0 0 10px rgba(16,185,129,0.3)' : 'none' }}
                                                 />
                                             </div>
+                                            {/* Custom Thumb — purely visual */}
+                                            <motion.div 
+                                                animate={{ left: `calc(${alarmVolume}% - 10px)` }}
+                                                className={`absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 transition-colors pointer-events-none ${isAlarmEnabled ? 'bg-white border-emerald-500' : 'bg-slate-600 border-slate-700'}`}
+                                                style={{ boxShadow: isAlarmEnabled ? '0 0 15px rgba(16,185,129,0.4)' : 'none' }}
+                                            />
+                                            {/* Actual range input — on top, full width, interactable */}
                                             <input 
                                                 type="range"
                                                 min="0"
@@ -397,13 +405,8 @@ const AttendanceActionPage: React.FC = () => {
                                                 value={alarmVolume}
                                                 onChange={(e) => setAlarmVolume(parseInt(e.target.value))}
                                                 disabled={!isAlarmEnabled}
-                                                className="absolute inset-x-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-                                            />
-                                            {/* Custom Thumb */}
-                                            <motion.div 
-                                                animate={{ left: `calc(${alarmVolume}% - 10px)` }}
-                                                className={`absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 transition-colors z-0 pointer-events-none ${isAlarmEnabled ? 'bg-white border-emerald-500' : 'bg-slate-600 border-slate-700'}`}
-                                                style={{ boxShadow: isAlarmEnabled ? '0 0 15px rgba(16,185,129,0.4)' : 'none' }}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                                style={{ zIndex: 20 }}
                                             />
                                         </div>
                                     </div>

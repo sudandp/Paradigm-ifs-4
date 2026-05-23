@@ -762,7 +762,7 @@ export const useAuthStore = create<AuthState>()(
                     const { breakReminderInterval, breakLimit } = get();
                     restoreBreakRemindersOnResume(
                         new Date(lastBreakIn),
-                        breakReminderInterval || 0.1666,
+                        breakReminderInterval || 5,
                         breakLimit || 60
                     ).catch(e => console.warn('[authStore] Failed to restore break reminders on resume:', e));
                 } else if (!isOnBreak) {
@@ -982,11 +982,11 @@ export const useAuthStore = create<AuthState>()(
                         cancelNotification('BREAK_END');
                     } else if (newType === 'break-in') {
                         // Persist user-selected interval so the web foreground monitor can read it
-                        set({ breakReminderInterval: breakInterval || 0.1666 });
+                        set({ breakReminderInterval: breakInterval || 5 });
                         // Schedule Break End Reminder (native)
                         scheduleBreakEndReminder(new Date(), get().breakLimit);
                         // Schedule recurring step reminders (native)
-                        scheduleStepBreakReminders(new Date(), breakInterval || 0.1666);
+                        scheduleStepBreakReminders(new Date(), breakInterval || 5);
                     } else if (newType === 'break-out') {
                         // Alarms are already cancelled at the start of the function to prevent ringing
                     }

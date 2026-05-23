@@ -37,7 +37,7 @@ const BreakAlertModal: React.FC = () => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const pulseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const [selectedInterval, setSelectedInterval] = useState<number>(breakReminderInterval || 0.1666);
+    const [selectedInterval, setSelectedInterval] = useState<number>(breakReminderInterval || 5);
     const [isLoading, setIsLoading] = useState(false);
     const [pulse, setPulse] = useState(false);
 
@@ -84,7 +84,7 @@ const BreakAlertModal: React.FC = () => {
     // Sync selectedInterval to store's value on open
     useEffect(() => {
         if (showModal) {
-            setSelectedInterval(breakReminderInterval || 0.1666);
+            setSelectedInterval(breakReminderInterval || 5);
             startAlarm();
         } else {
             stopAlarm();
@@ -93,37 +93,20 @@ const BreakAlertModal: React.FC = () => {
     }, [showModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Handle: Extend Break ───────────────────────────────────────────────────
+    // Only reschedules the local reminder timer. Does NOT create a new DB event.
+    // The original break-in event is the only one recorded; "Continue Break" just
+    // means "remind me again in X minutes" — purely a local alarm operation.
     const handleContinueBreak = async () => {
         setIsLoading(true);
         stopAlarm();
         try {
-            // Local cancel/reschedule
+            // Cancel existing reminders and reschedule with the selected interval
             await cancelStepBreakReminders();
-            
-            // Sync: Trigger a new 'break-in' event in the database.
-            // This will fire the realtime listener on all other devices (like Android),
-            // causing them to refresh their status and reset their own reminder timers.
-            const { success, message } = await toggleCheckInStatus(
-                `Break acknowledged: Still on break (${selectedInterval}m interval)`,
-                null,
-                'office',
-                undefined,
-                'break-in',
-                selectedInterval
-            );
-
-            if (success) {
-                // If DB sync succeeded, the local schedule will be handled by the subsequent
-                // checkAttendanceStatus refresh, but we can also do it here for immediate feedback.
-                await scheduleStepBreakReminders(new Date(), selectedInterval);
-                useAuthStore.setState({ breakReminderInterval: selectedInterval });
-            } else {
-                console.warn('[BreakAlert] Sync failed:', message);
-                // Fallback: still try to reschedule locally even if DB sync failed
-                await scheduleStepBreakReminders(new Date(), selectedInterval);
-            }
+            await scheduleStepBreakReminders(new Date(), selectedInterval);
+            useAuthStore.setState({ breakReminderInterval: selectedInterval });
+            console.log(`[BreakAlert] Break continued — next reminder in ${selectedInterval}m (no DB event)`);
         } catch (err) {
-            console.warn('[BreakAlert] Failed to acknowledge break:', err);
+            console.warn('[BreakAlert] Failed to reschedule break reminder:', err);
         } finally {
             setIsLoading(false);
             dismissAlert();

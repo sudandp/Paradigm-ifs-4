@@ -693,6 +693,15 @@ export const restoreBreakRemindersOnResume = async (breakStartTime: Date, interv
     // Only restore if break is still within the allowed break limit
     if (elapsedMs >= breakLimitMinutes * 60 * 1000) return;
 
+    // ── Web guard: Don't reset an already-running setInterval ─────────────
+    // checkAttendanceStatus calls this on every realtime event and app resume.
+    // Without this guard, the 5-minute countdown would restart from 0 every
+    // time, meaning the alert would never actually fire.
+    if (!Capacitor.isNativePlatform() && _webBreakIntervalId !== null) {
+        console.log('[BreakReminder] Web interval already active — skipping restore.');
+        return;
+    }
+
     console.log(`[BreakReminder] Restoring reminders — elapsed ${Math.round(elapsedMs / 60000)}m, interval ${intervalMinutes}m`);
 
     // Use the original breakStartTime so interval steps line up correctly
