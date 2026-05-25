@@ -28,7 +28,8 @@ const PRESETS = [
 const AlarmDial: React.FC<{
     selectedIndex: number;
     onSelect: (i: number) => void;
-}> = ({ selectedIndex, onSelect }) => {
+    isLightMode?: boolean;
+}> = ({ selectedIndex, onSelect, isLightMode = false }) => {
     const size = 240;
     const cx = size / 2;
     const cy = size / 2;
@@ -68,7 +69,7 @@ const AlarmDial: React.FC<{
                     const iy = cy + radius * Math.sin(rad);
                     return (
                         <line key={i} x1={ix} y1={iy} x2={tx} y2={ty}
-                            stroke={i <= selectedIndex ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.08)'}
+                            stroke={i <= selectedIndex ? 'rgba(16,185,129,0.6)' : (isLightMode ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)')}
                             strokeWidth="2" strokeLinecap="round"
                         />
                     );
@@ -83,13 +84,13 @@ const AlarmDial: React.FC<{
                     return (
                         <g key={i} onClick={() => onSelect(i)} style={{ cursor: 'pointer' }}>
                             <circle cx={dx} cy={dy} r={isActive ? dotRadius : 14}
-                                fill={isActive ? 'rgba(16,185,129,0.9)' : 'rgba(255,255,255,0.06)'}
-                                stroke={isActive ? 'rgba(52,211,153,0.8)' : 'rgba(255,255,255,0.1)'}
+                                fill={isActive ? 'rgba(16,185,129,0.9)' : (isLightMode ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)')}
+                                stroke={isActive ? 'rgba(52,211,153,0.8)' : (isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)')}
                                 strokeWidth={isActive ? 2 : 1}
                                 className="transition-all duration-300"
                             />
                             <text x={dx} y={dy + 1} textAnchor="middle" dominantBaseline="middle"
-                                fill={isActive ? '#fff' : '#64748b'}
+                                fill={isActive ? '#fff' : (isLightMode ? '#94a3b8' : '#64748b')}
                                 fontSize={isActive ? '10' : '8'}
                                 fontWeight="900"
                                 style={{ pointerEvents: 'none' }}
@@ -116,14 +117,14 @@ const AlarmDial: React.FC<{
                     transition={{ type: 'spring', damping: 15, stiffness: 300 }}
                     className="flex items-baseline gap-1"
                 >
-                    <span className="text-5xl font-black text-white tabular-nums tracking-tight">
+                    <span className={`text-5xl font-black tabular-nums tracking-tight ${isLightMode ? 'text-gray-900' : 'text-white'}`}>
                         {PRESETS[selectedIndex].label}
                     </span>
-                    <span className="text-lg font-bold text-emerald-400/70">
+                    <span className={`text-lg font-bold ${isLightMode ? 'text-emerald-600' : 'text-emerald-400/70'}`}>
                         {PRESETS[selectedIndex].desc}
                     </span>
                 </motion.div>
-                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-widest mt-1">
+                <p className={`text-[9px] font-semibold uppercase tracking-widest mt-1 ${isLightMode ? 'text-gray-400' : 'text-slate-500'}`}>
                     Reminder interval
                 </p>
             </div>
@@ -319,7 +320,7 @@ const AttendanceActionPage: React.FC = () => {
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
                                 {/* Left column: Alarm Dial */}
                                 <div className="lg:col-span-5 flex flex-col items-center justify-center lg:border-r lg:border-gray-100 lg:pr-6">
-                                    <AlarmDial selectedIndex={selectedIdx} onSelect={handleDialSelect} />
+                                    <AlarmDial selectedIndex={selectedIdx} onSelect={handleDialSelect} isLightMode />
                                 </div>
 
                                 {/* Right column: Alarm Stats & Settings */}

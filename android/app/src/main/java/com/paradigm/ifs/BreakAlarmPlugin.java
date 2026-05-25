@@ -18,17 +18,13 @@ public class BreakAlarmPlugin extends Plugin {
 
     @PluginMethod
     public void schedule(PluginCall call) {
-        // Accept absolute epoch-ms trigger time from JS
-        double triggerAtMsRaw = call.getDouble("triggerAtMs", 0.0);
+        long triggerTime = call.getData().optLong("triggerAtMs", 0L);
         int notificationId = call.getInt("id", 1001);
         int elapsedMinutes = call.getInt("elapsedMinutes", 15);
         String soundFilename = call.getString("soundFilename", null);
         String soundUri = call.getString("soundUri", null);
 
-        long triggerTime;
-        if (triggerAtMsRaw > 0) {
-            triggerTime = (long) triggerAtMsRaw;
-        } else {
+        if (triggerTime == 0) {
             // Legacy fallback: if no triggerAtMs, use intervalMinutes (shouldn't happen)
             double intervalMinutes = call.getDouble("intervalMinutes", 0.1666);
             triggerTime = System.currentTimeMillis() + (long)(intervalMinutes * 60 * 1000L);

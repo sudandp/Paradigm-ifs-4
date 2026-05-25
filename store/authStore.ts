@@ -151,6 +151,8 @@ interface AuthState {
     hasPreviousDayOpenSession: boolean;
     /** Info about the open previous-day session (date, last event type) */
     previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null;
+    isBreakingOut: boolean;
+    setIsBreakingOut: (val: boolean) => void;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
     forceLogout: (reason?: string) => Promise<void>;
     isOffline: boolean;
@@ -213,6 +215,8 @@ export const useAuthStore = create<AuthState>()(
         isSiteOtCheckedIn: false,
         hasPreviousDayOpenSession: false,
         previousDaySessionInfo: null,
+        isBreakingOut: false,
+        setIsBreakingOut: (val) => set({ isBreakingOut: val }),
         forceLogout: async (reason) => {
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
             set({ error: reason || 'Your session has expired. Please log in again.', loading: false, user: null });
@@ -758,7 +762,8 @@ export const useAuthStore = create<AuthState>()(
 
                 // If user is still on break and the app just resumed / reloaded,
                 // re-schedule break reminders so they are not silently lost.
-                if (isOnBreak && lastBreakIn) {
+                // Guard: Do not restore if we are currently breaking out!
+                if (isOnBreak && lastBreakIn && !get().isBreakingOut) {
                     const { breakReminderInterval, breakLimit } = get();
                     restoreBreakRemindersOnResume(
                         new Date(lastBreakIn),
@@ -809,10 +814,10 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     const fullSettings = await api.getAttendanceSettings();
                     const isOfficeUser = ['admin', 'hr', 'finance', 'developer'].includes(user.role);
-                    const rules = isOfficeUser ? fullSettings.office : fullSettings.field;
+                    const rules: any = fullSettings ? (isOfficeUser ? fullSettings.office : fullSettings.field) : null;
                     settings = { 
-                        enabled: rules.geofencingEnabled ?? false, 
-                        maxViolationsPerMonth: rules.maxViolationsPerMonth ?? 3 
+                        enabled: rules?.geofencingEnabled ?? false, 
+                        maxViolationsPerMonth: rules?.maxViolationsPerMonth ?? 3 
                     };
                     set({ geofencingSettings: settings });
                 } catch (e) {
@@ -831,6 +836,7 @@ export const useAuthStore = create<AuthState>()(
             if (newType === 'break-out') {
                 cancelNotification('BREAK_END');
                 cancelStepBreakReminders();
+                get().setIsBreakingOut(true);
             }
 
             try {
@@ -840,8 +846,12 @@ export const useAuthStore = create<AuthState>()(
 
                 try {
                     // Stage 1: Primary - Robust Position Acquisition with internal fallbacks
-                    // 10s timeout gives sufficient time for GPS while preventing long hangs
-                    position = await getPrecisePosition(150, 10000);
+                    // Break actions use a shorter 3s timeout to prevent Android UI hangs —
+                    // GPS is nice-to-have for breaks, not critical.
+                    // Punch-in/out gets the full 10s for accurate geofencing.
+                    const isBreakAction = newType === 'break-in' || newType === 'break-out';
+                    const gpsTimeout = isBreakAction ? 3000 : 10000;
+                    position = await getPrecisePosition(150, gpsTimeout);
                 } catch (err: any) {
                     console.warn('[Location] All location acquisition stages failed:', err.message);
                     // Provide a more descriptive fallback than just "GPS Unavailable"
@@ -1135,6 +1145,10 @@ export const useAuthStore = create<AuthState>()(
             } catch (err) {
                 console.error('Error during attendance update:', err);
                 return { success: false, message: 'Failed to update attendance.' };
+            } finally {
+                if (newType === 'break-out') {
+                    get().setIsBreakingOut(false);
+                }
             }
         },
 

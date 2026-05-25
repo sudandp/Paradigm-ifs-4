@@ -38,8 +38,11 @@ const BreakAlertModal: React.FC = () => {
     const pulseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const [selectedInterval, setSelectedInterval] = useState<number>(breakReminderInterval || 5);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isContinuing, setIsContinuing] = useState(false);
+    const [isBreakingOut, setIsBreakingOut] = useState(false);
     const [pulse, setPulse] = useState(false);
+
+    const isLoading = isContinuing || isBreakingOut;
 
     // ── Start the looping alarm using selected tone ────────────────────────────
     const startAlarm = useCallback(() => {
@@ -97,7 +100,7 @@ const BreakAlertModal: React.FC = () => {
     // The original break-in event is the only one recorded; "Continue Break" just
     // means "remind me again in X minutes" — purely a local alarm operation.
     const handleContinueBreak = async () => {
-        setIsLoading(true);
+        setIsContinuing(true);
         stopAlarm();
         try {
             // Cancel existing reminders and reschedule with the selected interval
@@ -108,17 +111,20 @@ const BreakAlertModal: React.FC = () => {
         } catch (err) {
             console.warn('[BreakAlert] Failed to reschedule break reminder:', err);
         } finally {
-            setIsLoading(false);
+            setIsContinuing(false);
             dismissAlert();
         }
     };
 
     // ── Handle: Break Out ──────────────────────────────────────────────────────
     const handleBreakOut = async () => {
-        setIsLoading(true);
+        setIsBreakingOut(true);
         stopAlarm();
         try {
             await cancelStepBreakReminders();
+            // Dismiss the modal BEFORE the API call so the user isn't staring
+            // at "Breaking out..." while GPS / network calls resolve.
+            dismissAlert();
             const { success, message } = await toggleCheckInStatus(
                 'Break out via break alert reminder',
                 null,
@@ -132,8 +138,7 @@ const BreakAlertModal: React.FC = () => {
         } catch (err) {
             console.error('[BreakAlert] Break-out error:', err);
         } finally {
-            setIsLoading(false);
-            dismissAlert();
+            setIsBreakingOut(false);
         }
     };
 
@@ -245,7 +250,7 @@ const BreakAlertModal: React.FC = () => {
                                     disabled={isLoading}
                                     className="w-full mt-3 py-3 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2"
                                     style={{
-                                        background: isLoading
+                                        background: isContinuing
                                             ? 'rgba(16,185,129,0.4)'
                                             : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                         color: '#fff',
@@ -253,7 +258,7 @@ const BreakAlertModal: React.FC = () => {
                                     }}
                                 >
                                     <Coffee className="w-4 h-4" />
-                                    {isLoading ? 'Please wait…' : 'Continue Break'}
+                                    {isContinuing ? 'Please wait…' : 'Continue Break'}
                                 </button>
                             </div>
 
@@ -263,7 +268,7 @@ const BreakAlertModal: React.FC = () => {
                                 disabled={isLoading}
                                 className="w-full py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2"
                                 style={{
-                                    background: isLoading
+                                    background: isBreakingOut
                                         ? 'rgba(239,68,68,0.3)'
                                         : 'linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 100%)',
                                     color: '#fff',
@@ -272,7 +277,7 @@ const BreakAlertModal: React.FC = () => {
                                 }}
                             >
                                 <LogIn className="w-4 h-4" />
-                                {isLoading ? 'Breaking out…' : 'Break Out Now'}
+                                {isBreakingOut ? 'Breaking out…' : 'Break Out Now'}
                             </button>
 
                             <p className="text-center text-[9px] text-slate-600 mt-4 font-medium">
