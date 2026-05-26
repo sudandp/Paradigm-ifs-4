@@ -214,18 +214,22 @@ const ApplyLeave: React.FC = () => {
             r.leaveType === 'Correction' && 
             r.status !== 'rejected' &&
             r.status !== 'withdrawn' &&
-            r.startDate.startsWith(monthPrefix)
+            r.status !== 'cancelled' &&
+            r.startDate.startsWith(monthPrefix) &&
+            r.id !== editId
         );
         const monthPerms = allLeaveRequests.filter((r: any) => 
             r.leaveType === 'Permission' && 
             r.status !== 'rejected' &&
             r.status !== 'withdrawn' &&
-            r.startDate.startsWith(monthPrefix)
+            r.status !== 'cancelled' &&
+            r.startDate.startsWith(monthPrefix) &&
+            r.id !== editId
         );
         
         setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length }));
         setPermissionUsage(prev => ({ ...prev, used: monthPerms.length }));
-    }, [watchStartDate, allLeaveRequests]);
+    }, [watchStartDate, allLeaveRequests, editId]);
 
     // Sync endDate with startDate for corrections/permissions
     React.useEffect(() => {
@@ -546,22 +550,22 @@ const ApplyLeave: React.FC = () => {
                     return;
                 }
 
-                if (!isEditMode) {
-                    const currentMonthStart = formData.startDate.substring(0, 7);
-                    const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
-                    const monthPerms = allReqs.filter(r => 
-                        r.leaveType === 'Permission' && 
-                        r.status !== 'rejected' &&
-                        r.status !== 'withdrawn' &&
-                        r.startDate.startsWith(currentMonthStart)
-                    );
+                const currentMonthStart = formData.startDate.substring(0, 7);
+                const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
+                const monthPerms = allReqs.filter(r => 
+                    r.leaveType === 'Permission' && 
+                    r.status !== 'rejected' &&
+                    r.status !== 'withdrawn' &&
+                    r.status !== 'cancelled' &&
+                    r.startDate.startsWith(currentMonthStart) &&
+                    r.id !== editId
+                );
 
-                    const maxPerms = rules.maxPermissionsPerMonth || 3;
-                    if (monthPerms.length >= maxPerms) {
-                        setToast({ message: `You have reached the maximum allowed permissions (${maxPerms}) for this month.`, type: 'error' });
-                        setIsSubmitting(false);
-                        return;
-                    }
+                const maxPerms = rules.maxPermissionsPerMonth || 3;
+                if (monthPerms.length >= maxPerms) {
+                    setToast({ message: `You have reached the maximum allowed permissions (${maxPerms}) for this month.`, type: 'error' });
+                    setIsSubmitting(false);
+                    return;
                 }
             }
             
@@ -587,22 +591,22 @@ const ApplyLeave: React.FC = () => {
                         return;
                     }
 
-                    if (!isEditMode) {
-                        const currentMonthStart = formData.startDate.substring(0, 7);
-                        const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
-                        const monthCorrections = allReqs.filter(r => 
-                            r.leaveType === 'Correction' && 
-                            r.status !== 'rejected' &&
-                            r.status !== 'withdrawn' &&
-                            r.startDate.startsWith(currentMonthStart)
-                        );
+                    const currentMonthStart = formData.startDate.substring(0, 7);
+                    const { data: allReqs } = await api.getLeaveRequests({ userId: user.id });
+                    const monthCorrections = allReqs.filter(r => 
+                        r.leaveType === 'Correction' && 
+                        r.status !== 'rejected' &&
+                        r.status !== 'withdrawn' &&
+                        r.status !== 'cancelled' &&
+                        r.startDate.startsWith(currentMonthStart) &&
+                        r.id !== editId
+                    );
 
-                        const maxCorrections = rules.maxCorrectionsPerMonth || 3;
-                        if (monthCorrections.length >= maxCorrections) {
-                            setToast({ message: `You have reached the maximum allowed corrections (${maxCorrections}) for this month.`, type: 'error' });
-                            setIsSubmitting(false);
-                            return;
-                        }
+                    const maxCorrections = rules.maxCorrectionsPerMonth || 3;
+                    if (monthCorrections.length >= maxCorrections) {
+                        setToast({ message: `You have reached the maximum allowed corrections (${maxCorrections}) for this month.`, type: 'error' });
+                        setIsSubmitting(false);
+                        return;
                     }
                 }
             }

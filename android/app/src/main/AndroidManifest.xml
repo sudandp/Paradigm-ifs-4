@@ -50,6 +50,7 @@
             android:name=".TrackingService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="location" />
 
         <!-- FCM Service: handles background/killed-state push messages (e.g. SILENT_TRACKING_PING) -->

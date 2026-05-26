@@ -34,8 +34,8 @@ const UpdateRequiredBanner: React.FC = () => {
         const response = await fetch(`/version.json?t=${new Date().getTime()}`);
         if (response.ok) {
           const data = await response.json();
-          // Prefer WhatsApp group URL if available, fallback to APK URL
-          const url = data.whatsappGroupUrl || data.apkDownloadUrl || DEFAULT_DOWNLOAD_URL;
+          // Store WhatsApp URL just for the support button
+          const url = data.whatsappGroupUrl || 'https://wa.me/';
           setDownloadUrl(url);
         }
       } catch (error) {
@@ -47,16 +47,25 @@ const UpdateRequiredBanner: React.FC = () => {
   }, []);
 
   const handleDownload = () => {
+    const playStoreUrl = 'market://details?id=com.paradigm.ifs';
+    const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
+
     if (Capacitor.isNativePlatform()) {
-      // On native, open in system browser to trigger WhatsApp app redirection
+      window.open(playStoreUrl, '_system');
+    } else {
+      window.open(fallbackUrl, '_blank');
+    }
+  };
+
+  const handleSupport = () => {
+    if (Capacitor.isNativePlatform()) {
       window.open(downloadUrl, '_system');
     } else {
-      // On web, open in new tab
       window.open(downloadUrl, '_blank');
     }
   };
 
-  const isWhatsApp = downloadUrl.includes('whatsapp.com') || downloadUrl.includes('wa.me');
+  const isWhatsApp = false; // Disable WhatsApp styling for the main button
 
   return (
     <div style={{
@@ -125,9 +134,7 @@ const UpdateRequiredBanner: React.FC = () => {
       <button
         onClick={handleDownload}
         style={{
-          background: isWhatsApp 
-            ? 'linear-gradient(135deg, #128C7E, #25D366)' 
-            : 'linear-gradient(135deg, #006B3F, #00a85a)',
+          background: 'linear-gradient(135deg, #006B3F, #00a85a)',
           color: '#fff',
           border: 'none',
           borderRadius: 14,
@@ -135,16 +142,46 @@ const UpdateRequiredBanner: React.FC = () => {
           fontSize: 16,
           fontWeight: 700,
           cursor: 'pointer',
-          boxShadow: isWhatsApp 
-            ? '0 4px 24px rgba(37, 211, 102, 0.3)' 
-            : '0 4px 24px rgba(0, 107, 63, 0.4)',
+          boxShadow: '0 4px 24px rgba(0, 107, 63, 0.4)',
           transition: 'transform 0.15s, box-shadow 0.15s',
           letterSpacing: '0.3px',
+          marginBottom: 16,
+          width: '100%',
+          maxWidth: 340,
         }}
         onMouseDown={(e) => (e.currentTarget.style.transform = 'scale(0.97)')}
         onMouseUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
       >
-        {isWhatsApp ? 'Join WhatsApp Group' : 'Download Now'}
+        Update on Play Store
+      </button>
+
+      {/* Support Button */}
+      <button
+        onClick={handleSupport}
+        style={{
+          background: 'transparent',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 14,
+          padding: '16px 48px',
+          fontSize: 16,
+          fontWeight: 600,
+          cursor: 'pointer',
+          transition: 'background 0.15s',
+          width: '100%',
+          maxWidth: 340,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px'
+        }}
+        onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+        onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7c.9 0 1.8.1 2.6.4l4.9-1.3-1.3 4.9c.3.8.4 1.7.4 2.6Z" />
+        </svg>
+        Contact Support
       </button>
 
       {/* Subtle URL hint */}
@@ -171,17 +208,8 @@ const UpdateRequiredBanner: React.FC = () => {
           lineHeight: 1.5,
           margin: 0,
         }}>
-          {isWhatsApp ? (
-            <>
-              Click <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Join WhatsApp Group</strong> →  
-              Join the group → Download & Install the latest APK from group files.
-            </>
-          ) : (
-            <>
-              Click <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Download Now</strong> →  
-              Download the APK → Install and open the latest app
-            </>
-          )}
+          Click <strong style={{ color: 'rgba(255,255,255,0.7)' }}>Update on Play Store</strong> →  
+          Download the latest version → Open the app
         </p>
       </div>
     </div>

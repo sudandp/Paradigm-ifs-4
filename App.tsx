@@ -35,6 +35,7 @@ import { useScreenOrientation } from './hooks/useScreenOrientation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { cancelStepBreakReminders, scheduleStepBreakReminders, registerBreakNotificationActions, updateBreakReminderChannelSound } from './utils/permissionUtils';
 import BreakAlertModal from './components/attendance/BreakAlertModal';
+import ExitWarningModal from './components/ExitWarningModal';
 import { useBreakAlertStore } from './store/breakAlertStore';
 
 
@@ -373,6 +374,7 @@ const App: React.FC = () => {
   const { isOnline } = useNetworkStatus();
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
+  const [showExitWarning, setShowExitWarning] = useState(false);
   const { triggerAlert: triggerBreakAlert } = useBreakAlertStore();
 
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
@@ -484,15 +486,8 @@ const App: React.FC = () => {
       } else {
         const { isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore.getState();
         if (isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn) {
-          const proceed = window.confirm(
-            "⚠️ IMPORTANT WARNING ⚠️\n\n" +
-            "You are currently clocked in. For accurate attendance and salary calculation, the app must remain open in the background.\n\n" +
-            "If you Force Close the app or turn off your GPS/Location, your work hours and route will NOT be recorded. This will directly affect your salary and attendance records.\n\n" +
-            "Are you sure you want to minimize the app?"
-          );
-          if (proceed) {
-            CapacitorApp.minimizeApp();
-          }
+          // Show custom themed warning modal instead of plain window.confirm()
+          setShowExitWarning(true);
         } else {
           CapacitorApp.minimizeApp();
         }
@@ -1569,6 +1564,12 @@ const App: React.FC = () => {
       />
       {/* ── Break Alert Modal: full-screen overlay with looping alarm ── */}
       <BreakAlertModal />
+      {/* ── Exit Warning Modal: shown when user tries to close while clocked in ── */}
+      <ExitWarningModal
+        isOpen={showExitWarning}
+        onConfirm={() => { setShowExitWarning(false); CapacitorApp.minimizeApp(); }}
+        onCancel={() => setShowExitWarning(false)}
+      />
     </>
   );
 };

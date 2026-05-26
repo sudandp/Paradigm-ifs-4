@@ -219,9 +219,11 @@ export const useAuthStore = create<AuthState>()(
         setIsBreakingOut: (val) => set({ isBreakingOut: val }),
         forceLogout: async (reason) => {
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
+            // Only clear in-memory state. DO NOT remove persistent tokens or call signOut().
+            // The next app open / foreground resume will silently restore the session
+            // via the saved refresh token. Tokens should only be destroyed on explicit
+            // user-initiated logout() — not on inactivity or transient auth errors.
             set({ error: reason || 'Your session has expired. Please log in again.', loading: false, user: null });
-            await Preferences.remove({ key: 'supabase.auth.rememberMe' });
-            await authService.signOut();
             get().resetAttendance();
         },
 
@@ -371,16 +373,21 @@ export const useAuthStore = create<AuthState>()(
                         severity: 'info',
                         details: { role: appUser.role, method: 'email' }
                     });
-                    // [SECURITY] Start session inactivity monitor (30 min timeout)
-                    startSessionMonitor(() => {
-                        get().forceLogout('Your session has expired due to inactivity. Please log in again.');
-                        logSecurityEvent({
-                            event_type: 'session_expired',
-                            user_id: appUser.id,
-                            severity: 'info',
-                            details: { reason: 'inactivity_timeout' }
+                    // [SECURITY] Start session inactivity monitor on WEB only (30 min timeout).
+                    // On mobile (Android/iOS), users expect persistent sessions until manual logout.
+                    // Backgrounding the app, screen-off, or idle periods should NOT trigger logout
+                    // — the refresh token handles silent re-auth automatically.
+                    if (!Capacitor.isNativePlatform()) {
+                        startSessionMonitor(() => {
+                            get().forceLogout('Your session has expired due to inactivity. Please log in again.');
+                            logSecurityEvent({
+                                event_type: 'session_expired',
+                                user_id: appUser.id,
+                                severity: 'info',
+                                details: { reason: 'inactivity_timeout' }
+                            });
                         });
-                    });
+                    }
                     // Dispatch login greeting via the Notification Rules engine
                     // Admins can configure who receives this in Notification Management
                     try {

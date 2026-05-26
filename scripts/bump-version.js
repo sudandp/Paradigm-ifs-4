@@ -89,6 +89,18 @@ pkg.version = newName;
 writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 console.log(`✅ Updated ${pkgPath}`);
 
+// --- 6. Update public/version.json ---
+try {
+  const versionJsonPath = 'public/version.json';
+  const versionData = JSON.parse(readFile(versionJsonPath));
+  versionData.latestVersionCode = newCode;
+  versionData.latestVersionName = newName;
+  writeFile(versionJsonPath, JSON.stringify(versionData, null, 2) + '\n');
+  console.log(`✅ Updated ${versionJsonPath}`);
+} catch (e) {
+  console.log(`⚠️ Could not update public/version.json: ${e.message}`);
+}
+
 console.log(`\n🎉 Version bumped to ${newName} (code ${newCode}) successfully!\n`);
 console.log('Next steps:');
 console.log('  1. Run: vite build && npx cap sync android');

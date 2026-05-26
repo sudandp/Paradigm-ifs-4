@@ -304,8 +304,82 @@ export async function registerDevice(
     // different physical units to overwrite each other. 
     // From now on, devices are separated strictly by their device_identifier (capacitor UUID).
     
+    // Check if there is already a pending request for this device in device_change_requests
+    const { data: existingRequest } = await supabase
+      .from('device_change_requests')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('device_identifier', normalizedId)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (existingRequest) {
+      return {
+        success: false,
+        requiresApproval: true,
+        request: {
+          ...existingRequest,
+          userId: existingRequest.user_id,
+          deviceType: existingRequest.device_type,
+          deviceIdentifier: existingRequest.device_identifier,
+          deviceName: existingRequest.device_name,
+          deviceInfo: existingRequest.device_info || {},
+          requestedAt: existingRequest.requested_at,
+          reviewedById: existingRequest.reviewed_by_id,
+          reviewedAt: existingRequest.reviewed_at,
+          rejectionReason: existingRequest.rejection_reason,
+          reportingManagerNotified: existingRequest.reporting_manager_notified,
+          createdAt: existingRequest.created_at,
+          updatedAt: existingRequest.updated_at,
+        } as DeviceChangeRequest,
+        message: 'Device registration is pending approval',
+      };
+    }
+
     // Get device limits
     const limits = await getDeviceLimits(roleId);
+    
+    // Re-install deduplication: If the user uninstalls and reinstalls the app on the
+    // same physical mobile device, Capacitor generates a new device_identifier.
+    // To prevent duplicate entries (e.g. 4 "Samsung Fold 4" devices), we check if they 
+    // already have an active device of the exact same type and name.
+    if (deviceType === 'android' || deviceType === 'ios') {
+      const { data: similarDevices } = await supabase
+        .from('user_devices')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('device_type', deviceType)
+        .eq('device_name', deviceName)
+        .eq('status', 'active')
+        .order('last_used_at', { ascending: false });
+
+      if (similarDevices && similarDevices.length > 0) {
+        const targetDevice = similarDevices[0];
+        
+        // Overwrite the identifier of the most recently used similar device
+        await supabase
+          .from('user_devices')
+          .update({ 
+            device_identifier: normalizedId,
+            last_used_at: new Date().toISOString(),
+            device_info: deviceInfo
+          })
+          .eq('id', targetDevice.id);
+
+        return {
+          success: true,
+          device: {
+            ...targetDevice,
+            deviceIdentifier: normalizedId,
+            deviceInfo: deviceInfo,
+            lastUsedAt: new Date().toISOString()
+          } as UserDevice,
+          requiresApproval: false,
+          message: 'Device re-registered successfully (replaced previous install)',
+        };
+      }
+    }
+
     const currentCount = await getActiveDeviceCount(userId, deviceType);
     const limit = limits[deviceType];
     

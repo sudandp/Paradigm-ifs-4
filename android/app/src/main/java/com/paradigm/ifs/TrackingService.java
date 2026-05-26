@@ -1,10 +1,12 @@
 package com.paradigm.ifs;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
@@ -59,6 +61,22 @@ public class TrackingService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        
+        // Auto-restart the tracking service if the app is killed from recent apps
+        Intent restartIntent = new Intent(getApplicationContext(), TrackingService.class);
+        restartIntent.putExtra("title", "Paradigm Services");
+        restartIntent.putExtra("text", "Field operations tracking is active.");
+        
+        PendingIntent pendingIntent = PendingIntent.getService(this, 1, restartIntent, PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, pendingIntent);
+        }
     }
 
     @Nullable
