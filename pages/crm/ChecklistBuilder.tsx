@@ -4,6 +4,7 @@ import { useCrmStore } from '../../store/crmStore';
 import { crmApi } from '../../services/crmApi';
 import type { CrmChecklistTemplate, ChecklistSectionDef, ChecklistFieldDef, ChecklistFieldType } from '../../types/crm';
 import Toast from '../../components/ui/Toast';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import {
   ArrowLeft, Plus, Save, Loader2, Trash2, GripVertical,
   ChevronDown, ChevronUp, Copy, Eye, EyeOff, Settings2,
@@ -27,6 +28,7 @@ const genId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const ChecklistBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { templates, fetchTemplates, deleteTemplate } = useCrmStore();
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [mode, setMode] = useState<'list' | 'editor'>('list');
   const [activeTemplate, setActiveTemplate] = useState<CrmChecklistTemplate | null>(null);
@@ -169,70 +171,74 @@ const ChecklistBuilder: React.FC = () => {
   // ============================================================================
   if (mode === 'list') {
     return (
-      <div className="space-y-6">
+      <div className={`space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white pb-20' : ''}`}>
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center justify-between ${isMobile ? 'p-4' : ''}`}>
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/crm')} className="p-2 rounded-lg hover:bg-accent/10 transition-colors">
-              <ArrowLeft className="w-5 h-5 text-primary-text" />
+            <button onClick={() => navigate('/crm')} className={`p-2 rounded-lg transition-colors ${isMobile ? 'hover:bg-black/30' : 'hover:bg-accent/10'}`}>
+              <ArrowLeft className={`w-5 h-5 ${isMobile ? 'text-white' : 'text-primary-text'}`} />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-primary-text">Checklist Templates</h1>
-              <p className="text-xs text-muted mt-0.5">Define site survey checklists for field officers</p>
+              <h1 className={`text-xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Checklist Templates</h1>
+              <p className={`text-xs mt-0.5 ${isMobile ? 'text-white/70' : 'text-muted'}`}>Define site survey checklists for field officers</p>
             </div>
           </div>
-          <button onClick={() => openEditor()} className="btn btn-primary btn-md gap-2">
+          <button onClick={() => openEditor()} className={isMobile ? 'text-white text-sm font-bold bg-transparent pr-2 flex items-center gap-1' : 'btn btn-primary btn-md gap-2'}>
             <Plus className="w-4 h-4" />
             New Template
           </button>
         </div>
 
         {templates.length === 0 ? (
-          <div className="text-center py-16 bg-card rounded-xl border border-border">
-            <ClipboardCheck className="w-12 h-12 mx-auto text-muted/30 mb-3" />
-            <p className="text-lg font-medium text-primary-text">No templates yet</p>
-            <p className="text-sm text-muted mt-1">Create your first checklist template to start surveys</p>
+          <div className={`text-center py-16 rounded-xl border ${isMobile ? 'bg-[#0a1c13] border-[#1d422f] mx-4' : 'bg-card border-border'}`}>
+            <ClipboardCheck className={`w-12 h-12 mx-auto mb-3 ${isMobile ? 'text-white/20' : 'text-muted/30'}`} />
+            <p className={`text-lg font-medium ${isMobile ? 'text-white' : 'text-primary-text'}`}>No templates yet</p>
+            <p className={`text-sm mt-1 ${isMobile ? 'text-white/60' : 'text-muted'}`}>Create your first checklist template to start surveys</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${isMobile ? 'px-4' : ''}`}>
             {templates.map(t => (
               <div
                 key={t.id}
                 onClick={() => openEditor(t)}
-                className="bg-card rounded-xl border border-border p-5 cursor-pointer hover:shadow-card hover:border-accent/30 transition-all group"
+                className={`rounded-2xl p-5 cursor-pointer transition-all group ${
+                  isMobile 
+                  ? 'bg-[#0a1c13] border border-[#1d422f] shadow-lg relative' 
+                  : 'bg-card border border-border hover:shadow-card hover:border-accent/30'
+                }`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
-                    <ClipboardCheck className="w-5 h-5 text-accent" />
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isMobile ? 'bg-[#041b0f] border border-[#1d422f]' : 'bg-accent/10'}`}>
+                    <ClipboardCheck className={`w-5 h-5 ${isMobile ? 'text-emerald-500' : 'text-accent'}`} />
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button 
                       onClick={(e) => { e.stopPropagation(); openEditor(t); }} 
-                      className="p-1.5 rounded-lg hover:bg-accent/10 text-muted hover:text-accent transition-colors"
+                      className={`p-1.5 rounded-lg transition-colors ${isMobile ? 'text-gray-400 hover:text-white' : 'text-muted hover:text-accent hover:bg-accent/10'}`}
                       title="Edit Template"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Edit2 className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }} 
-                      className="p-1.5 rounded-lg hover:bg-red-50 text-muted hover:text-red-500 transition-colors"
+                      className={`p-1.5 rounded-lg transition-colors ${isMobile ? 'text-gray-400 hover:text-white' : 'text-muted hover:text-red-500 hover:bg-red-50'}`}
                       title="Delete Template"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                    <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-blue-50 text-blue-700 uppercase ml-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ml-1 ${isMobile ? 'bg-[#153e5e] text-[#4ea8e9]' : 'bg-blue-50 text-blue-700'}`}>
                       v{t.version}
                     </span>
                   </div>
                 </div>
-                <h3 className="text-sm font-bold text-primary-text group-hover:text-accent transition-colors mb-1">
+                <h3 className={`text-base font-bold mb-1 ${isMobile ? 'text-white' : 'text-primary-text group-hover:text-accent transition-colors'}`}>
                   {t.name}
                 </h3>
                 {t.description && (
-                  <p className="text-[11px] text-muted mb-3 line-clamp-2">{t.description}</p>
+                  <p className={`text-[13px] mb-3 line-clamp-2 ${isMobile ? 'text-emerald-50/80' : 'text-muted'}`}>{t.description}</p>
                 )}
-                <div className="flex items-center gap-3 text-[10px] text-muted">
+                <div className={`flex items-center gap-2 text-xs font-medium ${isMobile ? 'text-white/60' : 'text-muted'}`}>
                   <span>{t.sections.length} sections</span>
                   <span>•</span>
                   <span>{t.sections.reduce((c, s) => c + s.fields.length, 0)} fields</span>

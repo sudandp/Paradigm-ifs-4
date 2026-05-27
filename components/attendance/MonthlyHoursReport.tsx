@@ -197,15 +197,15 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           }
       });
 
-      if (userId === undefined || userId === 'all') {
+      if ((userId === undefined || userId === 'all') && selectedRole !== 'management') {
         targetUsers = targetUsers.filter(u => u.role !== 'management');
       }
 
       // Use local variables to avoid stale state issues during initial load
       const currentMasterHolidays = globalHolidaysRes?.holidays || [];
-      const currentOfficeHolidays = (attendance as any)?.office || currentMasterHolidays.filter((h: any) => h.type === 'office');
-      const currentFieldHolidays = (attendance as any)?.field || currentMasterHolidays.filter((h: any) => h.type === 'field');
-      const currentSiteHolidays = (attendance as any)?.site || currentMasterHolidays.filter((h: any) => h.type === 'site');
+      const currentOfficeHolidays = storeOfficeHolidays?.length ? storeOfficeHolidays : currentMasterHolidays.filter((h: any) => h.type === 'office');
+      const currentFieldHolidays = storeFieldHolidays?.length ? storeFieldHolidays : currentMasterHolidays.filter((h: any) => h.type === 'field');
+      const currentSiteHolidays = storeSiteHolidays?.length ? storeSiteHolidays : currentMasterHolidays.filter((h: any) => h.type === 'site');
       const currentRecurringHolidays = storeRecurringHolidays || [];
 
       let employeeReports: EmployeeMonthlyData[] = targetUsers.map(user => {
@@ -345,11 +345,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         });
 
         const isHolidayCheck = isConfiguredHolidayCheck || isPoolHolidayCheck || isRecurringCheck;
-        const hasApprovedLeaveCheck = allLeaves.some(l => 
-            String(l.userId) === String(user.id) &&
-            isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-            !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase())
-        );
+        const hasApprovedLeaveCheck = allLeaves.some(l => {
+            if (String(l.userId) !== String(user.id)) return false;
+            if (!l.startDate || !l.endDate) return false;
+            try {
+                return isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                !['loss of pay', 'loss-of-pay', 'lop'].includes((l.leaveType || '').toLowerCase());
+            } catch (e) {
+                return false;
+            }
+        });
         const hasActivityCheck = events.some(e => e.timestamp.startsWith(dateStrStr));
 
         if (hasActivityCheck || hasApprovedLeaveCheck || isHolidayCheck) {
@@ -359,11 +364,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             }
         } else if (hasApprovedLeaveCheck) {
             // WFH should count towards presence threshold for Sunday eligibility
-            const wfhLeave = allLeaves.find(l => 
-                String(l.userId) === String(user.id) &&
-                isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh')
-            );
+            const wfhLeave = allLeaves.find(l => {
+                if (String(l.userId) !== String(user.id)) return false;
+                if (!l.startDate || !l.endDate) return false;
+                try {
+                    return isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
+                    (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh');
+                } catch (e) {
+                    return false;
+                }
+            });
             if (wfhLeave) {
                 daysActiveInCurrentWeek++;
                 daysPresentInCurrentWeek++;
@@ -782,7 +792,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0">
                             <span className={`inline-flex items-center justify-center w-full min-h-[18px] font-bold text-[9px] ${
                                 d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
+                                d.status === '0.75P' || d.status === '3/4P' ? 'bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-600' :
                                 d.status === '0.5P' || d.status === '1/2P' ? 'bg-gradient-to-r from-emerald-100 to-blue-100 text-blue-800' :
+                                d.status === '0.25P' || d.status === '1/4P' ? 'bg-gradient-to-r from-blue-100 to-slate-100 text-blue-600' :
                                 d.status === 'A' ? 'bg-rose-50 text-rose-600' :
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
                                 d.status === 'W/P' ? 'bg-blue-50 text-blue-700' :

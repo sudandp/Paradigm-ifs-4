@@ -807,6 +807,7 @@ export interface BasicReportDataRow {
   siteOtOut?: string;
   duration: string;
   locationName?: string;
+  isAutoCheckout?: boolean;
   department?: string;
   dept?: string;
   pin?: string;
@@ -1447,6 +1448,7 @@ export interface AttendanceLogDataRow {
   photoUrl?: string;
   isCached?: boolean;
   cachedAt?: string;
+  isAutoCheckout?: boolean;
 }
 
 export const AttendanceLogDocument: React.FC<{

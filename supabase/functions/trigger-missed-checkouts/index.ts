@@ -125,7 +125,14 @@ Deno.serve(async (req: Request) => {
       const timeParts = checkoutTime.includes('.') ? checkoutTime.split('.') : checkoutTime.split(':');
       const [confHour, confMinute] = timeParts.map(Number);
       const configuredTimeVal = confHour * 60 + (confMinute || 0);
-      const isPastTime = currentTimeVal >= configuredTimeVal;
+      let isPastTime = currentTimeVal >= configuredTimeVal;
+      
+      // If the cron runs early in the morning (e.g. 00:00 to 06:00), it's processing
+      // the previous day's shifts. Therefore, any configured checkout time (e.g. 19:30)
+      // from yesterday is definitely in the past.
+      if (currentHour < 6) {
+          isPastTime = true;
+      }
 
       if (!isPastTime && !isManualOverride) {
         report.groups[group] = { 
@@ -163,7 +170,7 @@ Deno.serve(async (req: Request) => {
       // Fetch Users in these roles
       const { data: rawUsers, error: userError } = await supabaseClient
         .from('users')
-        .select('id, name, role_id');
+        .select('id, name, role_id, reporting_manager_id');
 
       if (userError) {
         report.groups[group] = { status: 'error', reason: userError.message };
@@ -252,6 +259,11 @@ Deno.serve(async (req: Request) => {
                     punchOutTimestamp = now.toISOString();
                 } else {
                     const targetIST = new Date(istDate);
+                    // If we are running in the early morning (e.g. 04:00 AM), we are checking out
+                    // for the shift that started yesterday. We must set the target date to yesterday.
+                    if (currentHour < 6) {
+                        targetIST.setUTCDate(targetIST.getUTCDate() - 1);
+                    }
                     targetIST.setUTCHours(confHour, confMinute, 0, 0);
                     const targetUTC = new Date(targetIST.getTime() - istOffset);
                     punchOutTimestamp = targetUTC.toISOString();
@@ -289,7 +301,7 @@ Deno.serve(async (req: Request) => {
                         }
                     });
                 
-                    // 3. Notification
+                    // 3. Notification to User
                     await supabaseClient.from('notifications').insert({
                         user_id: user.id,
                         message: isManualOverride 
@@ -298,6 +310,18 @@ Deno.serve(async (req: Request) => {
                         type: 'info',
                         is_read: false
                     });
+
+                    // 4. Notification to Reporting Manager
+                    if (user.reporting_manager_id) {
+                        await supabaseClient.from('notifications').insert({
+                            user_id: user.reporting_manager_id,
+                            message: isManualOverride 
+                                ? `${user.name} was manually checked out by an administrator at ${istDate.toLocaleTimeString()}.` 
+                                : `${user.name} was automatically checked out at ${checkoutTime} as per ${group} hours.`,
+                            type: 'info',
+                            is_read: false
+                        });
+                    }
                 }
             }
         }

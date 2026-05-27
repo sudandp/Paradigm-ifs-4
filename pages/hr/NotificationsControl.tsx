@@ -39,6 +39,7 @@ import Checkbox from '../../components/ui/Checkbox';
 import { api } from '../../services/api';
 import type { NotificationRule, NotificationType, User as AppUser, Role, EmailTemplate } from '../../types';
 import { useAuthStore } from '../../store/authStore';
+import { useDevice } from '../../hooks/useDevice';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import AdvancedNotificationSettings from '../admin/AdvancedNotificationSettings';
 import NotificationPlanner from './NotificationPlannerUI';
@@ -66,6 +67,7 @@ const NOTIFICATION_TYPES: { value: NotificationType; label: string }[] = [
 
 const NotificationsControl: React.FC = () => {
     const { user } = useAuthStore();
+    const { isMobile } = useDevice();
     const [activeTab, setActiveTab] = useState<'rules' | 'broadcast' | 'automated' | 'planner' | 'activity' | 'email'>('rules');
     const [rules, setRules] = useState<NotificationRule[]>([]);
     const [roles, setRoles] = useState<Role[]>([]);
@@ -219,6 +221,204 @@ const NotificationsControl: React.FC = () => {
 
     if (isLoading) {
         return <LoadingScreen message="Loading page data..." />;
+    }
+
+    if (isMobile) {
+        return (
+            <div className="flex flex-col h-full bg-[#020d06] overflow-y-auto pb-24 px-4 pt-6 space-y-6 min-h-screen">
+                <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold text-white">Notifications</h1>
+                </div>
+
+                {/* Mobile Tabs (Scrollable Pills) */}
+                <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+                    {[
+                        { id: 'rules', label: 'Rules', icon: Settings },
+                        ...(isNotificationManager ? [
+                            { id: 'broadcast', label: 'Broadcast', icon: Send },
+                            { id: 'automated', label: 'Automated', icon: Zap },
+                            { id: 'planner', label: 'Planner', icon: Clock },
+                            { id: 'activity', label: 'Activity', icon: Activity },
+                            { id: 'email', label: 'Email', icon: Mail }
+                        ] : [])
+                    ].map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex items-center whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                    isActive 
+                                        ? 'bg-emerald-500 text-[#020d06]' 
+                                        : 'bg-[#182a20] text-gray-400 border border-[#2a4536]/50'
+                                }`}
+                            >
+                                <Icon className="w-4 h-4 mr-2" />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {activeTab === 'rules' && (
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                                Active Rules
+                                <span className="bg-[#00a859]/20 text-[#00a859] text-xs px-2.5 py-0.5 rounded-full font-bold">
+                                    {rules.length}
+                                </span>
+                            </h2>
+                        </div>
+                        <div className="space-y-3">
+                            {rules.map(rule => {
+                                const eventType = EVENT_TYPES.find(et => et.value === rule.eventType);
+                                const Icon = eventType?.icon || Bell;
+                                const recipientUser = rule.recipientUserId ? users.find(u => u.id === rule.recipientUserId) : null;
+                                const recipientRole = RECIPIENT_ROLES.find(r => r.value === rule.recipientRole);
+
+                                return (
+                                    <div key={rule.id} className={`bg-[#182a20] border ${rule.isEnabled ? 'border-[#2a4536]/50' : 'border-[#2a4536]/20 border-dashed opacity-75'} rounded-2xl p-4 shadow-sm`}>
+                                        <div className="flex items-start gap-3">
+                                            <div className={`p-2.5 rounded-xl ${rule.isEnabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-[#091c13] text-gray-500'}`}>
+                                                <Icon className="h-5 w-5" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-start">
+                                                    <h3 className="font-bold text-white text-sm truncate">{eventType?.label || rule.eventType}</h3>
+                                                    <button onClick={() => handleDeleteRule(rule.id)} className="text-red-500/80 hover:text-red-500 p-1">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <p className="text-[11px] text-gray-400 mt-1 truncate">
+                                                    Notifies: <span className="text-emerald-500 font-medium">{rule.recipientUserId === 'all' ? 'All Users' : (recipientUser ? recipientUser.name : (recipientRole?.label || rule.recipientRole))}</span>
+                                                </p>
+                                                
+                                                <div className="grid grid-cols-4 gap-2 mt-4">
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                        <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Alert</span>
+                                                        <Checkbox id={`m-alert-${rule.id}`} label="" checked={rule.sendAlert} onChange={async () => {
+                                                            try {
+                                                                const updated = await api.saveNotificationRule({ ...rule, sendAlert: !rule.sendAlert });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {}
+                                                        }} />
+                                                    </div>
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                        <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Push</span>
+                                                        <Checkbox id={`m-push-${rule.id}`} label="" checked={rule.sendPush} onChange={async () => {
+                                                            try {
+                                                                const updated = await api.saveNotificationRule({ ...rule, sendPush: !rule.sendPush });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {}
+                                                        }} />
+                                                    </div>
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                        <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">Email</span>
+                                                        <Checkbox id={`m-email-${rule.id}`} label="" checked={rule.sendEmail} onChange={async () => {
+                                                            try {
+                                                                const updated = await api.saveNotificationRule({ ...rule, sendEmail: !rule.sendEmail });
+                                                                setRules(rules.map(r => r.id === rule.id ? updated : r));
+                                                            } catch (err) {}
+                                                        }} />
+                                                    </div>
+                                                    <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
+                                                        <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">On/Off</span>
+                                                        <Checkbox id={`m-rule-${rule.id}`} label="" checked={rule.isEnabled} onChange={() => handleToggleRule(rule)} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'broadcast' && (
+                    <div className="space-y-4">
+                        <div className="bg-[#182a20] p-5 rounded-3xl border border-[#2a4536]/50 shadow-lg space-y-5">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400">
+                                    <Send className="w-5 h-5" />
+                                </div>
+                                <h3 className="text-white font-bold">New Broadcast</h3>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Target Audience</label>
+                                    <select 
+                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500 appearance-none"
+                                        value={broadcastData.role === 'all' ? 'all' : broadcastData.role} 
+                                        onChange={(e) => setBroadcastData({ ...broadcastData, role: e.target.value, userIds: [] })}
+                                    >
+                                        <option value="all">Everyone</option>
+                                        <option value="">Specific Users</option>
+                                        {roles.map(r => <option key={r.id} value={r.id}>{r.displayName}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Subject</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Office Closure"
+                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500"
+                                        value={broadcastData.title}
+                                        onChange={(e) => setBroadcastData({ ...broadcastData, title: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 mb-1.5 block font-medium">Message</label>
+                                    <textarea 
+                                        placeholder="Type message..."
+                                        className="w-full bg-[#091c13] border border-[#2a4536]/50 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500 min-h-[120px]"
+                                        value={broadcastData.message}
+                                        onChange={(e) => setBroadcastData({ ...broadcastData, message: e.target.value })}
+                                    />
+                                </div>
+                                <Button 
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl border-none shadow-[0_0_15px_rgba(5,150,105,0.3)] mt-2"
+                                    onClick={handleBroadcast}
+                                    isLoading={isSaving}
+                                    disabled={!broadcastData.message}
+                                >
+                                    <Send className="w-5 h-5 mr-2" /> Send Notification
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'automated' && (
+                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                        <AdvancedNotificationSettings hideHeader={true} />
+                    </div>
+                )}
+
+                {activeTab === 'planner' && (
+                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                        <NotificationPlanner />
+                    </div>
+                )}
+
+                {activeTab === 'activity' && (
+                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                        <ActivityGreetingConfig rules={rules} setRules={setRules} toast={toast} setToast={setToast} />
+                    </div>
+                )}
+
+                {activeTab === 'email' && (
+                    <div className="bg-[#182a20] rounded-3xl border border-[#2a4536]/50 p-4 overflow-hidden">
+                        <EmailConfigPanel />
+                    </div>
+                )}
+                
+                {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+            </div>
+        );
     }
 
     return (

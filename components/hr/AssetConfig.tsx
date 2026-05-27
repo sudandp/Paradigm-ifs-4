@@ -8,7 +8,8 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import UploadDocument from '../UploadDocument';
 import Toast from '../ui/Toast';
-import { Plus, Trash2, Save, Loader2, ChevronDown, Smartphone, Car, Laptop, HardHat, CreditCard, Cpu, CircleUserRound, Package, Eye, ArrowLeft, Search } from 'lucide-react';
+import { Plus, Trash2, Save, Loader2, ChevronDown, Smartphone, Car, Laptop, HardHat, CreditCard, Cpu, CircleUserRound, Package, Eye, ArrowLeft, Search, ChevronRight } from 'lucide-react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 type AssetType = Asset['type'];
 
@@ -345,6 +346,8 @@ const AssetListView: React.FC<{
     setSearchTerm: (term: string) => void;
     onViewDetails: (siteId: string) => void;
 }> = ({ sites, allAssets, searchTerm, setSearchTerm, onViewDetails }) => {
+    const isMobile = useMediaQuery('(max-width: 767px)');
+    
     const generateAssetSummary = (assets: Asset[] = []): string => {
         if (!assets || assets.length === 0) return 'No assets assigned.';
         const countByType = assets.reduce((acc, asset) => {
@@ -354,39 +357,67 @@ const AssetListView: React.FC<{
         return Object.entries(countByType).map(([type, count]) => `${count} ${type}(s)`).join(', ');
     };
     return (
-         <div>
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
-                <h3 className="text-xl font-semibold text-primary-text">Asset Overview</h3>
-                <div className="relative flex-1 md:max-w-xs">
+         <div className={isMobile ? "bg-[#041b0f] min-h-screen -mx-4 px-4 py-2" : ""}>
+            <div className={`flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 ${isMobile ? 'pt-2' : ''}`}>
+                <h3 className={`text-xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Asset Overview</h3>
+                <div className="relative flex-1 md:max-w-xs hidden sm:block">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
                     <Input id="site-search" placeholder="Search sites..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
             </div>
-            <div className="overflow-x-auto border border-border rounded-lg">
-                <table className="min-w-full text-sm">
-                    <thead className="bg-page">
-                        <tr>
-                            <th className="px-4 py-3 text-left font-medium text-muted">Site Name</th>
-                            <th className="px-4 py-3 text-left font-medium text-muted">Asset Summary</th>
-                            <th className="px-4 py-3 text-left font-medium text-muted">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                        {sites.map(site => (
-                            <tr key={site.id}>
-                                <td className="px-4 py-3 font-medium">{site.shortName}</td>
-                                <td className="px-4 py-3 text-muted">{generateAssetSummary(allAssets[site.id])}</td>
-                                <td className="px-4 py-3">
-                                    <Button variant="icon" size="sm" onClick={() => onViewDetails(site.id)} title="View Details">
-                                        <Eye className="h-4 w-4" />
-                                    </Button>
-                                </td>
+            
+            {isMobile ? (
+                <div className="flex flex-col gap-3 pb-8">
+                    {sites.map(site => (
+                        <div 
+                            key={site.id} 
+                            onClick={() => onViewDetails(site.id)}
+                            className="bg-black/30 backdrop-blur-md border border-[#1d422f] rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition-all"
+                        >
+                            <div>
+                                <h4 className="text-base font-bold text-white mb-1">{site.shortName}</h4>
+                                <p className="text-xs text-[#22c55e]/80">
+                                    {generateAssetSummary(allAssets[site.id])}
+                                </p>
+                            </div>
+                            <div className="h-8 w-8 rounded-full bg-[#1d422f]/50 flex items-center justify-center">
+                                <ChevronRight className="h-4 w-4 text-[#22c55e]" />
+                            </div>
+                        </div>
+                    ))}
+                    {sites.length === 0 && (
+                        <div className="text-center py-10 bg-black/20 rounded-2xl border border-[#1d422f]">
+                            <p className="text-sm text-gray-400">No sites match your search.</p>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="overflow-x-auto border border-border rounded-lg">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-page">
+                            <tr>
+                                <th className="px-4 py-3 text-left font-medium text-muted">Site Name</th>
+                                <th className="px-4 py-3 text-left font-medium text-muted">Asset Summary</th>
+                                <th className="px-4 py-3 text-left font-medium text-muted">Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-                 {sites.length === 0 && <p className="text-center p-8 text-muted">No sites match your search.</p>}
-            </div>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {sites.map(site => (
+                                <tr key={site.id}>
+                                    <td className="px-4 py-3 font-medium">{site.shortName}</td>
+                                    <td className="px-4 py-3 text-muted">{generateAssetSummary(allAssets[site.id])}</td>
+                                    <td className="px-4 py-3">
+                                        <Button variant="icon" size="sm" onClick={() => onViewDetails(site.id)} title="View Details">
+                                            <Eye className="h-4 w-4" />
+                                        </Button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {sites.length === 0 && <p className="text-center p-8 text-muted">No sites match your search.</p>}
+                </div>
+            )}
         </div>
     );
 };

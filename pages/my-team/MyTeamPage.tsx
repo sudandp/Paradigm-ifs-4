@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle, Globe, Map as MapIcon } from 'lucide-react';
+import { Search, MapPin, Clock, ChevronRight, User as UserIcon, Navigation, Users, CheckCircle, XCircle, Globe, Map as MapIcon, Home, ClipboardList, Plus, Calendar, Bell, Check, X } from 'lucide-react';
 import { formatDistanceToNow, isToday } from 'date-fns';
 import { Link } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
@@ -475,6 +475,275 @@ const MyTeamPage: React.FC = () => {
     }
   }, [filteredMembers, latestLocations, mapLoaded]);
 
+  if (isMobile) {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#042516] p-4 pb-28 text-white space-y-6 overflow-y-auto">
+
+        {/* Title and Subtitle */}
+        <div className="space-y-1 mt-2 text-center">
+          <h1 className="text-2xl font-black tracking-tight text-white">My Team</h1>
+          <p className="text-[11px] text-gray-400 font-medium">Real-time status and locations of your field personnel.</p>
+        </div>
+
+        {/* Structure Link */}
+        {['admin', 'developer'].includes(user?.role || '') && (
+          <div className="flex justify-center w-full">
+            <Link to="/my-team/reporting" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00a859] hover:text-emerald-400 bg-[#182a20] px-4.5 py-2.5 rounded-2xl border border-[#2a4536]/30 shadow-sm transition-all">
+              <Users className="w-3.5 h-3.5" />
+              Manage Structure
+            </Link>
+          </div>
+        )}
+
+        {/* Search and dropdown filters */}
+        <div className="space-y-2">
+          <div className="relative">
+            <select
+              id="location-filter-mobile"
+              name="locationFilter"
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="w-full px-4 py-3 bg-[#091c13] border border-[#2a4536]/30 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-transparent outline-none transition-all text-xs text-white appearance-none cursor-pointer font-semibold shadow-sm"
+            >
+              <option value="All">All Locations</option>
+              {Object.entries(availableLocations).map(([state, cities]) => (
+                <optgroup key={state} label={state} className="bg-[#091c13]">
+                  <option value={`state:${state}`}>All {state}</option>
+                  {cities.map(city => (
+                    <option key={`${state}-${city}`} value={`city:${state}:${city}`}>{city}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              id="team-search-mobile"
+              name="teamSearch"
+              type="text"
+              placeholder="Search team member..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-11 pr-4 py-3 bg-[#091c13] border border-[#2a4536]/30 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-transparent outline-none transition-all text-xs text-white placeholder-gray-400 font-semibold shadow-sm"
+            />
+          </div>
+        </div>
+
+        {/* Admin Tracking Interval Control */}
+        {user?.role === 'admin' && (
+          <div className="bg-[#78817b]/80 backdrop-blur-md rounded-2xl border border-[#2a4536]/20 p-4.5 space-y-3.5 text-sm shadow-md">
+            <div className="flex items-center gap-2 text-rose-800 font-bold">
+              <Clock className="w-4.5 h-4.5 text-rose-800" />
+              <span>Tracking Interval (mins):</span>
+            </div>
+            <div className="flex gap-3">
+              <input 
+                id="tracking-interval-mobile"
+                name="trackingInterval"
+                type="number" 
+                min="1" 
+                max="60" 
+                value={trackingInterval} 
+                onChange={(e) => setTrackingInterval(parseInt(e.target.value) || 15)}
+                className="w-20 h-10 px-3 bg-white border-0 text-black text-center text-sm rounded-xl font-bold focus:outline-none shrink-0"
+              />
+              <button 
+                onClick={handleUpdateInterval}
+                disabled={isUpdatingInterval}
+                className="flex-1 h-10 bg-[#00a859] hover:bg-[#008f4c] active:scale-95 text-white font-bold rounded-xl transition-all flex items-center justify-center border-none shadow-sm"
+              >
+                {isUpdatingInterval ? 'Saving...' : 'Set'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Unlock Requests */}
+        {unlockRequests.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-sm font-extrabold text-amber-500 flex items-center gap-2 uppercase tracking-wider">
+              <Clock className="w-4 h-4" />
+              Pending Unlock Requests ({unlockRequests.length})
+            </h2>
+            <div className="space-y-4.5">
+              {unlockRequests.map(req => (
+                <div key={req.id} className="bg-[#fffdf6] rounded-3xl border border-amber-100/50 p-4.5 shadow-md space-y-4 text-black animate-in fade-in duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center font-black text-amber-700 overflow-hidden relative border border-amber-200 shrink-0">
+                      {req.userName.charAt(0)}
+                      {req.userPhoto && (
+                        <img 
+                          src={req.userPhoto} 
+                          alt={req.userName} 
+                          className="absolute inset-0 w-full h-full object-cover" 
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{req.userName}</p>
+                      <p className="text-[10px] text-amber-700 font-semibold mt-0.5">{formatDistanceToNow(new Date(req.requestedAt))} ago</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl p-3 border border-amber-50/40 shadow-inner">
+                    <p className="text-xs text-gray-700 font-medium leading-relaxed italic">"{req.reason}"</p>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-100/80">
+                    <button 
+                      className="flex items-center gap-1.5 text-xs font-black text-[#00a859] hover:text-emerald-700 py-1.5 px-3 rounded-lg hover:bg-emerald-50 transition-colors"
+                      onClick={() => handleRespondToUnlock(req.id, 'approved')}
+                    >
+                      <CheckCircle className="w-4 h-4 text-[#00a859]" /> Approve
+                    </button>
+                    <button 
+                      className="flex items-center gap-1.5 text-xs font-black text-rose-600 hover:text-rose-700 py-1.5 px-3 rounded-lg hover:bg-rose-50 transition-colors"
+                      onClick={() => handleRespondToUnlock(req.id, 'rejected')}
+                    >
+                      <XCircle className="w-4 h-4 text-rose-500" /> REJECT
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Team Members List */}
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+              Team Members
+              <span className="bg-[#00a859]/20 text-[#00a859] text-xs px-2.5 py-0.5 rounded-full font-bold">
+                {filteredMembers.length}
+              </span>
+            </h2>
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-20 bg-[#182a20] animate-pulse rounded-2xl border border-[#2a4536]/30" />
+              ))}
+            </div>
+          ) : filteredMembers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 bg-[#182a20] rounded-2xl border border-dashed border-[#2a4536]/30">
+              <UserIcon className="w-10 h-10 mb-2 opacity-25" />
+              <p className="text-xs">No team members found.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredMembers
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .map((member) => {
+                  const loc = latestLocations[member.id];
+                  return (
+                    <Link
+                      key={member.id}
+                      to={`/my-team/${member.id}`}
+                      className="flex items-center gap-3.5 bg-[#182a20] border border-[#2a4536]/30 rounded-2xl p-4 hover:border-emerald-500/50 transition-all duration-300 shadow-sm"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg ring-2 ring-[#042516] overflow-hidden relative">
+                          <ProfilePlaceholder 
+                            photoUrl={member.photoUrl} 
+                            seed={member.name}
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-[#182a20] z-20 ${
+                          loc && isToday(new Date(loc.timestamp))
+                            ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]' 
+                            : 'bg-red-500 shadow-[0_0_6px_rgba(239,44,44,0.6)]'
+                        }`} />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-white text-sm truncate">
+                          {member.name}
+                        </h3>
+                        <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                          {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1">
+                          <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="truncate">
+                            {loc 
+                              ? `Active ${formatDistanceToNow(new Date(loc.timestamp))} ago`
+                              : 'No recent activity'
+                            }
+                          </span>
+                        </div>
+                      </div>
+
+                      <ChevronRight className="w-4 h-4 text-emerald-500 shrink-0" />
+                    </Link>
+                  );
+                })}
+
+              {/* Mobile Pagination */}
+              {filteredMembers.length > pageSize && (
+                <div className="flex justify-between items-center bg-[#182a20] border border-[#2a4536]/30 p-3 rounded-2xl mt-4 text-xs font-bold">
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="px-3.5 py-2 bg-[#091c13] text-white rounded-xl border border-[#2a4536]/30 disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <span className="text-gray-300">
+                    Page {currentPage} of {Math.ceil(filteredMembers.length / pageSize)}
+                  </span>
+                  <button
+                    disabled={currentPage >= Math.ceil(filteredMembers.length / pageSize)}
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredMembers.length / pageSize), prev + 1))}
+                    className="px-3.5 py-2 bg-[#091c13] text-white rounded-xl border border-[#2a4536]/30 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Custom Mobile Bottom Navigation Dock & Floating Plus Button */}
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#042516]/90 backdrop-blur-md px-4 pb-4 pt-2 border-t border-[#2a4536]/10">
+          <div className="relative bg-[#091c13] border border-[#2a4536]/30 rounded-3xl h-16 flex items-center justify-around shadow-2xl">
+            <button className="flex flex-col items-center justify-center text-[#00a859] p-2 hover:opacity-85 transition-opacity">
+              <Home className="w-5 h-5" />
+            </button>
+
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+              <ClipboardList className="w-5 h-5" />
+            </button>
+
+            {/* Center Floating Plus Button Container */}
+            <div className="relative -top-5 shrink-0">
+              <Link 
+                to={['admin', 'hr', 'developer'].includes(user?.role || '') ? '/my-team/reporting' : '#'}
+                className="w-14 h-14 bg-[#00a859] text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 hover:scale-105 transition-all duration-300"
+              >
+                <Plus className="w-6 h-6 stroke-[3]" />
+              </Link>
+            </div>
+
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+              <Calendar className="w-5 h-5" />
+            </button>
+
+            <button className="flex flex-col items-center justify-center text-gray-400 p-2 hover:text-[#00a859] hover:opacity-85 transition-colors">
+              <UserIcon className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col h-full bg-background overflow-hidden ${isTablet ? 'p-2' : 'p-6 md:p-8'} space-y-6`}>
       {/* Header & Search */}
@@ -513,7 +782,7 @@ const MyTeamPage: React.FC = () => {
                   </optgroup>
                 ))}
               </select>
-
+ 
               <div className="relative w-full md:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted w-4 h-4" />
                 <input
@@ -560,7 +829,7 @@ const MyTeamPage: React.FC = () => {
                 </div>
             </div>
         )}
-
+ 
         {/* Pending Unlock Requests */}
         {unlockRequests.length > 0 && (
           <div className="space-y-4">
@@ -643,7 +912,7 @@ const MyTeamPage: React.FC = () => {
             SATELLITE
           </button>
         </div>
-
+ 
         {/* Real Leaflet Map Container */}
         <div 
           ref={mapContainerRef} 
@@ -657,7 +926,7 @@ const MyTeamPage: React.FC = () => {
           <MapSkeleton />
         </div>
       </div>
-
+ 
       {/* Team List Header */}
       <div className={`${isTablet ? 'mt-4 px-2' : 'flex items-center justify-between mt-4 px-2'}`}>
         <h2 className={`${isTablet ? 'text-sm' : 'text-lg'} font-bold text-primary-text flex items-center gap-2`}>
@@ -667,7 +936,7 @@ const MyTeamPage: React.FC = () => {
           </span>
         </h2>
       </div>
-
+ 
       {/* Team Grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-8">
@@ -737,7 +1006,7 @@ const MyTeamPage: React.FC = () => {
               );
             })}
           </div>
-
+ 
           <Pagination
             currentPage={currentPage}
             totalItems={filteredMembers.length}
@@ -747,7 +1016,7 @@ const MyTeamPage: React.FC = () => {
           />
         </div>
       )}
-
+ 
       {/* Floating Action Button */}
       {['admin', 'hr', 'developer'].includes(user?.role || '') && (
         <button className="fixed bottom-8 right-8 w-14 h-14 bg-emerald-600 text-white rounded-full shadow-lg hover:bg-emerald-700 hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group">
@@ -757,5 +1026,5 @@ const MyTeamPage: React.FC = () => {
     </div>
   );
 };
-
+ 
 export default MyTeamPage;

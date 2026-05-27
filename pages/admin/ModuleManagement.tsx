@@ -88,20 +88,41 @@ const ModuleManagement: React.FC = () => {
       {isLoading ? (
         <GridSkeleton count={6} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-fade-in">
           {taskGroups.map(group => (
-            <div key={group.id} className="bg-page p-4 rounded-lg border border-border flex flex-col">
+            <div 
+              key={group.id} 
+              className="bg-gradient-to-br from-[#0c2a1b] to-[#06180f] md:bg-none md:bg-white p-5 rounded-2xl md:rounded-lg border border-[#1d422f] md:border-border flex flex-col shadow-[0_8px_20px_rgba(0,0,0,0.3)] md:shadow-none hover:shadow-lg transition-all duration-300"
+            >
               <div className="flex-grow">
-                <div className="flex items-center gap-3 mb-2">
-                  <Package className="h-5 w-5 text-accent" />
-                  <h4 className="font-bold text-primary-text">{group.name}</h4>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2.5 rounded-xl bg-[#22c55e]/20 text-[#22c55e] shadow-[inset_0_0_8px_rgba(34,197,94,0.3)] md:p-0 md:bg-transparent md:shadow-none md:text-accent flex-shrink-0">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <h4 className="font-bold text-white md:text-primary-text text-base md:text-sm truncate w-full">{group.name}</h4>
                 </div>
-                <p className="text-sm text-muted mb-3">{group.description}</p>
-                <p className="text-xs font-semibold text-muted">{group.permissions.length} permissions</p>
+                <p className="text-sm text-gray-300 md:text-muted mb-4 leading-relaxed line-clamp-2 md:line-clamp-none min-h-[40px] md:min-h-0">{group.description}</p>
+                <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 md:bg-transparent md:border-none md:p-0">
+                  <span className="text-[10px] md:text-xs font-bold md:font-semibold text-emerald-400 md:text-muted uppercase tracking-wider md:normal-case md:tracking-normal">
+                    {group.permissions.length} permissions
+                  </span>
+                </div>
               </div>
-              <div className="mt-4 pt-4 border-t border-border flex justify-end gap-2">
-                <Button variant="icon" onClick={() => { setCurrentTaskGroup(group); setIsFormOpen(true); }} title={`Edit ${group.name}`} className="p-2 hover:bg-blue-500/10 rounded-full transition-colors"><Edit className="h-5 w-5" /></Button>
-                <Button variant="icon" onClick={() => { setCurrentTaskGroup(group); setIsDeleteModalOpen(true); }} title={`Delete ${group.name}`} className="p-2 hover:bg-red-500/10 rounded-full transition-colors"><Trash2 className="h-5 w-5 text-red-500" /></Button>
+              <div className="mt-5 pt-4 border-t border-[#1d422f] md:border-border flex justify-end gap-3">
+                <button 
+                  onClick={() => { setCurrentTaskGroup(group); setIsFormOpen(true); }} 
+                  title={`Edit ${group.name}`} 
+                  className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl hover:bg-blue-500/20 active:scale-95 transition-all md:p-2 md:bg-transparent md:border-none md:text-gray-600 md:hover:bg-blue-500/10 md:rounded-full md:active:scale-100"
+                >
+                  <Edit className="h-5 w-5" />
+                </button>
+                <button 
+                  onClick={() => { setCurrentTaskGroup(group); setIsDeleteModalOpen(true); }} 
+                  title={`Delete ${group.name}`} 
+                  className="p-2.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl hover:bg-rose-500/20 active:scale-95 transition-all md:p-2 md:bg-transparent md:border-none md:text-rose-500 md:hover:bg-red-500/10 md:rounded-full md:active:scale-100"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
               </div>
             </div>
           ))}

@@ -94,27 +94,29 @@ const NewTicketPage: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="h-full flex flex-col">
-                <header className="p-4 flex-shrink-0 fo-mobile-header">
-                    <h1>New Support Ticket</h1>
+            <div className="h-full flex flex-col bg-[#041b0f] min-h-screen">
+                <header className="p-4 flex-shrink-0 pt-6">
+                    <h1 className="text-sm font-bold text-white">New Support Ticket</h1>
                 </header>
-                <main className="flex-1 overflow-y-auto p-4">
-                    <div className="bg-card rounded-2xl p-6 space-y-6">
-                        <div className="text-center">
-                            <div className="inline-block bg-accent-light p-3 rounded-full mb-2">
-                                <MessageSquarePlus className="h-8 w-8 text-accent-dark" />
+                <main className="flex-1 overflow-y-auto p-4 pt-2 pb-20">
+                    <div className="bg-[#0a1c13] border border-[#1d422f] rounded-[2rem] p-6 space-y-6 flex flex-col min-h-full relative overflow-hidden shadow-2xl">
+                        <div className="text-center relative z-10">
+                            <div className="inline-block bg-[#041b0f] border border-[#1d422f] p-3 rounded-2xl mb-4">
+                                <MessageSquarePlus className="h-6 w-6 text-emerald-500" />
                             </div>
-                            <h2 className="text-xl font-bold text-primary-text">Create New Ticket</h2>
-                            <p className="text-sm text-gray-400">Submit a support request or report an issue.</p>
+                            <h2 className="text-xl font-bold text-white tracking-tight">Create New Ticket</h2>
+                            <p className="text-xs text-gray-400 mt-1">Submit a support request or report an issue.</p>
                         </div>
-                        <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                            <Input placeholder="Title / Subject" {...register('title')} error={errors.title?.message} />
+                        <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-4 flex-1 relative z-10">
+                            <Input placeholder="Title / Subject" {...register('title')} error={errors.title?.message} 
+                                className="bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl" />
                             <div>
-                                <textarea placeholder="Description" {...register('description')} rows={5} className={`form-input ${errors.description ? 'form-input--error' : ''}`} />
+                                <textarea placeholder="Description" {...register('description')} rows={5} 
+                                    className={`form-input w-full bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl ${errors.description ? 'border-red-500' : ''}`} />
                                 {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description.message}</p>}
                             </div>
                             <Controller name="category" control={control} render={({ field }) => (
-                                <Select {...field} error={errors.category?.message}>
+                                <Select {...field} error={errors.category?.message} className="bg-[#041b0f] border-[#1d422f] text-white rounded-xl">
                                     <option>Software Developer</option>
                                     <option>Admin</option>
                                     <option>Operational</option>
@@ -123,7 +125,7 @@ const NewTicketPage: React.FC = () => {
                                 </Select>
                             )} />
                             <Controller name="priority" control={control} render={({ field }) => (
-                                <Select {...field} error={errors.priority?.message}>
+                                <Select {...field} error={errors.priority?.message} className="bg-[#041b0f] border-[#1d422f] text-white rounded-xl">
                                     <option>Low</option>
                                     <option>Medium</option>
                                     <option>High</option>
@@ -131,47 +133,53 @@ const NewTicketPage: React.FC = () => {
                                 </Select>
                             )} />
                             <Controller name="assignedToId" control={control} render={({ field }) => (
-                                <Select {...field} value={field.value ?? ''} error={errors.assignedToId?.message}>
+                                <Select {...field} value={field.value ?? ''} error={errors.assignedToId?.message} className="bg-[#041b0f] border-[#1d422f] text-white rounded-xl">
                                     <option value="">Unassigned</option>
                                     {assignableUsers.map(u => (
                                         <option key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ')})</option>
                                     ))}
                                 </Select>
                             )} />
-                            <Controller
-                                name="attachment"
-                                control={control}
-                                render={({ field, fieldState }) => (
-                                    <UploadDocument
-                                        label="Attach Screenshot or Document (Image only)"
-                                        file={field.value}
-                                        onFileChange={field.onChange}
-                                        allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
-                                        error={fieldState.error?.message}
-                                    />
-                                )}
-                            />
+                            <div className="pt-2">
+                                <label className="block text-xs font-bold text-emerald-500/80 mb-2">Attach Screenshot or Document (Image only)</label>
+                                <Controller
+                                    name="attachment"
+                                    control={control}
+                                    render={({ field, fieldState }) => (
+                                        <div className="bg-[#041b0f] border border-dashed border-[#1d422f] rounded-xl p-4">
+                                            <UploadDocument
+                                                label=""
+                                                file={field.value}
+                                                onFileChange={field.onChange}
+                                                allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
+                                                error={fieldState.error?.message}
+                                            />
+                                        </div>
+                                    )}
+                                />
+                            </div>
                         </form>
+                        
+                        <footer className="pt-6 mt-auto flex items-center justify-between relative z-10">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/support')}
+                                disabled={isSubmitting}
+                                className="text-white text-sm font-bold bg-transparent px-2"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                form={formId}
+                                disabled={isSubmitting}
+                                className="text-white text-sm font-bold bg-transparent px-2"
+                            >
+                                {isSubmitting ? 'Creating...' : 'Create Ticket'}
+                            </button>
+                        </footer>
                     </div>
                 </main>
-                <footer className="p-4 flex-shrink-0 flex items-center gap-4">
-                    <button
-                        type="button"
-                        onClick={() => navigate('/support')}
-                        disabled={isSubmitting}
-                        className="fo-btn-secondary px-6"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        form={formId}
-                        disabled={isSubmitting}
-                        className="fo-btn-primary flex-1"
-                    >
-                        {isSubmitting ? 'Creating...' : 'Create Ticket'}
-                    </button>
-                </footer>
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             </div>
         );

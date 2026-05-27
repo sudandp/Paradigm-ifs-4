@@ -214,9 +214,19 @@ export function validateFieldStaffAttendance(
     } else if (siteRatio > 0) {
       status = '1/4P';
     }
+    
+    // Cap the status based on actual total hours worked to ensure a short day doesn't get 'P'
+    const threeQuarterHrs = fullDayTargetHours * 0.75;
+    if (status === 'P' && breakdown.totalHours < fullDayTargetHours - 0.25) {
+      status = breakdown.totalHours >= threeQuarterHrs ? '3/4P' : '1/2P';
+    } else if (status === '3/4P' && breakdown.totalHours < threeQuarterHrs) {
+      status = '1/2P';
+    }
   } else {
     // Fallback to total hours if no site target is configured
+    const threeQuarterHrs = fullDayTargetHours * 0.75;
     if (breakdown.totalHours >= fullDayTargetHours - 0.25) status = 'P';
+    else if (breakdown.totalHours >= threeQuarterHrs) status = '3/4P';
     else if (breakdown.totalHours >= rules.minimumHoursHalfDay) status = '1/2P';
   }
 

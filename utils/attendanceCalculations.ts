@@ -79,8 +79,8 @@ export function calculateWorkingHours(
       const elapsed = differenceInMinutes(eventTime, lastEventTime);
       
       // Safely ignore excessively long anomalous intervals (e.g., missed punch outs)
-      // 16 hours is the maximum continuous valid interval between events
-      const MAX_INTERVAL_MINUTES = 16 * 60;
+      // 30 hours is the maximum continuous valid interval between events to support 24h technical shifts
+      const MAX_INTERVAL_MINUTES = 30 * 60;
       let validElapsed = elapsed;
       if (elapsed > MAX_INTERVAL_MINUTES) {
         validElapsed = 0;
@@ -171,7 +171,7 @@ export function calculateWorkingHours(
                            
   const isLiveAccumulationRequired = isCalendarToday || isOpenNightShift;
 
-  const MAX_SESSION_HOURS = 16;
+  const MAX_SESSION_HOURS = 30;
   const MAX_SESSION_MINUTES = MAX_SESSION_HOURS * 60;
   
   if (lastEventTime && isLiveAccumulationRequired) {
@@ -356,7 +356,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   
   // Discard previous day's COMPLETED shifts.
-  // The 16-hour lookback can pull in yesterday's completed day shift.
+  // The 30-hour lookback can pull in yesterday's completed day shift.
   // We find the last explicit punch-out that occurred before today's midnight
   // and discard all events up to and including it.
   const targetDate = processingDate || new Date();
@@ -711,7 +711,10 @@ export function evaluateAttendanceStatus(params: {
   const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && (approvedLeave as any).day_option !== 'half';
 
   // B. Handle Combinations or pure status
-  if (workStatus && workStatus !== 'A' && !isFullDayLeave) {
+  // CRITICAL: If employee actually worked (workStatus !== 'A'), their physical presence
+  // takes priority over an approved full-day leave. The leave may have been approved
+  // but the employee showed up and worked — credit their attendance.
+  if (workStatus && workStatus !== 'A') {
       const lType = String(approvedLeave?.leaveType || (approvedLeave as any)?.type || '').toLowerCase();
       const isWFH = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
 
@@ -735,10 +738,10 @@ export function evaluateAttendanceStatus(params: {
               status = `0.5P+0.5 ${code}`;
           } else {
               if (isWFH) status = 'W/H';
-              // Priority 2: Explicit Holidays - credit H/P for ANY work on a holiday
-              else if (isHoliday) status = 'H/P';
-              // Priority 3: Weekend Work - credit W/P for ANY work on a weekend
-              else if (isWeekend) status = 'W/P';
+              // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
+              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
+              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P for ANY work
+              else if (isWeekend || isRecurringHoliday) status = 'W/P';
               else status = workStatus;
           }
       }
@@ -754,10 +757,11 @@ export function evaluateAttendanceStatus(params: {
       // unless specifically marked as Loss of Pay.
       status = getLeaveCode(approvedLeave);
   } else {
-      if (isHoliday) {
-          // Holidays (Fixed, Configured, Pool, Recurring) should always show as 'H'
+      if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
+          // Explicit Company Holidays should show as 'H'
           status = 'H';
-      } else if (isWeekend && isEligible) {
+      } else if ((isWeekend || isRecurringHoliday) && isEligible) {
+          // Weekends and Recurring Holidays (Blue Leaves) should show as 'W/O'
           status = 'W/O';
       } else {
           status = 'A';

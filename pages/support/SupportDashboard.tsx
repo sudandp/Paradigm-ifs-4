@@ -76,69 +76,62 @@ const TicketCard: React.FC<{ ticket: SupportTicket, onClick: () => void }> = ({ 
 const NearbyUserItem: React.FC<{ 
     user: User, 
     onAction: (targetUser: User, type: 'call' | 'sms' | 'whatsapp') => void,
-    onPing: (user: User) => void
-}> = ({ user, onAction, onPing }) => (
-    <div className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 ${user.isNearby ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-emerald-500/5 shadow-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 hover:border-emerald-500/20 shadow-sm md:shadow-sm'}`}>
+    onPing: (user: User) => void,
+    isMobile?: boolean
+}> = ({ user, onAction, onPing, isMobile }) => (
+    <div className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 ${isMobile ? 'bg-[#0a1c13] border border-[#1d422f]' : user.isNearby ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-emerald-500/5 shadow-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 hover:border-emerald-500/20 shadow-sm md:shadow-sm'}`}>
         <div className="relative flex-shrink-0">
             <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className="w-12 h-12 rounded-full shadow-sm" />
             <span className={`absolute -bottom-0.5 -right-0.5 block h-4 w-4 rounded-full ${user.isAvailable ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-rose-600 shadow-[0_0_6px_rgba(225,29,72,0.6)]'} ring-2 ring-white`}></span>
         </div>
         <div className="flex-grow min-w-0">
             <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-gray-900 dark:text-emerald-50 truncate">{user.name}</p>
+                <p className={`text-sm font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900 dark:text-emerald-50'}`}>{user.name}</p>
                 {user.isTeamMember && (
                     <span className="text-[10px] bg-blue-500/20 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Team</span>
                 )}
                 {user.isNearby && !user.isTeamMember && (
-                    <span className="text-[10px] bg-accent/20 text-accent px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Nearby</span>
+                    <span className={`text-[10px] ${isMobile ? 'bg-[#041b0f] text-emerald-500' : 'bg-accent/20 text-accent'} px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter`}>Nearby</span>
                 )}
             </div>
-            <p className="text-xs text-muted truncate">
-                {user.locationName && <span className="text-accent/80 font-medium">{user.locationName} • </span>}
+            <p className={`text-xs ${isMobile ? 'text-gray-400' : 'text-muted'} truncate`}>
+                {user.locationName && <span className="text-emerald-500/80 font-medium">{user.locationName} • </span>}
                 {user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </p>
         </div>
-        <div className="flex items-center gap-1">
-            <Button
-                variant="icon"
-                size="sm"
-                className="hover:opacity-90 transition-opacity border"
-                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+        <div className="flex items-center gap-2">
+            <button
+                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
                 title="Ping (Internal)"
                 onClick={() => onPing(user)}
             >
-                <AlertTriangle className="h-4 w-4" />
-            </Button>
-            <Button
-                variant="icon"
-                size="sm"
-                className="hover:opacity-90 transition-opacity border"
-                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                <AlertTriangle className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+            </button>
+            <button
+                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
                 title="Call"
                 onClick={() => onAction(user, 'call')}
             >
-                <Phone className="h-4 w-4" />
-            </Button>
-            <Button
-                variant="icon"
-                size="sm"
-                className="hover:opacity-90 transition-opacity border"
-                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
-                title="SMS"
-                onClick={() => onAction(user, 'sms')}
-            >
-                <MessageCircle className="h-4 w-4" />
-            </Button>
-            <Button
-                variant="icon"
-                size="sm"
-                className="hover:opacity-90 transition-opacity border"
-                style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                <Phone className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+            </button>
+            <button
+                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
                 title="WhatsApp"
                 onClick={() => onAction(user, 'whatsapp')}
             >
-                <MessageSquare className="h-4 w-4" />
-            </Button>
+                <MessageCircle className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+            </button>
+            <button
+                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                title="SMS"
+                onClick={() => onAction(user, 'sms')}
+            >
+                <MessageSquare className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+            </button>
         </div>
     </div>
 );
@@ -372,93 +365,147 @@ const SupportDashboard: React.FC = () => {
 
     return (
         <>
-        <div className="flex-1 flex flex-col w-full p-4 lg:p-8 space-y-8">
+        <div className={`flex-1 flex flex-col w-full p-4 lg:p-8 space-y-8 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white' : ''}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Modals */}
 
-            <Modal
-                isOpen={isNearbyModalOpen}
-                onClose={() => setIsNearbyModalOpen(false)}
-                title="Nearby Available Support"
-                onConfirm={() => setIsNearbyModalOpen(false)}
-                confirmButtonText="Close"
-            >
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                    {nearbyUsers.length > 0 ? (
-                        nearbyUsers.map(u => (
-                            <NearbyUserItem key={u.id} user={u} onAction={handleCommunication} onPing={handlePing} />
-                        ))
-                    ) : (
-                        <div className="text-center py-8 text-muted">
-                            <Users className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                            <p>No support staff found nearby.</p>
+            {isMobile ? (
+                isNearbyModalOpen && (
+                    <div className="fixed inset-0 z-[999] bg-[#041b0f] flex flex-col h-full w-full">
+                        <div className="flex-1 p-6 pt-12 flex flex-col h-full overflow-hidden">
+                            <h3 className="text-lg font-bold text-white mb-6">Nearby Available Support</h3>
+                            
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                                {nearbyUsers.length > 0 ? (
+                                    nearbyUsers.map(u => (
+                                        <NearbyUserItem key={u.id} user={u} onAction={handleCommunication} onPing={handlePing} isMobile={true} />
+                                    ))
+                                ) : (
+                                    <div className="text-center py-8 text-emerald-500/50">
+                                        <Users className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                                        <p>No support staff found nearby.</p>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="flex justify-end gap-4 mt-6 pb-6">
+                                <button className="px-8 py-3 bg-[#3f4a59] text-white font-bold rounded-full text-sm" onClick={() => setIsNearbyModalOpen(false)}>Cancel</button>
+                                <button className="px-8 py-3 bg-[#f34a4a] text-white font-bold rounded-full text-sm" onClick={() => setIsNearbyModalOpen(false)}>Close</button>
+                            </div>
                         </div>
-                    )}
-                </div>
-            </Modal>
+                    </div>
+                )
+            ) : (
+                <Modal
+                    isOpen={isNearbyModalOpen}
+                    onClose={() => setIsNearbyModalOpen(false)}
+                    title="Nearby Available Support"
+                    onConfirm={() => setIsNearbyModalOpen(false)}
+                    confirmButtonText="Close"
+                >
+                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                        {nearbyUsers.length > 0 ? (
+                            nearbyUsers.map(u => (
+                                <NearbyUserItem key={u.id} user={u} onAction={handleCommunication} onPing={handlePing} />
+                            ))
+                        ) : (
+                            <div className="text-center py-8 text-muted">
+                                <Users className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                                <p>No support staff found nearby.</p>
+                            </div>
+                        )}
+                    </div>
+                </Modal>
+            )}
 
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-primary-text tracking-tight uppercase">Support & Audit</h2>
-                    <p className="text-gray-500 dark:text-muted text-sm mt-1 font-medium italic opacity-80 font-mono tracking-tight lowercase">
+                    <h2 className={`text-2xl lg:text-3xl font-bold tracking-tight uppercase ${isMobile ? 'text-primary-dark-theme-text' : 'text-gray-900 dark:text-primary-text'}`}>Support & Audit</h2>
+                    <p className={`text-sm mt-1 font-medium italic opacity-80 font-mono tracking-tight lowercase ${isMobile ? 'text-gray-400' : 'text-gray-500 dark:text-muted'}`}>
                         Track issues, request audits, and connect with support staff in real-time.
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-                    {isMobile && (
-                        <Button
-                            onClick={() => setIsNearbyModalOpen(true)}
-                            variant="secondary"
-                            className="flex-1 lg:flex-none bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/20 shadow-none px-4 text-xs font-bold uppercase tracking-widest"
-                        >
-                            <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Nearby Staff
-                        </Button>
+                <div className={`flex w-full lg:w-auto ${isMobile ? 'bg-black/30 border border-[#1d422f] rounded-2xl py-4 px-6 justify-between items-center shadow-lg mb-2' : 'flex-wrap gap-2'}`}>
+                    {isMobile ? (
+                        <>
+                            <button
+                                onClick={() => setIsNearbyModalOpen(true)}
+                                className="flex items-center gap-2 text-white hover:text-emerald-400 transition-colors"
+                            >
+                                <UserCheck className="h-4 w-4 text-gray-400" />
+                                <div className="text-left text-[11px] font-bold leading-tight">
+                                    <div>NEARBY</div>
+                                    <div>STAFF</div>
+                                </div>
+                            </button>
+                            {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
+                                <button
+                                    onClick={() => navigate('/support/alerts')}
+                                    className="flex items-center gap-2 text-white hover:text-red-400 transition-colors"
+                                >
+                                    <AlertTriangle className="h-4 w-4 text-gray-400" />
+                                    <div className="text-left text-[11px] font-bold leading-tight">
+                                        <div>Broadcast</div>
+                                        <div>Alert</div>
+                                    </div>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => navigate('/support/ticket/new')}
+                                className="flex items-center gap-2 text-white hover:text-emerald-400 transition-colors text-[11px] font-bold"
+                            >
+                                <Plus className="h-4 w-4 text-gray-400" /> New Ticket
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
+                                <Button
+                                    onClick={() => navigate('/support/alerts')}
+                                    variant="secondary"
+                                    className="flex-1 lg:flex-none bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200"
+                                >
+                                    <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Broadcast Alert
+                                </Button>
+                            )}
+                            <Button
+                                onClick={() => navigate('/support/ticket/new')}
+                                className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                                <Plus className="mr-1.5 h-3.5 w-3.5" /> New Ticket
+                            </Button>
+                        </>
                     )}
-                    {(user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'hr' || user?.role === 'hr_ops' || user?.role === 'developer') && (
-                        <Button
-                            onClick={() => navigate('/support/alerts')}
-                            variant="secondary"
-                            className="flex-1 lg:flex-none bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200"
-                        >
-                            <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> Broadcast Alert
-                        </Button>
-                    )}
-                    <Button
-                        onClick={() => navigate('/support/ticket/new')}
-                        className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" /> New Ticket
-                    </Button>
                 </div>
             </div>
 
             {/* Global Filters Card - Emerald Glassmorphism on Mobile, Clean on Web */}
-            <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl flex flex-col gap-6">
+            <div className={`${isMobile ? 'bg-black/30 border border-[#1d422f] shadow-lg p-6 rounded-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl'} flex flex-col gap-6`}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div className="relative">
-                        <label htmlFor="search-input" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Search Tickets</label>
+                        <label htmlFor="search-input" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Search Tickets</label>
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-emerald-500/30" />
+                            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 ${isMobile ? 'text-emerald-500/70' : 'text-gray-400 dark:text-emerald-500/30'}`} />
                             <Input
                                 id="search-input"
                                 name="search"
                                 placeholder="Ticket #, title..."
-                                className="!pl-12 h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 focus:bg-white md:focus:bg-white dark:focus:bg-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text placeholder:text-gray-400 dark:placeholder:text-emerald-500/20 rounded-xl transition-all"
+                                className={`!pl-12 h-12 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white focus:bg-[#041b0f] placeholder:text-emerald-900/50' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 focus:bg-white md:focus:bg-white dark:focus:bg-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text placeholder:text-gray-400 dark:placeholder:text-emerald-500/20'}`}
                                 value={filters.searchTerm}
                                 onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
                             />
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="role-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Filter by Role</label>
+                        <label htmlFor="role-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Filter by Role</label>
                         <Select
                             id="role-filter-global"
                             name="role"
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
-                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
+                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
                         >
                             <option value="all">All Roles</option>
                             {uniqueRoles.map(r => (
@@ -467,13 +514,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="status-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Status</label>
+                        <label htmlFor="status-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Status</label>
                         <Select
                             id="status-filter-global"
                             name="status"
                             value={filters.status}
                             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
+                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
                         >
                             <option value="all">All Status</option>
                             <option>Open</option>
@@ -484,13 +531,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="priority-filter-global" className="block text-[10px] font-black text-gray-400 dark:text-emerald-500/50 mb-2 uppercase tracking-[0.2em] ml-1">Priority</label>
+                        <label htmlFor="priority-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Priority</label>
                         <Select
                             id="priority-filter-global"
                             name="priority"
                             value={filters.priority}
                             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-                            className="h-12 bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text rounded-xl"
+                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
                         >
                             <option value="all">All Priority</option>
                             <option>Low</option>
@@ -505,16 +552,16 @@ const SupportDashboard: React.FC = () => {
             {/* Stats Grid - Unified Horizontal Pattern */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {[
-                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, shadow: "shadow-gray-500/10" },
-                    { title: "Open Issues", value: stats.open, icon: AlertTriangle, shadow: "shadow-rose-500/10", textColor: "text-rose-500" },
-                    { title: "In Progress", value: stats.inProgress, icon: Loader2, shadow: "shadow-blue-500/10", textColor: "text-blue-500" },
-                    { title: "Resolved Jobs", value: stats.resolved, icon: UserCheck, shadow: "shadow-emerald-500/10", textColor: "text-emerald-500" },
-                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, shadow: "shadow-amber-500/10", textColor: "text-amber-500" }
+                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, shadow: "shadow-gray-500/10", darkTextColor: "text-indigo-400" },
+                    { title: "Open Issues", value: stats.open, icon: AlertTriangle, shadow: "shadow-rose-500/10", textColor: "text-rose-500", darkTextColor: "text-rose-500" },
+                    { title: "In Progress", value: stats.inProgress, icon: Loader2, shadow: "shadow-blue-500/10", textColor: "text-blue-500", darkTextColor: "text-blue-400" },
+                    { title: "Resolved Jobs", value: stats.resolved, icon: UserCheck, shadow: "shadow-emerald-500/10", textColor: "text-emerald-500", darkTextColor: "text-emerald-500" },
+                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, shadow: "shadow-amber-500/10", textColor: "text-amber-500", darkTextColor: "text-amber-500" }
                 ].map((stat, i) => (
-                    <div key={i} className={`flex items-center gap-4 bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:${stat.shadow} transition-all hover:scale-[1.02]`}>
+                    <div key={i} className={`flex items-center gap-4 ${isMobile ? 'bg-black/30 border-[#1d422f] p-4 rounded-2xl border' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:' + stat.shadow} transition-all hover:scale-[1.02]`}>
                         <div className="flex flex-col min-w-0">
-                            <p className="text-[9px] font-black text-gray-400 dark:text-muted mb-1 truncate uppercase tracking-[0.15em] opacity-60">{stat.title}</p>
-                            <p className={`text-2xl font-black ${stat.textColor || 'text-gray-900 dark:text-primary-text'} leading-none tracking-tighter`}>{stat.value}</p>
+                            <p className={`text-[9px] font-black mb-1 truncate uppercase tracking-[0.15em] opacity-60 ${isMobile ? 'text-gray-400' : 'text-gray-400 dark:text-muted'}`}>{stat.title}</p>
+                            <p className={`text-2xl font-black ${isMobile ? (stat.darkTextColor || 'text-white') : (stat.textColor || 'text-gray-900 dark:text-primary-text')} leading-none tracking-tighter`}>{stat.value}</p>
                         </div>
                     </div>
                 ))}
@@ -522,14 +569,14 @@ const SupportDashboard: React.FC = () => {
 
 
             {/* ─── Top Performers Section ─── */}
-            <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl p-8">
+            <div className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-6 rounded-2xl border' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl p-8'}`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3">
                         <div className="p-3 bg-amber-50 md:bg-amber-50 dark:bg-amber-500/10 border border-amber-200 md:border-amber-200 dark:border-amber-500/20 rounded-2xl shadow-sm md:shadow-sm dark:shadow-xl dark:shadow-amber-500/5">
                             <Trophy className="h-6 w-6 text-amber-600 md:text-amber-600 dark:text-amber-500" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-primary-text flex items-center gap-2">
+                            <h3 className={`text-lg font-bold flex items-center gap-2 ${isMobile ? 'text-white' : 'text-gray-900 dark:text-primary-text'}`}>
                                 Team Performance
                                 <button
                                     onClick={() => setIsScoreInfoModalOpen(true)}
@@ -559,7 +606,7 @@ const SupportDashboard: React.FC = () => {
                         {isAdmin(user?.role) && (
                             <button
                                 onClick={downloadReport}
-                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all font-bold text-sm shadow-sm"
+                                className={`flex items-center gap-2 px-4 py-2 text-white rounded-lg transition-all font-bold text-sm shadow-sm ${isMobile ? 'bg-emerald-600/30 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/50' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                             >
                                 <Download className="w-4 h-4" />
                                 Download Report
@@ -592,7 +639,7 @@ const SupportDashboard: React.FC = () => {
                                         return (
                                             <div
                                                 key={emp.userId}
-                                                className="relative bg-white md:bg-white dark:bg-[#0d2c18]/40 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-md rounded-2xl border border-amber-200 md:border-amber-200 dark:border-amber-500/20 shadow-sm md:shadow-sm dark:shadow-xl p-5 hover:border-amber-500/40 hover:scale-[1.02] transition-all duration-500 group"
+                                                className={`relative backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-md rounded-2xl border shadow-sm md:shadow-sm dark:shadow-xl p-5 hover:border-amber-500/40 hover:scale-[1.02] transition-all duration-500 group ${isMobile ? 'bg-[#041b0f] border-amber-500/30' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border-amber-200 md:border-amber-200 dark:border-amber-500/20'}`}
                                             >
                                                 {/* Rank Badge */}
                                                 <div className={`absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-md z-10 bg-gradient-to-br ${medalColor} text-white`}>
@@ -603,7 +650,7 @@ const SupportDashboard: React.FC = () => {
                                                 <div className="flex items-center gap-3 mb-4">
                                                     <ProfilePlaceholder photoUrl={emp.userPhotoUrl} seed={emp.userId} className="w-10 h-10 rounded-full shadow-sm" />
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{emp.userName}</p>
+                                                        <p className={`text-sm font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900 dark:text-white'}`}>{emp.userName}</p>
                                                         <p className="text-[10px] text-gray-400 dark:text-muted uppercase tracking-wider font-medium truncate">{emp.userRole.replace(/_/g, ' ')}</p>
                                                     </div>
                                                 </div>
@@ -629,7 +676,7 @@ const SupportDashboard: React.FC = () => {
 
                                                 {/* Overall Score Bar */}
                                                 <div className="flex items-center gap-2">
-                                                    <div className="flex-1 h-2 bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/5 rounded-full overflow-hidden border border-gray-100 md:border-gray-100 dark:border-emerald-500/10">
+                                                    <div className={`flex-1 h-2 rounded-full overflow-hidden border ${isMobile ? 'bg-black/50 border-[#1d422f]' : 'bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/5 border-gray-100 md:border-gray-100 dark:border-emerald-500/10'}`}>
                                                         <div
                                                             className={`h-full rounded-full transition-all duration-500 ${
                                                                 emp.scores.overallScore >= 80 ? 'bg-green-500' :
@@ -638,7 +685,7 @@ const SupportDashboard: React.FC = () => {
                                                             style={{ width: `${emp.scores.overallScore}%` }}
                                                         />
                                                     </div>
-                                                    <span className="text-xs font-black text-gray-900 dark:text-primary-text min-w-[28px] text-right">{emp.scores.overallScore}</span>
+                                                    <span className={`text-xs font-black min-w-[28px] text-right ${isMobile ? 'text-white' : 'text-gray-900 dark:text-primary-text'}`}>{emp.scores.overallScore}</span>
                                                 </div>
                                             </div>
                                         );
@@ -653,12 +700,12 @@ const SupportDashboard: React.FC = () => {
             <div className="lg:grid lg:grid-cols-3 lg:gap-8">
                 {/* Main Content - Ticket List */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-6 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 shadow-sm md:shadow-sm">
+                    <div className={`${isMobile ? 'bg-[#041b0f] border-[#1d422f] rounded-2xl p-4' : 'bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-6 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 shadow-sm md:shadow-sm'}`}>
                         <div className="flex items-center justify-between mb-6">
-                            <h3 className="font-black text-gray-900 dark:text-emerald-100 flex items-center gap-2 uppercase tracking-tight">
+                            <h3 className={`font-black flex items-center gap-2 uppercase tracking-tight ${isMobile ? 'text-white' : 'text-gray-900 dark:text-emerald-100'}`}>
                                 <MessageSquare className="h-5 w-5 text-emerald-500" /> Active Tickets
                             </h3>
-                            <span className="text-[10px] font-black bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/10 text-gray-500 dark:text-emerald-500 px-3 py-1 rounded-full uppercase tracking-widest">
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${isMobile ? 'bg-black/50 text-emerald-500 border border-[#1d422f]' : 'bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/10 text-gray-500 dark:text-emerald-500'}`}>
                                 {filteredTickets.length} Found
                             </span>
                         </div>
@@ -670,7 +717,9 @@ const SupportDashboard: React.FC = () => {
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-                                    <TicketCard key={ticket.id} ticket={ticket} onClick={() => navigate(`/support/ticket/${ticket.id}`)} />
+                                    <div key={ticket.id} className={isMobile ? '[&>div]:bg-black/30 [&>div]:border-[#1d422f]' : ''}>
+                                        <TicketCard ticket={ticket} onClick={() => navigate(`/support/ticket/${ticket.id}`)} />
+                                    </div>
                                 )) : (
                                     <div className="col-span-full flex flex-col items-center justify-center py-12 text-muted">
                                         <div className="p-4 bg-accent/5 rounded-full mb-3">

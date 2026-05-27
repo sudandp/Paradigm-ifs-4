@@ -69,9 +69,9 @@ const buildDayKeysForSingleUser = (events: AttendanceEvent[]): Record<string, st
       }
 
       // Different kind sub-session (e.g., Site OT starting within a primary Punch In):
-      // Inherit the primary session's startKey, but only if the gap is reasonable (< 16 hours).
-      // Beyond 16 hours the old session is considered stale/forgotten.
-      const MAX_SESSION_MS = 16 * 60 * 60 * 1000;
+      // Inherit the primary session's startKey, but only if the gap is reasonable (< 30 hours).
+      // Beyond 30 hours the old session is considered stale/forgotten.
+      const MAX_SESSION_MS = 30 * 60 * 60 * 1000;
       const isStale = existingStartKey && activeSessions.length > 0 &&
         activeSessions.every(s => (eventDate.getTime() - s.startMs) > MAX_SESSION_MS);
 

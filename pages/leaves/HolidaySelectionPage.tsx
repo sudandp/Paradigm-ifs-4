@@ -166,27 +166,27 @@ const HolidaySelectionPage: React.FC = () => {
     // ─── Confirmation View ────────────────────────────────────────────────────
     if (view === 'confirmation') {
         return (
-            <div className="p-4 md:p-6 pb-40 animate-fade-in">
+            <div className={`p-4 md:p-6 pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
                 <div className="flex items-center gap-4 mb-8">
                     <button
                         onClick={() => setView('selection')}
-                        className="p-2.5 rounded-xl bg-card border border-border hover:bg-accent-light transition-colors"
+                        className={`p-2.5 rounded-xl transition-colors ${isMobile ? 'bg-[#182a20] border border-[#2a4536] text-white hover:bg-[#1a3225]' : 'bg-card border border-border hover:bg-accent-light'}`}
                     >
-                        <ChevronLeft className="h-5 w-5 text-primary-text" />
+                        <ChevronLeft className={`h-5 w-5 ${isMobile ? 'text-white' : 'text-primary-text'}`} />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-bold text-primary-text">Confirm Selection</h1>
-                        <p className="text-muted text-sm">Review your chosen holidays for {currentYear}</p>
+                        <h1 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Confirm Selection</h1>
+                        <p className={`text-sm ${isMobile ? 'text-white/60' : 'text-muted'}`}>Review your chosen holidays for {currentYear}</p>
                     </div>
                 </div>
 
                 <div className="max-w-2xl mx-auto space-y-4">
-                    <div className="bg-card rounded-2xl border border-border shadow-card p-6">
-                        <p className="text-base text-muted mb-6">
+                    <div className={`p-6 shadow-card ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl' : 'bg-card rounded-2xl border border-border'}`}>
+                        <p className={`text-base mb-6 ${isMobile ? 'text-white/80' : 'text-muted'}`}>
                             Confirm saving{' '}
-                            <span className="font-bold text-accent-dark">{selectedHolidays.length} holiday{selectedHolidays.length !== 1 ? 's' : ''}</span>{' '}
+                            <span className={`font-bold ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>{selectedHolidays.length} holiday{selectedHolidays.length !== 1 ? 's' : ''}</span>{' '}
                             for {currentYear}.
                         </p>
 
@@ -198,27 +198,27 @@ const HolidaySelectionPage: React.FC = () => {
                                     const dateStr = h.date.startsWith('-') ? `${currentYear}${h.date}` : h.date;
                                     const d = new Date(dateStr.replace(/-/g, '/'));
                                     return (
-                                        <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-accent-light border border-border">
-                                            <div className="h-12 w-12 rounded-xl bg-accent/20 flex flex-col items-center justify-center text-accent-dark ring-1 ring-accent/20 flex-shrink-0">
+                                        <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border ${isMobile ? 'bg-[#091c13] border-[#2a4536]' : 'bg-accent-light border-border'}`}>
+                                            <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center ring-1 flex-shrink-0 ${isMobile ? 'bg-[#2a4536]/20 ring-[#2a4536]/40 text-emerald-400' : 'bg-accent/20 text-accent-dark ring-accent/20'}`}>
                                                 <span className="text-[9px] font-black uppercase leading-none">
                                                     {d.toLocaleDateString('en-IN', { month: 'short' })}
                                                 </span>
                                                 <span className="text-lg font-black leading-none mt-0.5">{d.getDate()}</span>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-primary-text truncate">{h.name}</p>
-                                                <p className="text-xs text-muted font-medium">
+                                                <p className={`font-bold truncate ${isMobile ? 'text-white' : 'text-primary-text'}`}>{h.name}</p>
+                                                <p className={`text-xs font-medium ${isMobile ? 'text-white/40' : 'text-muted'}`}>
                                                     {d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                                                 </p>
                                             </div>
-                                            <Check className="h-4 w-4 text-accent flex-shrink-0" />
+                                            <Check className={`h-4 w-4 flex-shrink-0 ${isMobile ? 'text-emerald-400' : 'text-accent'}`} />
                                         </div>
                                     );
                                 })}
                         </div>
 
-                        <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20">
-                            <p className="text-sm text-amber-800 dark:text-amber-400 flex items-start gap-2">
+                        <div className={`mt-6 p-4 rounded-xl border ${isMobile ? 'bg-amber-950/20 border-amber-800/40 text-amber-300' : 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-400'}`}>
+                            <p className="text-sm flex items-start gap-2">
                                 <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                 <span>You can update your selection later as long as the holiday selection window is still open.</span>
                             </p>
@@ -273,7 +273,7 @@ const HolidaySelectionPage: React.FC = () => {
 
     // ─── Main Selection View ──────────────────────────────────────────────────
     return (
-        <div className="p-4 md:p-6 pb-40 animate-fade-in">
+        <div className={`p-4 md:p-6 pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Header */}
@@ -281,14 +281,14 @@ const HolidaySelectionPage: React.FC = () => {
                 {isMobile && (
                     <button
                         onClick={() => navigate('/leaves/dashboard')}
-                        className="p-2.5 rounded-xl bg-card border border-border hover:bg-accent-light transition-colors"
+                        className={`p-2.5 rounded-xl border transition-colors ${isMobile ? 'bg-[#182a20] border-[#2a4536] text-white hover:bg-[#1a3225]' : 'bg-card border border-border hover:bg-accent-light'}`}
                     >
-                        <ChevronLeft className="h-5 w-5 text-primary-text" />
+                        <ChevronLeft className={`h-5 w-5 ${isMobile ? 'text-white' : 'text-primary-text'}`} />
                     </button>
                 )}
                 <div>
-                    <h1 className="text-2xl font-bold text-primary-text">Holiday Selection</h1>
-                    <p className="text-muted text-sm">Pick your optional holidays for {currentYear}</p>
+                    <h1 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Holiday Selection</h1>
+                    <p className={`text-sm ${isMobile ? 'text-white/60' : 'text-muted'}`}>Pick your optional holidays for {currentYear}</p>
                 </div>
             </div>
 
@@ -298,28 +298,28 @@ const HolidaySelectionPage: React.FC = () => {
                 <div className="lg:col-span-2 space-y-4">
 
                     {/* Progress Summary Card */}
-                    <div className="bg-card rounded-2xl border border-border shadow-card p-5">
+                    <div className={`p-5 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-accent-light rounded-xl">
-                                    <CalendarCheck2 className="h-5 w-5 text-accent-dark" />
+                                <div className={`p-2.5 rounded-xl ${isMobile ? 'bg-[#091c13] border border-[#2a4536] text-emerald-400' : 'bg-accent-light text-accent-dark'}`}>
+                                    <CalendarCheck2 className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h2 className="font-bold text-primary-text">Available Holidays</h2>
-                                    <p className="text-xs text-muted">Select up to {maxEmployeeHolidays} from the pool</p>
+                                    <h2 className={`font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Available Holidays</h2>
+                                    <p className={`text-xs ${isMobile ? 'text-white/60' : 'text-muted'}`}>Select up to {maxEmployeeHolidays} from the pool</p>
                                 </div>
                             </div>
                             <div className={`px-3 py-1 rounded-full text-sm font-bold border ${
                                 isComplete
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30'
+                                    ? (isMobile ? 'bg-[#2a4536] text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30')
+                                    : (isMobile ? 'bg-[#3a2c16] text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30')
                             }`}>
                                 {selectedHolidays.length} / {maxEmployeeHolidays}
                             </div>
                         </div>
 
                         {/* Progress Bar */}
-                        <div className="w-full h-2 bg-border rounded-full overflow-hidden">
+                        <div className={`w-full h-2 rounded-full overflow-hidden ${isMobile ? 'bg-[#091c13]' : 'bg-border'}`}>
                             <div
                                 className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`}
                                 style={{ width: `${selectionProgress}%` }}
@@ -334,8 +334,8 @@ const HolidaySelectionPage: React.FC = () => {
                     </div>
 
                     {/* Holiday List */}
-                    <div className="bg-card rounded-2xl border border-border shadow-card overflow-hidden">
-                        <div className="divide-y divide-border">
+                    <div className={`overflow-hidden ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-2xl border border-border shadow-card'}`}>
+                        <div className={`divide-y ${isMobile ? 'divide-[#2a4536]' : 'divide-border'}`}>
                             {uniquePool
                                 .sort((a, b) => a.date.localeCompare(b.date))
                                 .map((holiday, index) => {
@@ -351,8 +351,8 @@ const HolidaySelectionPage: React.FC = () => {
                                             key={index}
                                             onClick={() => toggleHoliday(holiday.name, holiday.date)}
                                             className={`w-full flex items-center gap-4 p-4 text-left transition-all duration-200 group
-                                                ${!isPastOrToday ? 'hover:bg-accent-light active:scale-[0.995]' : 'cursor-not-allowed'}
-                                                ${isSelected && !isPastOrToday ? 'bg-accent-light/60' : ''}
+                                                ${!isPastOrToday ? (isMobile ? 'hover:bg-[#1a3225] active:scale-[0.995]' : 'hover:bg-accent-light active:scale-[0.995]') : 'cursor-not-allowed'}
+                                                ${isSelected && !isPastOrToday ? (isMobile ? 'bg-[#006b3f]/10' : 'bg-accent-light/60') : ''}
                                             `}
                                         >
                                             {/* Date Badge */}
@@ -360,8 +360,8 @@ const HolidaySelectionPage: React.FC = () => {
                                                 isSelected
                                                     ? 'bg-accent text-white shadow-sm shadow-accent/30'
                                                     : (isPastOrToday || isLocked)
-                                                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20'
-                                                    : 'bg-accent-light text-accent-dark'
+                                                    ? (isMobile ? 'bg-amber-950/20 text-amber-400 border border-amber-800/40' : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-100 dark:border-amber-500/20')
+                                                    : (isMobile ? 'bg-[#091c13] text-emerald-400 border border-[#2a4536]' : 'bg-accent-light text-accent-dark')
                                             }`}>
                                                 <span className="text-[9px] font-black uppercase leading-none tracking-tight">
                                                     {dateObj.toLocaleDateString('en-IN', { month: 'short' })}
@@ -373,18 +373,20 @@ const HolidaySelectionPage: React.FC = () => {
                                             <div className="flex-1 min-w-0 overflow-hidden">
                                                 <p className={`font-semibold text-sm leading-snug break-words line-clamp-2 ${
                                                     isSelected
-                                                        ? 'text-accent-dark'
+                                                        ? (isMobile ? 'text-white font-bold' : 'text-accent-dark')
                                                         : (isPastOrToday || isLocked)
-                                                        ? 'text-amber-700 dark:text-amber-400'
-                                                        : 'text-primary-text'
+                                                        ? (isMobile ? 'text-amber-300' : 'text-amber-700 dark:text-amber-400')
+                                                        : (isMobile ? 'text-white/80' : 'text-primary-text')
                                                 }`}>
                                                     {holiday.name}
                                                 </p>
-                                                <p className="text-xs text-muted font-medium mt-1 flex items-center flex-wrap gap-1">
+                                                <p className={`text-xs font-medium mt-1 flex items-center flex-wrap gap-1 ${isMobile ? 'text-white/40' : 'text-muted'}`}>
                                                     <span>{dateObj.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                                                     {(isPastOrToday || isLocked) && (
                                                         <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px] ${
-                                                            isSelected ? 'bg-accent/20 text-accent-dark' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'
+                                                            isSelected 
+                                                                ? 'bg-accent/20 text-accent-dark' 
+                                                                : (isMobile ? 'bg-amber-950/40 text-amber-400 border border-amber-800/30' : 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400')
                                                         }`}>
                                                             {isLocked ? 'Locked' : 'Past'}
                                                         </span>
@@ -399,8 +401,8 @@ const HolidaySelectionPage: React.FC = () => {
                                                     : isSelected
                                                     ? 'bg-accent border-accent text-white scale-110'
                                                     : (isPastOrToday || isLocked)
-                                                    ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10'
-                                                    : 'border-border bg-transparent text-transparent group-hover:border-accent/40'
+                                                    ? (isMobile ? 'border-amber-800/40 bg-amber-950/20 text-amber-400' : 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10')
+                                                    : (isMobile ? 'border-[#2a4536] bg-[#091c13] text-white/40' : 'border-border bg-transparent text-transparent group-hover:border-accent/40')
                                             }`}>
                                                 {isSelected ? (
                                                     <Check className="h-4 w-4 stroke-[3]" />
@@ -415,12 +417,12 @@ const HolidaySelectionPage: React.FC = () => {
 
                         {/* Hint Footer (Mobile only, Desktop hint is moved to fixed bar) */}
                         {isMobile && (
-                            <div className="px-5 py-4 bg-accent-light/40 border-t border-border">
+                            <div className="px-5 py-4 bg-[#091c13] border-t border-[#2a4536]">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-accent/10 rounded-lg">
-                                        <CalendarIcon className="h-4 w-4 text-accent" />
+                                    <div className="p-1.5 bg-[#182a20] border border-[#2a4536] rounded-lg">
+                                        <CalendarIcon className="h-4 w-4 text-emerald-400" />
                                     </div>
-                                    <p className="text-xs font-bold text-accent-dark tracking-tight leading-none uppercase">
+                                    <p className="text-xs font-bold text-emerald-400 tracking-tight leading-none uppercase">
                                         {selectedHolidays.length === 6 ? 'Selection complete. Ready to save.' : `Select up to 6 holidays. (${selectedHolidays.length}/6 selected)`}
                                     </p>
                                 </div>
@@ -432,17 +434,18 @@ const HolidaySelectionPage: React.FC = () => {
                 {/* ── Right: Calendar Preview ── */}
                 <div className="space-y-4">
                     <div className="sticky top-6">
-                        <h3 className="text-base font-semibold text-primary-text mb-3 px-1">Calendar Preview</h3>
+                        <h3 className={`text-base font-semibold mb-3 px-1 ${isMobile ? 'text-white' : 'text-primary-text'}`}>Calendar Preview</h3>
                         <HolidayCalendar
                             adminHolidays={adminHolidays}
                             userSelectedHolidays={calendarUserHolidays}
                             viewingDate={viewingDate}
                             onDateChange={setViewingDate}
+                            isMobile={isMobile}
                         />
 
                         {/* Legend */}
-                        <div className="mt-4 bg-card rounded-xl border border-border p-4 space-y-2.5">
-                            <h4 className="text-xs font-bold text-muted uppercase tracking-wider">Legend</h4>
+                        <div className={`mt-4 p-4 space-y-2.5 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
+                            <h4 className={`text-xs font-bold uppercase tracking-wider ${isMobile ? 'text-white/60' : 'text-muted'}`}>Legend</h4>
                             {[
                                 { color: 'bg-emerald-600', label: 'Gov Holiday' },
                                 { color: 'bg-amber-500', label: 'Admin Allocated' },
@@ -450,15 +453,15 @@ const HolidaySelectionPage: React.FC = () => {
                             ].map(({ color, label }) => (
                                 <div key={label} className="flex items-center gap-2.5 text-sm">
                                     <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
-                                    <span className="text-muted">{label}</span>
+                                    <span className={isMobile ? 'text-white/80' : 'text-muted'}>{label}</span>
                                 </div>
                             ))}
                         </div>
 
                         {/* Selected Holidays Mini-List */}
                         {selectedHolidays.length > 0 && (
-                            <div className="mt-4 bg-card rounded-xl border border-border p-4">
-                                <h4 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">Your Picks</h4>
+                            <div className={`mt-4 p-4 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] rounded-3xl shadow-2xl' : 'bg-card rounded-xl border border-border'}`}>
+                                <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 ${isMobile ? 'text-white/60' : 'text-muted'}`}>Your Picks</h4>
                                 <div className="space-y-2">
                                     {[...selectedHolidays]
                                         .sort((a, b) => a.date.localeCompare(b.date))
@@ -469,23 +472,23 @@ const HolidaySelectionPage: React.FC = () => {
                                             const canRemove = !isPast && !isToday;
                                             return (
                                                 <div key={i} className="flex items-center gap-2.5 group">
-                                                    <div className="h-8 w-8 rounded-lg bg-accent-light flex flex-col items-center justify-center flex-shrink-0">
-                                                        <span className="text-[7px] font-black uppercase leading-none text-accent-dark">
+                                                    <div className={`h-8 w-8 rounded-lg flex flex-col items-center justify-center flex-shrink-0 ${isMobile ? 'bg-[#091c13] border border-[#2a4536] text-emerald-400' : 'bg-accent-light'}`}>
+                                                        <span className={`text-[7px] font-black uppercase leading-none ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>
                                                             {d.toLocaleDateString('en-IN', { month: 'short' })}
                                                         </span>
-                                                        <span className="text-xs font-black leading-none text-accent-dark">{d.getDate()}</span>
+                                                        <span className={`text-xs font-black leading-none ${isMobile ? 'text-emerald-400' : 'text-accent-dark'}`}>{d.getDate()}</span>
                                                     </div>
-                                                    <span className="text-xs font-medium text-primary-text flex-1 leading-tight line-clamp-1">{h.name}</span>
+                                                    <span className={`text-xs font-medium flex-1 leading-tight line-clamp-1 ${isMobile ? 'text-white/80' : 'text-primary-text'}`}>{h.name}</span>
                                                     {canRemove ? (
                                                         <button
                                                             onClick={() => toggleHoliday(h.name, h.date)}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-100 text-red-500 transition-all"
+                                                            className={`opacity-0 group-hover:opacity-100 p-1 rounded-full transition-all ${isMobile ? 'hover:bg-red-950/40 text-red-400' : 'hover:bg-red-100 text-red-500'}`}
                                                             title="Remove"
                                                         >
                                                             <X className="h-3 w-3" />
                                                         </button>
                                                     ) : (
-                                                        <Lock className="h-3 w-3 text-muted opacity-50" />
+                                                        <Lock className={`h-3 w-3 opacity-50 ${isMobile ? 'text-white/40' : 'text-muted'}`} />
                                                     )}
                                                 </div>
                                             );

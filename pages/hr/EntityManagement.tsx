@@ -906,7 +906,7 @@ const EntityManagement: React.FC = () => {
     }
 
     return (
-        <div className="p-4 space-y-6">
+        <div className={`p-4 space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white' : ''}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
             <TemplateInstructionsModal isOpen={isInstructionsOpen} onClose={() => setIsInstructionsOpen(false)} />
             <NameInputModal
@@ -942,7 +942,7 @@ const EntityManagement: React.FC = () => {
 
 
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
-                <h2 className="text-2xl font-semibold text-primary-text">Client Management</h2>
+                <h2 className={`text-2xl font-bold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Client Management</h2>
                 {!isMobile && (
                     <div className="flex items-center gap-2 flex-wrap">
                         <Button variant="outline" onClick={() => setIsInstructionsOpen(true)} className="hover:bg-gray-100"><HelpCircle className="mr-2 h-4 w-4" /> Help</Button>
@@ -952,15 +952,19 @@ const EntityManagement: React.FC = () => {
             </div>
 
             {isMobile && (
-                <div className="flex flex-col gap-3 mb-4">
-                    <Button onClick={handleSaveAll} style={{ backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }} className="w-full justify-center border hover:opacity-90 text-white shadow-lg hover:shadow-xl transition-all duration-300"><Save className="mr-2 h-4 w-4" /> Save All Changes</Button>
-                    <Button variant="outline" onClick={() => setIsInstructionsOpen(true)} className="w-full justify-center hover:bg-gray-100"><HelpCircle className="mr-2 h-4 w-4" /> Help</Button>
+                <div className="flex flex-col gap-4 mb-8 items-center">
+                    <button onClick={handleSaveAll} className="flex items-center gap-2 text-sm font-bold text-white tracking-wide">
+                        <Save className="h-4 w-4" /> Save All Changes
+                    </button>
+                    <button onClick={() => setIsInstructionsOpen(true)} className="flex items-center gap-2 text-xs font-semibold text-[#22c55e]">
+                        <HelpCircle className="h-3.5 w-3.5" /> Help
+                    </button>
                 </div>
             )}
 
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <div className="relative flex-grow">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted" />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${isMobile ? 'text-gray-500' : 'text-muted'}`} />
                     <input
                         id="client-search"
                         name="clientSearch"
@@ -968,21 +972,21 @@ const EntityManagement: React.FC = () => {
                         placeholder="Search across all clients and sites..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="form-input !pl-10 w-full"
+                        className={isMobile ? "w-full bg-[#041b0f] border border-[#1d422f] rounded-[16px] py-2.5 pl-10 pr-4 text-[13px] text-white focus:outline-none focus:border-[#22c55e] transition-colors" : "form-input !pl-10 w-full"}
                     />
                 </div>
                 <div className="w-full sm:w-64">
-                    <Select
+                    <select
                         id="location-filter"
                         value={selectedLocation}
                         onChange={e => setSelectedLocation(e.target.value)}
-                        className="w-full"
+                        className={isMobile ? "w-full bg-[#041b0f] border border-[#1d422f] rounded-[16px] py-2.5 px-4 text-[13px] text-white focus:outline-none focus:border-[#22c55e] appearance-none" : "w-full form-select"}
                     >
                         <option value="">All Locations</option>
                         {existingLocations.map(loc => (
                             <option key={loc} value={loc}>{loc}</option>
                         ))}
-                    </Select>
+                    </select>
                 </div>
             </div>
 

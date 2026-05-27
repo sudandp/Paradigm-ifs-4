@@ -246,7 +246,9 @@ export function evaluateSiteStaffStatus(params: any): string {
   // 3. Determine Base Work Status (Shift-based or Hours-based)
   // Site staff inherently use Shift-Based calculation, which we simulate via hours if shift isn't explicitly resolved here
   const full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+  const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
   const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
+  const quarterDayHrs = userRules?.quarterDayHours ?? 2;
   
   let baseWorkStatus = 'A';
   const hasPunchIn = dayEvents.some((e: any) => e.type === 'punch-in');
@@ -256,7 +258,9 @@ export function evaluateSiteStaffStatus(params: any): string {
     baseWorkStatus = fieldStatus;
   } else if (workingHours !== undefined && workingHours > 0) {
     if (workingHours >= full) baseWorkStatus = 'P';
+    else if (workingHours >= threeQuarterHrs) baseWorkStatus = '3/4P';
     else if (workingHours >= halfDayHrs) baseWorkStatus = '1/2P';
+    else if (workingHours >= quarterDayHrs) baseWorkStatus = '1/4P';
     else baseWorkStatus = 'A';
   } else if (hasPunchIn && hasPunchOut) {
     baseWorkStatus = 'P'; // Fallback if no hours but complete punch
@@ -269,7 +273,10 @@ export function evaluateSiteStaffStatus(params: any): string {
 
   const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && approvedLeave.day_option !== 'half';
 
-  if ((baseWorkStatus === 'P' || baseWorkStatus === '1/2P') && !isFullDayLeave) {
+  // CRITICAL: If employee actually worked (baseWorkStatus is P or 1/2P), their physical
+  // presence takes priority over an approved full-day leave. The leave may have been
+  // approved but the employee showed up and worked — credit their attendance.
+  if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P') {
     if (isHoliday) {
       // Overtime Rule: Only one HP or 1/2HP per day. 
       return baseWorkStatus === 'P' ? 'HP' : '1/2HP';

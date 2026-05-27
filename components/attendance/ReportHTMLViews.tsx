@@ -68,7 +68,7 @@ export const BasicReportView: React.FC<{
     if (!data.length) return <EmptyState message="No attendance data found for this period." />;
 
     return (
-        <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
+        <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
@@ -223,7 +223,7 @@ export const MonthlyStatusView: React.FC<{
     };
 
     return (
-        <div className="bg-white p-4 md:p-6 shadow-lg rounded-2xl border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
+        <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
             
             {/* Stats Cards */}

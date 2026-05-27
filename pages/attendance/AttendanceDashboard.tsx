@@ -86,7 +86,7 @@ import {
     GenericReportColumn,
     LeaveBalanceRow
 } from '../../utils/excelExport';
-import { calculateWorkingHours, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, processDailyEvents, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { exportToCsv } from '../../utils/fastExport';
@@ -172,6 +172,7 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                 borderColor: '#004218',
                                 borderWidth: 1,
                                 borderRadius: 4,
+                                maxBarThickness: 60,
                             },
                             {
                                 label: 'Absent',
@@ -180,6 +181,7 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                 borderColor: '#DC2626',
                                 borderWidth: 1,
                                 borderRadius: 4,
+                                maxBarThickness: 60,
                             }
                         ]
                     },
@@ -258,6 +260,7 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                 const gradient = ctx.createLinearGradient(0, 0, 0, 200);
                 gradient.addColorStop(0, 'rgba(0, 93, 34, 0.4)');
                 gradient.addColorStop(1, 'rgba(0, 93, 34, 0)');
+                const isSingleDay = data.labels.length === 1;
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -270,7 +273,7 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                             fill: true,
                             tension: 0.4,
                             pointBackgroundColor: '#005D22',
-                            pointRadius: 0,
+                            pointRadius: isSingleDay ? 6 : 0,
                             pointHoverRadius: 5,
                         }]
                     },
@@ -293,6 +296,7 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                                 },
                             },
                             x: {
+                                offset: true,
                                 grid: { display: false },
                                 ticks: {
                                     maxRotation: 0,
@@ -1204,6 +1208,16 @@ const AttendanceDashboard: React.FC = () => {
                 }
                 setFieldViolationsMap(violationsMap);
 
+                const thirtyDaysAgo = subDays(new Date(), 30);
+                const recentlyActiveIds = new Set(
+                    events.filter(e => {
+                        const t = new Date(e.timestamp);
+                        return t >= thirtyDaysAgo && activeStaffIds.has(e.userId);
+                    }).map(e => e.userId)
+                );
+                setRecentlyActiveUserIds(recentlyActiveIds);
+                const inactiveCount = Math.max(0, activeStaff.length - recentlyActiveIds.size);
+
                 const days = eachDayOfInterval({ start: startDate, end: endDate });
                 const isRangeLong = days.length > 1;
                 
@@ -1222,21 +1236,44 @@ const AttendanceDashboard: React.FC = () => {
                     const dayEvents = rawDayEvents.filter(e => activeStaffIds.has(e.userId));
                     
                     const dayLeaves = leavesData.filter(l => {
-                        const start = new Date(l.startDate);
-                        const end = new Date(l.endDate);
+                        const start = startOfDay(new Date(l.startDate));
+                        const end = endOfDay(new Date(l.endDate));
                         return day >= start && day <= end && activeStaffIds.has(l.userId);
                     });
 
                     const dayWFHUserIds = new Set(dayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
                     const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
                     const usersOnLeave = new Set(dayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
-                    const absent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave);
+                    const absent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave - inactiveCount);
 
                     totalPresentForRange += uniqueUsersPresent;
                     totalOnLeaveForRange += usersOnLeave;
                     totalAbsentForRange += absent;
                     presentTrend.push(uniqueUsersPresent);
                     absentTrend.push(absent);
+
+                });
+
+                let prodDays = days;
+                let prodLabels = labels;
+                if (days.length === 1) {
+                    prodDays = eachDayOfInterval({ start: subDays(days[0], 2), end: days[0] });
+                    prodLabels = prodDays.map(d => format(d, 'd MMM'));
+                }
+
+                prodDays.forEach(day => {
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const rawDayEvents = eventsByDate.get(dateStr) || [];
+                    const dayEvents = rawDayEvents.filter(e => activeStaffIds.has(e.userId));
+                    
+                    const dayLeaves = leavesData.filter(l => {
+                        const start = startOfDay(new Date(l.startDate));
+                        const end = endOfDay(new Date(l.endDate));
+                        return day >= start && day <= end && activeStaffIds.has(l.userId);
+                    });
+
+                    const dayWFHUserIds = new Set(dayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
+                    const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
 
                     let totalHours = 0;
                     const userEvents: Record<string, AttendanceEvent[]> = {};
@@ -1245,7 +1282,7 @@ const AttendanceDashboard: React.FC = () => {
                         userEvents[e.userId].push(e);
                     });
                     Object.values(userEvents).forEach(ue => {
-                        const { workingHours } = calculateWorkingHours(ue, day);
+                        const { workingHours } = processDailyEvents(ue, day);
                         totalHours += workingHours;
                     });
                     productivityTrend.push(uniqueUsersPresent > 0 ? parseFloat((totalHours / uniqueUsersPresent).toFixed(1)) : 0);
@@ -1260,22 +1297,13 @@ const AttendanceDashboard: React.FC = () => {
                 const todayEvents = rawTodayEvents.filter(e => activeStaffIds.has(e.userId));
                 
                 const todayLeaves = leavesData.filter(l => {
-                    const dStart = new Date(l.startDate);
-                    const dEnd = new Date(l.endDate);
+                    const dStart = startOfDay(new Date(l.startDate));
+                    const dEnd = endOfDay(new Date(l.endDate));
                     return today >= dStart && today <= dEnd && activeStaffIds.has(l.userId);
                 });
                 const presentToday = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId))]).size;
                 const onLeaveToday = new Set(todayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
 
-                const thirtyDaysAgo = subDays(new Date(), 30);
-                const recentlyActiveIds = new Set(
-                    events.filter(e => {
-                        const t = new Date(e.timestamp);
-                        return t >= thirtyDaysAgo && activeStaffIds.has(e.userId);
-                    }).map(e => e.userId)
-                );
-                setRecentlyActiveUserIds(recentlyActiveIds);
-                const inactiveCount = Math.max(0, activeStaff.length - recentlyActiveIds.size);
 
                 // --- Client/Manager Metrics Calculation ---
                 let lateArrivalsToday = 0;
@@ -1368,7 +1396,7 @@ const AttendanceDashboard: React.FC = () => {
                     onLeaveToday: isRangeLong ? avgOnLeave : onLeaveToday,
                     inactiveCount,
                     attendanceTrend: { labels, present: presentTrend, absent: absentTrend },
-                    productivityTrend: { labels, hours: productivityTrend },
+                    productivityTrend: { labels: prodLabels, hours: productivityTrend },
                     lateArrivalsToday,
                     pendingLeavesToday,
                     approvedLeavesToday,
@@ -1418,6 +1446,9 @@ const AttendanceDashboard: React.FC = () => {
             const yesterday = subDays(today, 1);
             startDate = startOfDay(yesterday);
             endDate = endOfDay(yesterday);
+        } else if (filter === 'Last 3 Days') {
+            startDate = startOfDay(subDays(today, 2));
+            endDate = endOfDay(today);
         } else if (filter === 'Last 7 Days') {
             startDate = startOfDay(subDays(today, 6));
             endDate = endOfDay(today);
@@ -1481,8 +1512,12 @@ const AttendanceDashboard: React.FC = () => {
         const data: BasicReportDataRow[] = [];
         const days = eachDayOfInterval({ start: dateRange.startDate, end: dateRange.endDate });
 
-        // Filter users based on selection, and exclude management users
-        let filteredUsers = users.filter(u => u.role !== 'management');
+        // Filter users based on selection, and exclude management users unless specifically requested
+        let filteredUsers = users;
+
+        if (selectedUser === 'all' && selectedRole !== 'management') {
+            filteredUsers = filteredUsers.filter(u => u.role !== 'management');
+        }
 
         if (selectedUser !== 'all') {
             filteredUsers = filteredUsers.filter(u => u.id === selectedUser);
@@ -1691,6 +1726,12 @@ const AttendanceDashboard: React.FC = () => {
                     const earliest = sortedEvents[0];
                     const latest = sortedEvents[sortedEvents.length - 1];
 
+                    // Detect auto-checkout (punched out by AI/System)
+                    const isAutoCheckout = !!(punchOut && (
+                        punchOut.locationName === 'Auto Check-out' || 
+                        (punchOut as any).reason?.includes('Auto-checkout')
+                    ));
+
                     checkIn = format(new Date(punchIn?.timestamp || earliest.timestamp), 'HH:mm');
                     // Only show checkout if it's a real checkout event OR if it's the last event of a completed session
                     // For active night shifts, we might want to show '-' for checkout if not yet punched out
@@ -1722,6 +1763,7 @@ const AttendanceDashboard: React.FC = () => {
                     (rowExtra as any).breakOut = breakOutStr;
                     (rowExtra as any).siteOtIn = siteOtInStr;
                     (rowExtra as any).siteOtOut = siteOtOutStr;
+                    (rowExtra as any).isAutoCheckout = isAutoCheckout;
                 }
 
                 data.push({ 
@@ -1736,6 +1778,7 @@ const AttendanceDashboard: React.FC = () => {
                     siteOtIn: rowExtra.siteOtIn || '-',
                     siteOtOut: rowExtra.siteOtOut || '-',
                     locationName: (dayEvents.find(e => e.type === 'punch-in')?.locationName || 'Office'),
+                    isAutoCheckout: rowExtra.isAutoCheckout || false,
                     department: (user as any).department || (user as any).role || 'Staff'
                 });
             });
@@ -1878,7 +1921,8 @@ const AttendanceDashboard: React.FC = () => {
                         ? kioskLocationMap.get(e.locationId)
                         : (e.deviceName || (e as any).device || '-'),
                 isCached: e.isCached,
-                cachedAt: (e as any).cachedAt
+                cachedAt: (e as any).cachedAt,
+                isAutoCheckout: e.locationName === 'Auto Check-out' || (e as any).reason?.includes('Auto-checkout')
             };
         }).sort((a, b) => {
             // Newest first: Sort by date then time descending
@@ -2880,12 +2924,26 @@ const AttendanceDashboard: React.FC = () => {
                                  <>
                                      <div>
                                          <span className="text-gray-500 block mb-0.5">Time/Hours:</span>
-                                         <div className="text-gray-300 font-medium">{row.duration || row.time || row.checkIn || '-'}</div>
+                                         <div className="text-gray-300 font-medium flex items-center">
+                                             {row.duration || row.time || row.checkIn || '-'}
+                                             {row.isAutoCheckout && !row.checkOut && (
+                                                 <span className="ml-1.5 px-1.5 py-0.5 text-[8px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-400 rounded border border-amber-500/30 flex items-center" title="Punched out by AI System">
+                                                     🤖 AI
+                                                 </span>
+                                             )}
+                                         </div>
                                      </div>
                                      {row.checkOut && (
                                          <div>
                                              <span className="text-gray-500 block mb-0.5">Punch Out:</span>
-                                             <div className="text-gray-300 font-medium">{row.checkOut}</div>
+                                             <div className="text-gray-300 font-medium flex items-center">
+                                                 {row.checkOut}
+                                                 {row.isAutoCheckout && (
+                                                     <span className="ml-1.5 px-1.5 py-0.5 text-[8px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-400 rounded border border-amber-500/30 flex items-center" title="Punched out by AI System">
+                                                         🤖 AI
+                                                     </span>
+                                                 )}
+                                             </div>
                                          </div>
                                      )}
                                      {row.locationName && (
@@ -2915,34 +2973,69 @@ const AttendanceDashboard: React.FC = () => {
                     {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
                 </h2>
                 {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
-                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                        <Button 
-                            onClick={() => setIsManualEntryModalOpen(true)}
-                            className="w-full md:w-auto bg-[#22c55e] hover:bg-[#16a34a] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
-                        >
-                            <UserCheck className="w-5 h-5" />
-                            Add Manual Entry
-                        </Button>
-                        <Button 
-                            onClick={() => setIsAssignLeaveModalOpen(true)}
-                            className="w-full md:w-auto bg-[#3b82f6] hover:bg-[#2563eb] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
-                        >
-                            <Calendar className="w-5 h-5" />
-                            Assign Leave
-                        </Button>
-                        <Button 
-                            onClick={handleExportLeaveBalances}
-                            disabled={isExportingLeaves}
-                            className="w-full md:w-auto bg-[#8b5cf6] hover:bg-[#7c3aed] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold disabled:opacity-50"
-                        >
-                            {isExportingLeaves ? (
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                            ) : (
-                                <FileDown className="w-5 h-5" />
-                            )}
-                            Export Leave Balances
-                        </Button>
-                    </div>
+                    <>
+                        {/* Mobile Action Buttons (Grid - Premium Dark Theme) */}
+                        <div className="grid grid-cols-3 gap-3 w-full md:hidden mt-2">
+                            <button
+                                onClick={() => setIsManualEntryModalOpen(true)}
+                                className="flex flex-col items-center justify-center gap-2.5 py-4 px-2 rounded-2xl bg-gradient-to-br from-[#123621] to-[#082012] border border-[#1d4d31] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#22c55e]/20 text-[#22c55e] shadow-[inset_0_0_8px_rgba(34,197,94,0.3)]">
+                                    <UserCheck className="w-5 h-5" />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Manual<br/>Entry</span>
+                            </button>
+                            <button
+                                onClick={() => setIsAssignLeaveModalOpen(true)}
+                                className="flex flex-col items-center justify-center gap-2.5 py-4 px-2 rounded-2xl bg-gradient-to-br from-[#12314a] to-[#071c2b] border border-[#1c4b70] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#3b82f6]/20 text-[#3b82f6] shadow-[inset_0_0_8px_rgba(59,130,246,0.3)]">
+                                    <Calendar className="w-5 h-5" />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Assign<br/>Leave</span>
+                            </button>
+                            <button
+                                onClick={handleExportLeaveBalances}
+                                disabled={isExportingLeaves}
+                                className="flex flex-col items-center justify-center gap-2.5 py-4 px-2 rounded-2xl bg-gradient-to-br from-[#2f1b4c] to-[#190d2e] border border-[#482875] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all disabled:opacity-50"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6] shadow-[inset_0_0_8px_rgba(139,92,246,0.3)]">
+                                    {isExportingLeaves ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Export<br/>Balances</span>
+                            </button>
+                        </div>
+                        
+                        {/* Desktop Action Buttons */}
+                        <div className="hidden md:flex flex-row gap-3 w-auto">
+                            <Button 
+                                onClick={() => setIsManualEntryModalOpen(true)}
+                                className="bg-[#22c55e] hover:bg-[#16a34a] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
+                            >
+                                <UserCheck className="w-5 h-5" />
+                                Add Manual Entry
+                            </Button>
+                            <Button 
+                                onClick={() => setIsAssignLeaveModalOpen(true)}
+                                className="bg-[#3b82f6] hover:bg-[#2563eb] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
+                            >
+                                <Calendar className="w-5 h-5" />
+                                Assign Leave
+                            </Button>
+                            <Button 
+                                onClick={handleExportLeaveBalances}
+                                disabled={isExportingLeaves}
+                                className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold disabled:opacity-50"
+                            >
+                                {isExportingLeaves ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                    <FileDown className="w-5 h-5" />
+                                )}
+                                Export Leave Balances
+                            </Button>
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -2980,12 +3073,12 @@ const AttendanceDashboard: React.FC = () => {
             />
 
             {/* Filters Section */}
-            <div className="bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 flex-1 flex flex-col gap-6">
+            <div className="hidden md:flex bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 flex-1 flex-col gap-6">
                 
                 {/* Date Pills - Scrollable on mobile, with date picker outside scroll container to prevent clipping */}
                 <div className="relative" ref={datePickerRef}>
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
-                        {['Today', 'Yesterday', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => (
+                        {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => (
                             <Button
                                 key={filter}
                                 type="button"
@@ -3286,7 +3379,7 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className={`flex flex-col gap-8 md:grid md:grid-cols-2 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} md:gap-6 bg-transparent md:bg-white p-0 md:p-4 rounded-xl`}>
+            <div className={`grid grid-cols-2 gap-3 md:gap-6 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} bg-transparent md:bg-white p-0 md:p-4 rounded-xl`}>
                 {isEmployeeView ? (
                     // Personal Stats for Normal Users
                     [
@@ -3297,13 +3390,13 @@ const AttendanceDashboard: React.FC = () => {
                         { title: "Leave Bal.", value: employeeStats.elBalance.toFixed(1), icon: TrendingUp, color: "bg-orange-500" },
                         { title: "WO Bal.", value: employeeStats.woBalance.toFixed(1), icon: TrendingUp, color: "bg-teal-500" }
                     ].map((stat, i) => (
-                        <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
-                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none flex-shrink-0`}>
-                                <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
+                        <div key={i} className="flex flex-col items-center justify-center gap-2 bg-[#0b291a] md:bg-card p-4 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-lg md:shadow-sm">
+                            <div className={`p-2.5 rounded-full ${stat.color} text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.2)] flex-shrink-0`}>
+                                <stat.icon className="h-5 w-5 md:h-6 md:w-6" />
                             </div>
-                            <div className="flex flex-col min-w-0">
-                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1 truncate">{stat.title}</p>
-                                <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
+                            <div className="flex flex-col min-w-0 items-center text-center">
+                                <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1 truncate w-full">{stat.title}</p>
+                                <p className="text-2xl md:text-2xl font-bold text-white leading-none">{stat.value}</p>
                             </div>
                         </div>
                     ))
@@ -3315,36 +3408,34 @@ const AttendanceDashboard: React.FC = () => {
                         { title: "Late Arrivals", value: dashboardData?.lateArrivalsToday || 0, icon: Clock, color: "bg-amber-100 text-amber-500", suffix: `Employees` },
                         { title: "Leave Requests", value: dashboardData?.pendingLeavesToday || 0, icon: Users, color: "bg-blue-100 text-blue-500", suffix: `Pending` }
                     ].map((stat, i) => (
-                        <div key={i} className="flex flex-col bg-[#0b291a] md:bg-white p-5 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm relative overflow-hidden">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${stat.color.includes('text-') ? stat.color : `${stat.color} text-white`}`}>
-                                        <stat.icon className="h-5 w-5" />
-                                    </div>
-                                    <p className="text-sm font-semibold text-gray-300 md:text-gray-600">{stat.title}</p>
+                        <div key={i} className="flex flex-col bg-[#0b291a] md:bg-white p-4 md:p-5 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-lg relative overflow-hidden">
+                            <div className="flex flex-col items-center text-center justify-center mb-3">
+                                <div className={`p-2.5 rounded-xl mb-2 ${stat.color.includes('text-') ? stat.color : `${stat.color} text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.2)]`}`}>
+                                    <stat.icon className="h-5 w-5" />
                                 </div>
+                                <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 md:text-gray-500">{stat.title}</p>
                             </div>
-                            <div className="flex items-baseline gap-2">
-                                <h3 className="text-4xl font-bold text-white md:text-gray-900">{stat.value}</h3>
-                                <span className="text-sm font-medium text-gray-400">{stat.suffix}</span>
+                            <div className="flex flex-col items-center gap-1">
+                                <h3 className="text-3xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</h3>
+                                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-widest">{stat.suffix}</span>
                             </div>
                         </div>
                     ))
                 ) : (
                     // Organizational Stats for Admins/HR
                     [
-                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-emerald-500" },
+                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-[#0d9488]" },
                         { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
                         { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
-                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#1d63ff]" }
+                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#2563eb]" }
                     ].map((stat, i) => (
-                        <div key={i} className="flex items-center gap-6 md:bg-card md:p-6 md:rounded-2xl md:border md:border-[#1a3d2c] md:md:border-gray-100 md:shadow-sm">
-                            <div className={`p-4 md:p-3 rounded-full ${stat.color} text-white shadow-xl md:shadow-none`}>
-                                <stat.icon className="h-8 w-8 md:h-6 md:w-6" />
+                        <div key={i} className="flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#0c2a1b] to-[#06180f] md:bg-card p-5 rounded-3xl border border-[#1d422f] md:border-gray-100 shadow-[0_8px_20px_rgba(0,0,0,0.3)] md:shadow-sm">
+                            <div className={`p-3 rounded-2xl ${stat.color} text-white shadow-[0_4px_12px_rgba(0,0,0,0.4)] ring-1 ring-white/10`}>
+                                <stat.icon className="h-6 w-6 md:h-6 md:w-6" />
                             </div>
-                            <div className="flex flex-col">
-                                <p className="text-sm md:text-xs font-medium text-gray-400 md:text-gray-500 mb-1">{stat.title}</p>
-                                <p className="text-4xl md:text-2xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</p>
+                            <div className="flex flex-col items-center text-center">
+                                <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{stat.title}</p>
+                                <p className="text-3xl md:text-2xl font-extrabold text-white leading-none">{stat.value}</p>
                             </div>
                         </div>
                     ))
@@ -3400,7 +3491,7 @@ const AttendanceDashboard: React.FC = () => {
 
 
             {/* Report Preview Section */}
-            <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
+            <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div className="flex flex-col gap-1">
                         <h2 className="text-lg font-bold text-white md:text-gray-900">Report Preview</h2>
@@ -3420,46 +3511,99 @@ const AttendanceDashboard: React.FC = () => {
                         </div>
                     </div>
                     {canDownloadReport && (
-                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <Button
-                            type="button"
-                            onClick={handleDownloadPdf}
-                            disabled={isDownloading}
-                            className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                        >
-                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                            {isDownloading ? 'Generating...' : 'Download PDF'}
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={handleDownloadExcel}
-                            disabled={isDownloading}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                        >
-                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                            {isDownloading ? 'Generating...' : 'Download Excel'}
-                        </Button>
-                        {isAdmin(user?.role) && (
+                    <>
+                        {/* Mobile Grid View */}
+                        <div className="grid grid-cols-2 gap-3 w-full md:hidden mt-2">
+                            <button
+                                type="button"
+                                onClick={handleDownloadPdf}
+                                disabled={isDownloading}
+                                className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 rounded-2xl bg-gradient-to-br from-[#123621] to-[#082012] border border-[#1d4d31] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#22c55e]/20 text-[#22c55e] shadow-[inset_0_0_8px_rgba(34,197,94,0.3)]">
+                                    {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Download<br/>PDF</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDownloadExcel}
+                                disabled={isDownloading}
+                                className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 rounded-2xl bg-gradient-to-br from-[#12314a] to-[#071c2b] border border-[#1c4b70] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#3b82f6]/20 text-[#3b82f6] shadow-[inset_0_0_8px_rgba(59,130,246,0.3)]">
+                                    {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Download<br/>Excel</span>
+                            </button>
+                            {isAdmin(user?.role) && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMailModalOpen(true)}
+                                    disabled={isDownloading || isSendingEmail}
+                                    className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 rounded-2xl bg-gradient-to-br from-[#2f1b4c] to-[#190d2e] border border-[#482875] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                                >
+                                    <div className="p-2.5 rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6] shadow-[inset_0_0_8px_rgba(139,92,246,0.3)]">
+                                        {isSendingEmail ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5" />}
+                                    </div>
+                                    <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Mail<br/>Report</span>
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleDownloadCsv}
+                                disabled={isDownloading}
+                                className="flex flex-col items-center justify-center gap-2 py-3.5 px-2 rounded-2xl bg-gradient-to-br from-[#292929] to-[#141414] border border-[#404040] shadow-[0_4px_12px_rgba(0,0,0,0.3)] active:scale-[0.97] transition-all"
+                            >
+                                <div className="p-2.5 rounded-full bg-[#a3a3a3]/20 text-[#a3a3a3] shadow-[inset_0_0_8px_rgba(163,163,163,0.3)]">
+                                    {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-300 text-center leading-[1.2] tracking-wide">Download<br/>CSV</span>
+                            </button>
+                        </div>
+                        
+                        {/* Desktop Flex View */}
+                        <div className="hidden md:flex flex-row gap-2 w-auto">
                             <Button
                                 type="button"
-                                onClick={() => setIsMailModalOpen(true)}
-                                disabled={isDownloading || isSendingEmail}
-                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                onClick={handleDownloadPdf}
+                                disabled={isDownloading}
+                                className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
                             >
-                                {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                                {isSendingEmail ? 'Sending...' : 'Mail Report'}
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download PDF'}
                             </Button>
-                        )}
-                        <Button
-                            type="button"
-                            onClick={handleDownloadCsv}
-                            disabled={isDownloading}
-                            className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
-                        >
-                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                            {isDownloading ? 'Generating...' : 'Download CSV'}
-                        </Button>
-                    </div>
+                            <Button
+                                type="button"
+                                onClick={handleDownloadExcel}
+                                disabled={isDownloading}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download Excel'}
+                            </Button>
+                            {isAdmin(user?.role) && (
+                                <Button
+                                    type="button"
+                                    onClick={() => setIsMailModalOpen(true)}
+                                    disabled={isDownloading || isSendingEmail}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                >
+                                    {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                                    {isSendingEmail ? 'Sending...' : 'Mail Report'}
+                                </Button>
+                            )}
+                            <Button
+                                type="button"
+                                onClick={handleDownloadCsv}
+                                disabled={isDownloading}
+                                className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                {isDownloading ? 'Generating...' : 'Download CSV'}
+                            </Button>
+                        </div>
+                    </>
                     )}
                 </div>
 
@@ -3476,9 +3620,9 @@ const AttendanceDashboard: React.FC = () => {
                             <p className="text-sm font-medium text-gray-300 md:text-gray-600">Updating report data...</p>
                         </div>
                     )}
-                    <div className="w-full max-w-full overflow-x-auto p-4 custom-scrollbar">
-                        <div className="w-full">
-                                {previewContent}
+                    <div className="w-full max-w-full overflow-x-auto p-2 md:p-4 custom-scrollbar">
+                        <div className="min-w-[850px] md:min-w-full w-full">
+                            {previewContent}
                         </div>
                     </div>
                 </div>

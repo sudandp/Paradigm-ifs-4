@@ -13,9 +13,10 @@ interface HolidayCalendarProps {
     isLoading?: boolean;
     viewingDate: Date;
     onDateChange: (date: Date) => void;
+    isMobile?: boolean;
 }
 
-const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSelectedHolidays, isLoading = false, viewingDate, onDateChange }) => {
+const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSelectedHolidays, isLoading = false, viewingDate, onDateChange, isMobile }) => {
     const currentYear = viewingDate.getFullYear();
 
     const daysInMonth = useMemo(() => {
@@ -58,7 +59,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
             case 'user': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Purple for User
-            default: return 'bg-emerald-500/5 text-muted/40 border-emerald-500/10'; // Neutral
+            default: return isMobile ? 'bg-white/[0.02] text-white/40 border-white/5' : 'bg-emerald-500/5 text-muted/40 border-emerald-500/10'; // Neutral
         }
     };
 
@@ -68,13 +69,13 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
 
 
     return (
-        <div className="bg-card p-4 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
+        <div className={`p-4 rounded-xl shadow-card w-full flex flex-col h-full ${isMobile ? 'bg-[#182a20] border-[#2a4536]' : 'bg-card border-border border'}`}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-sm font-semibold text-primary-text">Holidays</h3>
+                <h3 className={`text-sm font-semibold ${isMobile ? 'text-white' : 'text-primary-text'}`}>Holidays</h3>
                 <div className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="font-medium min-w-[80px] text-center text-xs">{format(viewingDate, 'MMMM yyyy')}</span>
-                    <Button variant="secondary" size="sm" className="btn-icon !p-1 h-6 w-6" onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="secondary" size="sm" className={`btn-icon !p-1 h-6 w-6 ${isMobile ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' : ''}`} onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className={`font-medium min-w-[80px] text-center text-xs ${isMobile ? 'text-white' : ''}`}>{format(viewingDate, 'MMMM yyyy')}</span>
+                    <Button variant="secondary" size="sm" className={`btn-icon !p-1 h-6 w-6 ${isMobile ? '!bg-[#091c13] !border-[#2a4536] text-white hover:bg-[#1a3225]' : ''}`} onClick={() => onDateChange(addMonths(viewingDate, 1))}><ChevronRight className="h-4 w-4" /></Button>
                 </div>
             </div>
 
@@ -83,7 +84,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             ) : (
                 <div className="grid grid-cols-7 gap-1 flex-1">
                     {weekDays.map(d => (
-                        <div key={d} className="text-center text-[10px] font-bold text-muted uppercase tracking-wider py-1">{d}</div>
+                        <div key={d} className={`text-center text-[10px] font-bold uppercase tracking-wider py-1 ${isMobile ? 'text-white/40' : 'text-muted'}`}>{d}</div>
                     ))}
                     {Array.from({ length: startDay }).map((_, i) => (
                         <div key={`empty-${i}`} className="h-9" />
@@ -92,7 +93,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                         const holidayInfo = getDayStatus(date);
                         const colorClass = getStatusColor(holidayInfo.status);
                         return (
-                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent hover:border-border/50`}>
+                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors group relative cursor-help border border-transparent ${isMobile ? 'hover:border-[#2a4536]' : 'hover:border-border/50'}`}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
                                 {holidayInfo.status !== 'neutral' && (
                                     <div className="absolute bottom-[-30px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
@@ -105,7 +106,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
+            <div className={`mt-4 pt-3 border-t grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight ${isMobile ? 'border-[#2a4536] text-white/40' : 'border-border/50 text-muted-foreground'}`}>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Gov</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>

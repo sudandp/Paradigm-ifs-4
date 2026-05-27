@@ -2225,11 +2225,19 @@ const AttendanceSettings: React.FC = () => {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     {(['office', 'field', 'site'] as const).map(group => {
-                                        const groupRoles = localAttendance.missedCheckoutConfig?.roleMapping?.[group] || 
+                                        const rawGroupRoles = localAttendance.missedCheckoutConfig?.roleMapping?.[group] || 
                                             (group === 'office' ? ['admin', 'hr', 'finance', 'developer'] : 
                                              group === 'field' ? ['field_staff', 'field_officer', 'technical_reliever'] : 
                                              ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 
                                               'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer']);
+                                        // Deduplicate by displayName — keep first occurrence, remove old/duplicate role IDs with same name
+                                        const seenNames = new Set<string>();
+                                        const groupRoles = rawGroupRoles.filter(roleId => {
+                                            const name = (allRoles.find(r => r.id === roleId)?.displayName || roleId).toLowerCase();
+                                            if (seenNames.has(name)) return false;
+                                            seenNames.add(name);
+                                            return true;
+                                        });
                                         
                                         return (
                                             <div key={group} className="bg-page rounded-lg border border-border/50 flex flex-col h-full">
@@ -2286,7 +2294,12 @@ const AttendanceSettings: React.FC = () => {
                                                     >
                                                         <option value="" disabled className="bg-page">Assign Role...</option>
                                                         {allRoles
-                                                            .filter(r => !groupRoles.includes(r.id))
+                                                            .filter(r => {
+                                                                if (groupRoles.includes(r.id)) return false;
+                                                                // Also hide roles whose displayName already exists in this group
+                                                                const existingNames = new Set(groupRoles.map(rid => (allRoles.find(ar => ar.id === rid)?.displayName || rid).toLowerCase()));
+                                                                return !existingNames.has((r.displayName || r.id).toLowerCase());
+                                                            })
                                                             .map(role => (
                                                                 <option key={role.id} value={role.id} className="bg-page">{role.displayName || role.id}</option>
                                                             ))}

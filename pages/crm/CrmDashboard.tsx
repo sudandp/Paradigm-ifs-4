@@ -9,6 +9,7 @@ import {
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
   ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin, Edit2, Trash2
 } from 'lucide-react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const CrmDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ const CrmDashboard: React.FC = () => {
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const updateScrollButtons = useCallback(() => {
     const el = kanbanScrollRef.current;
@@ -78,16 +80,16 @@ const CrmDashboard: React.FC = () => {
   }, [filteredLeads]);
 
   return (
-    <div className="space-y-8 animate-fade-in pb-32 md:pb-8 min-w-0 overflow-x-hidden">
+    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+      <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
-          <h1 className="text-2xl md:text-3xl font-black text-[#0F172A] md:text-primary-text tracking-tight uppercase max-md:text-white">CRM Pipeline</h1>
-          <p className="text-[10px] md:text-[11px] text-muted mt-1.5 font-bold uppercase tracking-widest max-md:text-emerald-400/60 leading-relaxed">Streamline leads & accelerate property onboarding</p>
+          <h1 className={`font-black tracking-tight uppercase ${isMobile ? 'text-2xl text-white' : 'text-2xl md:text-3xl text-[#0F172A] md:text-primary-text'}`}>CRM Pipeline</h1>
+          <p className={`mt-1.5 font-bold uppercase tracking-widest leading-relaxed ${isMobile ? 'text-[10px] text-white/60' : 'text-[10px] md:text-[11px] text-muted max-md:text-emerald-400/60'}`}>Streamline leads & accelerate property onboarding</p>
         </div>
         <button
           onClick={() => navigate('/crm/leads/new')}
-          className="hidden sm:flex btn btn-primary btn-lg gap-2 shadow-xl shadow-accent/20 hover:shadow-accent/40 active:scale-95 transition-all"
+          className={`flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#006b3f] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#006b3f]/20 self-start' : 'hidden sm:flex btn btn-primary btn-lg shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
         >
           <Plus className="w-5 h-5" />
           <span>New Lead</span>
@@ -95,6 +97,7 @@ const CrmDashboard: React.FC = () => {
       </div>
 
       {/* Mobile Floating Action Button - Premium Design */}
+      {!isMobile && (
       <div className="md:hidden">
         <button
           onClick={() => navigate('/crm/leads/new')}
@@ -105,53 +108,54 @@ const CrmDashboard: React.FC = () => {
           <Plus className="w-7 h-7 relative z-10" />
         </button>
       </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-        <StatCard icon={<Users className="w-5 h-5 md:w-6 md:h-6" />} label="Total" value={stats.total} color="#3b82f6" trend="+12% month" />
-        <StatCard icon={<Target className="w-5 h-5 md:w-6 md:h-6" />} label="Active" value={stats.active} color="#f59e0b" trend="4 in neg" />
-        <StatCard icon={<TrendingUp className="w-5 h-5 md:w-6 md:h-6" />} label="Won" value={stats.won} color="#10b981" suffix={`(${stats.conversionRate}%)`} trend="Top perf" />
-        <StatCard icon={<ArrowDownRight className="w-5 h-5 md:w-6 md:h-6" />} label="Lost" value={stats.lost} color="#ef4444" trend="-5% vs prev" />
+        <StatCard isMobile={isMobile} icon={<Users className="w-5 h-5 md:w-6 md:h-6" />} label="Total" value={stats.total} color="#3b82f6" trend="+12% month" />
+        <StatCard isMobile={isMobile} icon={<Target className="w-5 h-5 md:w-6 md:h-6" />} label="Active" value={stats.active} color="#f59e0b" trend="4 in neg" />
+        <StatCard isMobile={isMobile} icon={<TrendingUp className="w-5 h-5 md:w-6 md:h-6" />} label="Won" value={stats.won} color="#10b981" suffix={`(${stats.conversionRate}%)`} trend="Top perf" />
+        <StatCard isMobile={isMobile} icon={<ArrowDownRight className="w-5 h-5 md:w-6 md:h-6" />} label="Lost" value={stats.lost} color="#ef4444" trend="-5% vs prev" />
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl">
+      <div className={`flex flex-col lg:flex-row gap-4 items-stretch lg:items-center ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4 shadow-sm' : 'bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl'}`}>
         <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-muted md:text-muted group-focus-within:text-emerald-500 transition-colors max-md:text-white/20" />
+          <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 transition-colors ${isMobile ? 'text-white/40' : 'text-muted md:text-muted group-focus-within:text-emerald-500 max-md:text-white/20'}`} />
           <input
             type="text"
             placeholder="Search leads..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 md:h-12 bg-white md:bg-white border-border md:border-border rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]"
+            className={`w-full h-11 md:h-12 rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base outline-none transition-all ${isMobile ? 'bg-[#121f17] border border-transparent text-white placeholder:text-white/30 focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]'}`}
           />
         </div>
         <div className="flex items-center justify-between md:justify-start gap-3">
-          <div className="flex bg-page md:bg-page p-1 rounded-2xl border border-border md:border-border max-md:bg-white/[0.05] max-md:border-white/5">
+          <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#0a140f] border-transparent' : 'bg-page md:bg-page border-border md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             <button
               onClick={() => setKanbanFilter('all')}
-              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'all' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'all' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
             >
               All
             </button>
             <button
               onClick={() => setKanbanFilter('mine')}
-              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'mine' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'mine' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
             >
               Mine
             </button>
           </div>
-          <div className="flex bg-white/[0.05] p-1 rounded-2xl border border-white/5 md:bg-page md:border-border">
+          <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#0a140f] border-transparent' : 'bg-white/[0.05] border-white/5 md:bg-page md:border-border'}`}>
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'kanban' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'kanban' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
               title="Kanban View"
             >
               <BarChart3 className="w-4 h-4 md:w-5 md:h-5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-2.5 rounded-xl transition-all ${viewMode === 'table' ? 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40'}`}
+              className={`p-2.5 rounded-xl transition-all ${viewMode === 'table' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
               title="List View"
             >
               <Users className="w-4 h-4 md:w-5 md:h-5" />
@@ -214,6 +218,7 @@ const CrmDashboard: React.FC = () => {
                         await deleteLead(id);
                       }
                     }}
+                    isMobile={isMobile}
                   />
                 </div>
               ))}
@@ -318,9 +323,9 @@ const CrmDashboard: React.FC = () => {
 // Sub-Components
 // ============================================================================
 
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; suffix?: string; trend?: string }> = ({ icon, label, value, color, suffix, trend }) => (
-  <div className="bg-white md:bg-white rounded-3xl border border-border md:border-border p-4 md:p-5 relative overflow-hidden group hover:shadow-lg transition-all duration-300 shadow-sm md:shadow-sm max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl">
-    <div className="absolute top-0 right-0 p-3 opacity-[0.05] md:opacity-[0.05] group-hover:opacity-[0.08] transition-opacity max-md:opacity-[0.03]">
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; suffix?: string; trend?: string, isMobile?: boolean }> = ({ icon, label, value, color, suffix, trend, isMobile }) => (
+  <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4' : 'bg-white md:bg-white rounded-3xl border border-border md:border-border p-4 md:p-5 shadow-sm md:shadow-sm max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl'}`}>
+    <div className={`absolute top-0 right-0 p-3 transition-opacity ${isMobile ? 'opacity-5 group-hover:opacity-10' : 'opacity-[0.05] md:opacity-[0.05] group-hover:opacity-[0.08] max-md:opacity-[0.03]'}`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' })}
     </div>
     <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
@@ -328,17 +333,17 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; 
         <div style={{ color }}>{icon}</div>
       </div>
       <div className="min-w-0">
-        <p className="text-[9px] md:text-xs text-muted md:text-muted font-black md:font-bold uppercase tracking-widest truncate max-md:text-white/40">{label}</p>
-        <p className="text-lg md:text-2xl font-black text-primary-text md:text-primary-text mt-0.5 max-md:text-white">
+        <p className={`text-[9px] md:text-xs font-black md:font-bold uppercase tracking-widest truncate ${isMobile ? 'text-white/60' : 'text-muted md:text-muted max-md:text-white/40'}`}>{label}</p>
+        <p className={`text-lg md:text-2xl font-black mt-0.5 ${isMobile ? 'text-white' : 'text-primary-text md:text-primary-text max-md:text-white'}`}>
           {value}
-          {suffix && <span className="text-[10px] md:text-sm font-bold text-muted md:text-muted ml-1 md:ml-1.5 max-md:text-white/30">{suffix}</span>}
+          {suffix && <span className={`text-[10px] md:text-sm font-bold ml-1 md:ml-1.5 ${isMobile ? 'text-white/40' : 'text-muted md:text-muted max-md:text-white/30'}`}>{suffix}</span>}
         </p>
       </div>
     </div>
     {trend && (
       <div className="flex items-center gap-1.5">
         <div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: color }} />
-        <p className="text-[8px] md:text-[10px] font-black md:font-bold text-muted md:text-muted uppercase tracking-tighter max-md:text-white/20">{trend}</p>
+        <p className={`text-[8px] md:text-[10px] font-black md:font-bold uppercase tracking-tighter ${isMobile ? 'text-white/40' : 'text-muted md:text-muted max-md:text-white/20'}`}>{trend}</p>
       </div>
     )}
   </div>
@@ -350,30 +355,31 @@ interface KanbanColumnProps {
   color: string;
   onCardClick: (id: string) => void;
   onDeleteClick: (id: string) => void;
+  isMobile?: boolean;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick }) => (
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick, isMobile }) => (
   <div className="w-[85vw] md:w-[280px] lg:w-[300px] flex-shrink-0 flex flex-col">
     <div className="flex items-center justify-between mb-5 px-3">
       <div className="flex items-center gap-3">
         <div className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2" style={{ backgroundColor: color, '--tw-ring-color': `${color}15` } as any} />
-        <h3 className="text-[10px] md:text-xs font-black text-primary-text md:text-primary-text uppercase tracking-widest md:tracking-tighter max-md:text-white/40">{status}</h3>
+        <h3 className={`text-[10px] md:text-xs font-black uppercase tracking-widest md:tracking-tighter ${isMobile ? 'text-white' : 'text-primary-text md:text-primary-text max-md:text-white/40'}`}>{status}</h3>
       </div>
-      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-lg md:rounded-full border border-border md:border-border bg-white md:bg-white text-primary-text md:text-primary-text shadow-sm max-md:bg-white/5 max-md:border-white/5 max-md:text-white" style={{ color: window.innerWidth >= 768 ? color : undefined }}>
+      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg md:rounded-full border shadow-sm ${isMobile ? 'bg-[#182a20] border-[#2a4536] text-white/60' : 'border-border md:border-border bg-white md:bg-white text-primary-text md:text-primary-text max-md:bg-white/5 max-md:border-white/5 max-md:text-white'}`} style={{ color: window.innerWidth >= 768 ? color : undefined }}>
         {leads.length}
       </span>
     </div>
-    <div className="flex-1 space-y-4 min-h-[500px] md:min-h-[600px] p-2 bg-white/[0.02] md:bg-page/30 rounded-3xl md:rounded-2xl border border-dashed border-white/5 md:border-border/60">
+    <div className={`flex-1 space-y-4 min-h-[500px] md:min-h-[600px] p-2 rounded-3xl md:rounded-2xl ${isMobile ? 'bg-transparent' : 'bg-white/[0.02] md:bg-page/30 border border-dashed border-white/5 md:border-border/60'}`}>
       {leads.map(lead => (
         <div
           key={lead.id}
           onClick={() => onCardClick(lead.id)}
-          className="bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2rem] md:rounded-2xl border border-white/5 md:border-border p-5 cursor-pointer hover:bg-white/[0.05] md:hover:shadow-xl hover:border-emerald-500/40 md:hover:border-accent/40 hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden"
+          className={`cursor-pointer group relative overflow-hidden transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-5 hover:bg-[#1a2e23]' : 'bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2rem] md:rounded-2xl border border-white/5 md:border-border p-5 hover:bg-white/[0.05] md:hover:shadow-xl hover:border-emerald-500/40 md:hover:border-accent/40 hover:-translate-y-1'}`}
         >
           <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: color }} />
           
           <div className="flex items-start justify-between mb-3">
-            <h4 className="text-sm font-black text-white md:text-primary-text group-hover:text-emerald-400 md:group-hover:text-accent transition-colors leading-tight line-clamp-2 uppercase tracking-tight md:tracking-normal">
+            <h4 className={`text-sm font-black leading-tight line-clamp-2 uppercase tracking-tight md:tracking-normal transition-colors ${isMobile ? 'text-white group-hover:text-white/80' : 'text-white md:text-primary-text group-hover:text-emerald-400 md:group-hover:text-accent'}`}>
               {lead.clientName}
             </h4>
             <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
@@ -382,7 +388,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
                   e.stopPropagation();
                   onCardClick(lead.id);
                 }}
-                className="w-8 h-8 rounded-xl bg-white/10 md:bg-gray-100 border border-white/10 md:border-border flex items-center justify-center text-white md:text-primary-text hover:bg-emerald-500 hover:text-white md:hover:text-white transition-all group/icon"
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all group/icon ${isMobile ? 'bg-[#2a4b3d] border-none text-[#4ea8e9] hover:bg-[#345c4b]' : 'bg-white/10 md:bg-gray-100 border border-white/10 md:border-border text-white md:text-primary-text hover:bg-emerald-500 hover:text-white md:hover:text-white'}`}
                 title="Edit Lead"
               >
                 <Edit2 className="w-4 h-4" />
@@ -392,7 +398,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
                   e.stopPropagation();
                   onDeleteClick(lead.id);
                 }}
-                className="w-8 h-8 rounded-xl bg-white/10 md:bg-red-50 border border-white/10 md:border-red-100 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all group/icon"
+                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all group/icon ${isMobile ? 'bg-[#4b2a2a] border-none text-[#e94e4e] hover:bg-[#5c3434]' : 'bg-white/10 md:bg-red-50 border border-white/10 md:border-red-100 text-red-400 hover:bg-red-500 hover:text-white'}`}
                 title="Delete Lead"
               >
                 <Trash2 className="w-4 h-4" />
@@ -401,7 +407,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
           </div>
 
           {lead.associationName && (
-            <div className="flex items-center gap-1.5 text-[10px] md:text-[11px] text-white/30 md:text-muted font-bold mb-4 uppercase tracking-wider md:tracking-normal">
+            <div className={`flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold mb-4 uppercase tracking-wider md:tracking-normal ${isMobile ? 'text-white/40' : 'text-white/30 md:text-muted'}`}>
               <Building2 className="w-3.5 h-3.5 opacity-50" />
               <span className="truncate">{lead.associationName}</span>
             </div>
@@ -409,12 +415,12 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
 
           <div className="flex flex-wrap gap-2 mb-5">
             {lead.propertyType && (
-              <span className="px-2.5 py-1 rounded-lg text-[9px] font-black bg-white/[0.05] md:bg-slate-100 text-white/60 md:text-slate-700 uppercase tracking-widest md:tracking-wider border border-white/5 md:border-transparent">
+              <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest md:tracking-wider ${isMobile ? 'bg-[#2a4536] text-[#69ab82]' : 'bg-white/[0.05] md:bg-slate-100 text-white/60 md:text-slate-700 border border-white/5 md:border-transparent'}`}>
                 {lead.propertyType}
               </span>
             )}
             {lead.source && (
-              <span className="px-2.5 py-1 rounded-lg text-[9px] font-black bg-emerald-500/10 md:bg-emerald-50 text-emerald-400 md:text-emerald-700 uppercase tracking-widest md:tracking-wider border border-emerald-500/10 md:border-transparent">
+              <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest md:tracking-wider ${isMobile ? 'bg-[#183a27] text-[#4ea8e9]' : 'bg-emerald-500/10 md:bg-emerald-50 text-emerald-400 md:text-emerald-700 border border-emerald-500/10 md:border-transparent'}`}>
                 {lead.source}
               </span>
             )}
@@ -422,31 +428,31 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
 
           <div className="grid grid-cols-2 gap-3 mb-4">
             {lead.city && (
-              <div className="flex items-center gap-1.5 text-[10px] text-white/40 md:text-muted font-black md:font-bold uppercase tracking-tighter md:tracking-normal">
+              <div className={`flex items-center gap-1.5 text-[10px] font-black md:font-bold uppercase tracking-tighter md:tracking-normal ${isMobile ? 'text-white/50' : 'text-white/40 md:text-muted'}`}>
                 <MapPin className="w-3.5 h-3.5 opacity-40" />
                 <span className="truncate">{lead.city}</span>
               </div>
             )}
             {lead.unitCount && (
-              <div className="flex items-center gap-1.5 text-[10px] text-white/40 md:text-muted font-black md:font-bold uppercase tracking-tighter md:tracking-normal">
+              <div className={`flex items-center gap-1.5 text-[10px] font-black md:font-bold uppercase tracking-tighter md:tracking-normal ${isMobile ? 'text-white/50' : 'text-white/40 md:text-muted'}`}>
                 <Building2 className="w-3.5 h-3.5 opacity-40" />
                 <span>{lead.unitCount} Units</span>
               </div>
             )}
           </div>
 
-          <div className="pt-4 border-t border-white/5 md:border-border/50 flex items-center justify-between">
+          <div className={`pt-4 border-t flex items-center justify-between ${isMobile ? 'border-[#2a4536]' : 'border-white/5 md:border-border/50'}`}>
             {lead.assignedToName ? (
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg md:rounded-full bg-emerald-500/10 md:bg-accent/10 flex items-center justify-center border border-emerald-500/20 md:border-accent/20">
-                  <span className="text-[9px] font-black text-emerald-400 md:text-accent">{lead.assignedToName.charAt(0)}</span>
+                <div className={`w-6 h-6 rounded-lg md:rounded-full flex items-center justify-center border ${isMobile ? 'bg-[#2a4b3d] border-[#345c4b]' : 'bg-emerald-500/10 md:bg-accent/10 border-emerald-500/20 md:border-accent/20'}`}>
+                  <span className={`text-[9px] font-black ${isMobile ? 'text-white' : 'text-emerald-400 md:text-accent'}`}>{lead.assignedToName.charAt(0)}</span>
                 </div>
-                <span className="text-[10px] text-white/60 md:text-primary-text font-black md:font-bold uppercase md:capitalize tracking-tighter md:tracking-normal">{lead.assignedToName.split(' ')[0]}</span>
+                <span className={`text-[10px] font-black md:font-bold uppercase md:capitalize tracking-tighter md:tracking-normal ${isMobile ? 'text-white/70' : 'text-white/60 md:text-primary-text'}`}>{lead.assignedToName.split(' ')[0]}</span>
               </div>
             ) : (
-              <span className="text-[10px] text-white/20 md:text-muted font-black md:font-medium uppercase md:italic tracking-tighter md:tracking-normal">Unassigned</span>
+              <span className={`text-[10px] font-black md:font-medium uppercase md:italic tracking-tighter md:tracking-normal ${isMobile ? 'text-white/30' : 'text-white/20 md:text-muted'}`}>Unassigned</span>
             )}
-            <div className="flex items-center gap-1 text-[10px] text-white/20 md:text-muted font-black md:font-bold uppercase md:capitalize tracking-tighter md:tracking-normal">
+            <div className={`flex items-center gap-1 text-[10px] font-black md:font-bold uppercase md:capitalize tracking-tighter md:tracking-normal ${isMobile ? 'text-white/30' : 'text-white/20 md:text-muted'}`}>
               <Clock className="w-3 h-3 opacity-40" />
               <span>{lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Recently'}</span>
             </div>
