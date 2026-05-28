@@ -42,6 +42,16 @@ const CrmDashboard: React.FC = () => {
   // Filtered leads
   const filteredLeads = useMemo(() => {
     let result = leads;
+    
+    // Location-based filtering for non-admins
+    const isAdminUser = ['admin', 'super_admin', 'superadmin'].includes(user?.role || '');
+    if (!isAdminUser) {
+      result = result.filter(l => 
+        (user?.location && l.city?.toLowerCase() === user.location.toLowerCase()) || 
+        l.assignedTo === user?.id
+      );
+    }
+    
     if (kanbanFilter === 'mine' && user) {
       result = result.filter(l => l.assignedTo === user.id);
     }
@@ -219,6 +229,7 @@ const CrmDashboard: React.FC = () => {
                       }
                     }}
                     isMobile={isMobile}
+                    canDelete={['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
                   />
                 </div>
               ))}
@@ -260,17 +271,19 @@ const CrmDashboard: React.FC = () => {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (window.confirm('Delete this lead?')) {
-                                await deleteLead(lead.id);
-                              }
-                            }}
-                            className="p-1 text-muted hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {['admin', 'super_admin', 'superadmin'].includes(user?.role || '') && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Delete this lead?')) {
+                                  await deleteLead(lead.id);
+                                }
+                              }}
+                              className="p-1 text-muted hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                       {lead.associationName && <div className="text-[10px] text-muted md:text-muted font-bold mt-1.5 uppercase tracking-wider truncate max-w-[150px] md:max-w-xs max-md:text-white/30">{lead.associationName}</div>}
@@ -356,9 +369,10 @@ interface KanbanColumnProps {
   onCardClick: (id: string) => void;
   onDeleteClick: (id: string) => void;
   isMobile?: boolean;
+  canDelete?: boolean;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick, isMobile }) => (
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCardClick, onDeleteClick, isMobile, canDelete }) => (
   <div className="w-[85vw] md:w-[280px] lg:w-[300px] flex-shrink-0 flex flex-col">
     <div className="flex items-center justify-between mb-5 px-3">
       <div className="flex items-center gap-3">
@@ -393,16 +407,18 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
               >
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteClick(lead.id);
-                }}
-                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all group/icon ${isMobile ? 'bg-[#4b2a2a] border-none text-[#e94e4e] hover:bg-[#5c3434]' : 'bg-white/10 md:bg-red-50 border border-white/10 md:border-red-100 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                title="Delete Lead"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {canDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteClick(lead.id);
+                  }}
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all group/icon ${isMobile ? 'bg-[#4b2a2a] border-none text-[#e94e4e] hover:bg-[#5c3434]' : 'bg-white/10 md:bg-red-50 border border-white/10 md:border-red-100 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                  title="Delete Lead"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
 

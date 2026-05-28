@@ -883,8 +883,12 @@ const ProfilePage: React.FC = () => {
                                                 navigate('/attendance/request-unlock');
                                                 return;
                                             }
-                                            if (isCheckedIn) navigate('/attendance/check-out?workType=office');
-                                            else navigate('/attendance/check-in?workType=office');
+                                            if (effectivelyCheckedIn) {
+                                                const wt = isSiteOtCheckedIn ? 'site-ot' : isFieldCheckedIn ? 'field' : 'office';
+                                                navigate(`/attendance/check-out?workType=${wt}`);
+                                            } else {
+                                                navigate('/attendance/check-in?workType=office');
+                                            }
                                         }}
                                         disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
                                         className={`
@@ -1588,7 +1592,7 @@ const ProfilePage: React.FC = () => {
 
                                              {/* ── 1. Primary Session Toggle (Punch In/Out) ── */}
                                              <div className="w-full">
-                                                {!isCheckedIn ? (
+                                                {!effectivelyCheckedIn ? (
                                                     <div className="relative group">
                                                         <Button
                                                             onClick={() => {

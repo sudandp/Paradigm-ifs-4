@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { api } from './api';
 import type {
   CrmLead, CrmFollowup, CrmChecklistTemplate, CrmChecklistSubmission,
   CrmStatutoryMaster, CrmQuotation, AuditLog, ManpowerSuggestionInput,
@@ -44,6 +45,108 @@ const toCamelCase = (data: any): any => {
 // ============================================================================
 
 export const crmApi = {
+
+  // -------------------------------------------------------------------------
+  // NOTIFICATIONS (Helper)
+  // -------------------------------------------------------------------------
+
+  notifyTimelineUpdate: async (leadId: string, actionDesc: string): Promise<void> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      
+      const userId = session.user.id;
+
+      // 1. Fetch user's details
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, reporting_manager_id')
+        .eq('id', userId)
+        .single();
+        
+      if (!userData) return;
+
+      // 2. Fetch Lead details
+      const { data: leadData } = await supabase
+        .from('crm_leads')
+        .select('client_name, association_name')
+        .eq('id', leadId)
+        .single();
+        
+      const leadName = leadData?.association_name || leadData?.client_name || 'Unknown Lead';
+
+      const message = `${userData.name} updated the timeline for lead: ${leadName} (${actionDesc})`;
+
+      // 3. Notify Reporting Manager
+      if (userData.reporting_manager_id) {
+        await api.createNotification({
+          userId: userData.reporting_manager_id,
+          title: 'CRM Timeline Update',
+          message,
+          type: 'info',
+          linkTo: `/crm`
+        });
+      }
+
+      // 4. Notify Admins
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .in('role', ['admin', 'superadmin']);
+
+      if (admins) {
+        for (const admin of admins) {
+          if (admin.id === userData.reporting_manager_id) continue;
+          if (admin.id === userId) continue;
+
+          await api.createNotification({
+            userId: admin.id,
+            title: 'CRM Timeline Update',
+            message,
+            type: 'info',
+            linkTo: `/crm`
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[CRM] Failed to send timeline notification:', e);
+    }
+  },
+
+  // -------------------------------------------------------------------------
+  // AUTO-ASSIGNMENT (Helper)
+  // -------------------------------------------------------------------------
+
+  autoAssignLeadByCity: async (city: string): Promise<string | null> => {
+    if (!city) return null;
+    try {
+      // First try to find a business_developer for this location
+      let { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'business_developer')
+        .ilike('location', city)
+        .limit(1)
+        .single();
+        
+      if (!data) {
+        // Fallback: any user with this location who is not an admin
+        const { data: fallback } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('location', city)
+          .not('role', 'in', '("admin","super_admin","superadmin")')
+          .limit(1)
+          .single();
+        data = fallback as any;
+      }
+      
+      return data?.id || null;
+    } catch (e) {
+      console.warn('[CRM] Failed to auto-assign lead by city:', e);
+      return null;
+    }
+  },
 
   // -------------------------------------------------------------------------
   // LEADS
@@ -111,6 +214,14 @@ export const crmApi = {
         }
       }
     }
+    
+    // Auto-assign based on city if not explicitly assigned
+    if (!rest.assigned_to && rest.city) {
+      const assigneeId = await crmApi.autoAssignLeadByCity(rest.city);
+      if (assigneeId) {
+        rest.assigned_to = assigneeId;
+      }
+    }
 
     const { data, error } = await supabase
       .from('crm_leads')
@@ -141,6 +252,9 @@ export const crmApi = {
     // Audit log
     await crmApi.createAuditLog('crm', id, 'update', oldData, data, 'Lead updated');
     
+    // Dispatch timeline notification
+    await crmApi.notifyTimelineUpdate(id, 'Lead details updated');
+    
     return toCamelCase(data);
   },
 
@@ -162,6 +276,9 @@ export const crmApi = {
       `Pipeline Transition: ${oldData?.status} → ${status}`
     );
     
+    // Dispatch timeline notification
+    await crmApi.notifyTimelineUpdate(id, `Status changed to ${status}`);
+
     return toCamelCase(data);
   },
 
@@ -197,6 +314,12 @@ export const crmApi = {
       .select()
       .single();
     if (error) throw error;
+
+    // Dispatch timeline notification
+    if (rest.leadId) {
+      await crmApi.notifyTimelineUpdate(rest.leadId, `New follow-up added`);
+    }
+
     return toCamelCase(data);
   },
 
@@ -261,6 +384,12 @@ export const crmApi = {
     }
     const { data, error } = await query.select().single();
     if (error) throw error;
+
+    // Dispatch timeline notification
+    if (rest.leadId) {
+      await crmApi.notifyTimelineUpdate(rest.leadId, `Site Audit checklist submitted`);
+    }
+
     return toCamelCase(data);
   },
 
@@ -312,6 +441,12 @@ export const crmApi = {
     }
     const { data, error } = await query.select().single();
     if (error) throw error;
+
+    // Dispatch timeline notification
+    if (rest.leadId) {
+      await crmApi.notifyTimelineUpdate(rest.leadId, `Proposal/Quotation ${id ? 'updated' : 'added'}`);
+    }
+
     return toCamelCase(data);
   },
 

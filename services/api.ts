@@ -7798,7 +7798,7 @@ export const api = {
     if (refError) throw refError;
 
     // 2. Also create a lead in CRM Pipeline
-    const leadData = {
+    const leadData: any = {
       clientName: referral.communityName,
       associationName: referral.communityName,
       contactPerson: referral.contactPersonName,
@@ -7812,6 +7812,34 @@ export const api = {
       notes: `Referred by: ${referral.referrerName} (${referral.referrerRole})\nSite/Desig: ${referral.siteAndDesignation}`,
       createdBy: referral.createdBy,
     };
+    
+    // Attempt auto-assignment based on city
+    if (leadData.city) {
+      try {
+        let { data } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'business_developer')
+          .ilike('location', leadData.city)
+          .limit(1)
+          .single();
+        if (!data) {
+          const { data: fallback } = await supabase
+            .from('users')
+            .select('id')
+            .ilike('location', leadData.city)
+            .not('role', 'in', '("admin","super_admin","superadmin")')
+            .limit(1)
+            .single();
+          data = fallback as any;
+        }
+        if (data?.id) {
+          leadData.assigned_to = data.id;
+        }
+      } catch (e) {
+        console.warn('Auto-assignment failed for city:', leadData.city, e);
+      }
+    }
 
     try {
       const { error: leadError } = await supabase
@@ -7850,8 +7878,34 @@ export const api = {
   },
 
   deleteBusinessReferral: async (id: string): Promise<void> => {
+    // Fetch the referral first so we know which CRM lead to delete
+    const { data: referral } = await supabase
+      .from('business_referrals')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const { error } = await supabase.from('business_referrals').delete().eq('id', id);
     if (error) throw error;
+
+    // Attempt to delete the corresponding CRM lead if we have the details
+    if (referral) {
+      const clientName = referral.community_name || referral.company_name;
+      const phone = referral.client_phone || referral.contact_mobile;
+      
+      if (clientName) {
+        let query = supabase.from('crm_leads')
+          .delete()
+          .eq('client_name', clientName)
+          .eq('source', 'Referral');
+          
+        if (phone) {
+          query = query.eq('phone', phone);
+        }
+        
+        await query;
+      }
+    }
   },
 
   getAllSiteStaffConfigs: async (): Promise<any[]> => {

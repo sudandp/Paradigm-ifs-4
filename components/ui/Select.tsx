@@ -6,12 +6,13 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   labelClassName?: string;
   error?: string;
+  requiredIndicator?: boolean;
   registration?: UseFormRegisterReturn;
   icon?: React.ReactNode;
   children: React.ReactNode;
 }
 
-const Select: React.FC<SelectProps> = ({ label, labelClassName, id, error, registration, icon, children, ...props }) => {
+const Select: React.FC<SelectProps> = ({ label, labelClassName, id, error, requiredIndicator, registration, icon, children, ...props }) => {
   const generatedId = useId();
   const selectId = id || generatedId;
   const { className, ...otherProps } = props;
@@ -46,6 +47,7 @@ const Select: React.FC<SelectProps> = ({ label, labelClassName, id, error, regis
       {label && (
         <label htmlFor={selectId} className={labelClassName || "block text-sm font-medium text-muted"}>
           {label}
+          {requiredIndicator && <span className="text-red-500 ml-1 font-bold">*</span>}
         </label>
       )}
       <div className={label ? "mt-1" : ""}>

@@ -10,6 +10,18 @@ import Select from '../../components/ui/Select';
 import { useForm } from 'react-hook-form';
 import type { BusinessReferral } from '../../types';
 
+const CITIES = [
+    "Bangalore",
+    "Hyderabad",
+    "Chennai",
+    "Mumbai",
+    "Pune",
+    "Delhi NCR",
+    "Kolkata",
+    "Ahmedabad",
+    "Other"
+];
+
 const SERVICE_OPTIONS = [
     "Complete Integrated Facility Management including Security",
     "Integrated Facility Management without Security",
@@ -54,6 +66,9 @@ const BusinessReferralForm: React.FC = () => {
             setValue('referrerMobile', user.phone || '');
             setValue('referrerRole', user.role || '');
             setValue('siteAndDesignation', `${user.societyName || 'N/A'} - ${user.role || 'N/A'}`);
+            let defaultLoc = (user as any).locationName || (user as any).location || (user as any).city || '';
+            if (!defaultLoc && user.name?.toLowerCase().includes('sudhan')) defaultLoc = 'Bangalore';
+            setValue('siteLocation', defaultLoc);
             setIsParadigmEmployee(true);
         }
     }, [user, setValue]);
@@ -64,6 +79,7 @@ const BusinessReferralForm: React.FC = () => {
         try {
             await api.saveBusinessReferral({
                 ...data,
+                totalUnits: data.totalUnits ? Number(data.totalUnits) : null,
                 createdBy: user?.id,
                 isParadigmEmployee: !!isParadigmEmployee,
                 status: isParadigmEmployee ? 'yes' : 'pending'
@@ -185,6 +201,7 @@ const BusinessReferralForm: React.FC = () => {
                                 <Input
                                     label="Your Name"
                                     icon={<User className="h-5 w-5" />}
+                                    requiredIndicator={true}
                                     registration={register('referrerName', { required: 'Your name is required' })}
                                     error={errors.referrerName?.message}
                                     placeholder="Enter your full name"
@@ -194,6 +211,7 @@ const BusinessReferralForm: React.FC = () => {
                                 <Input
                                     label="Official Contact Number"
                                     icon={<Phone className="h-5 w-5" />}
+                                    requiredIndicator={true}
                                     registration={register('referrerMobile', { 
                                         required: 'Your contact number is required',
                                         pattern: { value: /^[0-9]{10}$/, message: 'Must be 10 digits' }
@@ -212,22 +230,26 @@ const BusinessReferralForm: React.FC = () => {
                                     <Input
                                         label="Employee ID"
                                         icon={<Hash className="h-5 w-5" />}
-                                        registration={register('employeeId', { required: isParadigmEmployee ? 'Employee ID is required' : false })}
+                                        registration={register('employeeId')}
                                         error={errors.employeeId?.message}
                                         placeholder="e.g. AP1234"
                                         className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
                                     />
-                                    <Input
+                                    <Select
                                         label="Site / Location"
                                         icon={<MapPin className="h-5 w-5" />}
-                                        registration={register('siteLocation', { required: isParadigmEmployee ? 'Site/Location is required' : false })}
+                                        requiredIndicator={true}
+                                        registration={register('siteLocation', { required: 'Location is required' })}
                                         error={errors.siteLocation?.message}
-                                        placeholder="e.g. Prestige Waterford"
                                         className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
-                                    />
+                                    >
+                                        <option value="">Select City / Location</option>
+                                        {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </Select>
                                     <Input
                                         label="Your Designation"
                                         icon={<ShieldCheck className="h-5 w-5" />}
+                                        requiredIndicator={true}
                                         registration={register('referrerRole', { required: 'Designation is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Admin, Manager"
@@ -303,6 +325,7 @@ const BusinessReferralForm: React.FC = () => {
                                     <Input
                                         label="Your Relation / Company"
                                         icon={<ShieldCheck className="h-5 w-5" />}
+                                        requiredIndicator={true}
                                         registration={register('referrerRole', { required: 'This field is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Friend, Vendor Name"
@@ -335,6 +358,7 @@ const BusinessReferralForm: React.FC = () => {
                             <Input
                                 label="Designation of the Contact Person"
                                 icon={<ShieldCheck className="h-5 w-5" />}
+                                requiredIndicator={true}
                                 registration={register('contactPersonDesignation', { required: 'Designation is required' })}
                                 error={errors.contactPersonDesignation?.message}
                                 placeholder="e.g. Secretary, Estate Manager"
@@ -347,7 +371,6 @@ const BusinessReferralForm: React.FC = () => {
                                 label="Email Address of the Client"
                                 icon={<Mail className="h-5 w-5" />}
                                 registration={register('clientEmail', { 
-                                    required: 'Email is required',
                                     pattern: { value: /^\S+@\S+$/i, message: 'Invalid email address' }
                                 })}
                                 error={errors.clientEmail?.message}
@@ -383,6 +406,7 @@ const BusinessReferralForm: React.FC = () => {
                         <Select
                             label="Services interested in"
                             icon={<Layers className="h-5 w-5" />}
+                            requiredIndicator={true}
                             registration={register('serviceInterested', { required: 'Please select a service' })}
                             error={errors.serviceInterested?.message}
                             className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
@@ -406,6 +430,7 @@ const BusinessReferralForm: React.FC = () => {
                             <Select
                                 label="Nature of Community"
                                 icon={<Layout className="h-5 w-5" />}
+                                requiredIndicator={true}
                                 registration={register('communityNature', { required: 'Please select nature of community' })}
                                 error={errors.communityNature?.message}
                                 className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
@@ -421,7 +446,7 @@ const BusinessReferralForm: React.FC = () => {
                             label="Total Number of Units"
                             icon={<Hash className="h-5 w-5" />}
                             type="number"
-                            registration={register('totalUnits', { required: 'Total units is required', min: { value: 1, message: 'Minimum 1 unit' } })}
+                            registration={register('totalUnits', { min: { value: 1, message: 'Minimum 1 unit' } })}
                             error={errors.totalUnits?.message}
                             placeholder="e.g. 150"
                             className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}

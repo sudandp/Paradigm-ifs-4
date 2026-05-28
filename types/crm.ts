@@ -34,7 +34,9 @@ export interface CrmLead {
   clientName: string;
   associationName?: string;
   contactPerson?: string;
+  contactPersonDesignation?: string;
   phone?: string;
+  contactPersonEmail?: string;
   email?: string;
   source?: LeadSource;
 
@@ -64,6 +66,19 @@ export interface CrmLead {
   expectedStartDate?: string;
   lostReason?: string;
   notes?: string;
+
+  // Referral Details (when source = 'Referral')
+  referrerIsEmployee?: boolean;
+  referrerName?: string;
+  referrerMobile?: string;
+  referrerEmployeeId?: string;
+  referrerSiteLocation?: string;
+  referrerDesignation?: string;
+  referrerRelation?: string;
+  referrerBankName?: string;
+  referrerAccountNumber?: string;
+  referrerIfscCode?: string;
+  referrerUpiId?: string;
 
   // Conversion
   convertedEntityId?: string;

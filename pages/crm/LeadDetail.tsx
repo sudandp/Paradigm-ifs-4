@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useCrmStore } from '../../store/crmStore';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '../../services/supabase';
 import { crmApi } from '../../services/crmApi';
 import { leadConversionService, generateProposalHtml } from '../../services/leadConversion';
 import type { CrmLead, LeadSource, PropertyType, CrmFollowup, FollowupType } from '../../types/crm';
@@ -67,7 +68,25 @@ const LeadDetail: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'details' | 'timeline' | 'quotations'>('details');
+  const [usersList, setUsersList] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email, role_id');
+        if (!error && data) {
+          setUsersList(data);
+        }
+      } catch (err) {
+        console.error('Error fetching users:', err);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     if (!isNew && existingLead) {
@@ -123,11 +142,63 @@ const LeadDetail: React.FC = () => {
     return events.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [leadFollowups, leadSubmission, leadQuotations]);
 
+  // Smart field-mismatch detection: shows a helpful hint when user types wrong data
+  const [fieldHint, setFieldHint] = useState<{ field: string; message: string } | null>(null);
+  const fieldHintTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const detectMismatch = (fieldName: string, rawValue: string, cleanedValue: string) => {
+    if (rawValue === cleanedValue) return; // nothing was stripped, no mismatch
+    if (fieldHintTimeout.current) clearTimeout(fieldHintTimeout.current);
+
+    let hint = '';
+    if (/@/.test(rawValue) && /\./.test(rawValue)) {
+      hint = '💡 This looks like an email address — please use the Email field below';
+    } else if (/\d{4,}/.test(rawValue)) {
+      hint = '💡 This looks like a phone number — please use the Phone Number field';
+    } else if (/\d/.test(rawValue)) {
+      hint = '💡 Numbers are not allowed in this field';
+    } else if (/[@#$%^&*!]/.test(rawValue)) {
+      hint = '💡 Special characters are not allowed in this field';
+    }
+
+    if (hint) {
+      setFieldHint({ field: fieldName, message: hint });
+      fieldHintTimeout.current = setTimeout(() => setFieldHint(null), 4000);
+    }
+  };
+
   const handleSave = async () => {
+    const newErrors: Record<string, string> = {};
     if (!form.clientName?.trim()) {
-      setToast({ message: 'Client name is required', type: 'error' });
+      newErrors.clientName = 'Client name is required';
+    } else if (form.clientName.trim().length < 2) {
+      newErrors.clientName = 'Client name must be at least 2 characters';
+    }
+    if (!form.contactPerson?.trim()) {
+      newErrors.contactPerson = 'Contact person is required';
+    } else if (form.contactPerson.trim().length < 2) {
+      newErrors.contactPerson = 'Contact person must be at least 2 characters';
+    }
+    if (!form.phone?.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^(?:\+91[- ]?)?[0-9]{10}$/.test(form.phone.trim())) {
+      newErrors.phone = 'Enter a valid 10-digit phone number (e.g. +91 9876543210)';
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (form.contactPersonEmail?.trim() && !emailRegex.test(form.contactPersonEmail.trim())) {
+      newErrors.contactPersonEmail = 'Enter a valid email address';
+    }
+    if (form.email?.trim() && !emailRegex.test(form.email.trim())) {
+      newErrors.email = 'Enter a valid email address';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setFormErrors(newErrors);
+      setToast({ message: 'Please fill in all mandatory fields', type: 'error' });
       return;
     }
+    setFormErrors({});
     setIsSaving(true);
     try {
       if (isNew) {
@@ -242,12 +313,31 @@ const LeadDetail: React.FC = () => {
                   </div>
                   <h2 className="text-lg font-black text-white md:text-primary-text uppercase tracking-wider">Client Details</h2>
                 </div>
+                {fieldHint && (
+                  <div className="mb-4 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 animate-fade-in">
+                    <span className="text-sm text-amber-600 md:text-amber-500 font-medium">{fieldHint.message}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Client / Billing Name" value={form.clientName || ''} onChange={(e) => setForm(p => ({ ...p, clientName: e.target.value }))} placeholder="e.g. Manu Srivatsa" />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Association Name" value={form.associationName || ''} onChange={(e) => setForm(p => ({ ...p, associationName: e.target.value }))} placeholder="e.g. Pramuk M M Meridian" />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Contact Person" value={form.contactPerson || ''} onChange={(e) => setForm(p => ({ ...p, contactPerson: e.target.value }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Phone Number" value={form.phone || ''} onChange={(e) => setForm(p => ({ ...p, phone: e.target.value }))} inputMode="tel" />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Email Address" value={form.email || ''} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} type="email" />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Client Name" requiredIndicator error={formErrors.clientName} value={form.clientName || ''} onChange={(e) => { const raw = e.target.value; const cleaned = raw.replace(/[^a-zA-Z\s.\-]/g, ''); detectMismatch('clientName', raw, cleaned); setForm(p => ({ ...p, clientName: cleaned })); }} placeholder="e.g. Manu Srivatsa" />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Association Name / Billing Name" value={form.associationName || ''} onChange={(e) => setForm(p => ({ ...p, associationName: e.target.value.replace(/[^a-zA-Z0-9\s.\-&]/g, '') }))} placeholder="e.g. Pramuk M M Meridian" />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Contact Person" requiredIndicator error={formErrors.contactPerson} value={form.contactPerson || ''} onChange={(e) => { const raw = e.target.value; const cleaned = raw.replace(/[^a-zA-Z\s.\-]/g, ''); detectMismatch('contactPerson', raw, cleaned); setForm(p => ({ ...p, contactPerson: cleaned })); }} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Contact Person Designation" value={form.contactPersonDesignation || ''} onChange={(e) => { const raw = e.target.value; const cleaned = raw.replace(/[^a-zA-Z\s.\-/]/g, ''); detectMismatch('designation', raw, cleaned); setForm(p => ({ ...p, contactPersonDesignation: cleaned })); }} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Phone Number" requiredIndicator error={formErrors.phone} value={form.phone || ''} onChange={(e) => { const v = e.target.value.replace(/[^0-9+\- ]/g, ''); if (v.length <= 13) setForm(p => ({ ...p, phone: v })); }} inputMode="tel" maxLength={13} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Contact Person Email ID" error={formErrors.contactPersonEmail} value={form.contactPersonEmail || ''} onChange={(e) => setForm(p => ({ ...p, contactPersonEmail: e.target.value.replace(/\s/g, '') }))} onBlur={(e) => {
+                    if (e.target.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value)) {
+                      setFormErrors(prev => ({ ...prev, contactPersonEmail: 'Enter a valid email address' }));
+                    } else {
+                      setFormErrors(prev => { const copy = { ...prev }; delete copy.contactPersonEmail; return copy; });
+                    }
+                  }} type="email" />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Association Email Address" error={formErrors.email} value={form.email || ''} onChange={(e) => setForm(p => ({ ...p, email: e.target.value.replace(/\s/g, '') }))} onBlur={(e) => {
+                    if (e.target.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value)) {
+                      setFormErrors(prev => ({ ...prev, email: 'Enter a valid email address' }));
+                    } else {
+                      setFormErrors(prev => { const copy = { ...prev }; delete copy.email; return copy; });
+                    }
+                  }} type="email" />
                   <div>
                     <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2">Lead Source</label>
                     <select
@@ -261,8 +351,137 @@ const LeadDetail: React.FC = () => {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2">Assigned To</label>
+                    <select
+                      className="form-input h-11"
+                      value={form.assignedTo || ''}
+                      onChange={(e) => setForm(p => ({ ...p, assignedTo: e.target.value }))}
+                      disabled={!['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
+                    >
+                      <option value="">Unassigned</option>
+                      {Object.entries(
+                        usersList.reduce((acc, user) => {
+                          const role = user.role_id ? user.role_id.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 'Unknown Role';
+                          if (!acc[role]) acc[role] = [];
+                          acc[role].push(user);
+                          return acc;
+                        }, {} as Record<string, any[]>)
+                      ).map(([role, users]: [string, any[]]) => (
+                        <optgroup key={role} label={role}>
+                          {users.map((u: any) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name || u.email}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
+
+              {/* Referral Details Section — only visible when source = Referral */}
+              {form.source === 'Referral' && (
+                <div className="bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2.5rem] md:rounded-3xl border border-white/5 md:border-border p-6 md:p-8 shadow-2xl md:shadow-sm group hover:shadow-md transition-all animate-fade-in">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 md:bg-amber-50 flex items-center justify-center">
+                      <User className="w-5 h-5 text-amber-400 md:text-amber-600" />
+                    </div>
+                    <h2 className="text-lg font-black text-white md:text-primary-text uppercase tracking-wider">Referral Details</h2>
+                  </div>
+
+                  {/* Employee/Outsider Toggle */}
+                  <div className="mb-8">
+                    <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-3">Is the Referrer a Paradigm Employee?</label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(p => ({ ...p, referrerIsEmployee: true, referrerRelation: undefined, referrerBankName: undefined, referrerAccountNumber: undefined, referrerIfscCode: undefined, referrerUpiId: undefined }));
+                          if (user) {
+                            setForm(p => ({ ...p, referrerName: user.name || '', referrerMobile: user.phone || '', referrerDesignation: user.role || '' }));
+                          }
+                        }}
+                        className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${
+                          form.referrerIsEmployee === true
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
+                            : 'bg-white/5 md:bg-gray-100 text-white/50 md:text-gray-500 border border-white/10 md:border-border'
+                        }`}
+                      >
+                        Yes, Employee
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(p => ({ ...p, referrerIsEmployee: false, referrerEmployeeId: undefined, referrerSiteLocation: undefined, referrerName: '', referrerMobile: '', referrerDesignation: undefined }));
+                        }}
+                        className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${
+                          form.referrerIsEmployee === false
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/20'
+                            : 'bg-white/5 md:bg-gray-100 text-white/50 md:text-gray-500 border border-white/10 md:border-border'
+                        }`}
+                      >
+                        No, Outsider
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Employee Fields */}
+                  {form.referrerIsEmployee === true && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                      <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Referrer Name" requiredIndicator value={form.referrerName || ''} onChange={(e) => setForm(p => ({ ...p, referrerName: e.target.value.replace(/[^a-zA-Z\s.\-]/g, '') }))} readOnly={!!user} />
+                      <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Referrer Contact Number" requiredIndicator value={form.referrerMobile || ''} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); if (v.length <= 10) setForm(p => ({ ...p, referrerMobile: v })); }} inputMode="tel" maxLength={10} readOnly={!!user} />
+                      <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Employee ID" value={form.referrerEmployeeId || ''} onChange={(e) => setForm(p => ({ ...p, referrerEmployeeId: e.target.value }))} placeholder="e.g. AP1234" />
+                      <div>
+                        <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2">Site / Location <span className="text-red-500">*</span></label>
+                        <select
+                          className="form-input h-11"
+                          value={form.referrerSiteLocation || ''}
+                          onChange={(e) => setForm(p => ({ ...p, referrerSiteLocation: e.target.value }))}
+                        >
+                          <option value="">Select City / Location</option>
+                          {['Bangalore', 'Hyderabad', 'Chennai', 'Mumbai', 'Pune', 'Delhi NCR', 'Kolkata', 'Ahmedabad', 'Other'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Referrer Designation" requiredIndicator value={form.referrerDesignation || ''} onChange={(e) => setForm(p => ({ ...p, referrerDesignation: e.target.value.replace(/[^a-zA-Z\s.\-/]/g, '') }))} readOnly={!!user} />
+                    </div>
+                  )}
+
+                  {/* Outsider Fields */}
+                  {form.referrerIsEmployee === false && (
+                    <div className="space-y-6 animate-fade-in">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Referrer Name" requiredIndicator value={form.referrerName || ''} onChange={(e) => setForm(p => ({ ...p, referrerName: e.target.value.replace(/[^a-zA-Z\s.\-]/g, '') }))} />
+                        <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Referrer Contact Number" requiredIndicator value={form.referrerMobile || ''} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); if (v.length <= 10) setForm(p => ({ ...p, referrerMobile: v })); }} inputMode="tel" maxLength={10} />
+                        <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Relation / Company" requiredIndicator value={form.referrerRelation || ''} onChange={(e) => setForm(p => ({ ...p, referrerRelation: e.target.value }))} placeholder="e.g. Friend, Vendor Name" />
+                      </div>
+
+                      {/* Payment Details */}
+                      <div className="mt-4">
+                        <label className="block text-[10px] font-black text-amber-400 md:text-amber-600 uppercase tracking-widest md:tracking-wider mb-4">💰 Payment Details (For Referral Reward)</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-4 p-5 rounded-2xl border border-white/5 md:border-border bg-white/[0.02] md:bg-gray-50/50">
+                            <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest">🏦 Bank Transfer</label>
+                            <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Bank Name" value={form.referrerBankName || ''} onChange={(e) => setForm(p => ({ ...p, referrerBankName: e.target.value }))} placeholder="e.g. HDFC Bank" />
+                            <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Account Number" value={form.referrerAccountNumber || ''} onChange={(e) => setForm(p => ({ ...p, referrerAccountNumber: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="Enter account number" />
+                            <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="IFSC Code" value={form.referrerIfscCode || ''} onChange={(e) => setForm(p => ({ ...p, referrerIfscCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))} placeholder="e.g. HDFC0001234" />
+                          </div>
+                          <div className="space-y-4 p-5 rounded-2xl border border-white/5 md:border-border bg-white/[0.02] md:bg-gray-50/50">
+                            <label className="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest">📱 UPI Payment</label>
+                            <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="UPI ID" value={form.referrerUpiId || ''} onChange={(e) => setForm(p => ({ ...p, referrerUpiId: e.target.value }))} placeholder="e.g. 9876543210@paytm" />
+                            <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                              <p className="text-[10px] font-bold text-amber-500 md:text-amber-600 leading-relaxed">* Please provide either Bank or UPI details to process the referral reward after successful verification.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Property Section */}
               <div className="bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2.5rem] md:rounded-3xl border border-white/5 md:border-border p-6 md:p-8 shadow-2xl md:shadow-sm group hover:shadow-md transition-all">
@@ -286,12 +505,12 @@ const LeadDetail: React.FC = () => {
                       <option value="Mixed Use">Mixed Use</option>
                     </select>
                   </div>
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="City" value={form.city || ''} onChange={(e) => setForm(p => ({ ...p, city: e.target.value }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Exact Location" value={form.location || ''} onChange={(e) => setForm(p => ({ ...p, location: e.target.value }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Area (sqft)" type="number" value={form.areaSqft || ''} onChange={(e) => setForm(p => ({ ...p, areaSqft: Number(e.target.value) || undefined }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="No. of Towers" type="number" value={form.towerCount || ''} onChange={(e) => setForm(p => ({ ...p, towerCount: Number(e.target.value) || undefined }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="No. of Floors" type="number" value={form.floorCount || ''} onChange={(e) => setForm(p => ({ ...p, floorCount: Number(e.target.value) || undefined }))} />
-                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Total Units" type="number" value={form.unitCount || ''} onChange={(e) => setForm(p => ({ ...p, unitCount: Number(e.target.value) || undefined }))} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="City" value={form.city || ''} onChange={(e) => setForm(p => ({ ...p, city: e.target.value.replace(/[^a-zA-Z\s\-]/g, '') }))} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Exact Location" value={form.location || ''} onChange={(e) => setForm(p => ({ ...p, location: e.target.value.replace(/[^a-zA-Z0-9\s.,\-/#]/g, '') }))} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Area (sqft)" type="number" min={0} value={form.areaSqft || ''} onChange={(e) => setForm(p => ({ ...p, areaSqft: Math.abs(Number(e.target.value)) || undefined }))} onKeyDown={(e) => { if (['-', '.', 'e', 'E'].includes(e.key)) e.preventDefault(); }} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="No. of Towers" type="number" min={0} value={form.towerCount || ''} onChange={(e) => setForm(p => ({ ...p, towerCount: Math.abs(Number(e.target.value)) || undefined }))} onKeyDown={(e) => { if (['-', '.', 'e', 'E'].includes(e.key)) e.preventDefault(); }} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="No. of Floors" type="number" min={0} value={form.floorCount || ''} onChange={(e) => setForm(p => ({ ...p, floorCount: Math.abs(Number(e.target.value)) || undefined }))} onKeyDown={(e) => { if (['-', '.', 'e', 'E'].includes(e.key)) e.preventDefault(); }} />
+                  <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Total Units" type="number" min={0} value={form.unitCount || ''} onChange={(e) => setForm(p => ({ ...p, unitCount: Math.abs(Number(e.target.value)) || undefined }))} onKeyDown={(e) => { if (['-', '.', 'e', 'E'].includes(e.key)) e.preventDefault(); }} />
                   <Input labelClassName="block text-[10px] font-black text-white/40 md:text-muted uppercase tracking-widest md:tracking-wider mb-2" label="Expected Start" type="date" value={form.expectedStartDate || ''} onChange={(e) => setForm(p => ({ ...p, expectedStartDate: e.target.value }))} />
                 </div>
               </div>
