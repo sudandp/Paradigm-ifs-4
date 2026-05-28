@@ -633,16 +633,19 @@ export const useAuthStore = create<AuthState>()(
                     api.getDailyUnlockRequestCount()
                 ]);
 
-                let events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
-                
+                // If the events fetch failed (offline / network error), preserve the last
+                // known state that was persisted to device storage. Do NOT wipe to defaults.
                 if (eventsResult.status === 'rejected') {
-                    // Fallback to offline cache
-                    console.warn('[authStore] Failed to fetch events');
+                    console.warn('[authStore] Offline – keeping last known attendance state from device cache.');
+                    set({ isAttendanceLoading: false });
+                    return;
                 }
-                
+
+                const events = eventsResult.value;
                 const approvedUnlockCount = unlockCountResult.status === 'fulfilled' ? unlockCountResult.value : 0;
                 const dailyUnlockRequestCount = 0;
 
+                // Online but genuinely no events today – safe to reset
                 if (events.length === 0) {
                     set({
                         isCheckedIn: false,
@@ -1210,7 +1213,6 @@ export const useAuthStore = create<AuthState>()(
         partialize: (state) => ({
             user: state.user,
             isCheckedIn: state.isCheckedIn,
-
             lastCheckInTime: state.lastCheckInTime,
             lastCheckOutTime: state.lastCheckOutTime,
             firstBreakInTime: state.firstBreakInTime,
@@ -1221,9 +1223,13 @@ export const useAuthStore = create<AuthState>()(
             breakIntervals: state.breakIntervals,
             isOnBreak: state.isOnBreak,
             dailyPunchCount: state.dailyPunchCount,
+            isPunchUnlocked: state.isPunchUnlocked,
+            approvedUnlockCount: state.approvedUnlockCount,
             isFieldCheckedIn: state.isFieldCheckedIn,
             isFieldCheckedOut: state.isFieldCheckedOut,
             isSiteOtCheckedIn: state.isSiteOtCheckedIn,
+            hasPreviousDayOpenSession: state.hasPreviousDayOpenSession,
+            previousDaySessionInfo: state.previousDaySessionInfo,
             geofencingSettings: state.geofencingSettings,
             breakLimit: state.breakLimit,
             breakReminderInterval: state.breakReminderInterval,

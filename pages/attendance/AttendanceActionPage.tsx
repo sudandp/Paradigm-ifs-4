@@ -208,6 +208,21 @@ const AttendanceActionPage: React.FC = () => {
             const user = useAuthStore.getState().user;
             if (!user) { setToast({ message: 'User session invalid.', type: 'error' }); setIsSubmitting(false); return; }
 
+            // --- Offline Guard ---
+            // Block all attendance actions when there is no internet connection.
+            // The device remembers the last known state, but recording a new event
+            // requires a live server write. Inform the user clearly.
+            const { Network } = await import('@capacitor/network');
+            const netStatus = await Network.getStatus();
+            if (!netStatus.connected) {
+                setToast({
+                    message: '📡 No internet connection. Please connect to Wi-Fi or mobile data to record attendance.',
+                    type: 'error'
+                });
+                setIsSubmitting(false);
+                return;
+            }
+
             const { spoofed } = await isDeviceTimeSpoofed();
             if (spoofed) { setToast({ message: 'Time mismatch! Please enable Automatic Time.', type: 'error' }); setIsSubmitting(false); return; }
 
