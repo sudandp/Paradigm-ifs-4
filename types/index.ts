@@ -869,12 +869,22 @@ export interface CandidateReferral {
   
   candidateName: string;
   candidateMobile: string;
+  candidateEmail?: string;
   candidateRole: string;
   referredPersonRole?: string;
   isParadigmEmployee?: boolean;
   status?: string;
   createdBy?: string;
   createdAt?: string;
+
+  // Extended HRM Fields
+  currentStage?: CandidateStage;
+  assignedHrId?: string;
+  joiningDate?: string;
+  probationEndDate?: string;
+  confirmedAt?: string;
+  bonusEligible?: boolean;
+  bonusPaidAt?: string;
 }
 
 export interface BusinessReferral {
@@ -905,3 +915,10 @@ export interface BusinessReferral {
   createdBy?: string;
   createdAt?: string;
 }
+
+export type CallOutcome = 'reached' | 'no_answer' | 'callback' | 'not_interested' | 'interested';
+export type CandidateStage = 'new' | 'contacted' | 'screened' | 'interview' | 'shortlisted' | 'offer' | 'joined' | 'rejected';
+export type FeedType = 'call_logged' | 'stage_changed' | 'note_added' | 'interview_scheduled' | 'offer_made' | 'joined' | 'rejected' | 'letter_issued';
+export type LetterType = 'offer' | 'appointment' | 'confirmation' | 'promotion' | 'increment' | 'transfer' | 'warning' | 'show_cause' | 'experience' | 'termination';
+export type LetterStatus = 'draft' | 'pending_approval' | 'issued' | 'revoked';
+

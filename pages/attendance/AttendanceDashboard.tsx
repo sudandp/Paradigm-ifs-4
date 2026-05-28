@@ -564,6 +564,60 @@ const MailReportModal: React.FC<MailReportModalProps> = ({ isOpen, onClose, onSe
     );
 };
 
+const DashboardStatCard: React.FC<{
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    label: string;
+    value: string | number;
+    color: string;
+    suffix?: string;
+    trend?: string;
+}> = ({ icon: Icon, label, value, color, suffix, trend }) => {
+    return (
+        <div className="relative overflow-hidden group hover:shadow-lg transition-all duration-300 bg-[#182a20] md:bg-white rounded-3xl border border-[#2a4536] md:border-border p-4 md:p-5 shadow-sm md:shadow-sm">
+            {/* Background Decorative Icon */}
+            <div className="absolute top-0 right-0 p-3 transition-opacity opacity-[0.05] md:opacity-[0.05] group-hover:opacity-[0.08] max-md:opacity-[0.03] pointer-events-none">
+                <Icon className="w-16 h-16 md:w-20 md:h-20 text-white md:text-gray-400" />
+            </div>
+            
+            {/* Card Content */}
+            <div className="flex items-center gap-3 md:gap-4 mb-3 md:mb-4">
+                {/* Icon Container with subtle background tint */}
+                <div 
+                    className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-inner animate-fade-in" 
+                    style={{ backgroundColor: `${color}15` }}
+                >
+                    <Icon className="w-5 h-5 md:w-6 md:h-6" style={{ color }} />
+                </div>
+                
+                {/* Labels and Value */}
+                <div className="min-w-0">
+                    <p className="text-[9px] md:text-xs font-black md:font-bold uppercase tracking-widest truncate text-gray-400 md:text-muted max-md:text-white/40">
+                        {label}
+                    </p>
+                    <p className="text-lg md:text-2xl font-black mt-0.5 text-white md:text-primary-text max-md:text-white">
+                        {value}
+                        {suffix && (
+                            <span className="text-[10px] md:text-sm font-bold ml-1 md:ml-1.5 text-gray-400 md:text-muted max-md:text-white/30">
+                                {suffix}
+                            </span>
+                        )}
+                    </p>
+                </div>
+            </div>
+            
+            {/* Trend Indicator */}
+            {trend && (
+                <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: color }} />
+                    <p className="text-[8px] md:text-[10px] font-black md:font-bold uppercase tracking-tighter text-gray-400 md:text-muted max-md:text-white/20">
+                        {trend}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
@@ -3379,65 +3433,57 @@ const AttendanceDashboard: React.FC = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className={`grid grid-cols-2 gap-3 md:gap-6 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} bg-transparent md:bg-white p-0 md:p-4 rounded-xl`}>
+            <div className={`grid grid-cols-2 gap-3 md:gap-6 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} bg-transparent p-0 rounded-none`}>
                 {isEmployeeView ? (
                     // Personal Stats for Normal Users
                     [
-                        { title: "Present", value: employeeStats.present, icon: UserCheck, color: "bg-emerald-500" },
-                        { title: "Absent", value: employeeStats.absent, icon: UserX, color: "bg-[#df0637]" },
-                        { title: "Overtime", value: `${employeeStats.ot}h`, icon: Clock, color: "bg-[#1d63ff]" },
-                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "bg-purple-600" },
-                        { title: "Leave Bal.", value: employeeStats.elBalance.toFixed(1), icon: TrendingUp, color: "bg-orange-500" },
-                        { title: "WO Bal.", value: employeeStats.woBalance.toFixed(1), icon: TrendingUp, color: "bg-teal-500" }
+                        { title: "Present", value: employeeStats.present, icon: UserCheck, color: "#10b981" },
+                        { title: "Absent", value: employeeStats.absent, icon: UserX, color: "#df0637" },
+                        { title: "Overtime", value: `${employeeStats.ot}h`, icon: Clock, color: "#1d63ff" },
+                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "#8b5cf6" },
+                        { title: "Leave Bal.", value: employeeStats.elBalance.toFixed(1), icon: TrendingUp, color: "#f59e0b" },
+                        { title: "WO Bal.", value: employeeStats.woBalance.toFixed(1), icon: TrendingUp, color: "#0d9488" }
                     ].map((stat, i) => (
-                        <div key={i} className="flex flex-col items-center justify-center gap-2 bg-[#0b291a] md:bg-card p-4 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-lg md:shadow-sm">
-                            <div className={`p-2.5 rounded-full ${stat.color} text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.2)] flex-shrink-0`}>
-                                <stat.icon className="h-5 w-5 md:h-6 md:w-6" />
-                            </div>
-                            <div className="flex flex-col min-w-0 items-center text-center">
-                                <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1 truncate w-full">{stat.title}</p>
-                                <p className="text-2xl md:text-2xl font-bold text-white leading-none">{stat.value}</p>
-                            </div>
-                        </div>
+                        <DashboardStatCard
+                            key={i}
+                            icon={stat.icon}
+                            label={stat.title}
+                            value={stat.value}
+                            color={stat.color}
+                        />
                     ))
                 ) : isClientOrManagerView ? (
                     // Organizational Stats for Clients and Managers
                     [
-                        { title: "Total Present", value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-emerald-500", suffix: `Employees` },
-                        { title: "Total Absent", value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-rose-100 text-rose-500", suffix: `Employees` },
-                        { title: "Late Arrivals", value: dashboardData?.lateArrivalsToday || 0, icon: Clock, color: "bg-amber-100 text-amber-500", suffix: `Employees` },
-                        { title: "Leave Requests", value: dashboardData?.pendingLeavesToday || 0, icon: Users, color: "bg-blue-100 text-blue-500", suffix: `Pending` }
+                        { title: "Total Present", value: dashboardData?.presentToday || 0, icon: UserCheck, color: "#10b981", suffix: `Employees` },
+                        { title: "Total Absent", value: dashboardData?.absentToday || 0, icon: UserX, color: "#df0637", suffix: `Employees` },
+                        { title: "Late Arrivals", value: dashboardData?.lateArrivalsToday || 0, icon: Clock, color: "#f59e0b", suffix: `Employees` },
+                        { title: "Leave Requests", value: dashboardData?.pendingLeavesToday || 0, icon: Users, color: "#3b82f6", suffix: `Pending` }
                     ].map((stat, i) => (
-                        <div key={i} className="flex flex-col bg-[#0b291a] md:bg-white p-4 md:p-5 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-lg relative overflow-hidden">
-                            <div className="flex flex-col items-center text-center justify-center mb-3">
-                                <div className={`p-2.5 rounded-xl mb-2 ${stat.color.includes('text-') ? stat.color : `${stat.color} text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.2)]`}`}>
-                                    <stat.icon className="h-5 w-5" />
-                                </div>
-                                <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 md:text-gray-500">{stat.title}</p>
-                            </div>
-                            <div className="flex flex-col items-center gap-1">
-                                <h3 className="text-3xl font-bold text-white md:text-gray-900 leading-none">{stat.value}</h3>
-                                <span className="text-[9px] font-medium text-gray-500 uppercase tracking-widest">{stat.suffix}</span>
-                            </div>
-                        </div>
+                        <DashboardStatCard
+                            key={i}
+                            icon={stat.icon}
+                            label={stat.title}
+                            value={stat.value}
+                            color={stat.color}
+                            suffix={stat.suffix}
+                        />
                     ))
                 ) : (
                     // Organizational Stats for Admins/HR
                     [
-                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "bg-[#0d9488]" },
-                        { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "bg-[#0eb161]" },
-                        { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "bg-[#df0637]" },
-                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "bg-[#2563eb]" }
+                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "#0d9488" },
+                        { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "#0eb161" },
+                        { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "#df0637" },
+                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "#2563eb" }
                     ].map((stat, i) => (
-                        <div key={i} className="flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#0c2a1b] to-[#06180f] md:bg-card p-5 rounded-3xl border border-[#1d422f] md:border-gray-100 shadow-[0_8px_20px_rgba(0,0,0,0.3)] md:shadow-sm">
-                            <div className={`p-3 rounded-2xl ${stat.color} text-white shadow-[0_4px_12px_rgba(0,0,0,0.4)] ring-1 ring-white/10`}>
-                                <stat.icon className="h-6 w-6 md:h-6 md:w-6" />
-                            </div>
-                            <div className="flex flex-col items-center text-center">
-                                <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{stat.title}</p>
-                                <p className="text-3xl md:text-2xl font-extrabold text-white leading-none">{stat.value}</p>
-                            </div>
-                        </div>
+                        <DashboardStatCard
+                            key={i}
+                            icon={stat.icon}
+                            label={stat.title}
+                            value={stat.value}
+                            color={stat.color}
+                        />
                     ))
                 )}
             </div>

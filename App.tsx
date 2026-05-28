@@ -167,6 +167,11 @@ const AuditTrail = lazyWithRetry(() => import('./pages/enterprise/AuditTrail'));
 const EmployeeReferralForm = lazyWithRetry(() => import('./pages/referral/EmployeeReferralForm'));
 const BusinessReferralForm = lazyWithRetry(() => import('./pages/referral/BusinessReferralForm'));
 const ReferralManagement = lazyWithRetry(() => import('./pages/referral/ReferralManagement'));
+const HRCallQueue = lazyWithRetry(() => import('./pages/hr/HRCallQueue'));
+const CandidateDetailPage = lazyWithRetry(() => import('./pages/hr/CandidateDetailPage'));
+const MyReferralsPage = lazyWithRetry(() => import('./pages/referral/MyReferralsPage'));
+const TemplateManagerPage = lazyWithRetry(() => import('./pages/hr/TemplateManagerPage'));
+const ReportsDashboard = lazyWithRetry(() => import('./pages/hr/ReportsDashboard'));
 
 // Gate Attendance Module
 const GateKiosk = lazyWithRetry(() => import('./pages/gate/GateKiosk'));
@@ -1318,8 +1323,13 @@ const App: React.FC = () => {
           {/* Referral Module — accessible to all authenticated users */}
           <Route path="referral/employee" element={<EmployeeReferralForm />} />
           <Route path="referral/business" element={<BusinessReferralForm />} />
+          <Route path="hrm/my-referrals" element={<MyReferralsPage />} />
           <Route element={<ProtectedRoute requiredPermission="view_referrals" />}>
             <Route path="referral/management" element={<ReferralManagement />} />
+            <Route path="hrm/calls/queue" element={<HRCallQueue />} />
+            <Route path="hrm/candidate/:id" element={<CandidateDetailPage />} />
+            <Route path="hrm/letters/templates" element={<TemplateManagerPage />} />
+            <Route path="hrm/reports" element={<ReportsDashboard />} />
           </Route>
 
           {/* Onboarding Flow */}

@@ -240,21 +240,24 @@ const LeadDetail: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-32">
+    <div className="w-full space-y-8 animate-fade-in pb-32">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* Modern Header - Sticky on Mobile */}
-      <div className="sticky top-0 z-40 -mx-4 px-4 py-4 md:static md:m-0 md:p-0 bg-[#041b0f]/80 md:bg-transparent backdrop-blur-xl md:backdrop-blur-none border-b border-white/5 md:border-none flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
-        <div className="flex items-center gap-4 w-full">
+      <div className="sticky top-0 z-40 -mx-4 px-4 py-4 md:static md:mt-0 md:mx-0 md:mb-6 md:p-0 bg-[#041b0f]/80 md:bg-transparent backdrop-blur-xl md:backdrop-blur-none border-b border-white/5 md:border-none flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
+        <div className="flex flex-col gap-1 w-full">
+          {/* Back Navigation Link */}
           <button 
             onClick={() => navigate('/crm')} 
-            className="w-10 h-10 rounded-xl bg-white/[0.05] md:bg-gray-100 border border-white/10 md:border-border flex items-center justify-center text-white md:text-primary-text hover:bg-emerald-500 hover:text-white md:hover:text-white transition-all group"
+            className="flex items-center gap-1.5 text-xs text-white/50 md:text-muted hover:text-emerald-400 md:hover:text-accent transition-colors mb-1.5 w-fit group"
           >
-            <ArrowLeft className="w-5 h-5 transition-colors" />
+            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+            <span>Back to Leads</span>
           </button>
+
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-3xl font-black text-white md:text-primary-text tracking-tight truncate uppercase">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-xl md:text-2xl font-bold text-white md:text-primary-text tracking-tight truncate">
                 {isNew ? 'New Lead' : form.clientName}
               </h1>
               {!isNew && form.status && (
@@ -263,13 +266,16 @@ const LeadDetail: React.FC = () => {
                 </div>
               )}
             </div>
+            <p className="hidden md:block text-sm text-muted mt-1">
+              {isNew ? 'Create a new lead and initialize pipeline workflow' : 'Manage client details, timeline, and quotations'}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
           {!isNew && (
             <button 
               onClick={handleDelete} 
-              className="w-11 h-11 rounded-xl bg-white/[0.05] md:bg-red-50 border border-white/10 md:border-red-200 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-xl md:shadow-sm"
+              className="w-10 h-10 rounded-xl bg-white/[0.05] md:bg-red-50 border border-white/10 md:border-red-200 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm"
               title="Delete Lead"
             >
               <Trash2 className="w-5 h-5" />
@@ -278,10 +284,10 @@ const LeadDetail: React.FC = () => {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="btn btn-primary btn-lg flex-1 md:flex-none gap-2 px-8 shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 active:scale-95 transition-all"
+            className="btn btn-primary btn-md flex-1 md:flex-none gap-2 px-6 active:scale-95 transition-all shadow-sm"
           >
-            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-            <span className="uppercase tracking-widest text-xs font-black">{isNew ? 'Initialize' : 'Save'}</span>
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span className="font-semibold text-sm">{isNew ? 'Initialize' : 'Save'}</span>
           </button>
         </div>
       </div>
@@ -290,17 +296,22 @@ const LeadDetail: React.FC = () => {
         {/* Left Column: Form & History */}
         <div className="lg:col-span-8 space-y-8">
           {/* Tabs */}
-          <div className="flex items-center gap-6 border-b border-white/5 md:border-border overflow-x-auto no-scrollbar scroll-smooth snap-x">
-            {(['details', 'timeline', 'quotations'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`pb-4 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative snap-start min-w-max ${activeTab === tab ? 'text-emerald-400 md:text-accent' : 'text-white/30 md:text-muted hover:text-white md:hover:text-primary-text'}`}
-              >
-                {tab}
-                {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-400 md:bg-accent rounded-t-full shadow-[0_-2px_10px_rgba(52,211,153,0.3)] md:shadow-none" />}
-              </button>
-            ))}
+          <div className="mb-6 border-b border-white/5 md:border-border">
+            <nav className="-mb-px flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth snap-x" aria-label="Tabs">
+              {(['details', 'timeline', 'quotations'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors snap-start min-w-max ${
+                    activeTab === tab 
+                      ? 'border-emerald-400 text-emerald-400 md:border-accent md:text-accent-dark' 
+                      : 'border-transparent text-white/30 md:text-muted hover:text-white md:hover:text-accent-dark md:hover:border-accent'
+                  }`}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </nav>
           </div>
 
           {activeTab === 'details' && (

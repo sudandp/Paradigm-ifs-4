@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun } from 'lucide-react';
+import { Bell, ChevronsLeft, ChevronsRight, ChevronDown, ChevronUp, ChevronRight, ShieldCheck, ClipboardCheck, Map as MapIcon, ClipboardList, User, Briefcase, ListTodo, Building, Users, Shirt, Settings, GitBranch, Calendar, CalendarCheck2, ShieldHalf, FileDigit, GitPullRequest, Home, BriefcaseBusiness, UserPlus, IndianRupee, PackagePlus, LifeBuoy, MapPin, ArrowLeft, Navigation, Cpu, FileText, Smartphone, Baby, Grid3X3, LayoutDashboard, Target, Ticket, Wrench, FileSignature, Wallet, LineChart, History, CheckCircle2, Calculator, Badge, HeartPulse, Archive, CalendarDays, BarChart, BarChart3, Mail, UserX, LayoutTemplate, FileSpreadsheet, Sun, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -33,6 +33,12 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/crm', label: 'CRM Pipeline', icon: Target, permission: 'view_crm_pipeline', category: 'CRM & Sales' },
     { to: '/crm/checklists', label: 'Checklist Templates', icon: ClipboardCheck, permission: 'view_crm_checklists', category: 'CRM & Sales' },
     { to: '/referral/management', label: 'Referral Management', icon: Users, permission: 'view_referrals', category: 'CRM & Sales' },
+    { to: '/hrm/my-referrals', label: 'My Referrals', icon: User, permission: 'view_profile', category: 'CRM & Sales' },
+
+    // HRM Portal
+    { to: '/hrm/calls/queue', label: 'HR Call Queue', icon: Phone, permission: 'view_referrals', category: 'HRM Portal' },
+    { to: '/hrm/letters/templates', label: 'Letter Templates', icon: LayoutTemplate, permission: 'view_referrals', category: 'HRM Portal' },
+    { to: '/hrm/reports', label: 'Reports Dashboard', icon: BarChart3, permission: 'view_referrals', category: 'HRM Portal' },
 
     // Dashboards
     { to: '/client/dashboard', label: 'Client Dashboard', icon: BarChart3, permission: 'view_client_dashboard', category: 'Dashboards' },
@@ -137,6 +143,7 @@ export const allNavLinks: NavLinkConfig[] = [
 
 const CATEGORY_ICONS: Record<string, any> = {
     'CRM & Sales': Target,
+    'HRM Portal': Briefcase,
     'Dashboards': Home,
     'Attendance Logs': Calendar,
     'Real-time Tracking': Navigation,

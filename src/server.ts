@@ -11,6 +11,8 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import { errorMiddleware } from './api/middleware/error.middleware.js';
 import { sendEmailLogic } from '../api/send-email.js';
+import hrmRouter from './api/routes/hrm.routes.js';
+import { runHrmAutomation } from './api/hrm.automation.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 
@@ -75,6 +77,7 @@ app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // API Routes
+app.use('/api/hrm', hrmRouter);
 
 // Initialize Supabase client for proxy use (Service Role bypasses RLS)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -245,4 +248,12 @@ app.use(errorMiddleware);
 // Start Server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    
+    // Trigger HRM automation on boot (wrapped to avoid interrupting startup)
+    runHrmAutomation().catch(err => console.error('[Server] Failed to run HRM automation on boot:', err));
+
+    // Schedule HRM automation to run every 6 hours
+    setInterval(() => {
+        runHrmAutomation().catch(err => console.error('[Server] Failed to run scheduled HRM automation:', err));
+    }, 1000 * 60 * 60 * 6);
 });

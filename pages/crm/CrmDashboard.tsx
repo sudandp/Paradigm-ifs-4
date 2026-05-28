@@ -94,8 +94,8 @@ const CrmDashboard: React.FC = () => {
       {/* Header */}
       <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
-          <h1 className={`font-black tracking-tight uppercase ${isMobile ? 'text-2xl text-white' : 'text-2xl md:text-3xl text-[#0F172A] md:text-primary-text'}`}>CRM Pipeline</h1>
-          <p className={`mt-1.5 font-bold uppercase tracking-widest leading-relaxed ${isMobile ? 'text-[10px] text-white/60' : 'text-[10px] md:text-[11px] text-muted max-md:text-emerald-400/60'}`}>Streamline leads & accelerate property onboarding</p>
+          <h1 className={`font-bold tracking-tight ${isMobile ? 'text-xl text-white' : 'text-xl md:text-2xl text-primary-text'}`}>CRM Pipeline</h1>
+          <p className={`mt-1 text-xs md:text-sm leading-relaxed ${isMobile ? 'text-white/60' : 'text-muted max-md:text-emerald-400/60'}`}>Streamline leads & accelerate property onboarding</p>
         </div>
         <button
           onClick={() => navigate('/crm/leads/new')}

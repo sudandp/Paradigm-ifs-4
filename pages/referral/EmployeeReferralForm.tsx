@@ -319,6 +319,17 @@ const EmployeeReferralForm: React.FC = () => {
                                 pattern="9999999999"
                                 className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
                             />
+                            <Input
+                                label="Candidate Email Address"
+                                registration={register('candidateEmail', { 
+                                    required: 'Candidate email address is required',
+                                    pattern: { value: /^\S+@\S+$/i, message: 'Invalid email address' }
+                                })}
+                                error={errors.candidateEmail?.message}
+                                placeholder="e.g. candidate@example.com"
+                                type="email"
+                                className={isMobile ? 'bg-white/10 border-white/10 text-white' : ''}
+                            />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

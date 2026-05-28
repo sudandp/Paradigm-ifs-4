@@ -302,7 +302,7 @@ const NotificationsControl: React.FC = () => {
                                                             try {
                                                                 const updated = await api.saveNotificationRule({ ...rule, sendAlert: !rule.sendAlert });
                                                                 setRules(rules.map(r => r.id === rule.id ? updated : r));
-                                                            } catch (err) {}
+                                                            } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
                                                     <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
@@ -311,7 +311,7 @@ const NotificationsControl: React.FC = () => {
                                                             try {
                                                                 const updated = await api.saveNotificationRule({ ...rule, sendPush: !rule.sendPush });
                                                                 setRules(rules.map(r => r.id === rule.id ? updated : r));
-                                                            } catch (err) {}
+                                                            } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
                                                     <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">
@@ -320,7 +320,7 @@ const NotificationsControl: React.FC = () => {
                                                             try {
                                                                 const updated = await api.saveNotificationRule({ ...rule, sendEmail: !rule.sendEmail });
                                                                 setRules(rules.map(r => r.id === rule.id ? updated : r));
-                                                            } catch (err) {}
+                                                            } catch (err) { console.error(err); }
                                                         }} />
                                                     </div>
                                                     <div className="flex flex-col items-center justify-between gap-2 p-2 bg-[#091c13] rounded-xl border border-[#2a4536]/30">

@@ -7,6 +7,7 @@ import {
   Building, Layers
 } from 'lucide-react';
 import { api } from '../../services/api';
+import StageBadge from '../../components/hr/StageBadge';
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -115,55 +116,56 @@ const ReferralManagement: React.FC = () => {
     <div className="space-y-8 animate-fade-in pb-32 md:pb-8 min-w-0 overflow-x-hidden">
 
       {/* ── Page Header ───────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 hover:bg-accent/10 text-muted max-md:hover:bg-white/10 max-md:text-white/60"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-black text-primary-text tracking-tight uppercase max-md:text-white">
+      <div className="flex flex-col gap-1 w-full mb-4">
+        {/* Back Navigation Link */}
+        <button 
+          onClick={() => navigate('/crm')} 
+          className="flex items-center gap-1.5 text-xs text-white/50 md:text-muted hover:text-emerald-400 md:hover:text-accent transition-colors mb-1.5 w-fit group"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+          <span>Back to CRM Pipeline</span>
+        </button>
+
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-6">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-white md:text-primary-text tracking-tight truncate">
               Referral Management
             </h1>
-            <p className="text-[10px] text-muted mt-1 font-bold uppercase tracking-widest max-md:text-emerald-400/60">
+            <p className="text-xs md:text-sm text-muted mt-1 font-semibold uppercase tracking-wider text-emerald-400/60 md:text-muted">
               {referralType === 'candidate' ? 'Employee Candidate Submissions' : 'Strategic Business Opportunities'}
             </p>
           </div>
-        </div>
-
-        <div className="flex bg-page p-1 rounded-2xl border border-border max-md:bg-white/[0.05] max-md:border-white/5">
           <button
-            onClick={() => setReferralType('candidate')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-              referralType === 'candidate' 
-                ? 'bg-accent text-white shadow-lg shadow-accent/20' 
-                : 'text-muted hover:text-primary-text'
-            }`}
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="hidden sm:flex btn btn-primary btn-lg gap-2 shadow-xl shadow-accent/20 hover:shadow-accent/40 active:scale-95 transition-all disabled:opacity-60"
           >
-            Candidates
-          </button>
-          <button
-            onClick={() => setReferralType('business')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-              referralType === 'business' 
-                ? 'bg-accent text-white shadow-lg shadow-accent/20' 
-                : 'text-muted hover:text-primary-text'
-            }`}
-          >
-            Business
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
           </button>
         </div>
+      </div>
 
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="hidden sm:flex btn btn-primary btn-lg gap-2 shadow-xl shadow-accent/20 hover:shadow-accent/40 active:scale-95 transition-all disabled:opacity-60"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+      {/* Tabs Row */}
+      <div className="mb-6 border-b border-white/5 md:border-border">
+        <nav className="-mb-px flex space-x-6 overflow-x-auto no-scrollbar scroll-smooth snap-x" aria-label="Tabs">
+          {[
+            { id: 'candidate', label: 'Candidates' },
+            { id: 'business', label: 'Business' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setReferralType(tab.id as any)}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors snap-start min-w-max ${
+                referralType === tab.id
+                  ? 'border-emerald-400 text-emerald-400 md:border-accent md:text-accent-dark'
+                  : 'border-transparent text-white/30 md:text-muted hover:text-white md:hover:text-accent-dark md:hover:border-accent'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
       {/* ── Stats Row ─────────────────────────────────────────────────── */}
@@ -286,6 +288,7 @@ const ReferralManagement: React.FC = () => {
                   return (
                     <tr
                       key={referral.id}
+                      onClick={() => referralType === 'candidate' && navigate(`/hrm/candidate/${referral.id}`)}
                       className="hover:bg-accent/[0.02] cursor-pointer transition-colors group max-md:hover:bg-white/[0.02]"
                     >
                       {/* Candidate */}
@@ -355,17 +358,22 @@ const ReferralManagement: React.FC = () => {
 
                       {/* Status */}
                       <td className="px-4 md:px-6 py-5">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter ${
-                          isVerified
-                            ? 'bg-emerald-50 border border-emerald-100 text-emerald-700 max-md:bg-emerald-500/10 max-md:border-emerald-500/10 max-md:text-emerald-400'
-                            : 'bg-page border border-border text-muted max-md:bg-white/5 max-md:border-white/5 max-md:text-white/30'
-                        }`}>
-                          {isVerified
-                            ? <CheckCircle2 className="w-3 h-3" />
-                            : <Clock className="w-3 h-3" />
-                          }
-                          {referral.status?.toUpperCase() || 'PENDING'}
-                        </span>
+                        <div className="flex flex-col gap-1.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter w-fit ${
+                            isVerified
+                              ? 'bg-emerald-50 border border-emerald-100 text-emerald-700 max-md:bg-emerald-500/10 max-md:border-emerald-500/10 max-md:text-emerald-400'
+                              : 'bg-page border border-border text-muted max-md:bg-white/5 max-md:border-white/5 max-md:text-white/30'
+                          }`}>
+                            {isVerified
+                              ? <CheckCircle2 className="w-3 h-3" />
+                              : <Clock className="w-3 h-3" />
+                            }
+                            {referral.status?.toUpperCase() || 'PENDING'}
+                          </span>
+                          {referralType === 'candidate' && (
+                            <StageBadge stage={referral.currentStage || referral.current_stage || 'new'} />
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -400,15 +408,25 @@ const ReferralManagement: React.FC = () => {
 
 // ─── Referral Card (Grid View) ────────────────────────────────────────────────
 const ReferralCard: React.FC<{ referral: any; index: number; type: 'candidate' | 'business'; onDelete: (id: string) => void }> = ({ referral, index, type, onDelete }) => {
+  const navigate = useNavigate();
   const isVerified = referral.status === 'yes';
   const initials = referral.referrerName?.charAt(0)?.toUpperCase() ?? '?';
   const formattedDate = referral.createdAt
     ? new Date(referral.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
     : 'N/A';
 
+  const handleClick = () => {
+    if (type === 'candidate') {
+      navigate(`/hrm/candidate/${referral.id}`);
+    }
+  };
+
   return (
     <div
-      className="group bg-white rounded-[2rem] md:rounded-3xl border border-border p-5 md:p-6 hover:shadow-xl hover:shadow-accent/5 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl"
+      onClick={handleClick}
+      className={`group bg-white rounded-[2rem] md:rounded-3xl border border-border p-5 md:p-6 hover:shadow-xl hover:shadow-accent/5 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl ${
+        type === 'candidate' ? 'cursor-pointer' : ''
+      }`}
       style={{ animationDelay: `${index * 60}ms` }}
     >
       {/* Left accent bar */}
@@ -535,6 +553,13 @@ const ReferralCard: React.FC<{ referral: any; index: number; type: 'candidate' |
             {referral.status?.toUpperCase() || 'PENDING'}
           </span>
         </div>
+
+        {type === 'candidate' && (
+          <div className="flex items-center justify-between text-[9px] font-black uppercase py-2 px-3 rounded-xl bg-slate-50 border border-border">
+            <span>Recruitment Stage</span>
+            <StageBadge stage={referral.currentStage || referral.current_stage || 'new'} />
+          </div>
+        )}
       </div>
     </div>
   );

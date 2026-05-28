@@ -512,6 +512,9 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
       replyTo: config.replyTo || config.smtpReplyTo || fromEmail
     };
     if (ccAddresses.length > 0) mailOptions.cc = ccAddresses.join(', ');
+    if (body.attachments && Array.isArray(body.attachments)) {
+      mailOptions.attachments = body.attachments;
+    }
 
     const info = await transporter.sendMail(mailOptions);
     results.push(info);

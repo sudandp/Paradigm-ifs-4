@@ -145,6 +145,9 @@
     "serialize-javascript": "^7.0.3",
     "yauzl": "^3.2.1",
     "ajv": "^8.17.1",
+    "eslint": {
+      "ajv": "^6.12.6"
+    },
     "esbuild": "^0.25.0",
     "undici": "^6.21.1",
     "@xmldom/xmldom": "^0.8.12",
