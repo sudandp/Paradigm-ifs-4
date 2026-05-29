@@ -21,6 +21,7 @@ interface Candidate {
   referrerName: string;
   createdAt: string;
   assignedHrId?: string;
+  assignedHr?: { name: string };
   isOverdue: boolean;
   lastCall?: {
     outcome: string;
@@ -56,7 +57,7 @@ const HRCallQueue: React.FC = () => {
       const { data, error } = await supabase
         .from('users')
         .select('id, name, role_id')
-        .in('role_id', ['admin', 'hr', 'super_admin', 'developer', 'management', 'hr_ops'])
+        .in('role_id', ['admin', 'hr', 'super_admin', 'developer', 'management', 'hr_ops', 'hr_recruitment', 'hr_admin'])
         .order('name');
       if (error) throw error;
       setHrUsers(data as any[] || []);
@@ -333,6 +334,7 @@ const HRCallQueue: React.FC = () => {
                   </th>
                   <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>Candidate / Role</th>
                   <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Referrer</th>
+                  <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden md:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Assigned To</th>
                   <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] ${isMobile ? 'text-white/40' : 'text-muted'}`}>Stage</th>
                   <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Last Contact</th>
                   <th className={`text-left px-4 md:px-5 py-5 font-black uppercase tracking-widest text-[10px] hidden lg:table-cell ${isMobile ? 'text-white/40' : 'text-muted'}`}>Timeline</th>
@@ -379,6 +381,11 @@ const HRCallQueue: React.FC = () => {
                         <div className={`flex items-center gap-1.5 text-[10px] font-semibold mt-1 ${isMobile ? 'text-white/30' : 'text-muted'}`}>
                           <Calendar className="w-3 h-3" />
                           {createdDate}
+                        </div>
+                      </td>
+                      <td className="py-5 px-4 md:px-5 hidden md:table-cell">
+                        <div className={`text-[11px] font-bold ${isMobile ? 'text-white/60' : 'text-primary-text'}`}>
+                          {cand.assignedHr?.name || 'Unassigned'}
                         </div>
                       </td>
                       <td className="py-5 px-4 md:px-5">

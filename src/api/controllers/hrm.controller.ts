@@ -560,6 +560,7 @@ export const getFeed = async (req: Request, res: Response) => {
 };
 
 // 7. GET /hrm/queue - Call Queue & Overdue items list
+// Only shows candidates that need HR action (excludes joined/rejected)
 export const getQueue = async (req: Request, res: Response) => {
   try {
     const { assignedTo, status = 'all', page = 1 } = req.query;
@@ -567,9 +568,11 @@ export const getQueue = async (req: Request, res: Response) => {
     const fromIndex = (Number(page) - 1) * limit;
     const toIndex = fromIndex + limit - 1;
 
+    // Call Queue = candidates needing HR follow-up (new + contacted stages)
     let query = supabase
       .from('candidate_referrals')
-      .select('*');
+      .select('*, assigned_hr:users!candidate_referrals_assigned_hr_id_fkey(name)')
+      .in('current_stage', ['new', 'contacted']);
 
     // Filter by assigned HR
     if (status === 'mine' && (req as any).user.id) {
@@ -582,10 +585,11 @@ export const getQueue = async (req: Request, res: Response) => {
     if (error) throw error;
 
     const enrichedRows: any[] = [];
+    const now = new Date();
     const fortyEightHrsAgo = new Date();
     fortyEightHrsAgo.setHours(fortyEightHrsAgo.getHours() - 48);
 
-    for (const cand of candidates) {
+    for (const cand of candidates || []) {
       // Get last call summary
       const { data: calls } = await supabase
         .from('hrm_call_logs')
@@ -597,9 +601,20 @@ export const getQueue = async (req: Request, res: Response) => {
       const lastCall = calls && calls.length > 0 ? calls[0] : null;
       let isOverdue = false;
 
-      if (!lastCall && ['new', 'contacted'].includes(cand.current_stage)) {
+      if (!lastCall) {
+        // No call ever made — overdue if created > 48hrs ago
         const createdDate = new Date(cand.created_at);
         if (createdDate < fortyEightHrsAgo) {
+          isOverdue = true;
+        }
+      } else {
+        // Has a call log — check if next_call_at is past due
+        if (lastCall.next_call_at && new Date(lastCall.next_call_at) < now) {
+          isOverdue = true;
+        }
+        // Also overdue if last call was > 48hrs ago and still not progressed
+        const lastCallDate = new Date(lastCall.called_at);
+        if (lastCallDate < fortyEightHrsAgo) {
           isOverdue = true;
         }
       }
@@ -613,7 +628,7 @@ export const getQueue = async (req: Request, res: Response) => {
       // Filter status
       if (status === 'overdue' && !isOverdue) continue;
       if (status === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = now.toISOString().split('T')[0];
         const nextCallStr = lastCall?.next_call_at ? new Date(lastCall.next_call_at).toISOString().split('T')[0] : '';
         const createdTodayStr = new Date(cand.created_at).toISOString().split('T')[0];
         if (nextCallStr !== todayStr && createdTodayStr !== todayStr) continue;

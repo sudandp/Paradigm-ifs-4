@@ -7778,9 +7778,88 @@ export const api = {
   },
 
   saveCandidateReferral: async (referral: any): Promise<void> => {
+    const snaked = toSnakeCase(referral);
+    
+    // Check if candidate already exists by mobile
+    if (snaked.candidate_mobile) {
+      const { data: existing, error: findError } = await supabase
+        .from('candidate_referrals')
+        .select('id, current_stage')
+        .eq('candidate_mobile', snaked.candidate_mobile)
+        .single();
+        
+      if (existing) {
+        // Candidate exists. Don't create duplicate.
+        // Update stage to 'contacted' if they are currently 'new'
+        if (existing.current_stage === 'new') {
+          const { error: updateError } = await supabase
+            .from('candidate_referrals')
+            .update({ current_stage: 'contacted' })
+            .eq('id', existing.id);
+            
+          if (updateError) throw updateError;
+          
+          // Add to timeline
+          await supabase.from('hrm_candidate_stages').insert({
+            candidate_id: existing.id,
+            stage: 'contacted',
+            changed_by: snaked.created_by || null,
+            reason: 'Re-referred by ' + (snaked.referrer_name || 'another employee'),
+            changed_at: new Date().toISOString()
+          });
+          
+          await supabase.from('hrm_activity_feed').insert({
+            candidate_id: existing.id,
+            actor_id: snaked.created_by || null,
+            type: 'stage_changed',
+            payload: { from: 'new', to: 'contacted', reason: 'Duplicate referral submitted' }
+          });
+        }
+        return; // Don't insert a new record
+      }
+    }
+
+    // Auto-assign strictly to HR Recruitment first (they act as the coordinator to re-assign)
+    try {
+      let { data: hrData } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role_id', 'hr_recruitment')
+        .limit(1)
+        .single();
+        
+      if (!hrData) {
+        // Fallback to a general HR if no HR Recruitment found
+        const { data: generalHrData } = await supabase
+          .from('users')
+          .select('id')
+          .in('role_id', ['hr', 'hr_admin'])
+          .limit(1)
+          .single();
+        hrData = generalHrData as any;
+      }
+
+      if (!hrData) {
+        // Fallback to an admin if no HR found
+        const { data: adminData } = await supabase
+          .from('users')
+          .select('id')
+          .in('role_id', ['admin', 'superadmin', 'super_admin'])
+          .limit(1)
+          .single();
+        hrData = adminData as any;
+      }
+      
+      if (hrData?.id) {
+        snaked.assigned_hr_id = hrData.id;
+      }
+    } catch (e) {
+      console.warn('Auto-assignment to HR failed:', e);
+    }
+
     const { error } = await supabase
       .from('candidate_referrals')
-      .insert(toSnakeCase(referral));
+      .insert(snaked);
     if (error) throw error;
   },
 

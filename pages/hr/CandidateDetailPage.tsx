@@ -11,7 +11,7 @@ import ActivityFeed from '../../components/hr/ActivityFeed';
 import Button from '../../components/ui/Button';
 import {
   Phone, User, ArrowLeft, RefreshCw, Briefcase, Calendar, Info, Clock, AlertTriangle, ShieldCheck, Mail,
-  FileText, MessageSquare, Activity, ChevronRight
+  FileText, MessageSquare, Activity, ChevronRight, CheckCircle2, Circle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CandidateStage } from '../../types';
@@ -242,6 +242,9 @@ const CandidateDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Stage Pipeline Timeline */}
+      <StageTimeline candidateId={id!} createdAt={candidate.created_at} currentStage={currentStage} isMobile={isMobile} refreshTrigger={refreshKey} />
+
       {/* Tabs */}
       <div className={`p-2 rounded-3xl border ${isMobile ? 'bg-[#182a20] border-[#2a4536]' : 'bg-white border-border shadow-sm'}`}>
         <nav className="flex space-x-2 overflow-x-auto no-scrollbar scroll-smooth snap-x">
@@ -444,5 +447,179 @@ const MiniCard: React.FC<{ label: string; value: string; isMobile?: boolean; acc
     <p className={`text-sm font-bold mt-1 ${accent ? (isMobile ? 'text-emerald-400' : 'text-emerald-600') : (isMobile ? 'text-white' : 'text-primary-text')}`}>{value}</p>
   </div>
 );
+
+// Stage Pipeline Timeline component
+const PIPELINE_STAGES = [
+  { key: 'new', label: 'New Lead' },
+  { key: 'contacted', label: 'Contacted' },
+  { key: 'screened', label: 'Screened' },
+  { key: 'interview', label: 'Interview' },
+  { key: 'shortlisted', label: 'Shortlisted' },
+  { key: 'offer', label: 'Offer' },
+  { key: 'joined', label: 'Joined' },
+];
+
+interface StageHistoryEntry {
+  stage: string;
+  changed_at: string;
+  changed_by: string | null;
+  changerName?: string;
+  reason?: string;
+}
+
+const StageTimeline: React.FC<{
+  candidateId: string;
+  createdAt: string;
+  currentStage: string;
+  isMobile?: boolean;
+  refreshTrigger: number;
+}> = ({ candidateId, createdAt, currentStage, isMobile, refreshTrigger }) => {
+  const [history, setHistory] = useState<StageHistoryEntry[]>([]);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('hrm_candidate_stages')
+          .select('stage, changed_at, changed_by, reason, changer:changed_by(name)')
+          .eq('candidate_id', candidateId)
+          .order('changed_at', { ascending: true });
+
+        if (error) throw error;
+
+        const mapped = (data || []).map((d: any) => ({
+          stage: d.stage,
+          changed_at: d.changed_at,
+          changed_by: d.changed_by,
+          changerName: d.changer?.name || null,
+          reason: d.reason,
+        }));
+
+        setHistory(mapped);
+      } catch (err) {
+        console.error('Failed to fetch stage history:', err);
+      }
+    };
+    fetchHistory();
+  }, [candidateId, refreshTrigger]);
+
+  // Build a map of stage -> timestamp/changerName from history
+  const stageMap: Record<string, { at: string; by: string | null }> = {};
+  // 'new' stage always uses the referral creation timestamp
+  stageMap['new'] = { at: createdAt, by: null };
+  history.forEach((h) => {
+    stageMap[h.stage] = { at: h.changed_at, by: h.changerName || null };
+  });
+
+  // Find index of current stage in pipeline
+  const currentIdx = PIPELINE_STAGES.findIndex((s) => s.key === currentStage);
+  // If rejected, mark separately
+  const isRejected = currentStage === 'rejected';
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  return (
+    <div className={`overflow-hidden ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-5' : 'bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm'}`}>
+      <div className="flex items-center gap-3 mb-6">
+        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isMobile ? 'bg-blue-500/20' : 'bg-blue-500/10'}`}>
+          <Clock className={`w-5 h-5 ${isMobile ? 'text-blue-400' : 'text-blue-600'}`} />
+        </div>
+        <div>
+          <h3 className={`text-sm font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Pipeline Timeline</h3>
+          <p className={`text-[10px] mt-0.5 ${isMobile ? 'text-white/40' : 'text-muted'}`}>Track when each stage was reached</p>
+        </div>
+        {isRejected && (
+          <span className={`ml-auto px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider ${isMobile ? 'bg-red-500/15 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+            Rejected
+          </span>
+        )}
+      </div>
+
+      {/* Horizontal scrollable pipeline */}
+      <div className="overflow-x-auto no-scrollbar pb-2">
+        <div className="flex items-start gap-0 min-w-max">
+          {PIPELINE_STAGES.map((stage, idx) => {
+            const info = stageMap[stage.key];
+            const isCompleted = idx < currentIdx || (idx === currentIdx && stage.key === currentStage);
+            const isCurrent = idx === currentIdx;
+            const isFuture = idx > currentIdx;
+
+            return (
+              <React.Fragment key={stage.key}>
+                {/* Stage node */}
+                <div className="flex flex-col items-center" style={{ minWidth: isMobile ? 90 : 110 }}>
+                  {/* Icon */}
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
+                    isCurrent
+                      ? (isMobile ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-500/20' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-500/10')
+                      : isCompleted
+                        ? (isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-600')
+                        : (isMobile ? 'bg-white/5 text-white/20' : 'bg-slate-50 text-slate-300')
+                  }`}>
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-4.5 h-4.5" />
+                    ) : (
+                      <Circle className="w-4.5 h-4.5" />
+                    )}
+                  </div>
+
+                  {/* Stage label */}
+                  <p className={`text-[9px] font-black uppercase tracking-widest mt-2 text-center leading-tight ${
+                    isCurrent
+                      ? (isMobile ? 'text-emerald-400' : 'text-emerald-600')
+                      : isCompleted
+                        ? (isMobile ? 'text-white/70' : 'text-primary-text')
+                        : (isMobile ? 'text-white/20' : 'text-slate-300')
+                  }`}>
+                    {stage.label}
+                  </p>
+
+                  {/* Timestamp + who */}
+                  {info ? (
+                    <div className="mt-1.5 text-center">
+                      <p className={`text-[10px] font-bold ${isMobile ? 'text-white/50' : 'text-muted'}`}>
+                        {formatDate(info.at)}
+                      </p>
+                      <p className={`text-[9px] ${isMobile ? 'text-white/30' : 'text-muted/60'}`}>
+                        {formatTime(info.at)}
+                      </p>
+                      {info.by && (
+                        <p className={`text-[8px] font-bold mt-0.5 ${isMobile ? 'text-emerald-400/60' : 'text-emerald-600/60'}`}>
+                          by {info.by}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-1.5">
+                      <p className={`text-[9px] ${isMobile ? 'text-white/15' : 'text-slate-200'}`}>—</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Connector line */}
+                {idx < PIPELINE_STAGES.length - 1 && (
+                  <div className="flex items-center pt-4 px-0">
+                    <div className={`h-[2px] w-6 md:w-10 rounded-full ${
+                      idx < currentIdx
+                        ? (isMobile ? 'bg-emerald-500/40' : 'bg-emerald-400')
+                        : (isMobile ? 'bg-white/10' : 'bg-slate-100')
+                    }`} />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default CandidateDetailPage;
