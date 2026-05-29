@@ -70,7 +70,7 @@ const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({
 };
 
 export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void; isMobile?: boolean }> = ({ isOpen, onClose, isMobile = false }) => {
-    const { user } = useAuthStore();
+    const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = useAuthStore();
     const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotificationStore();
     const navigate = useNavigate();
     const [currentPage, setCurrentPage] = React.useState(1);
@@ -95,6 +95,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const [expandedDetails, setExpandedDetails] = React.useState<Record<string, boolean>>({});
 
     const [inactiveEmployees, setInactiveEmployees] = React.useState<EmployeeScoreWithUser[]>([]);
+    const [snoozedPunchOutIds, setSnoozedPunchOutIds] = React.useState<Set<string>>(new Set());
 
     const isManagerRole = useMemo(() => {
         if (!user) return false;
@@ -351,6 +352,54 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
         }
     }, [currentPage]);
+
+    const handlePunchOutClick = (notif: Notification, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const { isOnBreak, isSiteOtCheckedIn, isFieldCheckedIn } = useAuthStore.getState();
+        
+        if (isOnBreak) {
+            alert('⚠️ You are currently on a break. Please end your break first.');
+            navigate('/attendance/check-out?workType=office&forcedType=break-out');
+            onClose();
+            return;
+        }
+        if (isSiteOtCheckedIn) {
+            alert('⚠️ You have an active OT session. Please complete OT check-out first.');
+            navigate('/attendance/check-out?workType=office&forcedType=site-ot-out');
+            onClose();
+            return;
+        }
+        if (isFieldCheckedIn) {
+            alert('⚠️ You are checked in at a site. Please complete site check-out first.');
+            navigate('/attendance/check-out?workType=field');
+            onClose();
+            return;
+        }
+        
+        markAsRead(notif.id);
+        navigate('/attendance/check-out?workType=office');
+        onClose();
+    };
+
+    const handleContinueClick = (notif: Notification, e: React.MouseEvent) => {
+        e.stopPropagation();
+        markAsRead(notif.id);
+        setSnoozedPunchOutIds(prev => {
+            const next = new Set(prev);
+            next.add(notif.id);
+            return next;
+        });
+        
+        // Store snooze data for global timer in authStore
+        const { user } = useAuthStore.getState();
+        if (user) {
+            useAuthStore.getState().setPendingAutoPunchOut({
+                userId: user.id,
+                executeAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+                notificationId: notif.id
+            });
+        }
+    };
 
     const handleNotificationClick = (notification: Notification) => {
         markAsRead(notification.id);
@@ -734,6 +783,38 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                                 }`}>
                                                                     {notif.message}
                                                                 </p>
+                                                                {(() => {
+                                                                    const msgLower = notif.message.toLowerCase();
+                                                                    const isPunchOutReminder = msgLower.includes('punch out') || 
+                                                                                               msgLower.includes("haven't punched out") ||
+                                                                                               msgLower.includes('punch out requested');
+                                                                    const isNotificationFromToday = isToday(parseISO(notif.createdAt));
+                                                                    const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+                                                                    
+                                                                    return isPunchOutReminder && isNotificationFromToday && isUserCheckedInAtAll && !snoozedPunchOutIds.has(notif.id) ? (
+                                                                        <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                className="flex-1 h-7 text-[10px] uppercase font-black tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all"
+                                                                                onClick={(e) => handlePunchOutClick(notif, e)}
+                                                                            >
+                                                                                Punch Out
+                                                                            </Button>
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                className={`flex-1 h-7 text-[10px] uppercase font-black tracking-wider rounded-lg transition-all ${
+                                                                                    isMobile 
+                                                                                        ? 'border-white/20 text-white hover:bg-white/5' 
+                                                                                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                                                }`}
+                                                                                onClick={(e) => handleContinueClick(notif, e)}
+                                                                            >
+                                                                                Continue (5 min)
+                                                                            </Button>
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
                                                             </div>
                                                         </div>
                                                     </div>

@@ -36,9 +36,9 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/hrm/my-referrals', label: 'My Referrals', icon: User, permission: 'view_profile', category: 'CRM & Sales' },
 
     // HRM Portal
-    { to: '/hrm/calls/queue', label: 'HR Call Queue', icon: Phone, permission: 'view_referrals', category: 'HRM Portal' },
-    { to: '/hrm/letters/templates', label: 'Letter Templates', icon: LayoutTemplate, permission: 'view_referrals', category: 'HRM Portal' },
-    { to: '/hrm/reports', label: 'Reports Dashboard', icon: BarChart3, permission: 'view_referrals', category: 'HRM Portal' },
+    { to: '/hrm/calls/queue', label: 'HR Call Queue', icon: Phone, permission: 'view_hr_call_queue', category: 'HRM Portal' },
+    { to: '/hrm/letters/templates', label: 'Letter Templates', icon: LayoutTemplate, permission: 'view_letter_templates', category: 'HRM Portal' },
+    { to: '/hrm/reports', label: 'Reports Dashboard', icon: BarChart3, permission: 'view_reports_dashboard', category: 'HRM Portal' },
 
     // Dashboards
     { to: '/client/dashboard', label: 'Client Dashboard', icon: BarChart3, permission: 'view_client_dashboard', category: 'Dashboards' },
@@ -556,6 +556,37 @@ const MainLayout: React.FC = () => {
             return () => unsubscribe();
         }
     }, [user, fetchNotifications]);
+
+    // Auto Punch-Out Timer Effect
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            const { pendingAutoPunchOut, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, executeAutoPunchOut } = useAuthStore.getState();
+            if (pendingAutoPunchOut && Date.now() >= pendingAutoPunchOut.executeAt) {
+                const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+                if (isUserCheckedInAtAll) {
+                    console.log('[AutoPunchOut] Timer expired — executing auto punch-out');
+                    executeAutoPunchOut();
+                } else {
+                    // User already punched out manually
+                    useAuthStore.getState().setPendingAutoPunchOut(null);
+                }
+            }
+        }, 30000); // Check every 30 seconds
+
+        // Also check immediately on mount (for page refresh recovery)
+        const { pendingAutoPunchOut, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, executeAutoPunchOut } = useAuthStore.getState();
+        if (pendingAutoPunchOut && Date.now() >= pendingAutoPunchOut.executeAt) {
+            const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+            if (isUserCheckedInAtAll) {
+                console.log('[AutoPunchOut] Immediate check: Timer expired — executing auto punch-out');
+                executeAutoPunchOut();
+            } else {
+                useAuthStore.getState().setPendingAutoPunchOut(null);
+            }
+        }
+
+        return () => clearInterval(intervalId);
+    }, []);
 
     const isPublicReferralPath = location.pathname.startsWith('/referral/employee') || location.pathname.startsWith('/referral/business');
 

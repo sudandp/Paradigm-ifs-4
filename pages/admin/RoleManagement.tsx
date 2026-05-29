@@ -21,6 +21,11 @@ export const allPermissions: { key: Permission; name: string; description: strin
     { key: 'view_crm_checklists', name: 'Access CRM Checklists', description: 'Create and manage checklist templates for property surveys.', category: 'CRM & Sales' },
     { key: 'view_referrals', name: 'Access Referral Management', description: 'View and manage employee and business referrals.', category: 'CRM & Sales' },
 
+    // HRM Portal
+    { key: 'view_hr_call_queue', name: 'HR Call Queue', description: 'Access and manage the HR call queue.', category: 'HRM Portal' },
+    { key: 'view_letter_templates', name: 'Letter Templates', description: 'Access and manage letter templates.', category: 'HRM Portal' },
+    { key: 'view_reports_dashboard', name: 'Reports Dashboard', description: 'Access the HRM reports dashboard.', category: 'HRM Portal' },
+
     // Dashboards
     { key: 'view_site_dashboard', name: 'Site Dashboard', description: 'View the dashboard for a specific site/organization.', category: 'Dashboards' },
     { key: 'view_operations_dashboard', name: 'Operations Dashboard', description: 'View the operations management dashboard.', category: 'Dashboards' },

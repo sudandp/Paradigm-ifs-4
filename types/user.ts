@@ -60,7 +60,10 @@ export type Permission =
   | 'view_operations'
   | 'view_referrals'
   | 'view_client_dashboard'
-  | 'view_management_dashboard';
+  | 'view_management_dashboard'
+  | 'view_hr_call_queue'
+  | 'view_letter_templates'
+  | 'view_reports_dashboard';
 
 export interface TaskGroup {
   id: string;

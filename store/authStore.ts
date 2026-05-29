@@ -159,6 +159,9 @@ interface AuthState {
     setIsOffline: (isOffline: boolean) => void;
     checkOfflineSession: () => Promise<boolean>;
     syncRouteTracking: () => Promise<void>;
+    pendingAutoPunchOut: { userId: string; executeAt: number; notificationId: string } | null;
+    setPendingAutoPunchOut: (data: { userId: string; executeAt: number; notificationId: string } | null) => void;
+    executeAutoPunchOut: () => Promise<void>;
 }
 
 // Helper for time-based greetings
@@ -217,6 +220,55 @@ export const useAuthStore = create<AuthState>()(
         previousDaySessionInfo: null,
         isBreakingOut: false,
         setIsBreakingOut: (val) => set({ isBreakingOut: val }),
+        pendingAutoPunchOut: null,
+        setPendingAutoPunchOut: (data) => set({ pendingAutoPunchOut: data }),
+        executeAutoPunchOut: async () => {
+            const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, pendingAutoPunchOut } = get();
+            const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+            if (!user || !isUserCheckedInAtAll || !pendingAutoPunchOut) {
+                set({ pendingAutoPunchOut: null });
+                return;
+            }
+            
+            try {
+                await api.addAttendanceEvent({
+                    userId: user.id,
+                    timestamp: new Date().toISOString(),
+                    type: 'punch-out',
+                    checkoutNote: 'Auto punch-out: No response to reminder within 5 minutes',
+                    workType: 'office',
+                    source: 'auto_system'
+                });
+                
+                try {
+                    cancelNotification('SHIFT_END');
+                    cancelNotification('BREAK_END');
+                } catch (err) {
+                    console.warn('[AutoPunchOut] Failed to cancel notifications:', err);
+                }
+
+                await get().checkAttendanceStatus(true);
+                
+                dispatchNotificationFromRules('check_out', {
+                    actorName: user.name || 'System',
+                    actionText: 'was auto punched out',
+                    locString: '',
+                    selfNotify: true,
+                    selfMessage: `${user.name || 'there'}, you have been automatically punched out due to no response within 5 minutes.`,
+                    title: 'Auto Punch-Out',
+                    actor: {
+                        id: user.id,
+                        name: user.name,
+                        role: user.role,
+                        reportingManagerId: user.reportingManagerId
+                    }
+                });
+            } catch (err) {
+                console.error('[AutoPunchOut] Failed:', err);
+            } finally {
+                set({ pendingAutoPunchOut: null });
+            }
+        },
         forceLogout: async (reason) => {
             console.log(`Force logout triggered. Reason: ${reason || 'Unknown'}`);
             // Only clear in-memory state. DO NOT remove persistent tokens or call signOut().
@@ -1233,6 +1285,7 @@ export const useAuthStore = create<AuthState>()(
             geofencingSettings: state.geofencingSettings,
             breakLimit: state.breakLimit,
             breakReminderInterval: state.breakReminderInterval,
+            pendingAutoPunchOut: state.pendingAutoPunchOut,
         }),
     }
 )
