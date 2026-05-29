@@ -249,6 +249,31 @@ export function evaluateSiteStaffStatus(params: any): string {
   const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
   const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
   const quarterDayHrs = userRules?.quarterDayHours ?? 2;
+
+  // Credit Permission/Correction hours if correctionDetails are present
+  const isApprovedPermission = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('permission');
+  const isApprovedCorrection = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('correction');
+  let effectiveWorkingHours = workingHours || 0;
+
+  if ((isApprovedPermission || isApprovedCorrection) && approvedLeave?.correctionDetails) {
+    const getMinutes = (timeStr: string) => {
+      if (!timeStr) return 0;
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const inMins = getMinutes(approvedLeave.correctionDetails.punchIn);
+    const outMins = getMinutes(approvedLeave.correctionDetails.punchOut);
+    let diffMins = outMins - inMins;
+    if (diffMins < 0) diffMins += 24 * 60;
+    if (approvedLeave.correctionDetails.includeBreak && approvedLeave.correctionDetails.breakIn && approvedLeave.correctionDetails.breakOut) {
+      const bIn = getMinutes(approvedLeave.correctionDetails.breakIn);
+      const bOut = getMinutes(approvedLeave.correctionDetails.breakOut);
+      let bDiff = bOut - bIn;
+      if (bDiff < 0) bDiff += 24 * 60;
+      diffMins -= bDiff;
+    }
+    effectiveWorkingHours = Math.max(0, diffMins / 60);
+  }
   
   let baseWorkStatus = 'A';
   const hasPunchIn = dayEvents.some((e: any) => e.type === 'punch-in');
@@ -256,11 +281,11 @@ export function evaluateSiteStaffStatus(params: any): string {
 
   if (fieldStatus && fieldStatus !== 'A') {
     baseWorkStatus = fieldStatus;
-  } else if (workingHours !== undefined && workingHours > 0) {
-    if (workingHours >= full) baseWorkStatus = 'P';
-    else if (workingHours >= threeQuarterHrs) baseWorkStatus = '3/4P';
-    else if (workingHours >= halfDayHrs) baseWorkStatus = '1/2P';
-    else if (workingHours >= quarterDayHrs) baseWorkStatus = '1/4P';
+  } else if (effectiveWorkingHours > 0) {
+    if (effectiveWorkingHours >= full) baseWorkStatus = 'P';
+    else if (effectiveWorkingHours >= threeQuarterHrs) baseWorkStatus = '3/4P';
+    else if (effectiveWorkingHours >= halfDayHrs) baseWorkStatus = '1/2P';
+    else if (effectiveWorkingHours >= quarterDayHrs) baseWorkStatus = '1/4P';
     else baseWorkStatus = 'A';
   } else if (hasPunchIn && hasPunchOut) {
     baseWorkStatus = 'P'; // Fallback if no hours but complete punch
@@ -293,6 +318,14 @@ export function evaluateSiteStaffStatus(params: any): string {
     const lType = String(approvedLeave.leaveType || approvedLeave.type || '').toLowerCase();
     const isHalf = approvedLeave.dayOption === 'half' || approvedLeave.day_option === 'half';
     
+    if (lType.includes('permission')) {
+      // Permission request not meeting full hours — show RP
+      return isHalf ? '1/2RP' : 'RP';
+    }
+    if (lType.includes('correction')) {
+      // Correction request not meeting full hours — show RC
+      return isHalf ? '1/2RC' : 'RC';
+    }
     if (lType.includes('earned') || lType === 'e/l' || lType === 'el') {
        return isHalf ? '1/2EL' : 'EL';
     }
@@ -305,6 +338,14 @@ export function evaluateSiteStaffStatus(params: any): string {
     if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
       return 'C/O';
     }
+    if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') {
+      return isHalf ? '1/2BL' : 'BL'; // Blue Leave
+    }
+    if (lType.includes('pink')) {
+      return isHalf ? '1/2PL' : 'PL'; // Pink Leave
+    }
+    if (lType.includes('maternity')) return 'ML';
+    if (lType.includes('child care')) return 'CC';
     // Default leave mark if specific match not found
     return 'EL';
   }

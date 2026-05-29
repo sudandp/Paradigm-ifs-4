@@ -350,27 +350,34 @@ const LeaveManagement: React.FC = () => {
     };
 
 
-    const handleUpdateLeaveType = async (newType: LeaveType) => {
+    const handleUpdateLeaveRequest = async (updates: Partial<LeaveRequest>) => {
         if (!user || !requestToEdit) return;
         setActioningId(requestToEdit.id);
         try {
-            await api.updateLeaveType(requestToEdit.id, newType);
+            // 1. If leaveType changed, update it first via updateLeaveType to trigger comp off logs adjustments
+            if (updates.leaveType && updates.leaveType !== requestToEdit.leaveType) {
+                await api.updateLeaveType(requestToEdit.id, updates.leaveType);
+            }
+            
+            // 2. Update all other parameters (dates, dayOption, reason, correctionDetails)
+            await api.updateLeaveRequest(requestToEdit.id, updates);
             
             // If it was a correction request, mark it as made so it moves out of pending
             if (requestToEdit.status === 'pending_admin_correction') {
                 await api.markCorrectionAsMade(requestToEdit.id, user.id);
             }
 
-            setToast({ message: 'Leave type updated successfully.', type: 'success' });
+            setToast({ message: 'Leave request updated successfully.', type: 'success' });
             fetchData();
         } catch (error) {
-            setToast({ message: 'Failed to update leave type.', type: 'error' });
+            setToast({ message: 'Failed to update leave request.', type: 'error' });
         } finally {
             setActioningId(null);
             setIsEditModalOpen(false);
             setRequestToEdit(null);
         }
     };
+
 
     const handleCancelLeave = async (reason: string) => {
         if (!user || !requestToCancel) return;
@@ -804,8 +811,8 @@ const LeaveManagement: React.FC = () => {
                 <EditLeaveTypeModal
                     isOpen={isEditModalOpen}
                     onClose={() => { setIsEditModalOpen(false); setRequestToEdit(null); }}
-                    onConfirm={handleUpdateLeaveType}
-                    currentType={requestToEdit.leaveType}
+                    onConfirm={handleUpdateLeaveRequest}
+                    request={requestToEdit}
                     isUpdating={actioningId === requestToEdit.id}
                 />
             )}

@@ -391,8 +391,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const resolvePayableValue = (s: string): number => {
       if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
       if (['W/P', 'H/P'].includes(s)) return 1.5; 
-      if (['P', 'W/O', 'WOP', 'H', 'S/L', 'E/L', 'C/L', 'C/O', '0.5P', 'W/H', 'F/H'].includes(s)) return 1;
-      if (s.includes('S/L') || s.includes('E/L') || s.includes('C/L') || s.includes('C/O') || s.includes('F/H')) {
+      if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', '0.5P', 'W/H', 'BL', 'F/H', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'BL'].includes(s)) return 1;
+      if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('BL') || s.includes('F/H') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L')) {
           return s.startsWith('1/2') ? 0.5 : 1;
       }
       if (['1/2P', 'Half Day'].includes(s)) return 0.5;
@@ -413,13 +413,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       else if (s === '1/4P') quarterDays++;
       else if (s === 'A') absentDays++;
       else if (s === 'W/O') weekOffs++;
+      else if (s === 'BL' || s === '1/2BL') { floatingHolidays += inc; weekOffs += inc; } // Blue Leave = counted as W/O + floating
+      else if (s === 'PL' || s === '1/2PL') { floatingHolidays += inc; weekOffs += inc; } // Pink Leave = counted as W/O + floating
       else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
       else if (s === 'H') holidaysCount++;
       else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
-      else if (s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
-      else if (s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
-      else if (s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
-      else if (s.includes('F/H')) floatingHolidays += inc;
+      else if (s.includes('SL') || s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
+      else if (s.includes('EL') || s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
+      else if (s.includes('CL') || s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
+      else if (s.includes('BL') || s.includes('F/H')) floatingHolidays += inc;
+      else if (s.includes('PL') || s.includes('P/L')) { floatingHolidays += inc; } // Pink Leave
       else if (s.includes('C/O')) { compOffs += inc; leavesCount += inc; }
       else if (s.includes('LOP')) lossOfPay += inc;
       else if (s === 'W/H') workFromHomeDays += inc;
@@ -743,9 +746,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 Leave <span className="bg-violet-200 text-violet-900 px-1.5 rounded-sm text-[10px] ml-0.5">{Number(employee.leaves).toFixed(1).replace(/\.0$/, '')}</span>
                             </span>
                             {(employee.floatingHolidays > 0) && (
-                                <span className="px-2.5 py-1 bg-fuchsia-100 text-fuchsia-800 rounded-md text-[11px] font-bold shadow-sm border border-fuchsia-200 flex items-center gap-1">
-                                    F/H <span className="bg-fuchsia-200 text-fuchsia-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.floatingHolidays}</span>
+                                <>
+                                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-md text-[11px] font-bold shadow-sm border border-blue-200 flex items-center gap-1">
+                                    BL <span className="bg-blue-200 text-blue-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.floatingHolidays}</span>
                                 </span>
+                                <span className="px-2.5 py-1 bg-pink-100 text-pink-700 rounded-md text-[11px] font-bold shadow-sm border border-pink-200 flex items-center gap-1 hidden" aria-label="Pink Leave">
+                                    PL
+                                </span>
+                                </>
                             )}
                             {(employee.lossOfPays > 0) && (
                                 <span className="px-2.5 py-1 bg-red-100 text-red-800 rounded-md text-[11px] font-bold shadow-sm border border-red-200 flex items-center gap-1">
@@ -805,6 +813,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 d.status.includes('C/O') ? 'bg-teal-50 text-teal-700' :
                                 d.status.includes('LOP') ? 'bg-red-50 text-red-700' :
                                 d.status === 'W/H' ? 'bg-teal-50 text-teal-700' :
+                                d.status.includes('BL') ? 'bg-blue-100 text-blue-800' :
+                                d.status.includes('PL') ? 'bg-pink-100 text-pink-700' :
+                                d.status.includes('ML') ? 'bg-rose-100 text-rose-700' :
+                                d.status.includes('CL') ? 'bg-violet-50 text-violet-700' :
+                                d.status.includes('EL') ? 'bg-indigo-50 text-indigo-700' :
+                                d.status.includes('SL') ? 'bg-purple-50 text-purple-700' :
+                                d.status.includes('RP') ? 'bg-sky-50 text-sky-700' :
+                                d.status.includes('RC') ? 'bg-green-50 text-green-700' :
                                 'text-gray-500'
                             }`}>
                                 {d.status}
@@ -863,13 +879,48 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             </div>
           </div>
           
-          <div className="bg-gray-50/50 px-5 py-2 border-t border-gray-100">
-             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-medium text-gray-500 uppercase tracking-widest">
-                <span>Avg Working Hours: <b className="text-gray-900">{employee.averageWorkingHrs.toFixed(1)}h</b></span>
-                <span>Site Presence Score: <b className="text-green-600">{((employee.presentDays / employee.dailyData.length) * 100).toFixed(0)}%</b></span>
-                <span>Shift Distribution: <b className="text-gray-900">{Object.entries(employee.shiftCounts).map(([s, c]) => `${s}(${c})`).join(' ')}</b></span>
-             </div>
-          </div>
+           <div className="bg-gray-50/50 px-5 py-2 border-t border-gray-100">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-medium text-gray-500 uppercase tracking-widest mb-2">
+                 <span>Avg Working Hours: <b className="text-gray-900">{employee.averageWorkingHrs.toFixed(1)}h</b></span>
+                 <span>Site Presence Score: <b className="text-green-600">{((employee.presentDays / employee.dailyData.length) * 100).toFixed(0)}%</b></span>
+                 <span>Shift Distribution: <b className="text-gray-900">{Object.entries(employee.shiftCounts).map(([s, c]) => `${s}(${c})`).join(' ')}</b></span>
+              </div>
+              {/* Notation Legend */}
+              <div className="border-t border-gray-100 pt-2">
+                 <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Notation Reference</p>
+                 <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {[
+                        { code: 'P',    label: 'Present',              bg: 'bg-emerald-50',  text: 'text-emerald-700' },
+                        { code: '1/2P', label: 'Half Day',             bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: '3/4P', label: 'Three-Quarter Day',    bg: 'bg-emerald-50',  text: 'text-emerald-600'},
+                        { code: '1/4P', label: 'Quarter Day',          bg: 'bg-sky-50',      text: 'text-sky-600'    },
+                        { code: 'A',    label: 'Absent',               bg: 'bg-rose-50',     text: 'text-rose-700'   },
+                        { code: 'LOP',  label: 'Loss of Pay',          bg: 'bg-red-50',      text: 'text-red-700'    },
+                        { code: 'W/O',  label: 'Weekly Off',           bg: 'bg-slate-100',   text: 'text-slate-600'  },
+                        { code: 'H',    label: 'Public Holiday',       bg: 'bg-indigo-50',   text: 'text-indigo-700' },
+                        { code: 'H/P',  label: 'Holiday Present',      bg: 'bg-amber-50',    text: 'text-amber-700'  },
+                        { code: 'W/P',  label: 'Weekend Present',      bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: 'W/H',  label: 'Work From Home',       bg: 'bg-teal-50',     text: 'text-teal-700'   },
+                        { code: 'SL',   label: 'Sick Leave',           bg: 'bg-purple-50',   text: 'text-purple-700' },
+                        { code: 'EL',   label: 'Earned Leave',         bg: 'bg-indigo-50',   text: 'text-indigo-700' },
+                        { code: 'CL',   label: 'Casual Leave',         bg: 'bg-violet-50',   text: 'text-violet-700' },
+                        { code: 'C/O',  label: 'Comp Off',             bg: 'bg-teal-50',     text: 'text-teal-700'   },
+                        { code: 'BL',   label: 'Blue Leave (3rd Sat)', bg: 'bg-blue-100',    text: 'text-blue-800'   },
+                        { code: 'PL',   label: 'Pink Leave (Female)',  bg: 'bg-pink-100',    text: 'text-pink-700'   },
+                        { code: 'ML',   label: 'Maternity Leave',      bg: 'bg-rose-100',    text: 'text-rose-700'   },
+                        { code: 'CC',   label: 'Child Care Leave',     bg: 'bg-teal-100',    text: 'text-teal-700'   },
+                        { code: 'RP',   label: 'Request Permission',   bg: 'bg-sky-50',      text: 'text-sky-700'    },
+                        { code: 'RC',   label: 'Request Correction',   bg: 'bg-green-50',    text: 'text-green-700'  },
+                    ].map(({ code, label, bg, text }) => (
+                        <span key={code} className={`inline-flex items-center gap-1 ${bg} ${text} rounded px-1.5 py-0.5`}>
+                            <span className="text-[8px] font-black">{code}</span>
+                            <span className="text-[7px] font-medium text-gray-500">{label}</span>
+                        </span>
+                    ))}
+                 </div>
+                 <p className="text-[7px] text-gray-400 mt-1">* Prefix 1/2 = half-day variant. H/P &amp; W/P attract 1.5× payable credit.</p>
+              </div>
+           </div>
         </div>
       ))}
     </div>

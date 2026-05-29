@@ -1761,7 +1761,7 @@ const AttendanceDashboard: React.FC = () => {
                 });
 
                 const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
-                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status.includes('P/M');
+                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status === 'RP' || status === 'RC' || status.includes('RP') || status.includes('RC');
                 
                 if (isPresence || isApprovedLeave) {
                     const val = (status.includes('1/2') ? 0.5 : 1);
@@ -3350,23 +3350,35 @@ const AttendanceDashboard: React.FC = () => {
                             >
                                 <option value="all">All Status</option>
                                 <option value="ACTIVE_USERS">Active Users Only</option>
-                                <option value="P">Present (P)</option>
-                                <option value="0.5P">Half Day (0.5P)</option>
-                                <option value="A">Absent (A)</option>
-                                <option value="S/L">Sick Leave (S/L)</option>
-                                <option value="E/L">Earned Leave (E/L)</option>
-                                <option value="F/H">Floating Holiday (F/H)</option>
-                                <option value="C/O">Comp Off (C/O)</option>
-                                <option value="M/L">Maternity Leave (M/L)</option>
-                                <option value="C/C">Child Care Leave (C/C)</option>
-                                <option value="P/L">Pink Leave (P/L)</option>
-                                <option value="P/M">Permission (P/M)</option>
-                                <option value="LOP">Loss of Pay (LOP)</option>
-                                <option value="W/H">Work From Home (W/H)</option>
-                                <option value="W/O">Week Off (W/O)</option>
-                                <option value="W/P">Week Off Present (W/P)</option>
-                                <option value="H">Holiday (H)</option>
-                                <option value="H/P">Holiday Present (H/P)</option>
+                                <optgroup label="── Attendance ──">
+                                    <option value="P">P — Present</option>
+                                    <option value="1/2P">1/2P — Half Day</option>
+                                    <option value="3/4P">3/4P — Three-Quarter Day</option>
+                                    <option value="1/4P">1/4P — Quarter Day</option>
+                                    <option value="A">A — Absent</option>
+                                    <option value="LOP">LOP — Loss of Pay</option>
+                                </optgroup>
+                                <optgroup label="── Offs &amp; Holidays ──">
+                                    <option value="W/O">W/O — Weekly Off</option>
+                                    <option value="H">H — Public Holiday</option>
+                                    <option value="H/P">H/P — Holiday Present</option>
+                                    <option value="W/P">W/P — Weekend Present</option>
+                                    <option value="W/H">W/H — Work From Home</option>
+                                    <option value="BL">BL — Blue Leave (3rd Sat)</option>
+                                    <option value="PL">PL — Pink Leave (Female)</option>
+                                </optgroup>
+                                <optgroup label="── Leave Types ──">
+                                    <option value="SL">SL — Sick Leave</option>
+                                    <option value="EL">EL — Earned Leave</option>
+                                    <option value="CL">CL — Casual Leave</option>
+                                    <option value="C/O">C/O — Comp Off</option>
+                                    <option value="ML">ML — Maternity Leave</option>
+                                    <option value="CC">CC — Child Care Leave</option>
+                                </optgroup>
+                                <optgroup label="── Requests ──">
+                                    <option value="RP">RP — Request Permission</option>
+                                    <option value="RC">RC — Request Correction</option>
+                                </optgroup>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />

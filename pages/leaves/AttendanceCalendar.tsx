@@ -254,6 +254,33 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         return statusMap;
     }, [currentDate, events, leaveRequests, userHolidays, holidays, recurringHolidayDates, settings, user]);
 
+    // All notation definitions — dot color matches actual calendar cell color
+    const ALL_NOTATIONS: { code: string; label: string; dot: string }[] = [
+        { code: 'P',     label: 'Present',        dot: 'bg-emerald-500'   },
+        { code: '0.5P',  label: 'Half Day',        dot: 'bg-gradient-to-br from-emerald-500 to-red-500' },
+        { code: '0.75P', label: 'Three-Qtr Day',  dot: 'bg-emerald-400'   },
+        { code: '0.25P', label: 'Quarter Day',     dot: 'bg-blue-400'      },
+        { code: 'A',     label: 'Absent',          dot: 'bg-red-500'       },
+        { code: 'LOP',   label: 'Loss of Pay',     dot: 'bg-red-500'       },
+        { code: 'W/O',   label: 'W.O',             dot: 'bg-rose-300'      },
+        { code: 'H',     label: 'Holiday',         dot: 'bg-sky-400'       },
+        { code: 'H/P',   label: 'Holiday Present', dot: 'bg-gradient-to-br from-sky-400 to-emerald-500' },
+        { code: 'W.O/P', label: 'W.O Present',     dot: 'bg-gradient-to-br from-rose-300 to-emerald-500' },
+        { code: 'WH',    label: 'WH',              dot: 'bg-blue-600'      },
+        { code: 'FH',    label: 'Float',           dot: 'bg-amber-500'     },
+        { code: 'BL',    label: 'Blue Leave',      dot: 'bg-blue-700'      },
+        { code: 'PL',    label: 'PL',              dot: 'bg-gradient-to-br from-pink-500 to-rose-500' },
+        { code: 'SL',    label: 'Sick Leave',      dot: 'bg-blue-600'      },
+        { code: 'EL',    label: 'Earned Leave',    dot: 'bg-blue-600'      },
+        { code: 'CL',    label: 'Casual Leave',    dot: 'bg-blue-600'      },
+        { code: 'CO',    label: 'C.O',             dot: 'bg-violet-600'    },
+        { code: 'ML',    label: 'Maternity',       dot: 'bg-blue-600'      },
+        { code: 'CCL',   label: 'Child Care',      dot: 'bg-blue-600'      },
+        { code: 'OT',    label: 'Site OT',         dot: 'bg-amber-400'     },
+        { code: 'RP',    label: 'Permission',      dot: 'bg-blue-600'      },
+        { code: 'RC',    label: 'Correction',      dot: 'bg-emerald-500'   },
+    ];
+
     const getDayStatus = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
         return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '', presenceVal: 0, isSiteOtPresent: false };
@@ -283,7 +310,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         const today = startOfDay(new Date());
 
         daysInMonth.forEach(date => {
-            if (!isBefore(startOfDay(date), today)) return; 
+            if (isAfter(startOfDay(date), today)) return; // skip future dates only; today IS counted
 
             const dateKey = format(date, 'yyyy-MM-dd');
             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
@@ -322,7 +349,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         else if (workingHours >= threeQuarterHrs) normalPay = 0.75;
                         else if (workingHours >= halfDayHrs) normalPay = 0.5;
                         else if (workingHours >= quarterDayHrs) normalPay = 0.25;
-                        else normalPay = 0.5;
+                        else normalPay = 0; // no qualifying hours → no pay
                     }
                 } else {
                     normalPay = 1;
@@ -354,7 +381,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 otCount += 1;
             }
 
-            count += normalPay + (isSiteOt ? 1 : 0);
+            count += normalPay; // Site OT is tracked separately — does NOT add to payable days
         });
         return { monthlyPaydaysCount: count, monthlySiteOtCount: otCount };
     }, [daysInMonth, dayStatusMap, events, settings, user, leaveRequests]);
@@ -482,9 +509,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             if (request) {
                                 const lType = String(request.leaveType || (request as any).type || "").toLowerCase();
                                 if (lType.includes('correction')) {
-                                    overlayText = 'P';
+                                    overlayText = 'RC';
                                     customStyle = {
                                         background: '#10b981', // Solid green for correction
+                                        borderColor: 'transparent'
+                                    };
+                                } else if (lType.includes('permission')) {
+                                    overlayText = 'RP';
+                                    customStyle = {
+                                        background: '#2563eb', // Solid blue for permission
                                         borderColor: 'transparent'
                                     };
                                 } else if (request.dayOption === 'half') {
@@ -503,6 +536,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         case 'Maternity': overlayText = 'ML'; break;
                                         case 'Child Care': overlayText = 'CCL'; break;
                                         case 'Loss of Pay': overlayText = 'LOP'; break;
+                                        case 'WFH': overlayText = 'WH'; break;
+                                        case 'Permission': overlayText = 'RP'; break;
                                         case 'Pink Leave':
                                             overlayText = 'PL';
                                             customStyle = {
@@ -546,17 +581,100 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Present</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #10b981 50%, #ef4444 50%)' }}></div> Half Day</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Absent</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-rose-300 rounded-full flex-shrink-0"></div> W.O</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-sky-400 rounded-full flex-shrink-0"></div> Holiday</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Float</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> C.O</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0"></div> WH</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)' }}></div> PL</div>
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-400 rounded-full border border-white/20 shadow-sm flex-shrink-0"></div> Site OT</div>
+            <div className="mt-4 pt-3 border-t border-border/50">
+                {(() => {
+                    // Collect all overlay codes used this month
+                    const usedCodes = new Set<string>();
+                    const monthStart = startOfMonth(currentDate);
+                    const monthEnd = endOfMonth(currentDate);
+                    eachDayOfInterval({ start: monthStart, end: monthEnd }).forEach(date => {
+                        const info = dayStatusMap.get(format(date, 'yyyy-MM-dd'));
+                        if (!info || info.status === 'neutral') return;
+                        const s = info.status;
+                        // Mirror the overlay logic
+                        if (s === 'absent') { usedCodes.add('A'); return; }
+                        if (s === 'company-holiday' || s === 'floating-holiday') { usedCodes.add('H'); return; }
+                        if (s === 'sunday') return;
+                        if (s === 'present' || s === 'holiday-present' || s === 'weekend-present') {
+                            const dateKey = format(date, 'yyyy-MM-dd');
+                            const dayKeyMap = buildAttendanceDayKeyByEventId(events);
+                            const dayEvts = events.filter(e => dayKeyMap[e.id] === dateKey);
+                            const { workingHours } = calculateWorkingHours(dayEvts, date);
+                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                            const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
+                            const relevantLeave = leaveRequests?.find(req => {
+                                const lStatus = String(req.status || '').toLowerCase();
+                                if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation') return false;
+                                const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
+                                const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
+                                return date >= start && date <= end;
+                            });
+                            const isCorrection = relevantLeave && String(relevantLeave.leaveType || '').toLowerCase().includes('correction');
+                            if (isCorrection) { usedCodes.add('P'); return; }
+                            if (relevantLeave?.dayOption === 'half') { usedCodes.add('0.5P'); return; }
+                            if (workingHours >= shiftThreshold) {
+                                if (s === 'holiday-present') usedCodes.add('H/P');
+                                else if (s === 'weekend-present') usedCodes.add('W.O/P');
+                                else usedCodes.add('P');
+                            } else {
+                                const threeQtr = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? shiftThreshold * 0.75;
+                                const halfHrs  = (settings as any)?.[staffCategory]?.minimumHoursHalfDay  ?? shiftThreshold * 0.5;
+                                const qtrHrs   = (settings as any)?.[staffCategory]?.quarterDayHours      ?? shiftThreshold * 0.25;
+                                if (workingHours >= threeQtr) usedCodes.add('0.75P');
+                                else if (workingHours >= halfHrs) usedCodes.add('0.5P');
+                                else if (workingHours >= qtrHrs) usedCodes.add('0.25P');
+                                else usedCodes.add('A');
+                            }
+                            return;
+                        }
+                        if (s === 'leave') {
+                            const req = leaveRequests?.find(r => {
+                                if (r.status !== 'approved' && r.status !== 'pending_hr_confirmation' && r.status !== 'correction_made') return false;
+                                const start = startOfDay(new Date(r.startDate.replace(/-/g, '/')));
+                                const end = endOfDay(new Date(r.endDate.replace(/-/g, '/')));
+                                return date >= start && date <= end;
+                            });
+                            if (!req) { usedCodes.add('WH'); return; }
+                            const lType = String(req.leaveType || '').toLowerCase();
+                            if (lType.includes('correction')) { usedCodes.add('RC'); return; }
+                            if (lType.includes('permission')) { usedCodes.add('RP'); return; }
+                            if (req.dayOption === 'half') { usedCodes.add('0.5P'); return; }
+                            switch (req.leaveType) {
+                                case 'Earned':      usedCodes.add('EL');  break;
+                                case 'Sick':        usedCodes.add('SL');  break;
+                                case 'Comp Off':    usedCodes.add('CO');  break;
+                                case 'Floating':    usedCodes.add('FH');  break;
+                                case 'Maternity':   usedCodes.add('ML');  break;
+                                case 'Child Care':  usedCodes.add('CCL'); break;
+                                case 'Loss of Pay': usedCodes.add('LOP'); break;
+                                case 'WFH':         usedCodes.add('WH');  break;
+                                case 'Permission':  usedCodes.add('RP');  break;
+                                case 'Pink Leave':  usedCodes.add('PL');  break;
+                                default:            usedCodes.add('WH');  break;
+                            }
+                        }
+                    });
+                    // Also add OT if any site OT days
+                    const hasSiteOt = Array.from(dayStatusMap.values()).some(v => v.isSiteOtPresent);
+                    if (hasSiteOt) usedCodes.add('OT');
+
+                    const activeNotations = ALL_NOTATIONS.filter(n => usedCodes.has(n.code));
+                    if (activeNotations.length === 0) return null;
+
+                    return (
+                        <>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-2">Notations</p>
+                            <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+                                {activeNotations.map(({ code, label, dot }) => (
+                                    <div key={code} className="flex items-center gap-1.5">
+                                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot}`} />
+                                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight leading-none">{label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
         </div>
     );

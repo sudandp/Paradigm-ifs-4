@@ -128,6 +128,8 @@ const ApplyLeave: React.FC = () => {
     const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
 
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [permissionMinutes, setPermissionMinutes] = React.useState<number>(120); // default to 2 hours
+    const [basePunchOutTime, setBasePunchOutTime] = React.useState<string>('19:30');
 
     const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || 'Earned';
     const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
@@ -247,6 +249,65 @@ const ApplyLeave: React.FC = () => {
          }
      }, [watchLeaveType, watchStartDate, isCheckedIn, setValue]);
 
+     const getAdjustedPunchOut = (baseTime: string, permissionMins: number) => {
+         if (!baseTime) return '19:30';
+         const [hours, minutes] = baseTime.split(':').map(Number);
+         let totalMinutes = hours * 60 + minutes + permissionMins;
+         totalMinutes = totalMinutes % (24 * 60); // handle 24-hour wrap around
+         const adjHours = Math.floor(totalMinutes / 60);
+         const adjMins = totalMinutes % 60;
+         return `${String(adjHours).padStart(2, '0')}:${String(adjMins).padStart(2, '0')}`;
+     };
+
+     React.useEffect(() => {
+         if (watchLeaveType === 'Permission') {
+             const adjustedOut = getAdjustedPunchOut(basePunchOutTime, permissionMinutes);
+             setValue('punchOut', adjustedOut, { shouldValidate: true });
+         }
+     }, [watchLeaveType, basePunchOutTime, permissionMinutes, setValue]);
+
+     const watchPunchIn = watch('punchIn') || '09:00';
+     const watchPunchOut = watch('punchOut') || '19:30';
+     const watchIncludeBreak = watch('includeBreak') || false;
+     const watchBreakIn = watch('breakIn') || '13:00';
+     const watchBreakOut = watch('breakOut') || '14:00';
+
+     const workedHours = useMemo(() => {
+         if (!watchPunchIn || !watchPunchOut) return { hours: 0, minutes: 0, text: '0h 0m' };
+         
+         const getMins = (timeStr: string) => {
+             if (!timeStr) return 0;
+             const [h, m] = timeStr.split(':').map(Number);
+             return h * 60 + m;
+         };
+         
+         const startMins = getMins(watchPunchIn);
+         const endMins = getMins(watchPunchOut);
+         let elapsedMins = endMins - startMins;
+         if (elapsedMins < 0) elapsedMins += 24 * 60; // wrap around
+         
+         let breakMins = 0;
+         if (watchIncludeBreak && watchBreakIn && watchBreakOut) {
+             const bIn = getMins(watchBreakIn);
+             const bOut = getMins(watchBreakOut);
+             let diff = bOut - bIn;
+             if (diff < 0) diff += 24 * 60;
+             breakMins = diff;
+         }
+         
+         let workedMins = elapsedMins - breakMins;
+         if (workedMins < 0) workedMins = 0;
+         
+         const wHours = Math.floor(workedMins / 60);
+         const wMins = workedMins % 60;
+         
+         return {
+             hours: wHours,
+             minutes: wMins,
+             text: `${wHours}h ${wMins}m`
+         };
+     }, [watchPunchIn, watchPunchOut, watchIncludeBreak, watchBreakIn, watchBreakOut]);
+
     const isSingleDay = useMemo(() => {
         if (!watchStartDate || !watchEndDate) return false;
         return isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date(watchEndDate.replace(/-/g, '/')));
@@ -293,7 +354,9 @@ const ApplyLeave: React.FC = () => {
                         const latestOut = punchOutEvents.reduce((prev, curr) => 
                             new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
                         );
-                        setValue('punchOut', format(new Date(latestOut.timestamp), 'HH:mm'), { shouldValidate: true });
+                        const formattedOut = format(new Date(latestOut.timestamp), 'HH:mm');
+                        setValue('punchOut', formattedOut, { shouldValidate: true });
+                        setBasePunchOutTime(formattedOut);
                         // If no punch-in location, try punch-out location
                         if (!punchInEvents[0]?.locationName && latestOut.locationName) {
                             setValue('locationName', latestOut.locationName);
@@ -340,6 +403,7 @@ const ApplyLeave: React.FC = () => {
                     if (rules?.fixedOfficeHours) {
                         setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
                         setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
+                        setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
                         
                         // Fill Breaks if configured
                         if (rules.fixedOfficeHours.breakInTime) {
@@ -394,7 +458,40 @@ const ApplyLeave: React.FC = () => {
                     setValue('endDate', requestToEdit.endDate);
                     setValue('reason', requestToEdit.reason);
                     setValue('dayOption', requestToEdit.dayOption);
-                    // Certificate handling is tricky since we only have Path/URL, let's keep it for now
+
+                    if (requestToEdit.correctionDetails) {
+                        const details = requestToEdit.correctionDetails;
+                        if (details.status) setValue('correctionStatus', details.status);
+                        if (details.punchIn) setValue('punchIn', details.punchIn);
+                        if (details.punchOut) {
+                            setValue('punchOut', details.punchOut);
+                            if (requestToEdit.leaveType === 'Permission') {
+                                const baseOut = '19:30';
+                                const getMinutes = (timeStr: string) => {
+                                    if (!timeStr) return 0;
+                                    const [h, m] = timeStr.split(':').map(Number);
+                                    return h * 60 + m;
+                                };
+                                const baseMins = getMinutes(baseOut);
+                                const actualMins = getMinutes(details.punchOut);
+                                let diffMins = baseMins - actualMins;
+                                if (diffMins < 0) diffMins = 0;
+                                if (diffMins > 180) diffMins = 180;
+                                setPermissionMinutes(diffMins);
+                            }
+                        }
+                        if (details.locationName) setValue('locationName', details.locationName);
+                        if (details.includeBreak) {
+                            setValue('includeBreak', true);
+                            if (details.breakIn) setValue('breakIn', details.breakIn);
+                            if (details.breakOut) setValue('breakOut', details.breakOut);
+                        }
+                        if (details.includeSiteOt) {
+                            setValue('includeSiteOt', true);
+                            if (details.siteOtIn) setValue('siteOtIn', details.siteOtIn);
+                            if (details.siteOtOut) setValue('siteOtOut', details.siteOtOut);
+                        }
+                    }
                 } else {
                     setToast({ message: 'Request not found.', type: 'error' });
                     navigate('/leaves/dashboard');
@@ -532,18 +629,8 @@ const ApplyLeave: React.FC = () => {
                 }
 
                 // Verify duration
-                const getMinutes = (timeStr: string) => {
-                    if (!timeStr) return 0;
-                    const [h, m] = timeStr.split(':').map(Number);
-                    return h * 60 + m;
-                };
-
-                const startMins = getMinutes(formData.punchIn || '00:00');
-                const endMins = getMinutes(formData.punchOut || '00:00');
-                let durationHours = (endMins - startMins) / 60;
-                if (durationHours < 0) durationHours += 24;
-
-                const maxHours = rules.maxPermissionDurationHours || 2;
+                const maxHours = rules?.maxPermissionDurationHours || 3;
+                const durationHours = permissionMinutes / 60;
                 if (durationHours > maxHours) {
                     setToast({ message: `Permission requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
                     setIsSubmitting(false);
@@ -677,8 +764,8 @@ const ApplyLeave: React.FC = () => {
             case 'Maternity': return 'Maternity Leave';
             case 'Child Care': return 'Child Care Leave';
             case 'WFH': return 'Work From Home (WFH)';
-            case 'Correction': return 'Correction';
-            case 'Permission': return 'Request for Permission';
+            case 'Correction': return 'Request for Correction (RC)';
+            case 'Permission': return 'Request for Permission (RP)';
             default: return type;
         }
     };
@@ -749,9 +836,9 @@ const ApplyLeave: React.FC = () => {
                                         {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                         {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
                                         <option value="WFH">Work From Home (WFH)</option>
-                                        <option value="Correction">Request for Correction</option>
+                                        <option value="Correction">Request for Correction (RC)</option>
                                         {(rules?.enablePermission || rules?.enablePermission === undefined) && (
-                                            <option value="Permission">Request for Permission</option>
+                                            <option value="Permission">Request for Permission (RP)</option>
                                         )}
                                     </Select>
                                 )} 
@@ -905,6 +992,88 @@ const ApplyLeave: React.FC = () => {
                                         )}
                                     </div>
 
+                                    {watchLeaveType === 'Permission' && (
+                                        <div className={`p-6 rounded-2xl border space-y-4 transition-all duration-300 ${
+                                            isMobile 
+                                                ? 'bg-emerald-500/5 border-emerald-500/10' 
+                                                : 'bg-gradient-to-br from-emerald-50/50 to-teal-50/30 border-emerald-100/80 shadow-sm'
+                                        }`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className="w-5 h-5 text-emerald-500 animate-pulse" />
+                                                    <h4 className={`font-black text-sm uppercase tracking-wider ${isMobile ? 'text-primary-text' : 'text-emerald-900'}`}>
+                                                        Permission Duration
+                                                    </h4>
+                                                </div>
+                                                <div className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                                                    isMobile 
+                                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                                                        : 'bg-emerald-100 border-emerald-200 text-emerald-700'
+                                                }`}>
+                                                    Max 3 Hours
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col items-center justify-center py-2 space-y-1">
+                                                <div className={`text-3xl font-black tracking-tight ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                                    {Math.floor(permissionMinutes / 60)}h {permissionMinutes % 60}m
+                                                </div>
+                                                <p className="text-xs text-muted/65 font-medium uppercase tracking-wider">
+                                                    Requested Duration
+                                                </p>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <input 
+                                                    type="range" 
+                                                    min="0" 
+                                                    max="180" 
+                                                    step="15" 
+                                                    value={permissionMinutes} 
+                                                    onChange={(e) => setPermissionMinutes(Number(e.target.value))}
+                                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-emerald-200/50 accent-emerald-500 dark:bg-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                                />
+                                                <div className="flex justify-between text-[10px] font-bold text-muted/60 uppercase tracking-widest px-1">
+                                                    <span>0m</span>
+                                                    <span>1h</span>
+                                                    <span>2h</span>
+                                                    <span>3h</span>
+                                                </div>
+                                            </div>
+
+                                            <div className={`p-4 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-3 text-xs ${
+                                                isMobile 
+                                                    ? 'bg-[#041b0f]/50 border-emerald-500/10 text-primary-text' 
+                                                    : 'bg-white/80 border-emerald-100 text-emerald-800 shadow-xs'
+                                            }`}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold opacity-60">Standard:</span>
+                                                    <span className="font-black text-sm">{basePunchOutTime}</span>
+                                                </div>
+                                                <div className="hidden md:block font-bold opacity-40">➔</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold opacity-60">Adjusted Out:</span>
+                                                    <span className="font-black text-sm px-2.5 py-1 bg-emerald-500/15 text-emerald-500 rounded-lg border border-emerald-500/20">
+                                                        {getAdjustedPunchOut(basePunchOutTime, permissionMinutes)}
+                                                    </span>
+                                                </div>
+                                                <div className="hidden md:block font-bold opacity-40">|</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold opacity-60 text-emerald-500 flex items-center gap-1">
+                                                        <Clock className="w-3.5 h-3.5" /> Worked Hours:
+                                                    </span>
+                                                    <span className={`font-black text-sm px-2.5 py-1 rounded-lg border transition-all ${
+                                                        workedHours.hours >= 8 
+                                                            ? 'bg-green-500/15 text-green-400 border-green-500/20' 
+                                                            : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+                                                    }`}>
+                                                        {workedHours.text}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''} ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-gray-50 border-gray-100'}`}>
                                         {isFetchingLogs && (
                                             <div className="absolute inset-0 flex items-center justify-center z-10">
@@ -932,7 +1101,18 @@ const ApplyLeave: React.FC = () => {
                                                     <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
                                                         <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
                                                     </label>
-                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
+                                                    <input 
+                                                        type="time" 
+                                                        {...field} 
+                                                        readOnly={watchLeaveType === 'Permission'}
+                                                        className={`w-full p-2.5 rounded-lg border text-sm ${
+                                                            watchLeaveType === 'Permission' 
+                                                                ? 'opacity-75 cursor-not-allowed bg-emerald-500/5 border-emerald-500/20 text-emerald-400 font-bold' 
+                                                                : isMobile 
+                                                                    ? 'bg-[#041b0f] border-emerald-500/20 text-white' 
+                                                                    : 'bg-white border-gray-200 text-gray-900'
+                                                        }`} 
+                                                    />
                                                     {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
                                                 </div>
                                             )} 

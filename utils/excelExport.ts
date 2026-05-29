@@ -315,9 +315,16 @@ export const exportAttendanceToExcel = async (
                     } else if (statusVal === 'H') {
                         cell.font = { color: { argb: 'FF854D0E' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFef9C3' } };
-                    } else if (['L', 'S/L', 'E/L', 'C/O', 'F/H', 'W/H'].includes(statusVal as string)) {
-                        cell.font = { color: { argb: 'FF1E40AF' }, bold: true };
+                    } else if (statusVal === 'BL' || statusVal === 'F/H') {
+                        cell.font = { color: { argb: 'FF1D4ED8' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+                    } else if (statusVal === 'PL' || statusVal === 'P/L') {
+                        cell.font = { color: { argb: 'FFDB2777' }, bold: true };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE7F3' } };
+                    } else if (['SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'ML', 'M/L', 'CC', 'W/H', 'RP', 'RC'].includes(statusVal as string) ||
+                        String(statusVal).includes('SL') || String(statusVal).includes('EL') || String(statusVal).includes('CL') || String(statusVal).includes('RP') || String(statusVal).includes('RC')) {
+                        cell.font = { color: { argb: 'FF4F46E5' }, bold: true };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E7FF' } };
                     }
                 }
             }

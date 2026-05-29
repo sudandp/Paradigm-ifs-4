@@ -211,14 +211,20 @@ export const MonthlyStatusView: React.FC<{
         if (s === 'A') return 'text-[#DC2626]'; // Absent Red
         if (s === 'W/O' || s === 'WOP') return 'text-[#6B7280]'; // WO Grey
         if (s === 'H' || s === 'HP' || s === 'H/P') return 'text-[#EA580C]'; // Holiday Orange
-        if (s.includes('F/H')) return 'text-[#CA8A04]'; // Floating Gold
+        if (s.includes('F/H') || s.includes('BL')) return 'text-[#1D4ED8]'; // Blue Leave
+        if (s.includes('PL') || s.includes('P/L')) return 'text-[#DB2777]'; // Pink Leave
         if (s.includes('1/2')) return 'text-[#2563EB]'; // Half Day Blue
-        if (s.includes('S/L')) return 'text-[#9333EA]'; // Sick Purple
-        if (s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Indigo
+        if (s.includes('SL') || s.includes('S/L')) return 'text-[#9333EA]'; // Sick Leave Purple
+        if (s.includes('EL') || s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Leave Indigo
+        if (s.includes('CL') || s.includes('C/L')) return 'text-[#7C3AED]'; // Casual Leave Violet
         if (s.includes('C/O')) return 'text-[#0891B2]'; // Comp Cyan
+        if (s.includes('ML') || s.includes('M/L')) return 'text-[#BE185D]'; // Maternity Pink
+        if (s.includes('CC') || s.includes('C/C')) return 'text-[#0F766E]'; // Child Care Teal
         if (s.includes('OT')) return 'text-[#0D9488]'; // OT Teal
         if (s === 'W/H') return 'text-[#0D9488]'; // WFH Teal
         if (s === 'W/P') return 'text-[#2563EB]'; // WP Blue
+        if (s === 'RP' || s.includes('RP')) return 'text-[#0284C7]'; // Permission Blue
+        if (s === 'RC' || s.includes('RC')) return 'text-[#16A34A]'; // Correction Green
         return 'text-gray-700';
     };
 
@@ -291,19 +297,108 @@ export const MonthlyStatusView: React.FC<{
                 </table>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5 text-[8px] font-bold">
-                <span className="flex items-center gap-1 text-[#059669]"><span className="w-1.5 h-1.5 rounded-full bg-[#059669]" /> P: PRESENT</span>
-                <span className="flex items-center gap-1 text-[#DC2626]"><span className="w-1.5 h-1.5 rounded-full bg-[#DC2626]" /> A: ABSENT</span>
-                <span className="flex items-center gap-1 text-[#DC2626]"><span className="w-1.5 h-1.5 rounded-full bg-[#DC2626]" /> LOP: LOSS OF PAY</span>
-                <span className="flex items-center gap-1 text-[#2563EB]"><span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> 1/2P: HALF DAY</span>
-                <span className="flex items-center gap-1 text-[#0D9488]"><span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" /> W/H: WORK FROM HOME</span>
-                <span className="flex items-center gap-1 text-[#2563EB]"><span className="w-1.5 h-1.5 rounded-full bg-[#2563EB]" /> W/P: WORKED ON WEEK OFF</span>
-                <span className="flex items-center gap-1 text-[#6B7280]"><span className="w-1.5 h-1.5 rounded-full bg-[#6B7280]" /> W/O: WEEKLY OFF</span>
-                <span className="flex items-center gap-1 text-[#EA580C]"><span className="w-1.5 h-1.5 rounded-full bg-[#EA580C]" /> H: HOLIDAY</span>
-                <span className="flex items-center gap-1 text-[#0D9488]"><span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" /> OT (P): OT / EXTRAP</span>
-                <span className="flex items-center gap-1 text-[#9333EA]"><span className="w-1.5 h-1.5 rounded-full bg-[#9333EA]" /> S/L: SICK LEAVE</span>
-                <span className="flex items-center gap-1 text-[#4F46E5]"><span className="w-1.5 h-1.5 rounded-full bg-[#4F46E5]" /> E/L: EARNED LEAVE</span>
-                <span className="flex items-center gap-1 text-[#0891B2]"><span className="w-1.5 h-1.5 rounded-full bg-[#0891B2]" /> C/O: COMP OFF</span>
+            <div className="mt-5 border-t border-gray-200 pt-4">
+                <p className="text-[7px] font-black uppercase tracking-widest text-gray-400 mb-2.5">NOTATION REFERENCE</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+
+                    {/* Column 1 */}
+                    <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DCFCE7] text-[#059669] rounded px-0.5">P</span>
+                            <span className="text-gray-600">PRESENT — Full day attendance</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#2563EB] rounded px-0.5">1/2P</span>
+                            <span className="text-gray-600">HALF DAY — 50% attendance</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#D1FAE5] text-[#059669] rounded px-0.5">3/4P</span>
+                            <span className="text-gray-600">THREE-QUARTER DAY — 75% attendance</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#E0F2FE] text-[#0369A1] rounded px-0.5">1/4P</span>
+                            <span className="text-gray-600">QUARTER DAY — 25% attendance</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FEE2E2] text-[#DC2626] rounded px-0.5">A</span>
+                            <span className="text-gray-600">ABSENT — No attendance recorded</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FEE2E2] text-[#DC2626] rounded px-0.5">LOP</span>
+                            <span className="text-gray-600">LOSS OF PAY — Unpaid absence</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#F1F5F9] text-[#6B7280] rounded px-0.5">W/O</span>
+                            <span className="text-gray-600">WEEKLY OFF — Scheduled day off (Sun)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FEF9C3] text-[#854D0E] rounded px-0.5">H</span>
+                            <span className="text-gray-600">HOLIDAY — Declared public holiday</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FEF3C7] text-[#92400E] rounded px-0.5">H/P</span>
+                            <span className="text-gray-600">HOLIDAY PRESENT — Worked on holiday</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#1D4ED8] rounded px-0.5">W/P</span>
+                            <span className="text-gray-600">WEEKEND PRESENT — Worked on week off</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#CCFBF1] text-[#0D9488] rounded px-0.5">W/H</span>
+                            <span className="text-gray-600">WORK FROM HOME — Remote working day</span>
+                        </div>
+                    </div>
+
+                    {/* Column 2 */}
+                    <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#EDE9FE] text-[#9333EA] rounded px-0.5">SL</span>
+                            <span className="text-gray-600">SICK LEAVE — Medical leave</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#E0E7FF] text-[#4F46E5] rounded px-0.5">EL</span>
+                            <span className="text-gray-600">EARNED LEAVE — Accrued paid leave</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#EDE9FE] text-[#7C3AED] rounded px-0.5">CL</span>
+                            <span className="text-gray-600">CASUAL LEAVE — Short-notice leave</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#CFFAFE] text-[#0891B2] rounded px-0.5">C/O</span>
+                            <span className="text-gray-600">COMP OFF — Compensatory off day</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#1D4ED8] rounded px-0.5">BL</span>
+                            <span className="text-gray-600">BLUE LEAVE — 3rd Saturday (male)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FCE7F3] text-[#DB2777] rounded px-0.5">PL</span>
+                            <span className="text-gray-600">PINK LEAVE — Female recurring holiday</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#FCE7F3] text-[#BE185D] rounded px-0.5">ML</span>
+                            <span className="text-gray-600">MATERNITY LEAVE — Statutory leave</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#CCFBF1] text-[#0F766E] rounded px-0.5">CC</span>
+                            <span className="text-gray-600">CHILD CARE LEAVE — Parental leave</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#CCFBF1] text-[#0D9488] rounded px-0.5">OT(P)</span>
+                            <span className="text-gray-600">OVERTIME PRESENT — Extra pay eligible</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#E0F2FE] text-[#0284C7] rounded px-0.5">RP</span>
+                            <span className="text-gray-600">REQUEST PERMISSION — Early/late request</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DCFCE7] text-[#16A34A] rounded px-0.5">RC</span>
+                            <span className="text-gray-600">REQUEST CORRECTION — Punch correction</span>
+                        </div>
+                    </div>
+
+                </div>
+                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 1/2 indicates half-day variant (e.g., 1/2EL = Half Earned Leave). H/P and W/P attract 1.5x payable credit.</p>
             </div>
 
             <Footer label="PARADIGM SERVICES - MONTHLY STATUS REPORT" />

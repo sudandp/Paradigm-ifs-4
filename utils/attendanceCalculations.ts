@@ -504,21 +504,21 @@ export function evaluateAttendanceStatus(params: {
   let isHoliday = false;
 
   let isRecurringHoliday = false;
+  let recurringHolidayType: 'BL' | 'PL' | 'W/O' = 'W/O'; // BL = Blue Leave (males), PL = Pink Leave (females)
   let isWeekend = false;
 
   // 2. Resolve Holiday Statuses
   const weeklyOffDays = userRules?.weeklyOffDays || [0]; // Default Sunday
   isWeekend = weeklyOffDays.includes(dayOfWeek);
 
-  // Floating/Recurring Holiday
+  // Floating/Recurring Holiday — also track whether it is a Blue Leave or Pink Leave
+  let matchedRecurringRule: any = null;
   isRecurringHoliday = (recurringHolidays || []).some(rule => {
       const ruleDay = String(rule.day || '').toLowerCase();
       if (!rule || ruleDay !== dayName.toLowerCase()) return false;
       const occurrence = Math.ceil(dayOfMonth / 7);
       const ruleOccurrence = Number(rule.occurrence || rule.n || 0);
       const ruleType = rule.roleType || rule.type || 'office';
-      
-
 
       // 3rd Saturday Blue Leave applies to gents/male employees (defaulting empty/null gender to gents/male as well)
       if (ruleDay === 'saturday' && ruleOccurrence === 3) {
@@ -549,8 +549,22 @@ export function evaluateAttendanceStatus(params: {
           }
       }
 
-      return ruleOccurrence === occurrence && ruleType === userCategory;
+      const matches = ruleOccurrence === occurrence && ruleType === userCategory;
+      if (matches) matchedRecurringRule = rule;
+      return matches;
   });
+
+  // Determine whether this is a Blue Leave (BL - male 3rd Saturday) or Pink Leave (PL - female)
+  if (isRecurringHoliday && matchedRecurringRule) {
+      const gender = (params as any).userGender || '';
+      const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
+      const ruleLabel = String(matchedRecurringRule.name || matchedRecurringRule.label || '').toLowerCase();
+      if (ruleLabel.includes('pink') || isFemale) {
+          recurringHolidayType = 'PL';
+      } else {
+          recurringHolidayType = 'BL'; // Default for 3rd Saturday / Blue Leave for males
+      }
+  }
 
   // Configured Holidays (Manual additions)
   // Permissive check: Check the user's specific category list first, but fallback to ALL lists
@@ -642,23 +656,48 @@ export function evaluateAttendanceStatus(params: {
       if (lType.includes('correction')) {
           const cStatus = l.correctionStatus || (l.correctionDetails?.status) || '';
           if (cStatus === 'W/H') return 'WFH';
-          return 'P';
+          return 'RC'; // Updated from 'P' to 'RC'
       }
 
       if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'W/H';
-      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'S/L';
+      if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'SL';
       if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
-      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'C/L';
-      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'F/H';
-      if (lType.includes('maternity')) return prefix + 'M/L';
-      if (lType.includes('child care')) return prefix + 'C/C';
-      if (lType.includes('pink')) return prefix + 'P/L';
-      if (lType.includes('permission')) return prefix + 'P/M';
+      if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'CL';
+      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'BL'; // Blue Leave
+      if (lType.includes('maternity')) return prefix + 'ML';
+      if (lType.includes('child care')) return prefix + 'CC';
+      if (lType.includes('pink')) return prefix + 'PL'; // Pink Leave
+      if (lType.includes('permission')) return prefix + 'RP'; // Updated from 'P/M' to 'RP'
       if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
-      return prefix + 'E/L';
+      return prefix + 'EL';
   };
 
   // 4. Status Determination logic
+  const isApprovedPermission = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('permission');
+  const isApprovedCorrection = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('correction');
+  let effectiveWorkingHours = workingHours || 0;
+
+  if ((isApprovedPermission || isApprovedCorrection) && approvedLeave.correctionDetails) {
+      const getMinutes = (timeStr: string) => {
+          if (!timeStr) return 0;
+          const [h, m] = timeStr.split(':').map(Number);
+          return h * 60 + m;
+      };
+      const inMins = getMinutes(approvedLeave.correctionDetails.punchIn);
+      const outMins = getMinutes(approvedLeave.correctionDetails.punchOut);
+      let diffMins = outMins - inMins;
+      if (diffMins < 0) diffMins += 24 * 60; // wrap around
+      
+      if (approvedLeave.correctionDetails.includeBreak && approvedLeave.correctionDetails.breakIn && approvedLeave.correctionDetails.breakOut) {
+          const bIn = getMinutes(approvedLeave.correctionDetails.breakIn);
+          const bOut = getMinutes(approvedLeave.correctionDetails.breakOut);
+          let bDiff = bOut - bIn;
+          if (bDiff < 0) bDiff += 24 * 60;
+          diffMins -= bDiff;
+      }
+      effectiveWorkingHours = Math.max(0, diffMins / 60);
+  }
+
   const isToday = isSameDay(day, new Date());
   const hasPunchIn = dayEvents.some(e => e.type === 'punch-in');
   const hasPunchOut = dayEvents.some(e => e.type === 'punch-out');
@@ -686,20 +725,40 @@ export function evaluateAttendanceStatus(params: {
   };
 
   let workStatus = '';
-  if (hasActivity || (workingHours !== undefined && workingHours > 0)) {
+  if (hasActivity || (effectiveWorkingHours !== undefined && effectiveWorkingHours > 0)) {
       if (userCategory === 'office') {
-          workStatus = resolveHoursStatus(workingHours || 0);
+          workStatus = resolveHoursStatus(effectiveWorkingHours || 0);
       } else {
           // Field/Site: trust real presence statuses from site tracking.
           // If site tracking returns 'A' but employee has real hours AND
           // hours-based fallback is enabled, evaluate on hours instead.
           if (fieldStatus && fieldStatus !== 'A') {
               workStatus = fieldStatus;
-          } else if (hoursBasedFallback && workingHours !== undefined && workingHours > 0) {
-              workStatus = resolveHoursStatus(workingHours);
+          } else if (hoursBasedFallback && effectiveWorkingHours !== undefined && effectiveWorkingHours > 0) {
+              workStatus = resolveHoursStatus(effectiveWorkingHours);
           } else {
               workStatus = hasPunchIn && (hasPunchOut || isToday || isWeekend || isHoliday) ? 'P' : 'A';
           }
+      }
+  }
+
+  if (isApprovedPermission) {
+      if (effectiveWorkingHours >= full) {
+          if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
+          if (isWeekend || isRecurringHoliday) return 'W/P';
+          return 'P';
+      } else {
+          return getLeaveCode(approvedLeave);
+      }
+  }
+
+  if (isApprovedCorrection) {
+      if (effectiveWorkingHours >= full) {
+          if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
+          if (isWeekend || isRecurringHoliday) return 'W/P';
+          return 'P';
+      } else {
+          return getLeaveCode(approvedLeave);
       }
   }
 
@@ -761,8 +820,8 @@ export function evaluateAttendanceStatus(params: {
           // Explicit Company Holidays should show as 'H'
           status = 'H';
       } else if ((isWeekend || isRecurringHoliday) && isEligible) {
-          // Weekends and Recurring Holidays (Blue Leaves) should show as 'W/O'
-          status = 'W/O';
+          // Weekends show as W/O; Recurring holidays show as BL (Blue Leave) or PL (Pink Leave)
+          status = isRecurringHoliday ? recurringHolidayType : 'W/O';
       } else {
           status = 'A';
       }

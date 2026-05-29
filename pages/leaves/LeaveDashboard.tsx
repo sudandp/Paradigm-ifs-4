@@ -840,7 +840,10 @@ const LeaveDashboard: React.FC = () => {
                                                     </div>
                                                     <div>
                                                         <p className="font-bold text-primary-text text-sm">
-                                                            {req.leaveType === 'Floating' ? 'Blue Leave' : req.leaveType}
+                                                            {req.leaveType === 'Floating' ? 'Blue Leave' : 
+                                                             req.leaveType === 'Permission' ? 'Request for Permission (RP)' : 
+                                                             req.leaveType === 'Correction' ? 'Request for Correction (RC)' : 
+                                                             req.leaveType}
                                                         </p>
                                                         {req.dayOption === 'half' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Half Day</span>}
                                                     </div>
