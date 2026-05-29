@@ -7861,6 +7861,34 @@ export const api = {
       .from('candidate_referrals')
       .insert(snaked);
     if (error) throw error;
+    
+    // Trigger in-app notification and FCM push for the assigned HR
+    if (snaked.assigned_hr_id) {
+      try {
+        const title = 'New Lead Assigned';
+        const msg = `You have been assigned a new lead: ${snaked.candidate_name}`;
+
+        // In-app Notification
+        await supabase.from('notifications').insert({
+          user_id: snaked.assigned_hr_id,
+          message: msg,
+          type: 'task_assigned',
+          is_read: false
+        });
+
+        // FCM Push Notification
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            userIds: [snaked.assigned_hr_id],
+            title: title,
+            message: msg,
+            data: { type: 'task_assigned' }
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to send assignment notification:', e);
+      }
+    }
   },
 
   saveBusinessReferral: async (referral: any): Promise<void> => {

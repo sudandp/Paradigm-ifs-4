@@ -658,6 +658,34 @@ export const assignHr = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
+    // Trigger in-app notification and FCM push for the newly assigned recruiter
+    if (hrUserId && candidateIds && candidateIds.length > 0) {
+      try {
+        const title = 'New Candidates Assigned';
+        const msg = `You have been assigned ${candidateIds.length} new candidate(s) to follow up on.`;
+
+        // In-app Notification
+        await supabase.from('notifications').insert({
+          user_id: hrUserId,
+          message: msg,
+          type: 'task_assigned',
+          is_read: false
+        });
+
+        // FCM Push Notification
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            userIds: [hrUserId],
+            title: title,
+            message: msg,
+            data: { type: 'task_assigned' }
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to send assignment notification:', e);
+      }
+    }
+
     res.status(200).json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
