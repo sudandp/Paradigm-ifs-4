@@ -121,6 +121,19 @@ export const crmApi = {
   autoAssignLeadByCity: async (city: string): Promise<string | null> => {
     if (!city) return null;
     try {
+      const normalizedCity = city.toLowerCase();
+
+      // Special case: Bangalore/Bengaluru leads go to Nakul
+      if (normalizedCity === 'bangalore' || normalizedCity === 'bengaluru') {
+        const { data: nakul } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('name', '%Nakul%')
+          .limit(1)
+          .single();
+        if (nakul) return nakul.id;
+      }
+
       // First try to find a business_developer for this location
       let { data } = await supabase
         .from('users')

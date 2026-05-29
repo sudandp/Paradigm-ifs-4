@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { hrmApi } from '../../services/hrm.api';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   BarChart2, Users, Calendar, Award, Clock, Activity, RefreshCw, Flame,
-  Target, TrendingUp, ArrowDownRight, ChevronDown
+  Target, TrendingUp, ArrowDownRight, ChevronDown, Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -38,6 +40,7 @@ const ReportsDashboard: React.FC = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
   // Date Filters
   const [startDate, setStartDate] = useState<string>('');
@@ -74,6 +77,44 @@ const ReportsDashboard: React.FC = () => {
     setRefreshing(false);
   };
 
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    toast.loading('Generating PDF...', { id: 'pdf-toast' });
+    const element = document.getElementById('report-container');
+    if (!element) {
+      toast.error('Failed to find report content', { id: 'pdf-toast' });
+      setDownloadingPdf(false);
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        backgroundColor: isMobile ? '#091c13' : '#f8fafc',
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`pipeline-analytics-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('Report downloaded successfully', { id: 'pdf-toast' });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF', { id: 'pdf-toast' });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   if (loading && !refreshing) {
     return (
       <div className="flex flex-col items-center justify-center py-32 space-y-4">
@@ -92,7 +133,7 @@ const ReportsDashboard: React.FC = () => {
   const maxFunnelCount = Math.max(...Object.values(funnel), 1);
 
   return (
-    <div className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
+    <div id="report-container" className={`animate-fade-in min-w-0 overflow-x-hidden min-h-screen ${isMobile ? 'bg-[#091c13] text-white p-4 pt-6 space-y-6 pb-24' : 'space-y-8 pb-32 md:pb-8'}`}>
       {/* Header */}
       <div className={`flex justify-between items-start sm:items-center ${isMobile ? 'flex-col gap-4' : 'flex-col sm:flex-row gap-6'}`}>
         <div className="w-full sm:w-auto">
@@ -118,14 +159,25 @@ const ReportsDashboard: React.FC = () => {
             />
           </div>
 
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className={`flex items-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#006b3f] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#006b3f]/20 w-full justify-center' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
+          <div className={`flex items-center gap-2 w-full sm:w-auto`}>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#006b3f] text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-[#006b3f]/20' : 'btn btn-primary btn-md shadow-xl shadow-accent/20 hover:shadow-accent/40'}`}
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            
+            <button
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf || loading}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 transition-all active:scale-95 ${isMobile ? 'bg-[#182a20] border border-[#2a4536] text-emerald-400 px-5 py-2.5 rounded-full font-bold' : 'btn btn-outline btn-md border-border text-primary-text hover:bg-page'}`}
+            >
+              {downloadingPdf ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Download className="w-4 h-4" />}
+              <span className="hidden sm:inline">Export PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 

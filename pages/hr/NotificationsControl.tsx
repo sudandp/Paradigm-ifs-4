@@ -272,7 +272,11 @@ const NotificationsControl: React.FC = () => {
                             </h2>
                         </div>
                         <div className="space-y-3">
-                            {rules.map(rule => {
+                            {[...rules].sort((a, b) => {
+                                const labelA = EVENT_TYPES.find(et => et.value === a.eventType)?.label || a.eventType;
+                                const labelB = EVENT_TYPES.find(et => et.value === b.eventType)?.label || b.eventType;
+                                return labelA.localeCompare(labelB);
+                            }).map(rule => {
                                 const eventType = EVENT_TYPES.find(et => et.value === rule.eventType);
                                 const Icon = eventType?.icon || Bell;
                                 const recipientUser = rule.recipientUserId ? users.find(u => u.id === rule.recipientUserId) : null;
@@ -587,7 +591,11 @@ const NotificationsControl: React.FC = () => {
                             </h3>
                         </div>
 
-                        {rules.map(rule => {
+                        {[...rules].sort((a, b) => {
+                            const labelA = EVENT_TYPES.find(et => et.value === a.eventType)?.label || a.eventType;
+                            const labelB = EVENT_TYPES.find(et => et.value === b.eventType)?.label || b.eventType;
+                            return labelA.localeCompare(labelB);
+                        }).map(rule => {
                             const eventType = EVENT_TYPES.find(et => et.value === rule.eventType);
                             const Icon = eventType?.icon || Bell;
                             const recipientUser = rule.recipientUserId ? users.find(u => u.id === rule.recipientUserId) : null;

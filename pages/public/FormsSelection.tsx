@@ -93,8 +93,8 @@ const FormsSelection: React.FC = () => {
                     <div className="w-full p-6 flex flex-col md:flex-row items-center justify-between gap-4">
                         <p>&copy; {new Date().getFullYear()} Paradigm Services. All rights reserved.</p>
                         <div className="flex gap-6 uppercase tracking-widest text-[10px]">
-                            <span className="hover:text-accent cursor-pointer transition-colors">Privacy Policy</span>
-                            <span className="hover:text-accent cursor-pointer transition-colors">Terms of Service</span>
+                            <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="hover:text-accent cursor-pointer transition-colors">Privacy Policy</a>
+                            <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="hover:text-accent cursor-pointer transition-colors">Terms of Service</a>
                         </div>
                     </div>
                 </footer>

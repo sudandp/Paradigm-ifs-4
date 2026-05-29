@@ -7,7 +7,7 @@ import { LEAD_STATUS_ORDER, LEAD_STATUS_COLORS } from '../../types/crm';
 import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
-  ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin, Edit2, Trash2
+  ArrowUpRight, ArrowDownRight, Eye, Clock, MapPin, Edit2, Trash2, ChevronDown
 } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
@@ -16,6 +16,7 @@ const CrmDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter, deleteLead } = useCrmStore();
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
@@ -39,6 +40,12 @@ const CrmDashboard: React.FC = () => {
     fetchLeads();
   }, [fetchLeads]);
 
+  // Unique locations for filter
+  const locations = useMemo(() => {
+    const cities = leads.map(l => l.city).filter(Boolean) as string[];
+    return [...new Set(cities)].sort();
+  }, [leads]);
+
   // Filtered leads
   const filteredLeads = useMemo(() => {
     let result = leads;
@@ -55,6 +62,9 @@ const CrmDashboard: React.FC = () => {
     if (kanbanFilter === 'mine' && user) {
       result = result.filter(l => l.assignedTo === user.id);
     }
+    if (locationFilter !== 'all') {
+      result = result.filter(l => l.city === locationFilter);
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(l =>
@@ -65,7 +75,7 @@ const CrmDashboard: React.FC = () => {
       );
     }
     return result;
-  }, [leads, kanbanFilter, searchQuery, user]);
+  }, [leads, kanbanFilter, locationFilter, searchQuery, user]);
 
   // Stats
   const stats = useMemo(() => {
@@ -140,6 +150,26 @@ const CrmDashboard: React.FC = () => {
             className={`w-full h-11 md:h-12 rounded-2xl pl-11 md:pl-12 pr-4 text-sm md:text-base outline-none transition-all ${isMobile ? 'bg-[#121f17] border border-transparent text-white placeholder:text-white/30 focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text placeholder:text-muted md:placeholder:text-muted focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:placeholder:text-white/20 max-md:focus:bg-white/[0.08]'}`}
           />
         </div>
+        
+        <div className="relative">
+          <div className={`absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none`}>
+            <MapPin className={`w-4 h-4 md:w-5 md:h-5 ${isMobile ? 'text-white/40' : 'text-muted md:text-muted max-md:text-white/20'}`} />
+          </div>
+          <select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            className={`w-full lg:w-48 h-11 md:h-12 rounded-2xl pl-10 pr-8 text-sm md:text-base outline-none appearance-none transition-all cursor-pointer ${isMobile ? 'bg-[#121f17] border border-transparent text-white focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:focus:bg-white/[0.08]'}`}
+          >
+            <option value="all">All Locations</option>
+            {locations.map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
+          <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${isMobile ? 'text-white/40' : 'text-muted md:text-muted max-md:text-white/20'}`}>
+            <ChevronDown className="w-4 h-4" />
+          </div>
+        </div>
+
         <div className="flex items-center justify-between md:justify-start gap-3">
           <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#0a140f] border-transparent' : 'bg-page md:bg-page border-border md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             <button
@@ -442,7 +472,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             {lead.city && (
               <div className={`flex items-center gap-1.5 text-[10px] font-black md:font-bold uppercase tracking-tighter md:tracking-normal ${isMobile ? 'text-white/50' : 'text-white/40 md:text-muted'}`}>
                 <MapPin className="w-3.5 h-3.5 opacity-40" />
@@ -455,6 +485,16 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
                 <span>{lead.unitCount} Units</span>
               </div>
             )}
+          </div>
+
+          <div className={`flex items-center gap-1.5 mb-4 text-[10px] font-bold ${isMobile ? 'text-white/60' : 'text-muted'}`}>
+            <span className="opacity-70">Created by:</span>
+            <span className={`truncate ${lead.createdByName ? (isMobile ? 'text-emerald-400' : 'text-accent') : 'text-orange-400 md:text-orange-600'}`}>
+              {lead.createdByName ? lead.createdByName : (lead.contactPerson || 'Website / Referral')}
+            </span>
+            <span className="opacity-50 text-[9px] uppercase tracking-wider ml-1">
+              ({lead.createdByName ? 'Employee' : 'Outsider'})
+            </span>
           </div>
 
           <div className={`pt-4 border-t flex items-center justify-between ${isMobile ? 'border-[#2a4536]' : 'border-white/5 md:border-border/50'}`}>

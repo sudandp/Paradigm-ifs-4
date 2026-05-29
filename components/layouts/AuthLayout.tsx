@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, Link } from 'react-router-dom';
 import { useAuthLayoutStore } from '../../store/authLayoutStore';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import { useDevice } from '../../hooks/useDevice';
 import Logo from '../ui/Logo';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Shield } from 'lucide-react';
 import ReferralModal from '../modals/ReferralModal';
+import FireworksBackground from '../ui/FireworksBackground';
 
 const AuthLayout: React.FC = () => {
     const { isMobile } = useDevice();
@@ -23,51 +24,45 @@ const AuthLayout: React.FC = () => {
 
     if (isMobile) {
         return (
-            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col items-center justify-center py-8 pb-[calc(2rem+env(safe-area-inset-bottom))] px-4 relative overflow-y-auto" style={{ backgroundColor: '#041b0f' }}>
-                {/* Background for Mobile with improved contrast overlay */}
-                <div className="fixed inset-0 w-full h-full" style={{ zIndex: 0 }}>
-                    <img src="/assets/auth/office-background.webp" alt="" className="absolute inset-0 w-full h-full object-cover opacity-45" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/80"></div>
+            <div className="min-h-screen min-h-[100dvh] font-sans flex flex-col justify-between pt-10 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 px-[calc(1rem+env(safe-area-inset-left))] px-[calc(1rem+env(safe-area-inset-right))] relative overflow-y-auto bg-white">
+                {/* Background for Mobile - clean gradient screen with a subtle green glow */}
+                <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-72 h-72 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" style={{ zIndex: 0 }}></div>
+
+                {/* Animated Festive Fireworks Backdrop */}
+                <FireworksBackground />
+
+                {/* Stable Header Brand Logo at the top on all pages */}
+                <div className="relative z-10 w-full flex justify-center pt-2 pb-4">
+                    <Logo className="w-[70%] max-w-[280px] h-auto object-contain" variant="original" />
                 </div>
 
-                <div className="relative z-10 w-full max-w-[min(95vw,420px)] flex flex-col items-center">
-                    {/* Mobile Glassmorphic Card — frosted green glass over visible background */}
-                    <div className="w-full bg-white/10 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/20 text-left mb-8">
-                        <div className="flex justify-center mb-8">
-                            <div className="bg-white py-2 px-20 rounded-2xl shadow-lg">
-                                <Logo className="h-10" variant="original" />
-                            </div>
-                        </div>
-
-                        <div className="text-left mb-6">
-                            <h2 className="text-[clamp(18px,4vw,22px)] font-bold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
-                            <p className="text-white/80 text-[clamp(13px,3.5vw,14px)] font-medium leading-relaxed">{pageInfo.subtitle}</p>
+                {/* Center Container: Card only */}
+                <div className="relative z-10 w-full max-w-[min(95vw,420px)] flex-grow flex flex-col items-center justify-center mx-auto pb-6">
+                    {/* Mobile Dark Card */}
+                    <div className="w-full bg-[#111a16] rounded-3xl p-6 shadow-2xl border border-[#202f29] text-left">
+                        <div className="text-center mb-6">
+                            <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">{pageInfo.title}</h2>
+                            <p className="text-white/60 text-sm font-medium leading-relaxed">{pageInfo.subtitle}</p>
                         </div>
 
                         <div className="auth-form-outlet leading-normal">
                             <Outlet />
                         </div>
-
-                        {/* Mobile Refer & Earn */}
-                        <div className="mt-8 pt-6 border-t border-white/10">
-                            <button 
-                                onClick={() => setReferralModalOpen(true)}
-                                className="w-full flex items-center justify-center group active:scale-95 transition-all"
-                            >
-                                <div className="relative inline-flex items-center rounded-2xl border-[3px] border-white overflow-hidden shadow-[0_10px_30px_-10px_rgba(255,0,0,0.5)]">
-                                    <div className="bg-black py-3 px-6 flex items-center">
-                                        <span className="text-white font-[900] text-xl tracking-tighter italic">REFERRAL</span>
-                                    </div>
-                                    <div className="bg-[#ff0000] py-3 px-8 -ml-3 rounded-l-2xl flex items-center relative z-10">
-                                        <span className="text-white font-[900] text-xl tracking-tighter italic">PROGRAM</span>
-                                    </div>
-                                    {/* Subtle shine effect */}
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent pointer-events-none"></div>
-                                </div>
-                            </button>
-                        </div>
                     </div>
                 </div>
+
+                {/* Footer Links and Copyright outside the card - sitting at the absolute bottom */}
+                <div className="text-center space-y-2 mt-8 w-full relative z-20 pb-2">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-[0.15em] font-bold">
+                        © Paradigm FMS Services. All rights reserved.
+                    </p>
+                    <div className="flex justify-center gap-4 text-[11px] text-gray-600 font-extrabold">
+                        <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Privacy Policy</a>
+                        <span className="text-gray-300">|</span>
+                        <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Terms of Service</a>
+                    </div>
+                </div>
+
                 <ReferralModal />
             </div>
         );

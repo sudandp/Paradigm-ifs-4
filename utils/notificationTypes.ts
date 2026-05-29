@@ -18,7 +18,8 @@ import {
     Shield,
     Zap,
     Lock,
-    LogIn
+    LogIn,
+    Smartphone
 } from 'lucide-react';
 
 export const APP_EVENT_TYPES = [
@@ -49,7 +50,12 @@ export const APP_EVENT_TYPES = [
     { id: 'passcode_reset', label: 'Passcode Reset', icon: Lock, category: 'security' },
     { id: 'user_login', label: 'User Login (Greeting)', icon: LogIn, category: 'greeting' },
     { id: 'user_logout', label: 'User Logout (Farewell)', icon: LogOut, category: 'greeting' },
-    { id: 'security_alert', label: 'Emergency / Security Alert', icon: Shield, category: 'security' }
+    { id: 'security_alert', label: 'Emergency / Security Alert', icon: Shield, category: 'security' },
+    { id: 'device_change_pending_approval', label: 'Device Approval Pending', icon: Smartphone, category: 'security' },
+    { id: 'device_change_manager_notification', label: 'Device Change Request', icon: Smartphone, category: 'security' },
+    { id: 'device_change_request_submitted', label: 'Device Request Submitted', icon: Smartphone, category: 'security' },
+    { id: 'device_change_request_approved', label: 'Device Request Approved', icon: CheckCircle2, category: 'security' },
+    { id: 'device_change_request_rejected', label: 'Device Request Rejected', icon: XCircle, category: 'security' }
 ];
 
 export const PROACTIVE_TRIGGER_TYPES = [

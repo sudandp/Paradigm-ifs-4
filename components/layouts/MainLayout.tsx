@@ -134,7 +134,7 @@ export const allNavLinks: NavLinkConfig[] = [
 
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },
-    { to: '/notifications', label: 'Notifications Control', icon: Bell, permission: 'manage_attendance_rules', category: 'System Config' },
+    { to: '/notifications', label: 'Notification Management', icon: Bell, permission: 'manage_attendance_rules', category: 'System Config' },
 
     // Support & Profile
     { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk', category: 'Support & Profile' },

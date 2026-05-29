@@ -147,17 +147,7 @@ const RoleManagement: React.FC = () => {
             try {
                 const [fetchedRoles, fetchedTaskGroups] = await Promise.all([api.getRoles(), api.getTaskGroups()]);
                 
-                const roleOrder = [
-                    'bd', 'management', 'admin', 'director', 'developer', 'hr', 'operation_manager', 
-                    'finance', 'field_staff', 'site_manager', 'unverified'
-                ];
-
                 const sortedRoles = fetchedRoles.sort((a, b) => {
-                    const indexA = roleOrder.indexOf(a.id.toLowerCase());
-                    const indexB = roleOrder.indexOf(b.id.toLowerCase());
-                    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-                    if (indexA !== -1) return -1;
-                    if (indexB !== -1) return 1;
                     return a.displayName.localeCompare(b.displayName);
                 });
 
@@ -531,7 +521,9 @@ const RoleManagement: React.FC = () => {
                             </div>
 
                             <div className="p-4 md:p-6 space-y-4 bg-page flex-1 overflow-y-auto">
-                                {Object.entries(groupedPermissions).map(([category, perms]) => {
+                                {Object.entries(groupedPermissions)
+                                    .sort((a, b) => a[0].localeCompare(b[0]))
+                                    .map(([category, perms]) => {
                                     const isExpanded = expandedTaskGroups[category] || permissionSearchQuery.length > 0;
                                     const rolePerms = permissions[selectedRole.id] || [];
                                     const checkedCount = perms.filter(p => {

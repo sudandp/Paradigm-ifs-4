@@ -91,8 +91,8 @@ export const BasicReportView: React.FC<{
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                                 <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px]">{idx + 1}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px]">{row.userName}</td>
-                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px]">{row.department || row.dept || 'Staff'}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 font-medium text-left text-[11px] capitalize">{row.userName}</td>
+                                <td className="px-2 py-1.5 border border-gray-200 text-left text-[11px] capitalize">{String(row.department || row.dept || 'Staff').replace(/_/g, ' ')}</td>
                                 <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkIn || row.pin || '—'}</td>
                                 <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px]">{row.checkOut || row.pout || '—'}</td>
                                 <td className="px-2 py-1.5 border border-gray-200 text-center text-[11px] font-medium text-orange-600">{row.breakIn || '—'}</td>
@@ -152,7 +152,7 @@ export const AttendanceLogView: React.FC<{
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-1.5 border border-gray-200 font-medium">{row.userName}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 font-medium capitalize">{row.userName}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.date}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.time}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center font-bold uppercase">
@@ -269,7 +269,7 @@ export const MonthlyStatusView: React.FC<{
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className="group hover:bg-gray-50/30 transition-colors">
-                                <td className="px-1 py-1 font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 w-[60px] min-w-[60px] max-w-[60px] overflow-hidden text-ellipsis">{row.userName}</td>
+                                <td className="px-1 py-1 font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 w-[60px] min-w-[60px] max-w-[60px] overflow-hidden text-ellipsis capitalize">{row.userName}</td>
                                 {row.statuses.map((status, sIdx) => (
                                     <td key={sIdx} className="px-0 py-1 border-b border-gray-50 text-center font-bold leading-tight">
                                         <span className={getStatusColor(status)}>{status}</span>
@@ -345,7 +345,7 @@ export const SiteOtReportView: React.FC<{
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-1.5 border border-gray-200 font-medium">{row.userName}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 font-medium capitalize">{row.userName}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.date}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center text-teal-700 font-medium">{row.siteOtIn || '-'}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center text-teal-700 font-medium">{row.siteOtOut || '-'}</td>
@@ -395,8 +395,8 @@ export const WorkHoursReportView: React.FC<{
                     <tbody>
                         {data.map((row, idx) => (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className="px-3 py-1.5 border border-gray-200 font-medium">{row.userName}</td>
-                                <td className="px-3 py-1.5 border border-gray-200 text-center">{row.department}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 font-medium capitalize">{row.userName}</td>
+                                <td className="px-3 py-1.5 border border-gray-200 text-center capitalize">{String(row.department || 'Staff').replace(/_/g, ' ')}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.presentDays}</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.totalWorkingHours.toFixed(1)}h</td>
                                 <td className="px-3 py-1.5 border border-gray-200 text-center">{row.avgWorkingHours.toFixed(1)}h</td>
