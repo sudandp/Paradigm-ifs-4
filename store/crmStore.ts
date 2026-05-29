@@ -19,6 +19,7 @@ interface CrmState {
 
   // Actions
   fetchLeads: () => Promise<void>;
+  fetchLeadById: (id: string) => Promise<void>;
   createLead: (lead: Partial<CrmLead>) => Promise<CrmLead>;
   updateLead: (id: string, updates: Partial<CrmLead>) => Promise<CrmLead>;
   updateLeadStatus: (id: string, status: LeadStatus) => Promise<CrmLead>;
@@ -26,6 +27,7 @@ interface CrmState {
 
   fetchFollowups: (leadId: string) => Promise<void>;
   createFollowup: (followup: Partial<CrmFollowup>) => Promise<void>;
+  deleteFollowup: (id: string) => Promise<void>;
 
   fetchTemplates: () => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
@@ -54,6 +56,26 @@ export const useCrmStore = create<CrmState>((set, get) => ({
     try {
       const leads = await crmApi.getLeads();
       set({ leads, isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+    }
+  },
+
+  fetchLeadById: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const lead = await crmApi.getLeadById(id);
+      if (lead) {
+        set(state => {
+          const exists = state.leads.some(l => l.id === id);
+          const updatedLeads = exists
+            ? state.leads.map(l => l.id === id ? lead : l)
+            : [...state.leads, lead];
+          return { leads: updatedLeads, isLoading: false };
+        });
+      } else {
+        set({ error: 'Lead not found', isLoading: false });
+      }
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }
@@ -131,6 +153,25 @@ export const useCrmStore = create<CrmState>((set, get) => ({
       }));
     } catch (err: any) {
       set({ error: err.message });
+      throw err;
+    }
+  },
+
+  deleteFollowup: async (id) => {
+    try {
+      const leadId = await crmApi.deleteFollowup(id);
+      set(state => {
+        const currentFollowups = state.followups[leadId] || [];
+        return {
+          followups: {
+            ...state.followups,
+            [leadId]: currentFollowups.filter(f => f.id !== id),
+          },
+        };
+      });
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
     }
   },
 

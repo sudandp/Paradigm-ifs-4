@@ -23,8 +23,8 @@ const LeadDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const { 
-    leads, fetchLeads, createLead, updateLead, deleteLead, updateLeadStatus, 
-    followups, fetchFollowups, createFollowup,
+    leads, fetchLeads, fetchLeadById, isLoading, createLead, updateLead, deleteLead, updateLeadStatus, 
+    followups, fetchFollowups, createFollowup, deleteFollowup,
     submissions, fetchSubmission,
     quotations, fetchQuotations
   } = useCrmStore();
@@ -89,22 +89,17 @@ const LeadDetail: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isNew && existingLead) {
-      setForm(existingLead);
-      fetchFollowups(existingLead.id);
-      fetchSubmission(existingLead.id);
-      fetchQuotations(existingLead.id);
-    } else if (!isNew && !existingLead && leads.length === 0) {
-      fetchLeads();
+    if (!isNew) {
+      if (existingLead) {
+        setForm(existingLead);
+        fetchFollowups(existingLead.id);
+        fetchSubmission(existingLead.id);
+        fetchQuotations(existingLead.id);
+      } else {
+        fetchLeadById(id!);
+      }
     }
-  }, [id, existingLead, isNew, leads.length]);
-
-  useEffect(() => {
-    if (!isNew && !existingLead && leads.length > 0) {
-      const found = leads.find(l => l.id === id);
-      if (found) setForm(found);
-    }
-  }, [leads, id, isNew, existingLead]);
+  }, [id, existingLead, isNew, fetchLeadById, fetchFollowups, fetchSubmission, fetchQuotations]);
 
   const leadFollowups = id && !isNew ? (followups[id] || []) : [];
   const leadSubmission = id && !isNew ? (submissions[id] || null) : null;
@@ -238,6 +233,38 @@ const LeadDetail: React.FC = () => {
       setToast({ message: err.message, type: 'error' });
     }
   };
+
+  const handleDeleteFollowup = async (followupId: string) => {
+    if (!followupId) return;
+    if (!window.confirm('Are you sure you want to permanently delete this timeline entry?')) return;
+    try {
+      await deleteFollowup(followupId);
+      setToast({ message: 'Timeline entry deleted successfully', type: 'success' });
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to delete timeline entry', type: 'error' });
+    }
+  };
+
+  if (!isNew && isLoading && !existingLead) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+        <p className="text-sm text-white/50 md:text-muted mt-4">Loading lead details...</p>
+      </div>
+    );
+  }
+
+  if (!isNew && !existingLead && !isLoading) {
+    return (
+      <div className="text-center p-8 bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2.5rem] md:rounded-3xl border border-white/5 md:border-border max-w-md mx-auto mt-20">
+        <h2 className="text-xl font-bold text-white md:text-primary-text mb-4">Lead Not Found</h2>
+        <p className="text-white/50 md:text-muted mb-6">The lead you are trying to view does not exist or you do not have permission to view it.</p>
+        <button onClick={() => navigate('/crm')} className="btn btn-primary px-6 active:scale-95 transition-all shadow-sm">
+          Back to Leads
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-8 animate-fade-in pb-32">
@@ -644,14 +671,25 @@ const LeadDetail: React.FC = () => {
                         {ev.timelineType === 'quotation' && <DollarSign className="w-4 h-4 text-emerald-400 md:text-accent" />}
                       </div>
                       <div className="bg-white/[0.02] md:bg-page/40 p-6 rounded-[2rem] md:rounded-2xl border border-transparent group-hover:border-white/5 md:group-hover:border-border group-hover:bg-white/[0.04] md:group-hover:bg-white transition-all">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${ev.timelineType === 'submission' ? 'text-blue-400' : ev.timelineType === 'quotation' ? 'text-amber-400' : 'text-emerald-400 md:text-primary-text'}`}>
-                            {ev.timelineType === 'submission' ? 'Site Audit' : ev.timelineType === 'quotation' ? 'Proposal' : ev.type}
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-white/10 md:bg-border" />
-                          <span className="text-[9px] md:text-[10px] font-black md:font-bold text-white/20 md:text-muted uppercase md:capitalize tracking-widest md:tracking-normal">
-                            {new Date(ev.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </span>
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${ev.timelineType === 'submission' ? 'text-blue-400' : ev.timelineType === 'quotation' ? 'text-amber-400' : 'text-emerald-400 md:text-primary-text'}`}>
+                              {ev.timelineType === 'submission' ? 'Site Audit' : ev.timelineType === 'quotation' ? 'Proposal' : ev.type}
+                            </span>
+                            <span className="w-1 h-1 rounded-full bg-white/10 md:bg-border" />
+                            <span className="text-[9px] md:text-[10px] font-black md:font-bold text-white/20 md:text-muted uppercase md:capitalize tracking-widest md:tracking-normal">
+                              {new Date(ev.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                          {user?.role?.toLowerCase() === 'admin' && ev.timelineType === 'followup' && (
+                            <button
+                              onClick={() => handleDeleteFollowup(ev.id)}
+                              className="text-red-400 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-500/10 active:scale-95 shadow-sm"
+                              title="Delete Entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                         <p className="text-sm font-medium text-white/70 md:text-primary-text leading-relaxed">{ev.notes}</p>
                         
@@ -682,6 +720,84 @@ const LeadDetail: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'quotations' && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none rounded-[2.5rem] md:rounded-3xl border border-white/5 md:border-border p-6 md:p-8 shadow-2xl md:shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 md:bg-accent/5 flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-emerald-400 md:text-accent" />
+                    </div>
+                    <h2 className="text-lg font-black text-white md:text-primary-text uppercase tracking-wider">Quotations & Proposals</h2>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/crm/leads/${id}/quotation`)}
+                    className="btn btn-primary btn-sm gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="uppercase tracking-widest text-[10px] font-black">Build Proposal</span>
+                  </button>
+                </div>
+
+                {leadQuotations.length === 0 ? (
+                  <div className="text-center py-20">
+                    <div className="w-16 h-16 bg-white/[0.05] md:bg-page rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed border-white/10 md:border-border">
+                      <DollarSign className="w-8 h-8 text-white/10 md:text-muted/30" />
+                    </div>
+                    <p className="text-[10px] md:text-sm font-black md:font-bold text-white/20 md:text-muted uppercase tracking-[0.2em] md:tracking-widest mb-4">No quotations created yet</p>
+                    <button
+                      onClick={() => navigate(`/crm/leads/${id}/quotation`)}
+                      className="btn btn-secondary px-6 border-white/10 md:border-border"
+                    >
+                      Create First Quotation
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {leadQuotations.map((q) => (
+                      <div key={q.id} className="p-6 rounded-2xl border border-white/5 md:border-border bg-white/[0.02] md:bg-page/20 hover:bg-white/[0.04] md:hover:bg-white transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white md:text-primary-text">
+                              Quotation #{q.quotationNumber || 'Draft'}
+                            </span>
+                            <span className="text-xs text-white/40 md:text-muted">v{q.version}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400">
+                              {q.status}
+                            </span>
+                          </div>
+                          <div className="text-xs text-white/60 md:text-muted space-x-4">
+                            <span>Monthly: <strong className="text-emerald-400">₹{q.monthlyCost?.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong></span>
+                            <span>Annual: <strong className="text-emerald-400">₹{q.annualCost?.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</strong></span>
+                            <span>Margin: <strong>{q.marginPercent?.toFixed(1)}%</strong></span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                          <button
+                            onClick={() => navigate(`/crm/leads/${id}/quotation`)}
+                            className="flex-1 sm:flex-none px-4 py-2 text-xs font-bold border border-white/10 md:border-border rounded-xl text-white hover:bg-white/5 transition-all text-center"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const html = generateProposalHtml(form as CrmLead, q);
+                              const win = window.open('', '_blank');
+                              if (win) { win.document.write(html); win.document.close(); win.print(); }
+                            }}
+                            className="flex-1 sm:flex-none px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all text-center"
+                          >
+                            View / Print
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

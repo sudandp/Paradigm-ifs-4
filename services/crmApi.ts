@@ -11,6 +11,7 @@ import type {
 // ============================================================================
 
 const toSnakeCase = (data: any): any => {
+  if (data === '') return null;
   if (Array.isArray(data)) return data.map(item => toSnakeCase(item));
   if (data !== null && typeof data === 'object' && !(data instanceof Date) && !(data instanceof File)) {
     const snaked: Record<string, any> = {};
@@ -321,6 +322,39 @@ export const crmApi = {
     }
 
     return toCamelCase(data);
+  },
+
+  deleteFollowup: async (id: string): Promise<string> => {
+    const { data: oldData, error: fetchErr } = await supabase
+      .from('crm_followups')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchErr) throw fetchErr;
+    if (!oldData) throw new Error('Follow-up entry not found');
+
+    const { error: deleteErr } = await supabase
+      .from('crm_followups')
+      .delete()
+      .eq('id', id);
+
+    if (deleteErr) throw deleteErr;
+
+    // Create audit log entry
+    await crmApi.createAuditLog(
+      'crm',
+      oldData.lead_id,
+      'delete',
+      oldData,
+      null,
+      `Follow-up entry deleted: ${oldData.notes || ''}`
+    );
+
+    // Dispatch timeline notification
+    await crmApi.notifyTimelineUpdate(oldData.lead_id, `Follow-up deleted`);
+
+    return oldData.lead_id;
   },
 
   // -------------------------------------------------------------------------

@@ -1,1 +1,1 @@
-û
+-- Empty migration placeholder

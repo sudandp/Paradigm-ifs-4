@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/api/view-file/(.*)", "destination": "/api/view-file?path=$1" },
+    { "source": "/api/hrm/(.*)", "destination": "/api/hrm" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [
