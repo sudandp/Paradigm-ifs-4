@@ -30,6 +30,8 @@ export default {
       },
       fontFamily: {
         sans: ["Manrope", "system-ui", "sans-serif"],
+        poppins: ["Poppins", "sans-serif"],
+        outfit: ["Outfit", "sans-serif"],
       },
     },
   },

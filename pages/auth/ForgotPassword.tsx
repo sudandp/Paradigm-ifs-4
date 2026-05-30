@@ -65,7 +65,7 @@ const ForgotPassword = () => {
     }
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-4" : "space-y-8"}>
+        <form onSubmit={handleSubmit(onSubmit)} className={isMobile ? "space-y-4" : "space-y-5"}>
             <div className="text-center px-2">
                 <p className={`${isMobile ? 'text-[13px] text-white/60 font-medium' : 'text-sm text-gray-500'} leading-relaxed`}>
                     Enter your email address and we'll send you a link to reset your password.
@@ -81,7 +81,7 @@ const ForgotPassword = () => {
                 icon={<Mail className={isMobile ? "h-5 w-5 text-white/50" : undefined} />}
                 className={isMobile 
                     ? "!text-[16px] !bg-white/[0.06] !text-white !border-white/10 focus:!border-emerald-500/40 focus:!ring-0 !rounded-2xl !py-4 transition-all placeholder:!text-white/35"
-                    : "!pl-11 !rounded-2xl !py-5 !bg-white !text-gray-900 !border-gray-200"
+                    : "!text-[15px] !rounded-[12px] !py-3 !px-4.5 !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-500 focus:!ring-0 !shadow-sm transition-all"
                 }
             />
 
@@ -96,7 +96,7 @@ const ForgotPassword = () => {
                 type="submit" 
                 className={isMobile 
                     ? "w-full !font-black !h-14 !rounded-2xl !text-[16px] transition-all !bg-emerald-500 hover:!bg-emerald-600 !text-white active:scale-[0.98] !shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
-                    : "w-full !font-black !h-14 !rounded-2xl !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-200 shadow-2xl transition-all"
+                    : "w-full !font-black !py-3 !rounded-full !text-[14px] !tracking-[0.2em] !uppercase transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg !bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25"
                 } 
                 isLoading={isSubmitting} 
                 size="lg"

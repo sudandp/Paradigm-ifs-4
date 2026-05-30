@@ -130,6 +130,21 @@ const ApplyLeave: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [permissionMinutes, setPermissionMinutes] = React.useState<number>(120); // default to 2 hours
     const [basePunchOutTime, setBasePunchOutTime] = React.useState<string>('19:30');
+    const [currentTime, setCurrentTime] = React.useState<string>(() => {
+        const now = new Date();
+        return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    });
+
+    // Live clock for permission - updates every minute
+    React.useEffect(() => {
+        const updateTime = () => {
+            const now = new Date();
+            setCurrentTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+        };
+        updateTime();
+        const interval = setInterval(updateTime, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || 'Earned';
     const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
@@ -261,10 +276,10 @@ const ApplyLeave: React.FC = () => {
 
      React.useEffect(() => {
          if (watchLeaveType === 'Permission') {
-             const adjustedOut = getAdjustedPunchOut(basePunchOutTime, permissionMinutes);
+             const adjustedOut = getAdjustedPunchOut(currentTime, permissionMinutes);
              setValue('punchOut', adjustedOut, { shouldValidate: true });
          }
-     }, [watchLeaveType, basePunchOutTime, permissionMinutes, setValue]);
+     }, [watchLeaveType, currentTime, permissionMinutes, setValue]);
 
      const watchPunchIn = watch('punchIn') || '09:00';
      const watchPunchOut = watch('punchOut') || '19:30';
@@ -993,37 +1008,39 @@ const ApplyLeave: React.FC = () => {
                                     </div>
 
                                     {watchLeaveType === 'Permission' && (
-                                        <div className={`p-6 rounded-2xl border space-y-4 transition-all duration-300 ${
+                                        <div className={`p-6 rounded-2xl border space-y-5 transition-all duration-300 ${
                                             isMobile 
                                                 ? 'bg-emerald-500/5 border-emerald-500/10' 
-                                                : 'bg-gradient-to-br from-emerald-50/50 to-teal-50/30 border-emerald-100/80 shadow-sm'
+                                                : 'bg-white border-gray-200 shadow-sm'
                                         }`}>
                                             <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <Clock className="w-5 h-5 text-emerald-500 animate-pulse" />
-                                                    <h4 className={`font-black text-sm uppercase tracking-wider ${isMobile ? 'text-primary-text' : 'text-emerald-900'}`}>
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className={`p-1.5 rounded-lg ${isMobile ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
+                                                        <Clock className="w-4 h-4 text-emerald-600" />
+                                                    </div>
+                                                    <h4 className={`font-bold text-sm uppercase tracking-wide ${isMobile ? 'text-primary-text' : 'text-gray-800'}`}>
                                                         Permission Duration
                                                     </h4>
                                                 </div>
-                                                <div className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                                                <div className={`text-[11px] font-semibold px-3 py-1 rounded-full ${
                                                     isMobile 
-                                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                                                        : 'bg-emerald-100 border-emerald-200 text-emerald-700'
+                                                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                                 }`}>
                                                     Max 3 Hours
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-col items-center justify-center py-2 space-y-1">
-                                                <div className={`text-3xl font-black tracking-tight ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                            <div className="flex flex-col items-center justify-center py-3 space-y-1">
+                                                <div className={`text-4xl font-black tracking-tight ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                                     {Math.floor(permissionMinutes / 60)}h {permissionMinutes % 60}m
                                                 </div>
-                                                <p className="text-xs text-muted/65 font-medium uppercase tracking-wider">
+                                                <p className={`text-xs font-medium uppercase tracking-widest ${isMobile ? 'text-muted/65' : 'text-gray-400'}`}>
                                                     Requested Duration
                                                 </p>
                                             </div>
 
-                                            <div className="space-y-2">
+                                            <div className="space-y-2 px-1">
                                                 <input 
                                                     type="range" 
                                                     min="0" 
@@ -1031,9 +1048,11 @@ const ApplyLeave: React.FC = () => {
                                                     step="15" 
                                                     value={permissionMinutes} 
                                                     onChange={(e) => setPermissionMinutes(Number(e.target.value))}
-                                                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-emerald-200/50 accent-emerald-500 dark:bg-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    className={`w-full h-2 rounded-full appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                                                        isMobile ? 'bg-emerald-200/50 accent-emerald-500' : 'bg-gray-200 accent-emerald-500'
+                                                    }`}
                                                 />
-                                                <div className="flex justify-between text-[10px] font-bold text-muted/60 uppercase tracking-widest px-1">
+                                                <div className={`flex justify-between text-[10px] font-bold uppercase tracking-widest px-0.5 ${isMobile ? 'text-muted/60' : 'text-gray-400'}`}>
                                                     <span>0m</span>
                                                     <span>1h</span>
                                                     <span>2h</span>
@@ -1044,28 +1063,40 @@ const ApplyLeave: React.FC = () => {
                                             <div className={`p-4 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-3 text-xs ${
                                                 isMobile 
                                                     ? 'bg-[#041b0f]/50 border-emerald-500/10 text-primary-text' 
-                                                    : 'bg-white/80 border-emerald-100 text-emerald-800 shadow-xs'
+                                                    : 'bg-gray-50 border-gray-200 text-gray-700'
                                             }`}>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-bold opacity-60">Standard:</span>
-                                                    <span className="font-black text-sm">{basePunchOutTime}</span>
-                                                </div>
-                                                <div className="hidden md:block font-bold opacity-40">➔</div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold opacity-60">Adjusted Out:</span>
-                                                    <span className="font-black text-sm px-2.5 py-1 bg-emerald-500/15 text-emerald-500 rounded-lg border border-emerald-500/20">
-                                                        {getAdjustedPunchOut(basePunchOutTime, permissionMinutes)}
+                                                    <span className={`font-semibold flex items-center gap-1.5 ${isMobile ? 'opacity-60' : 'text-gray-500'}`}>
+                                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Now:
+                                                    </span>
+                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border ${
+                                                        isMobile
+                                                            ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20'
+                                                            : 'bg-white text-gray-800 border-gray-300 shadow-xs'
+                                                    }`}>
+                                                        {currentTime}
                                                     </span>
                                                 </div>
-                                                <div className="hidden md:block font-bold opacity-40">|</div>
+                                                <div className={`hidden md:block font-bold ${isMobile ? 'opacity-40' : 'text-gray-300'}`}>➔</div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-bold opacity-60 text-emerald-500 flex items-center gap-1">
+                                                    <span className={`font-semibold ${isMobile ? 'opacity-60' : 'text-gray-500'}`}>Adjusted Out:</span>
+                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border ${
+                                                        isMobile 
+                                                            ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/20'
+                                                            : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                                    }`}>
+                                                        {getAdjustedPunchOut(currentTime, permissionMinutes)}
+                                                    </span>
+                                                </div>
+                                                <div className={`hidden md:block font-bold ${isMobile ? 'opacity-40' : 'text-gray-300'}`}>|</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`font-semibold flex items-center gap-1 ${isMobile ? 'opacity-60 text-emerald-500' : 'text-gray-500'}`}>
                                                         <Clock className="w-3.5 h-3.5" /> Worked Hours:
                                                     </span>
-                                                    <span className={`font-black text-sm px-2.5 py-1 rounded-lg border transition-all ${
+                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border transition-all ${
                                                         workedHours.hours >= 8 
-                                                            ? 'bg-green-500/15 text-green-400 border-green-500/20' 
-                                                            : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
+                                                            ? isMobile ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-green-50 text-green-700 border-green-300'
+                                                            : isMobile ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-300'
                                                     }`}>
                                                         {workedHours.text}
                                                     </span>

@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Outlet, useLocation, Link } from 'react-router-dom';
-import { useAuthLayoutStore } from '../../store/authLayoutStore';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import { useDevice } from '../../hooks/useDevice';
 import Logo from '../ui/Logo';
-import { ArrowRight, Shield } from 'lucide-react';
 import ReferralModal from '../modals/ReferralModal';
 import FireworksBackground from '../ui/FireworksBackground';
 
 const AuthLayout: React.FC = () => {
     const { isMobile } = useDevice();
-    const { setReferralModalOpen } = useUiSettingsStore();
+    const { setReferralModalOpen } = useUiSettingsStore(); // still used by mobile view
     const location = useLocation();
 
     const pageInfo = useMemo(() => {
@@ -69,103 +67,203 @@ const AuthLayout: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen font-sans flex items-center justify-center bg-[#020d07] relative overflow-hidden">
-            {/* Premium Animated Background Elements */}
-            <div className="absolute inset-0 z-0">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-600/10 rounded-full blur-[120px] animate-pulse"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-900/20 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }}></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full">
-                    <img 
-                        src="/assets/auth/office-background.png" 
-                        alt="" 
-                        className="w-full h-full object-cover opacity-20 mix-blend-overlay"
-                    />
+        <div className="h-screen w-screen font-sans flex overflow-hidden relative" style={{ background: '#ffffff' }}>
+            <style>{`
+                @keyframes subtle-zoom {
+                    0% { transform: scale(1) translate(0px, 0px); }
+                    50% { transform: scale(1.08) translate(15px, -10px); }
+                    100% { transform: scale(1.03) translate(-10px, 5px); }
+                }
+                @keyframes float-glow-1 {
+                    0%, 100% { transform: translate(0px, 0px) scale(1); opacity: 0.8; }
+                    50% { transform: translate(20px, -20px) scale(1.1); opacity: 0.95; }
+                }
+                @keyframes float-glow-2 {
+                    0%, 100% { transform: translate(0px, 0px) scale(1); opacity: 0.6; }
+                    50% { transform: translate(-30px, 20px) scale(0.9); opacity: 0.8; }
+                }
+                @keyframes float-glow-3 {
+                    0%, 100% { transform: translate(0px, 0px) scale(1); opacity: 0.7; }
+                    50% { transform: translate(15px, 30px) scale(1.15); opacity: 0.9; }
+                }
+                .animate-subtle-zoom {
+                    animation: subtle-zoom 15s ease-in-out infinite alternate;
+                }
+                .animate-float-glow-1 {
+                    animation: float-glow-1 7s ease-in-out infinite alternate;
+                }
+                .animate-float-glow-2 {
+                    animation: float-glow-2 9s ease-in-out infinite alternate;
+                }
+                .animate-float-glow-3 {
+                    animation: float-glow-3 8s ease-in-out infinite alternate;
+                }
+            `}</style>
+
+            {/* === LEFT PANEL: White Form Area === */}
+            <div className="relative z-20 flex flex-col items-start justify-start h-full overflow-y-auto pt-[6vh] pb-28 hide-scrollbar" style={{ width: '50%', paddingLeft: '8%' }}>
+                <div className="w-full max-w-[520px] px-4">
+                    {/* Floating Logo (No background card, full container width) */}
+                    <div className="mb-6 flex justify-start">
+                        <Logo className="!w-full !h-auto max-w-[280px] object-contain transition-all duration-300 hover:scale-[1.01]" variant="original" />
+                    </div>
+
+                    {/* Title */}
+                    <h2 className="font-poppins font-black text-gray-900 text-[32px] tracking-tight leading-tight mb-2">{pageInfo.title}</h2>
+                    {pageInfo.subtitle ? (
+                        <p className="font-poppins text-gray-400 text-[13px] font-medium mb-6">{pageInfo.subtitle}</p>
+                    ) : (
+                        <div className="h-4" />
+                    )}
+
+                    {/* Form outlet */}
+                    <div className="auth-form-outlet mt-[8vh]">
+                        <Outlet />
+                    </div>
                 </div>
             </div>
 
-            {/* Desktop Split-Layout Card */}
-            <div className="relative w-full max-w-3xl p-6 flex items-center justify-center z-10">
-                <div className="w-full grid md:grid-cols-[1fr_1.15fr] rounded-[2rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.5)] overflow-hidden bg-white/95 backdrop-blur-md border border-white/10 group/main transition-all duration-700 hover:shadow-[0_50px_100px_-30px_rgba(5,150,105,0.2)]">
+            {/* === RIGHT PANEL: Diagonal Emerald Polygon === */}
+            <div
+                className="absolute inset-y-0 right-0 w-full h-full z-10 transition-all duration-500 overflow-hidden"
+                style={{
+                    clipPath: 'polygon(35% 0%, 100% 0%, 100% 100%, 90% 100%)',
+                }}
+            >
+                {/* Subtle zooming background image */}
+                <div 
+                    className="absolute inset-0 bg-cover bg-center bg-no-repeat animate-subtle-zoom"
+                    style={{
+                        backgroundImage: 'url(/assets/auth/green_polygon_bg.png)',
+                    }}
+                />
+
+                {/* Geometric overlay glow for depth */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute top-10 right-10 w-80 h-80 bg-emerald-300/10 rounded-full blur-[100px] animate-float-glow-1" />
+                    <div className="absolute bottom-16 left-1/2 w-64 h-64 bg-teal-200/5 rounded-full blur-[80px] animate-float-glow-2" />
+                    <div className="absolute -bottom-20 -right-20 w-[300px] h-[300px] rounded-full blur-[100px] animate-float-glow-3" style={{ background: 'radial-gradient(circle, rgba(0,210,180,0.15) 0%, transparent 70%)' }} />
+                </div>
+
+                {/* Welcome Back Content */}
+                <div className="absolute inset-y-0 right-0 h-full flex flex-col justify-start items-end z-20 text-white text-right pt-[14vh] bg-gradient-to-l from-black/25 via-transparent to-transparent" style={{ width: '35%', paddingRight: '8%' }}>
+                    {/* Main Heading */}
+                    <h1
+                        className="font-poppins font-black text-white leading-[0.9] tracking-tight mb-6"
+                        style={{ fontSize: 'clamp(44px, 5vw, 68px)', textShadow: '0 4px 40px rgba(0,0,0,0.5)' }}
+                    >
+                        Welcome<br />Back.
+                    </h1>
+
+                    {/* Description */}
+                    <p className="font-poppins font-light text-white/80 text-[15px] leading-relaxed max-w-[320px] drop-shadow-md">
+                        Streamlining the journey for every new member of the Paradigm family.
+                    </p>
+                </div>
+            </div>
+
+            {/* === UNIFIED FOOTER BAR === */}
+            <div className="absolute bottom-6 left-[8%] right-[18%] z-30 hidden md:flex items-center justify-between font-poppins border-t border-gray-100 pt-4">
+                {/* Left: Don't have an account */}
+                <div className="w-[200px]">
+                    {(location.pathname === '/auth/login' || location.pathname === '/auth') ? (
+                        <div className="flex flex-col items-start space-y-0.5 text-left">
+                            <span className="text-[10px] text-gray-400 font-semibold">Don't have an account?</span>
+                            <Link to="/auth/signup" className="text-emerald-600 hover:text-emerald-700 font-bold transition-colors hover:underline underline-offset-2 text-[10px]">
+                                Create your account
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-start space-y-0.5 text-left">
+                            <span className="text-[10px] text-gray-400 font-semibold">Already have an account?</span>
+                            <Link to="/auth/login" className="text-emerald-600 hover:text-emerald-700 font-bold transition-colors hover:underline underline-offset-2 text-[10px]">
+                                Sign in here
+                            </Link>
+                        </div>
+                    )}
+                </div>
+
+                {/* Center: Copyright & Legal */}
+                <div className="flex flex-col items-center space-y-0.5 text-center">
+                    <p className="text-[10px] text-gray-400 font-semibold">
+                        © {new Date().getFullYear()} Paradigm FMS. All rights reserved.
+                    </p>
+                    <div className="flex justify-center gap-3 text-[10px] font-bold">
+                        <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700 transition-colors hover:underline">Privacy Policy</a>
+                        <span className="text-gray-300">|</span>
+                        <a href="https://sudhan-ops.github.io/paradigm-privacy-policy/" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700 transition-colors hover:underline">Terms of Service</a>
+                    </div>
+                </div>
+
+                {/* Right: Social Media Links (Monochrome gray on load, hover turns to official brand logo colors, active click scale animation) */}
+                <div className="flex gap-4 items-center justify-end w-[200px]">
+                    {/* Facebook */}
+                    <a
+                        href="https://www.facebook.com/Paradigmfms/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#3b5998] hover:opacity-85 transition-all duration-200 hover:scale-110 active:scale-95"
+                        title="Facebook"
+                    >
+                        <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                            <path d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.596 0-5.192 1.583-5.192 4.615v3.385z"/>
+                        </svg>
+                    </a>
                     
-                    {/* Left Brand Panel */}
-                    <div className="flex flex-col justify-between p-8 bg-[#041b0f] relative overflow-hidden">
-                        {/* Decorative Background Orbs for Left Panel */}
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-32 -mt-32 blur-3xl group-hover/main:bg-emerald-500/20 transition-all duration-1000"></div>
-                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full -ml-32 -mb-32 blur-3xl group-hover/main:bg-emerald-500/15 transition-all duration-1000"></div>
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
+                    {/* Twitter/X */}
+                    <a
+                        href="https://x.com/paradigm_fms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-black hover:opacity-85 transition-all duration-200 hover:scale-110 active:scale-95"
+                        title="Twitter"
+                    >
+                        <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                        </svg>
+                    </a>
 
-                        <div className="relative z-10 flex flex-col h-full">
-                            <div>
-                                <div className="transform transition-all duration-500 hover:scale-105 origin-left">
-                                     <div className="inline-block bg-white py-1.5 px-4 rounded-xl shadow-md">
-                                         <Logo className="h-8" variant="original" />
-                                     </div>
-                                </div>
-                                <div className="mt-16 space-y-3">
-                                    <h1 className="text-3xl font-black text-white leading-[1.1] tracking-tight animate-in fade-in slide-in-from-left-8 duration-700">
-                                        Welcome to the <span className="text-emerald-500">Future</span> of Onboarding.
-                                    </h1>
-                                    <p className="text-emerald-100/60 max-w-xs text-sm font-medium leading-relaxed animate-in fade-in slide-in-from-left-8 duration-700 delay-100">
-                                        Streamlining the journey for every new member of the Paradigm family.
-                                    </p>
-                                </div>
-                            </div>
+                    {/* Instagram */}
+                    <a
+                        href="https://www.instagram.com/paradigmfms/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#e1306c] hover:opacity-85 transition-all duration-200 hover:scale-110 active:scale-95"
+                        title="Instagram"
+                    >
+                        <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                        </svg>
+                    </a>
 
-                            {/* Refer and Earn Section - Enhanced Design */}
-                            <div className="mt-10 p-5 rounded-[1.5rem] bg-white/[0.03] border border-white/10 relative overflow-hidden group/refer hover:bg-white/[0.05] hover:border-emerald-500/30 transition-all duration-500 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
-                                <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover/refer:bg-emerald-500/20 transition-colors"></div>
-                                <div className="relative z-10">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                                            <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                        </div>
-                                        <h3 className="text-white font-black text-lg tracking-tight">Refer & Earn</h3>
-                                    </div>
-                                    <p className="text-emerald-100/40 text-[13px] mt-2 font-medium leading-relaxed">
-                                        Help us grow and get rewarded for successful referrals.
-                                    </p>
-                                    <button 
-                                        onClick={() => setReferralModalOpen(true)}
-                                        className="mt-6 flex items-center justify-center active:scale-[0.98] transition-all group"
-                                    >
-                                        <div className="relative inline-flex items-center rounded-xl border-2 border-white overflow-hidden shadow-2xl group-hover:scale-[1.02] transition-transform duration-300">
-                                            <div className="bg-black py-2.5 px-4 flex items-center">
-                                                <span className="text-white font-[900] text-base tracking-tighter italic">REFERRAL</span>
-                                            </div>
-                                            <div className="bg-[#ff0000] py-2.5 px-6 -ml-2 rounded-l-xl flex items-center relative z-10">
-                                                <span className="text-white font-[900] text-base tracking-tighter italic">PROGRAM</span>
-                                            </div>
-                                            <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none"></div>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
+                    {/* Pinterest */}
+                    <a
+                        href="https://in.pinterest.com/paradigmfms/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#bd081c] hover:opacity-85 transition-all duration-200 hover:scale-110 active:scale-95"
+                        title="Pinterest"
+                    >
+                        <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                            <path d="M12.017 0c-6.627 0-12 5.373-12 12 0 5.077 3.146 9.426 7.613 11.17-.105-.945-.199-2.399.041-3.431.218-.937 1.408-5.965 1.408-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.204 0 1.031.397 2.138.893 2.738.098.119.112.224.083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.162 0 7.398 2.966 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146 1.124.347 2.317.535 3.554.535 6.627 0 12-5.373 12-12 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </a>
 
-                            <div className="mt-auto pt-8 flex items-center gap-4">
-                                <div className="h-[1px] flex-1 bg-emerald-500/20"></div>
-                                <p className="text-emerald-100/30 text-[8px] uppercase tracking-[0.3em] font-black whitespace-nowrap">
-                                    Paradigm Evolution 2026
-                                </p>
-                                <div className="h-[1px] flex-1 bg-emerald-500/20"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right Interaction Panel */}
-                    <div className="p-12 flex flex-col justify-center bg-white relative">
-                        <div className="w-full max-w-[320px] mx-auto relative z-10 animate-in fade-in slide-in-from-right-8 duration-700">
-                            <h2 className="text-3xl font-black text-gray-900 mb-1 tracking-tight">{pageInfo.title}</h2>
-                            <p className="text-gray-500 mb-6 text-sm font-semibold">{pageInfo.subtitle}</p>
-                            
-                            <div className="auth-form-outlet">
-                                <Outlet />
-                            </div>
-                        </div>
-                    </div>
+                    {/* LinkedIn */}
+                    <a
+                        href="https://www.linkedin.com/company/paradigmfms/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#0077b5] hover:opacity-85 transition-all duration-200 hover:scale-110 active:scale-95"
+                        title="LinkedIn"
+                    >
+                        <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                            <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                        </svg>
+                    </a>
                 </div>
             </div>
+
             <ReferralModal />
         </div>
     );

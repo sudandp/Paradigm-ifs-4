@@ -239,99 +239,94 @@ const Login: React.FC = () => {
         );
     }
 
-    // --- WEB VIEW (100% Match Target UI) ---
+    // --- WEB VIEW — Diagonal Split Panel Form ---
     return (
         <>
-            <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-6">
-                <fieldset disabled={isFormDisabled} className="space-y-6">
-                    <div className="relative group">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-emerald-600 transition-colors pointer-events-none" />
+            <form onSubmit={handleEmailSubmit(onEmailSubmit)} className="space-y-5">
+                <fieldset disabled={isFormDisabled} className="space-y-4">
+                    {/* Username / Email Field — rounded box style */}
+                    <div>
                         <Input
                             id="email-web"
                             type="email"
-                            placeholder="admin@paradigmfms.com"
+                            placeholder="Username"
+                            icon={<Mail className="h-5 w-5 text-gray-400" />}
                             registration={registerEmail('email')}
                             error={emailErrors.email?.message}
-                            className="!pl-12 text-base !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-600 focus:!ring-1 focus:!ring-emerald-600/20 !rounded-2xl !py-4 transition-all"
+                            className="!text-[15px] !bg-gray-50/50 hover:!bg-gray-50/80 focus:!bg-white !text-gray-800 !border !border-gray-200 focus:!border-emerald-500 focus:!shadow-[0_0_0_4px_rgba(16,185,129,0.15)] hover:border-gray-300 !rounded-[12px] !py-3 transition-all placeholder:!text-gray-400 !shadow-sm focus:!ring-0"
                         />
                     </div>
-                    <div className="relative group">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-emerald-600 transition-colors pointer-events-none" />
+
+                    {/* Password Field — rounded box style */}
+                    <div>
                         <Input
                             id="password-web"
                             type="password"
-                            placeholder="••••••••"
+                            placeholder="Password"
+                            icon={<Lock className="h-5 w-5 text-gray-400" />}
                             registration={registerEmail('password')}
                             error={emailErrors.password?.message}
-                            className="!pl-12 text-base !bg-white !text-gray-900 !border-gray-200 focus:!border-emerald-600 focus:!ring-1 focus:!ring-emerald-600/20 !rounded-2xl !py-4 transition-all"
+                            className="!text-[15px] !bg-gray-50/50 hover:!bg-gray-50/80 focus:!bg-white !text-gray-800 !border !border-gray-200 focus:!border-emerald-500 focus:!shadow-[0_0_0_4px_rgba(16,185,129,0.15)] hover:border-gray-300 !rounded-[12px] !py-3 transition-all placeholder:!text-gray-400 !shadow-sm focus:!ring-0"
                         />
                     </div>
-                    <div className="flex items-center justify-between px-1">
-                        <Checkbox
-                            id="rememberMe-web"
-                            label="Remember me"
-                            labelClassName="text-gray-600 text-sm font-medium"
-                            {...registerEmail('rememberMe')}
-                            inputClassName="text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
-                        />
+
+                    {/* Remember Me + Forgot Password */}
+                    <div className="flex items-center justify-between pt-1">
+                        <label className="flex items-center gap-3 cursor-pointer group select-none">
+                            <div className="relative flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id="rememberMe-web"
+                                    className="peer sr-only"
+                                    {...registerEmail('rememberMe')}
+                                />
+                                <div className="h-5 w-5 rounded-md border border-gray-300 bg-white transition-all peer-checked:bg-emerald-600 peer-checked:border-emerald-600 group-hover:border-emerald-500"></div>
+                                <Check className="absolute inset-0 h-5 w-5 text-white scale-0 transition-transform peer-checked:scale-100 p-0.5" />
+                            </div>
+                            <span className="text-gray-500 text-[14px] font-semibold group-hover:text-gray-700 transition-colors">Remember Me</span>
+                        </label>
                         <Link
                             to="/auth/forgot-password"
-                            className="text-sm font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+                            className="text-[14px] font-semibold text-gray-400 hover:text-emerald-600 transition-colors"
                         >
-                            Forgot your password?
+                            Forgot password?
                         </Link>
                     </div>
                 </fieldset>
 
                 {error && (
-                    <div className="flex items-center gap-3 text-sm text-red-600 p-4 bg-red-50 rounded-2xl border border-red-100">
+                    <div className="flex items-center gap-3 text-sm text-red-600 p-3 bg-red-50 rounded-xl border border-red-100">
                         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                        <span>{error}</span>
+                        <span className="text-[15px]">{error}</span>
                     </div>
                 )}
 
-                <Button
-                    type="submit"
-                    className={`w-full !font-bold !py-5 !rounded-2xl shadow-xl shadow-emerald-600/10 transition-all transform hover:scale-[1.01] active:scale-[0.99] ${isSuccess
-                        ? '!bg-emerald-500 !text-white'
-                        : '!bg-emerald-600 !text-white hover:!bg-emerald-700'
-                        }`}
-                    isLoading={loading && !isSuccess}
-                    disabled={isFormDisabled && !isSuccess}
-                >
-                    {isSuccess ? <Check className="w-8 h-8" /> : "Sign In"}
-                </Button>
+                {/* Unified single-line button container (LOGIN + Google side-by-side) */}
+                <div className="flex items-center justify-center gap-4 pt-10">
+                    <Button
+                        type="submit"
+                        className={`!font-black !h-12 !px-10 !rounded-full !text-[13px] !tracking-[0.15em] !uppercase transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-md ${isSuccess
+                            ? '!bg-emerald-500 !text-white shadow-emerald-500/30'
+                            : '!bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25'
+                            }`}
+                        isLoading={loading && !isSuccess}
+                        disabled={isFormDisabled && !isSuccess}
+                    >
+                        {isSuccess ? <Check className="w-4 h-4" /> : "LOGIN"}
+                    </Button>
+
+                    <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        disabled={isFormDisabled}
+                        className="h-12 px-6 flex items-center justify-center gap-3 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 text-gray-700 rounded-full transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md disabled:opacity-50 font-poppins"
+                        title="Sign in with Google"
+                    >
+                        {commonGoogleIcon}
+                        <span className="text-[13px] font-bold text-gray-600">Sign in with Google</span>
+                    </button>
+                </div>
             </form>
-
-            <div className="mt-12">
-                <div className="flex items-center my-10">
-                    <div className="flex-1 border-t border-gray-100"></div>
-                    <span className="px-4 text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">OR</span>
-                    <div className="flex-1 border-t border-gray-100"></div>
-                </div>
-
-                <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    className="w-full flex items-center justify-center gap-3 bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 font-bold py-4 rounded-2xl transition-all shadow-sm"
-                    disabled={isFormDisabled}
-                >
-                    {commonGoogleIcon}
-                    Sign in with Google
-                </button>
-
-                <div className="text-center mt-12 space-y-6">
-                    <p className="text-sm text-gray-500 font-medium">
-                        Don't have an account?{' '}
-                        <Link to="/auth/signup" className="text-emerald-600 hover:text-emerald-700 font-bold ml-1">Sign Up</Link>
-                    </p>
-                    <div className="pt-6 border-t border-gray-100">
-                        <p className="text-[11px] text-gray-400 leading-relaxed uppercase tracking-widest font-medium">
-                            © Paradigm FMS Services. All rights reserved.
-                        </p>
-                    </div>
-                </div>
-            </div>
         </>
     );
 };
