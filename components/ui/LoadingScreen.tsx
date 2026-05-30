@@ -50,8 +50,8 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
     }, []);
 
     const containerStyle = fullScreen 
-        ? "fixed inset-0 overflow-hidden bg-[#041b0f] lg:bg-white flex items-center justify-center font-['Inter',_sans-serif]"
-        : "relative overflow-hidden bg-[#041b0f] lg:bg-white flex flex-col items-center justify-center min-h-[400px] w-full font-['Inter',_sans-serif] rounded-xl shadow-2xl transition-all duration-300";
+        ? "fixed inset-0 overflow-hidden bg-[#041b0f] lg:bg-white flex items-center justify-center font-['Inter',_sans-serif] desktop-scaled"
+        : "relative overflow-hidden bg-[#041b0f] lg:bg-white flex flex-col items-center justify-center min-h-[400px] w-full font-['Inter',_sans-serif] rounded-xl shadow-2xl transition-all duration-300 desktop-scaled";
 
     const content = (
         <div className={containerStyle} style={{ zIndex: 999999 }}>

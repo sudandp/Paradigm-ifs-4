@@ -614,7 +614,7 @@ const MainLayout: React.FC = () => {
             <aside 
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
+                className={`flex flex-col flex-shrink-0 transition-[width] duration-300 cubic-bezier(0.4,0,0.2,1) will-change-[width] ${isMobile ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[243px]') : (isTablet ? (!isSidebarExpanded ? 'w-[56px]' : 'w-[210px]') : (!isSidebarExpanded ? 'w-[56px]' : 'w-[227px]'))} ${isMobile ? 'bg-[#041b0f]' : 'bg-white border-r border-gray-200/60'} ${isMobile ? 'fixed left-0 top-0 bottom-0 z-50' : 'desktop-scaled'}`}
             >
                 <div className="flex-1 overflow-y-auto overflow-x-hidden">
                     <SidebarContent
@@ -673,7 +673,7 @@ const MainLayout: React.FC = () => {
                         className="fixed inset-0 bg-black/50 z-[95] transition-opacity duration-300"
                         onClick={() => setIsPanelOpen(false)}
                     />
-                    <aside className="fixed inset-y-0 right-0 z-[100] w-[400px] flex-shrink-0 bg-white shadow-xl animate-slide-in-right">
+                    <aside className="fixed inset-y-0 right-0 z-[100] w-[400px] flex-shrink-0 bg-white shadow-xl animate-slide-in-right desktop-scaled">
                         <NotificationPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} isMobile={false} />
                     </aside>
                 </>

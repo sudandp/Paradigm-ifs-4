@@ -40,18 +40,18 @@ html {
    ═══════════════════════════════════════════════════════════════════════════ */
 @media (min-width: 1024px) {
     /* Scale down ALL page content uniformly — like browser zoom but only for content */
-    main.desktop-scaled {
-        zoom: 0.85;
+    .desktop-scaled {
+        zoom: 0.68;
     }
 }
 @media (min-width: 1440px) {
-    main.desktop-scaled {
-        zoom: 0.9;
+    .desktop-scaled {
+        zoom: 0.78;
     }
 }
 @media (min-width: 1920px) {
-    main.desktop-scaled {
-        zoom: 1;
+    .desktop-scaled {
+        zoom: 0.83;
     }
 }
 
