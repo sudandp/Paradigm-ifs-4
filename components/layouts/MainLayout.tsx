@@ -658,7 +658,7 @@ const MainLayout: React.FC = () => {
                 <Header />
                 <BreakTrackingMonitor />
 
-                <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page'} relative flex flex-col`}>
+                <main ref={mainContentRef} className={`flex-1 overflow-y-auto ${isMobile ? 'bg-[#041b0f]' : 'bg-page desktop-scaled'} relative flex flex-col`}>
                     <div className={`flex-1 ${isTablet ? 'p-1 pb-4' : 'p-3 pb-6'}`}>
                         <Outlet />
                     </div>

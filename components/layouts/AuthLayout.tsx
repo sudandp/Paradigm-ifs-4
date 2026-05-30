@@ -16,7 +16,7 @@ const AuthLayout: React.FC = () => {
         if (path.includes('signup')) return { title: 'Create Account', subtitle: 'Join the Paradigm family today.' };
         if (path.includes('forgot-password')) return { title: 'Reset Password', subtitle: 'Enter your email to receive instructions.' };
         if (path.includes('update-password')) return { title: 'New Password', subtitle: 'Create a secure new password for your account.' };
-        if (path.includes('logout')) return { title: 'Log Out', subtitle: 'Are you sure you want to sign out?' };
+        if (path.includes('logout')) return { title: 'Log Out', subtitle: 'We\'ll keep everything ready for your return.' };
         return { title: 'Sign In', subtitle: 'Enter your credentials to access your account.' };
     }, [location.pathname]);
 
@@ -67,7 +67,7 @@ const AuthLayout: React.FC = () => {
     }
 
     return (
-        <div className="h-screen w-screen font-sans flex overflow-hidden relative" style={{ background: '#ffffff' }}>
+        <div className="h-screen w-screen font-sans flex relative" style={{ background: '#ffffff' }}>
             <style>{`
                 @keyframes subtle-zoom {
                     0% { transform: scale(1) translate(0px, 0px); }
@@ -117,7 +117,7 @@ const AuthLayout: React.FC = () => {
                     )}
 
                     {/* Form outlet */}
-                    <div className="auth-form-outlet mt-[8vh]">
+                    <div className="auth-form-outlet mt-[4vh]">
                         <Outlet />
                     </div>
                 </div>

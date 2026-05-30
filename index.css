@@ -11,15 +11,47 @@ html {
 
 @media (min-width: 1024px) {
     html {
-        font-size: 13px;
+        font-size: 14px;
     }
     body {
         min-height: 100vh;
     }
 }
+@media (min-width: 1440px) {
+    html {
+        font-size: 15px;
+    }
+}
+@media (min-width: 1920px) {
+    html {
+        font-size: 16px;
+    }
+}
 @media (max-width: 1023px) and (min-width: 768px) {
     html {
         font-size: 14px;
+    }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL DESKTOP COMPACT SCALING
+   Uses CSS zoom on the main content area so all pages render at the correct
+   size at 100% browser zoom. Only affects desktop web layout (MainLayout).
+   Sidebar, header, and mobile remain untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1024px) {
+    /* Scale down ALL page content uniformly — like browser zoom but only for content */
+    main.desktop-scaled {
+        zoom: 0.85;
+    }
+}
+@media (min-width: 1440px) {
+    main.desktop-scaled {
+        zoom: 0.9;
+    }
+}
+@media (min-width: 1920px) {
+    main.desktop-scaled {
+        zoom: 1;
     }
 }
 
