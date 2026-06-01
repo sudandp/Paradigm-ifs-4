@@ -4,6 +4,7 @@ import { hrmApi } from '../../services/hrm.api';
 import { supabase } from '../../services/supabase';
 import StageBadge from '../../components/hr/StageBadge';
 import LogCallModal from '../../components/hr/LogCallModal';
+import LogCallPanel from '../../components/hr/LogCallPanel';
 import CallHistoryTimeline from '../../components/hr/CallHistoryTimeline';
 import ScreeningFormPanel from '../../components/hr/ScreeningFormPanel';
 import LettersTab from '../../components/hr/LettersTab';
@@ -69,6 +70,15 @@ const CandidateDetailPage: React.FC = () => {
   useEffect(() => {
     fetchCandidate();
   }, [id, refreshKey]);
+
+  useEffect(() => {
+    const handleCallProcessed = () => {
+      console.log('[CandidateDetailPage] Call processed, reloading data...');
+      setRefreshKey(prev => prev + 1);
+    };
+    window.addEventListener('voip:call-processed', handleCallProcessed);
+    return () => window.removeEventListener('voip:call-processed', handleCallProcessed);
+  }, []);
 
   const handleStageChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +156,29 @@ const CandidateDetailPage: React.FC = () => {
 
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
           <button
-            onClick={() => setShowCallModal(true)}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('voip:dial', {
+                detail: {
+                  number: candidate.candidate_mobile,
+                  name: candidate.candidate_name
+                }
+              }));
+            }}
+            className={`btn bg-emerald-600 hover:bg-emerald-700 text-white btn-md gap-2 flex-1 md:flex-none active:scale-95 transition-all shadow-xl shadow-emerald-600/20`}
+          >
+            <Phone className="w-4 h-4" />
+            <span className="font-semibold text-sm">Call Candidate</span>
+          </button>
+          
+          <button
+            onClick={() => {
+              if (!isMobile) {
+                setActiveTab('calls');
+                setShowCallModal(prev => !prev);
+              } else {
+                setShowCallModal(true);
+              }
+            }}
             className={`btn btn-primary btn-md gap-2 flex-1 md:flex-none active:scale-95 transition-all shadow-xl shadow-accent/20 hover:shadow-accent/40`}
           >
             <Phone className="w-4 h-4" />
@@ -362,6 +394,16 @@ const CandidateDetailPage: React.FC = () => {
 
         {activeTab === 'calls' && (
           <div className="space-y-4 animate-fade-in">
+            {/* Inline Log Call Panel — Web Only */}
+            {!isMobile && showCallModal && (
+              <LogCallPanel
+                candidateId={id!}
+                candidateName={candidate.candidate_name}
+                onCallLogged={() => setRefreshKey(prev => prev + 1)}
+                onClose={() => setShowCallModal(false)}
+              />
+            )}
+
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20' : 'bg-accent/5'}`}>
@@ -370,7 +412,13 @@ const CandidateDetailPage: React.FC = () => {
                 <h3 className={`text-sm font-black uppercase tracking-wider ${isMobile ? 'text-white' : 'text-primary-text'}`}>Call History</h3>
               </div>
               <button
-                onClick={() => setShowCallModal(true)}
+                onClick={() => {
+                  if (!isMobile) {
+                    setShowCallModal(prev => !prev);
+                  } else {
+                    setShowCallModal(true);
+                  }
+                }}
                 className="btn btn-secondary btn-sm gap-2"
               >
                 <Phone className="w-3.5 h-3.5" />
@@ -409,14 +457,16 @@ const CandidateDetailPage: React.FC = () => {
         )}
       </div>
 
-      {/* Log Call Modal */}
-      <LogCallModal
-        isOpen={showCallModal}
-        onClose={() => setShowCallModal(false)}
-        candidateId={id!}
-        candidateName={candidate.candidate_name}
-        onCallLogged={() => setRefreshKey(prev => prev + 1)}
-      />
+      {/* Log Call Modal — Mobile Only */}
+      {isMobile && (
+        <LogCallModal
+          isOpen={showCallModal}
+          onClose={() => setShowCallModal(false)}
+          candidateId={id!}
+          candidateName={candidate.candidate_name}
+          onCallLogged={() => setRefreshKey(prev => prev + 1)}
+        />
+      )}
     </div>
   );
 };

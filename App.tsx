@@ -82,6 +82,7 @@ const DeviceApprovals = lazyWithRetry(() => import('./pages/admin/DeviceApproval
 const KioskManagement = lazyWithRetry(() => import('./pages/admin/KioskManagement'));
 const AdvancedNotificationSettings = lazyWithRetry(() => import('./pages/admin/AdvancedNotificationSettings'));
 const ApiSettings = lazyWithRetry(() => import('./pages/developer/ApiSettings').then(m => ({ default: m.ApiSettings })));
+const VoipSettings = lazyWithRetry(() => import('./pages/developer/VoipSettings'));
 const OperationsDashboard = lazyWithRetry(() => import('./pages/operations/OperationsDashboard'));
 const TeamActivity = lazyWithRetry(() => import('./pages/operations/TeamActivity'));
 const SiteDashboard = lazyWithRetry(() => import('./pages/site/OrganizationDashboard'));
@@ -205,6 +206,7 @@ const DocumentViewerPage = lazyWithRetry(() => import('./pages/DocumentViewerPag
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import ScrollToTop from './components/ScrollToTop';
 import { App as CapacitorApp } from '@capacitor/app';
+import { VoipDialer } from './components/hr/VoipDialer';
 
 // Theme Manager
 const ThemeManager: React.FC = () => {
@@ -363,7 +365,12 @@ const MainLayoutWrapper: React.FC = () => {
   // User is authenticated and verified, show the main layout and its nested routes
   // Use MobileLayout for mobile devices, MainLayout for desktop
 
-  return isMobile ? <MobileLayout /> : <MainLayout />;
+  return (
+    <>
+      {isMobile ? <MobileLayout /> : <MainLayout />}
+      {user && user.role !== 'unverified' && <VoipDialer />}
+    </>
+  );
 };
 
 const App: React.FC = () => {
@@ -1141,6 +1148,7 @@ const App: React.FC = () => {
             otpSettings: settings.otpSettings,
             siteManagementSettings: settings.siteManagementSettings,
             notificationSettings: settings.notificationSettings,
+            voipSettings: settings.voipSettings,
           });
 
           // --- Version Check: only on native mobile apps, not web ---
@@ -1397,6 +1405,7 @@ const App: React.FC = () => {
           {/* Developer */}
           <Route element={<ProtectedRoute requiredPermission="view_developer_settings" />}>
             <Route path="developer/api" element={<ApiSettings />} />
+            <Route path="developer/voip" element={<VoipSettings />} />
           </Route>
 
           {/* Operations & Site */}

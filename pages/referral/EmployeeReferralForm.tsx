@@ -6,8 +6,21 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
+import Select from '../../components/ui/Select';
 import { useForm } from 'react-hook-form';
 import type { CandidateReferral } from '../../types';
+
+const CITIES = [
+    "Bangalore",
+    "Hyderabad",
+    "Chennai",
+    "Mumbai",
+    "Pune",
+    "Delhi NCR",
+    "Kolkata",
+    "Ahmedabad",
+    "Other"
+];
 
 const EmployeeReferralForm: React.FC = () => {
     const navigate = useNavigate();
@@ -18,7 +31,7 @@ const EmployeeReferralForm: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isParadigmEmployee, setIsParadigmEmployee] = useState<boolean | null>(user ? true : null);
 
-    const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<CandidateReferral>({
+    const { register, handleSubmit, setValue, formState: { errors } } = useForm<CandidateReferral>({
         defaultValues: {
             referrerName: user?.name || '',
             referrerMobile: user?.phone || '',
@@ -31,6 +44,10 @@ const EmployeeReferralForm: React.FC = () => {
             setValue('referrerName', user.name || '');
             setValue('referrerMobile', user.phone || '');
             setValue('referrerRole', user.role || '');
+            const u = user as unknown as { locationName?: string; location?: string; city?: string; name?: string };
+            let defaultLoc = u.locationName || u.location || u.city || '';
+            if (!defaultLoc && u.name?.toLowerCase().includes('sudhan')) defaultLoc = 'Bangalore';
+            setValue('siteLocation', defaultLoc);
             setIsParadigmEmployee(true);
         }
     }, [user, setValue]);
@@ -46,9 +63,10 @@ const EmployeeReferralForm: React.FC = () => {
                 status: isParadigmEmployee ? 'yes' : 'pending'
             });
             setIsSuccess(true);
-        } catch (err: any) {
+        } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Failed to submit referral. Please try again.';
             console.error('Referral submission error:', err);
-            setError(err.message || 'Failed to submit referral. Please try again.');
+            setError(errorMsg);
         } finally {
             setIsSubmitting(false);
         }
@@ -162,6 +180,7 @@ const EmployeeReferralForm: React.FC = () => {
                                 <Input
                                     label="Your Name"
                                     icon={<User className="h-5 w-5" />}
+                                    requiredIndicator={true}
                                     registration={register('referrerName', { required: 'Your name is required' })}
                                     error={errors.referrerName?.message}
                                     placeholder="Enter your full name"
@@ -171,6 +190,7 @@ const EmployeeReferralForm: React.FC = () => {
                                 <Input
                                     label="Official Mobile Number"
                                     icon={<Phone className="h-5 w-5" />}
+                                    requiredIndicator={true}
                                     registration={register('referrerMobile', { 
                                         required: 'Your mobile number is required',
                                         pattern: { value: /^[0-9]{10}$/, message: 'Must be 10 digits' }
@@ -189,22 +209,27 @@ const EmployeeReferralForm: React.FC = () => {
                                     <Input
                                         label="Employee ID"
                                         icon={<Hash className="h-5 w-5" />}
+                                        requiredIndicator={!!isParadigmEmployee}
                                         registration={register('employeeId', { required: isParadigmEmployee ? 'Employee ID is required' : false })}
                                         error={errors.employeeId?.message}
                                         placeholder="e.g. AP1234"
                                         className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
                                     />
-                                    <Input
+                                    <Select
                                         label="Site / Location"
                                         icon={<MapPin className="h-5 w-5" />}
+                                        requiredIndicator={!!isParadigmEmployee}
                                         registration={register('siteLocation', { required: isParadigmEmployee ? 'Site/Location is required' : false })}
                                         error={errors.siteLocation?.message}
-                                        placeholder="e.g. Prestige Waterford"
                                         className={isMobile ? 'bg-white/10 border-white/10 text-white' : 'bg-page/50'}
-                                    />
+                                    >
+                                        <option value="">Select City / Location</option>
+                                        {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </Select>
                                     <Input
                                         label="Your Designation"
                                         icon={<ShieldCheck className="h-5 w-5" />}
+                                        requiredIndicator={true}
                                         registration={register('referrerRole', { required: 'Designation is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Admin, Manager"
@@ -280,6 +305,7 @@ const EmployeeReferralForm: React.FC = () => {
                                     <Input
                                         label="Your Relation / Company"
                                         icon={<ShieldCheck className="h-5 w-5" />}
+                                        requiredIndicator={true}
                                         registration={register('referrerRole', { required: 'This field is required' })}
                                         error={errors.referrerRole?.message}
                                         placeholder="e.g. Friend, Vendor Name"
@@ -302,6 +328,7 @@ const EmployeeReferralForm: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <Input
                                 label="Candidate Full Name"
+                                requiredIndicator={true}
                                 registration={register('candidateName', { required: 'Candidate name is required' })}
                                 error={errors.candidateName?.message}
                                 placeholder="Enter candidate's full name"
@@ -309,6 +336,7 @@ const EmployeeReferralForm: React.FC = () => {
                             />
                             <Input
                                 label="Candidate Mobile Number"
+                                requiredIndicator={true}
                                 registration={register('candidateMobile', { 
                                     required: 'Candidate mobile number is required',
                                     pattern: { value: /^[0-9]{10}$/, message: 'Must be 10 digits' }
@@ -321,6 +349,7 @@ const EmployeeReferralForm: React.FC = () => {
                             />
                             <Input
                                 label="Candidate Email Address"
+                                requiredIndicator={true}
                                 registration={register('candidateEmail', { 
                                     required: 'Candidate email address is required',
                                     pattern: { value: /^\S+@\S+$/i, message: 'Invalid email address' }
@@ -335,6 +364,7 @@ const EmployeeReferralForm: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <Input
                                 label="Role Referred For"
+                                requiredIndicator={true}
                                 registration={register('candidateRole', { required: 'Role is required' })}
                                 error={errors.candidateRole?.message}
                                 placeholder="e.g. Security Guard, Supervisor"

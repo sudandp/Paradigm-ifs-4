@@ -122,6 +122,21 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       loadReportData();
     }
   }, [month, year, userId, externalData, selectedStatus, selectedSite, selectedCompany, selectedLocation, selectedRole]);
+  const resolveUserLocation = (u: User, orgStructure: any[]) => {
+    if (u.location || u.locationName) return u.location || u.locationName;
+    if (!u.societyId || orgStructure.length === 0) return '';
+
+    for (const group of orgStructure) {
+      if (group.companies) {
+        for (const company of group.companies) {
+          if (company.id === u.societyId) {
+            return company.location || '';
+          }
+        }
+      }
+    }
+    return '';
+  };
 
   const loadReportData = async () => {
     setLoading(true);
@@ -131,7 +146,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const today = startOfToday();
       if (isAfter(endDate, today)) endDate = today;
 
-      const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes, allSiteHolidays] = await Promise.all([
+      const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes, allSiteHolidays, orgStructureData] = await Promise.all([
         externalUsers || api.getUsers(),
         api.getLeaveRequests({ 
           startDate: format(subDays(startDate, 1), 'yyyy-MM-dd'),
@@ -140,7 +155,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         api.getAllUserHolidays({ year }),
         api.getRoles(),
         api.getInitialAppData(),
-        api.getAllSiteSpecificHolidays()
+        api.getAllSiteSpecificHolidays(),
+        api.getOrganizationStructure().catch(() => [])
       ]);
 
       const leavesData = leavesDataResponse?.data || [];
@@ -160,7 +176,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
         if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
         if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
-        if (selectedLocation !== 'all') targetUsers = targetUsers.filter(u => (u.location || u.locationName || '').toLowerCase() === selectedLocation.toLowerCase());
+        if (selectedLocation !== 'all') {
+          targetUsers = targetUsers.filter(u => {
+            const loc = resolveUserLocation(u, orgStructureData || []);
+            return loc && loc.toLowerCase() === selectedLocation.toLowerCase();
+          });
+        }
         if (selectedStatus === 'ACTIVE_USERS') {
           targetUsers = targetUsers.filter(u => (u as any).isActive !== false);
         }
@@ -544,16 +565,19 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     // Add extra bonus for overtime days if site category
     totalPayableDays += overtimeDays;
 
+    // Cap totalPayableDays at the number of calendar days in the month
+    const cappedPayableDays = Math.min(getDaysInMonth(monthStart), totalPayableDays);
+
     return {
       employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
       totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT,
       presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
       halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,
-      lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays,
+      lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays: cappedPayableDays,
       averageWorkingHrs: (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0,
       totalDurationPlusOT: totalNetWorkDuration + totalOT,
        shiftCounts, dailyData, 
-      present: totalPayableDays,
+      present: cappedPayableDays,
       absent: absentDays, 
       weeklyOff: weekOffs,
       leaves: leavesCount, 

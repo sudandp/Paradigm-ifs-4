@@ -5,7 +5,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, PerfiosApiSettings, GeminiApiSettings, OfflineOcrSettings, OtpSettings, ApiSettings, NotificationSettings, VerificationCosts, VerificationCostSetting, SiteManagementSettings, StaffAttendanceRules, RecurringHolidayRule } from '../types';
+import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, PerfiosApiSettings, GeminiApiSettings, OfflineOcrSettings, OtpSettings, ApiSettings, NotificationSettings, VerificationCosts, VerificationCostSetting, SiteManagementSettings, StaffAttendanceRules, RecurringHolidayRule, VoipSettings } from '../types';
 import { api } from '../services/api';
 import { HOLIDAY_SELECTION_POOL } from '../utils/constants';
 
@@ -26,6 +26,7 @@ interface SettingsState {
   apiSettings: ApiSettings;
   offlineOcr: OfflineOcrSettings;
   recurringHolidays: RecurringHolidayRule[];
+  voipSettings: VoipSettings;
   initSettings: (data: { 
     holidays: Holiday[], 
     attendanceSettings: AttendanceSettings, 
@@ -38,6 +39,7 @@ interface SettingsState {
     otpSettings?: OtpSettings,
     siteManagementSettings?: SiteManagementSettings,
     notificationSettings?: NotificationSettings,
+    voipSettings?: VoipSettings,
   }) => void;
   updateAddressSettings: (settings: Partial<AddressSettings>) => void;
   updateAttendanceSettings: (settings: AttendanceSettings) => void;
@@ -50,6 +52,7 @@ interface SettingsState {
   updateSiteManagementSettings: (settings: Partial<SiteManagementSettings>) => void;
   updateApiSettings: (settings: Partial<ApiSettings>) => void;
   updateOfflineOcrSettings: (settings: Partial<OfflineOcrSettings>) => void;
+  updateVoipSettings: (settings: Partial<VoipSettings>) => void;
   addHoliday: (type: 'office' | 'field' | 'site', holiday: Omit<Holiday, 'id' | 'type'>) => Promise<void>;
   removeHoliday: (type: 'office' | 'field' | 'site', id: string) => Promise<void>;
   addRecurringHoliday: (rule: RecurringHolidayRule) => Promise<void>;
@@ -252,6 +255,11 @@ const initialSiteManagement: SiteManagementSettings = {
   enableProvisionalSites: false,
 };
 
+const initialVoipSettings: VoipSettings = {
+  hrMappings: [],
+  bdMappings: [],
+};
+
 // FIX: Corrected zustand store creation with persist middleware to ensure proper typing.
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -272,12 +280,13 @@ export const useSettingsStore = create<SettingsState>()(
       siteManagement: initialSiteManagement,
       apiSettings: initialApiSettings,
       offlineOcr: initialOfflineOcr,
+      voipSettings: initialVoipSettings,
       initSettings: (data) => {
         if (data) {
           const { 
             holidays, attendanceSettings, recurringHolidays, apiSettings,
             addressSettings, geminiApiSettings, offlineOcrSettings, perfiosApiSettings,
-            otpSettings, siteManagementSettings, notificationSettings
+            otpSettings, siteManagementSettings, notificationSettings, voipSettings
           } = data;
           const office = holidays.filter(h => h.type === 'office');
           const field = holidays.filter(h => h.type === 'field');
@@ -297,6 +306,7 @@ export const useSettingsStore = create<SettingsState>()(
             otp: otpSettings || initialOtp,
             siteManagement: siteManagementSettings || initialSiteManagement,
             notifications: notificationSettings || initialNotifications,
+            voipSettings: voipSettings || initialVoipSettings,
           });
         }
       },
@@ -332,6 +342,9 @@ export const useSettingsStore = create<SettingsState>()(
       })),
       updateOfflineOcrSettings: (settings) => set((state) => ({
         offlineOcr: { ...state.offlineOcr, ...settings }
+      })),
+      updateVoipSettings: (settings) => set((state) => ({
+        voipSettings: { ...state.voipSettings, ...settings }
       })),
       addHoliday: async (type, holiday) => {
         const newHoliday = await api.addHoliday({ ...holiday, type });

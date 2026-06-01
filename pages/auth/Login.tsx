@@ -13,8 +13,9 @@ import Checkbox from '../../components/ui/Checkbox';
 import { useAuthStore } from '../../store/authStore';
 import { useUiSettingsStore } from '../../store/uiSettingsStore';
 import { useDeviceFingerprint } from '../../hooks/useDeviceFingerprint';
+import SkyShotFireworks from '../../components/ui/SkyShotFireworks';
 import type { User } from '../../types';
-import { Mail, Lock, AlertTriangle, Check, Star } from 'lucide-react';
+import { Mail, Lock, AlertTriangle, Check } from 'lucide-react';
 import { api } from '../../services/api';
 import { useDevice } from '../../hooks/useDevice';
 
@@ -221,16 +222,28 @@ const Login: React.FC = () => {
                             </Link>
                         </p>
                         
-                        <div className="pt-4 border-t border-[#20312a] flex justify-center">
+                        {/* Premium Referral Strip — Mobile */}
+                        <div className="relative mt-2 rounded-2xl overflow-hidden border border-emerald-500/20 bg-gradient-to-r from-[#0a1610] to-[#060e0a] hover:border-emerald-500/40 transition-all duration-300">
+                            <SkyShotFireworks />
                             <button
                                 type="button"
                                 onClick={() => setReferralModalOpen(true)}
-                                className="w-full flex items-center justify-center gap-2 bg-[#131d1a] border border-[#20312a] text-white hover:bg-[#19221f] font-bold py-3.5 px-6 rounded-full transition-all text-sm shadow-sm"
+                                className="relative z-10 w-full flex items-center justify-between gap-3 px-4 py-3.5"
                             >
-                                <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[#3eff99]">
-                                    <Star className="h-3 w-3 fill-[#3eff99] text-[#3eff99]" />
+                                <div className="text-left">
+                                    <p className="text-[11px] font-black text-[#3eff99] tracking-wider uppercase font-poppins flex items-center gap-1.5">
+                                        <span>🎇</span> Referral Program
+                                    </p>
+                                    <p className="text-[10px] text-white/40 mt-0.5 font-medium">Earn rewards — refer candidates &amp; leads!</p>
                                 </div>
-                                <span>Join our Referral Program</span>
+                                <div className="flex items-center shrink-0">
+                                    <span className="px-3 py-1 bg-black text-white font-bold uppercase text-[8px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-0">
+                                        REFERRAL
+                                    </span>
+                                    <span className="-ml-2 px-3 py-1 bg-[#ff0000] text-white font-bold uppercase text-[8px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-10">
+                                        PROGRAM
+                                    </span>
+                                </div>
                             </button>
                         </div>
                     </div>
@@ -301,29 +314,61 @@ const Login: React.FC = () => {
                     </div>
                 )}
 
-                {/* Unified single-line button container (LOGIN + Google side-by-side) */}
-                <div className="flex items-center justify-center gap-4 pt-10">
+                {/* Action Buttons — equal width (50% / 50%) */}
+                <div className="flex items-center gap-3 pt-4">
                     <Button
                         type="submit"
-                        className={`!font-black !h-12 !px-10 !rounded-full !text-[13px] !tracking-[0.15em] !uppercase transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-md ${isSuccess
+                        className={`flex-1 !font-black !h-12 !rounded-2xl !text-[13px] !tracking-[0.18em] !uppercase transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-md ${isSuccess
                             ? '!bg-emerald-500 !text-white shadow-emerald-500/30'
-                            : '!bg-emerald-600 !text-white hover:!bg-emerald-700 shadow-emerald-600/25'
+                            : '!bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-emerald-600/25'
                             }`}
                         isLoading={loading && !isSuccess}
                         disabled={isFormDisabled && !isSuccess}
                     >
-                        {isSuccess ? <Check className="w-4 h-4" /> : "LOGIN"}
+                        {isSuccess ? <Check className="w-5 h-5 mx-auto" /> : "LOGIN"}
                     </Button>
 
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={isFormDisabled}
-                        className="h-12 px-6 flex items-center justify-center gap-3 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 text-gray-700 rounded-full transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md disabled:opacity-50 font-poppins"
+                        className="flex-1 h-12 flex items-center justify-center gap-2 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-2xl transition-all transform hover:scale-[1.01] active:scale-[0.99] shadow-sm disabled:opacity-50 font-poppins whitespace-nowrap"
                         title="Sign in with Google"
                     >
                         {commonGoogleIcon}
-                        <span className="text-[13px] font-bold text-gray-600">Sign in with Google</span>
+                        <span className="text-[12px] font-semibold text-gray-700">Sign in with Google</span>
+                    </button>
+                </div>
+
+                  {/* Premium Referral Strip — White Themed for Web */}
+                <div className="relative mt-3 overflow-hidden rounded-2xl border border-transparent bg-emerald-50/20 hover:bg-emerald-50/30 transition-all duration-300 cursor-pointer group/ref">
+                    <SkyShotFireworks />
+                    <button
+                        type="button"
+                        onClick={() => setReferralModalOpen(true)}
+                        disabled={isFormDisabled}
+                        className="relative z-10 w-full flex items-center justify-between gap-4 px-4 py-3"
+                        title="Join Referral Program"
+                    >
+                        {/* Left: label + subtext */}
+                        <div className="text-left">
+                            <p className="text-[12px] font-black text-emerald-700 tracking-[0.18em] uppercase font-poppins flex items-center gap-1.5">
+                                <span className="text-base">🎇</span> REFERRAL PROGRAM
+                            </p>
+                            <p className="text-[10px] text-emerald-800/60 mt-0.5 font-medium leading-tight">
+                                Earn rewards by referring candidates o...
+                            </p>
+                        </div>
+
+                        {/* Right: REFERRAL | PROGRAM overlapping capsules */}
+                        <div className="flex items-center shrink-0 transition-transform group-hover/ref:scale-[1.04]">
+                            <span className="px-4 py-1.5 bg-black text-white font-bold uppercase text-[10px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-0">
+                                REFERRAL
+                            </span>
+                            <span className="-ml-3 px-4 py-1.5 bg-[#ff0000] text-white font-bold uppercase text-[10px] tracking-wider rounded-full border-2 border-white ring-1 ring-black/20 shadow-sm relative z-10">
+                                PROGRAM
+                            </span>
+                        </div>
                     </button>
                 </div>
             </form>

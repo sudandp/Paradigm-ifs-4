@@ -1,0 +1,2 @@
+ALTER TABLE connected_devices
+ADD COLUMN expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '30 days';

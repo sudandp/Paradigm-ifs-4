@@ -58,13 +58,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             }
         } else {
             // Reset search term to current value if no selection was made
-            setSearchTerm(value || "");
+            const selectedOption = options.find(o => o.id.toString() === value?.toString());
+            setSearchTerm(selectedOption ? selectedOption.name : (value || ""));
         }
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [value, allowCustom, searchTerm, onChange]);
+  }, [value, allowCustom, searchTerm, onChange, options]);
 
   const filteredOptions = options.filter(option =>
     option.name.toLowerCase().includes(searchTerm.toLowerCase())

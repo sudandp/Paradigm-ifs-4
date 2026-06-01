@@ -8,6 +8,7 @@ import Logo from '../ui/Logo';
 import NotificationBell from '../notifications/NotificationBell';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
+import SkyShotFireworks from '../ui/SkyShotFireworks';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDevice } from '../../hooks/useDevice';
 import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
@@ -82,30 +83,8 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                     <div className={isMobile ? "hidden" : "flex-none flex items-center justify-center ml-auto"}>
                         <div className="flex items-center space-x-2">
                             <div className="relative">
-                                 {/* Firework Animation Effect */}
-                                 <div className="absolute inset-0 pointer-events-none -m-6 overflow-visible z-0">
-                                     {[...Array(12)].map((_, i) => (
-                                         <motion.div
-                                             key={i}
-                                             className={`absolute h-1.5 w-1.5 rounded-full ${
-                                                 i % 3 === 0 ? 'bg-yellow-400' : i % 3 === 1 ? 'bg-red-500' : 'bg-emerald-400'
-                                             } shadow-[0_0_8px_rgba(255,255,255,0.8)]`}
-                                             initial={{ top: "50%", left: "50%", opacity: 0, scale: 0 }}
-                                             animate={{ 
-                                                 top: ["50%", `${50 + Math.sin(i * 30 * Math.PI / 180) * 50}%`],
-                                                 left: ["50%", `${50 + Math.cos(i * 30 * Math.PI / 180) * 50}%`],
-                                                 opacity: [0, 1, 0.8, 0],
-                                                 scale: [0, 1.2, 0.8, 0]
-                                             }}
-                                             transition={{ 
-                                                 duration: 1.5, 
-                                                 repeat: Infinity, 
-                                                 delay: i * 0.1,
-                                                 ease: "easeOut" 
-                                             }}
-                                         />
-                                     ))}
-                                 </div>
+                                  {/* Sky-Shot Firework Animation Effect */}
+                                  <SkyShotFireworks />
 
                                 <button
                                     onClick={() => setReferralModalOpen(true)}

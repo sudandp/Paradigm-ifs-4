@@ -140,3 +140,15 @@ export interface ReportEmailPayload {
 }
 
 // Types for Entity Management
+
+export interface VoipMapping {
+  userId: string;
+  phone: string;
+  exophone: string;
+}
+
+export interface VoipSettings {
+  hrMappings?: VoipMapping[];
+  bdMappings?: VoipMapping[];
+}
+

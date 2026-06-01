@@ -698,59 +698,7 @@ const AttendanceDashboard: React.FC = () => {
     const [societies, setSocieties] = useState<any[]>([]);
     const [orgStructure, setOrgStructure] = useState<OrganizationGroup[]>([]);
     
-    // Dynamic lists derived from users (only show companies/sites that have users)
-    const activeOrganizations = useMemo(() => {
-        const comps: any[] = [];
-        orgStructure.forEach(g => {
-            if (g.companies) comps.push(...g.companies);
-        });
-        
-        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return comps.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        
-        const companyIds = new Set(users.map(u => u.societyId).filter(Boolean));
-        return comps
-            .filter(c => companyIds.has(c.id))
-            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, orgStructure, user]);
 
-    const activeSocieties = useMemo(() => {
-        const ents: any[] = [];
-        orgStructure.forEach(g => {
-            if (g.companies) {
-                g.companies.forEach((c: any) => {
-                    if (c.entities) ents.push(...c.entities);
-                });
-            }
-        });
-        
-        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') return ents.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        
-        const siteIds = new Set<string>();
-        users.forEach(u => {
-            if (u.organizationId) {
-                u.organizationId.split(',').forEach(id => siteIds.add(id.trim()));
-            }
-        });
-        return ents
-            .filter(e => siteIds.has(e.id))
-            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [users, orgStructure, user]);
-    
-    const activeLocations = useMemo(() => {
-        const locations = new Set<string>();
-        orgStructure.forEach(g => {
-            if (g.companies) {
-                g.companies.forEach((c: any) => {
-                    if (c.location) locations.add(c.location);
-                });
-            }
-        });
-        users.forEach(u => {
-            const loc = resolveUserLocation(u, orgStructure);
-            if (loc) locations.add(loc);
-        });
-        return Array.from(locations).filter(Boolean).sort();
-    }, [orgStructure, users]);
     
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
@@ -780,6 +728,77 @@ const AttendanceDashboard: React.FC = () => {
     const [pendingSelectedRecordType, setPendingSelectedRecordType] = useState(selectedRecordType);
     const [pendingReportPageSize, setPendingReportPageSize] = useState(reportPageSize);
     const [isFiltersDirty, setIsFiltersDirty] = useState(false);
+
+    // Dynamic lists derived from users (only show companies/sites that have users)
+    const activeOrganizations = useMemo(() => {
+        const comps: any[] = [];
+        orgStructure.forEach(g => {
+            if (g.companies) comps.push(...g.companies);
+        });
+        
+        let filteredComps = comps;
+        if (pendingSelectedLocation !== 'all') {
+            filteredComps = comps.filter(c => c.location && c.location.toLowerCase() === pendingSelectedLocation.toLowerCase());
+        }
+        
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
+            return filteredComps.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        }
+        
+        const companyIds = new Set(users.map(u => u.societyId).filter(Boolean));
+        return filteredComps
+            .filter(c => companyIds.has(c.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, orgStructure, user, pendingSelectedLocation]);
+
+    const activeSocieties = useMemo(() => {
+        const ents: any[] = [];
+        orgStructure.forEach(g => {
+            if (g.companies) {
+                g.companies.forEach((c: any) => {
+                    if (c.entities) ents.push(...c.entities);
+                });
+            }
+        });
+        
+        let filteredEnts = ents;
+        if (pendingSelectedLocation !== 'all') {
+            const companyIdsInLocation = new Set(
+                activeOrganizations.map(o => o.id)
+            );
+            filteredEnts = ents.filter(e => companyIdsInLocation.has(e.companyId));
+        }
+        
+        if (isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') {
+            return filteredEnts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        }
+        
+        const siteIds = new Set<string>();
+        users.forEach(u => {
+            if (u.organizationId) {
+                u.organizationId.split(',').forEach(id => siteIds.add(id.trim()));
+            }
+        });
+        return filteredEnts
+            .filter(e => siteIds.has(e.id))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [users, orgStructure, user, pendingSelectedLocation, activeOrganizations]);
+    
+    const activeLocations = useMemo(() => {
+        const locations = new Set<string>();
+        orgStructure.forEach(g => {
+            if (g.companies) {
+                g.companies.forEach((c: any) => {
+                    if (c.location) locations.add(c.location);
+                });
+            }
+        });
+        users.forEach(u => {
+            const loc = resolveUserLocation(u, orgStructure);
+            if (loc) locations.add(loc);
+        });
+        return Array.from(locations).filter(Boolean).sort();
+    }, [orgStructure, users]);
 
     // Watch for changes in pending filters vs applied filters
     useEffect(() => {
@@ -3219,6 +3238,8 @@ const AttendanceDashboard: React.FC = () => {
                                         value={pendingSelectedLocation}
                                         onChange={(e) => {
                                             setPendingSelectedLocation(e.target.value);
+                                            setPendingSelectedCompany('all');
+                                            setPendingSelectedSite('all');
                                             setPendingSelectedUser('all');
                                         }}
                                     >
@@ -3241,6 +3262,7 @@ const AttendanceDashboard: React.FC = () => {
                                         value={pendingSelectedCompany}
                                         onChange={(e) => {
                                             setPendingSelectedCompany(e.target.value);
+                                            setPendingSelectedSite('all');
                                             setPendingSelectedUser('all');
                                         }}
                                     >

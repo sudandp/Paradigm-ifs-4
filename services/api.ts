@@ -3151,6 +3151,12 @@ export const api = {
       .upsert({ id: 'singleton', notification_settings: toSnakeCase(settings) }, { onConflict: 'id' });
     if (error) throw error;
   },
+  saveVoipSettings: async (settings: any): Promise<void> => {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 'singleton', voip_settings: toSnakeCase(settings) }, { onConflict: 'id' });
+    if (error) throw error;
+  },
 
   // ═══ Email Configuration APIs ═══════════════════════════════════════════
 
