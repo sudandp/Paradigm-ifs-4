@@ -649,23 +649,23 @@ export function evaluateAttendanceStatus(params: {
   // Helper to determine leave code (EL, SL, etc.)
   const getLeaveCode = (l: any) => {
       const isHalf = l.dayOption === 'half' || (l as any).day_option === 'half';
-      const prefix = isHalf ? '1/2' : '';
+      const prefix = isHalf ? '0.5' : '';
       const lType = String(l.leaveType || l.type || '').toLowerCase();
       
       // Handle Correction Status mapping
       if (lType.includes('correction')) {
           const cStatus = l.correctionStatus || (l.correctionDetails?.status) || '';
-          if (cStatus === 'W/H') return 'WFH';
+          if (cStatus === 'W/H') return 'WH';
           return 'RC'; // Updated from 'P' to 'RC'
       }
 
-      if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'W/H';
+      if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'WH';
       if (lType.includes('sick') || lType === 's/l' || lType === 'sl') return prefix + 'SL';
-      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'C/O';
+      if (lType.includes('comp' ) || lType === 'c/o' || lType === 'co') return prefix + 'CO';
       if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') return prefix + 'CL';
-      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'BL'; // Blue Leave
+      if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') return prefix + 'FH';
       if (lType.includes('maternity')) return prefix + 'ML';
-      if (lType.includes('child care')) return prefix + 'CC';
+      if (lType.includes('child care')) return prefix + 'CCL';
       if (lType.includes('pink')) return prefix + 'PL'; // Pink Leave
       if (lType.includes('permission')) return prefix + 'RP'; // Updated from 'P/M' to 'RP'
       if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
@@ -718,9 +718,9 @@ export function evaluateAttendanceStatus(params: {
 
   const resolveHoursStatus = (hrs: number): string => {
       if (hrs >= full) return 'P';
-      if (hrs >= threeQuarterHrs) return '3/4P';
-      if (hrs >= halfDayHrs) return '1/2P';
-      if (hrs >= quarterDayHrs) return '1/4P';
+      if (hrs >= threeQuarterHrs) return '0.75P';
+      if (hrs >= halfDayHrs) return '0.5P';
+      if (hrs >= quarterDayHrs) return '0.25P';
       return 'A';
   };
 
@@ -745,7 +745,7 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedPermission) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W/P';
+          if (isWeekend || isRecurringHoliday) return 'W.O/P';
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -755,7 +755,7 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedCorrection) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W/P';
+          if (isWeekend || isRecurringHoliday) return 'W.O/P';
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -768,21 +768,26 @@ export function evaluateAttendanceStatus(params: {
   );
 
   const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && (approvedLeave as any).day_option !== 'half';
+  const isCorrectionOrPermission = approvedLeave && (
+      String(approvedLeave.leaveType || '').toLowerCase().includes('correction') ||
+      String(approvedLeave.leaveType || '').toLowerCase().includes('permission') ||
+      String(approvedLeave.status || '').toLowerCase() === 'correction_made'
+  );
 
   // B. Handle Combinations or pure status
-  // CRITICAL: If employee actually worked (workStatus !== 'A'), their physical presence
-  // takes priority over an approved full-day leave. The leave may have been approved
-  // but the employee showed up and worked — credit their attendance.
-  if (workStatus && workStatus !== 'A') {
+  // NEW RULE: Approved full-day leaves take priority over physical presence, so if they applied for leave and it is approved, assign the leave-based notation.
+  if (approvedLeave && isFullDayLeave && !isCorrectionOrPermission) {
+      status = getLeaveCode(approvedLeave);
+  } else if (workStatus && workStatus !== 'A') {
       const lType = String(approvedLeave?.leaveType || (approvedLeave as any)?.type || '').toLowerCase();
       const isWFH = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
 
       if (isCorrection) {
           const code = getLeaveCode(approvedLeave);
           if (code === 'P' || code === 'Present') {
-              if (isWFH) status = 'W/H';
+              if (isWFH) status = 'WH';
               else if (isHoliday) status = 'H/P';
-              else if (isWeekend) status = 'W/P';
+              else if (isWeekend) status = 'W.O/P';
               else status = 'P';
           } else {
               status = code;
@@ -793,14 +798,14 @@ export function evaluateAttendanceStatus(params: {
           const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
           
           if (isPartialWork && isHalfDayLeave) {
-              const code = getLeaveCode(approvedLeave).replace('1/2', ''); 
+              const code = getLeaveCode(approvedLeave).replace('1/2', '').replace('0.5', ''); 
               status = `0.5P+0.5 ${code}`;
           } else {
-              if (isWFH) status = 'W/H';
+              if (isWFH) status = 'WH';
               // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
               else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
-              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P for ANY work
-              else if (isWeekend || isRecurringHoliday) status = 'W/P';
+              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W.O/P for ANY work
+              else if (isWeekend || isRecurringHoliday) status = 'W.O/P';
               else status = workStatus;
           }
       }

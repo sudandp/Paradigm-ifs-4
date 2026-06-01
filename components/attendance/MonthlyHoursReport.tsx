@@ -411,42 +411,41 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     const resolvePayableValue = (s: string): number => {
       if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-      if (['W/P', 'H/P'].includes(s)) return 1.5; 
-      if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', '0.5P', 'W/H', 'BL', 'F/H', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'BL'].includes(s)) return 1;
-      if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('BL') || s.includes('F/H') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L')) {
-          return s.startsWith('1/2') ? 0.5 : 1;
+      if (['W/P', 'W.O/P', 'H/P'].includes(s)) return 1.5; 
+      if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', '0.5P', '1/2P', 'Half Day', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+      if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL')) {
+          return (s.startsWith('1/2') || s.startsWith('0.5')) ? 0.5 : 1;
       }
-      if (['1/2P', 'Half Day'].includes(s)) return 0.5;
-      if (s === '3/4P') return 0.75;
-      if (s === '1/4P') return 0.25;
+      if (['1/2P', 'Half Day', '0.5P'].includes(s)) return 0.5;
+      if (s === '3/4P' || s === '0.75P') return 0.75;
+      if (s === '1/4P' || s === '0.25P') return 0.25;
       return 0;
     };
 
     const updateCounters = (s: string) => {
-      const isHalf = s.startsWith('1/2') || s === 'Half Day' || s === '0.5P';
+      const isHalf = s.startsWith('1/2') || s === 'Half Day' || s === '0.5P' || s.startsWith('0.5');
       const inc = isHalf ? 0.5 : 1;
 
       if (s === 'P') presentDays++;
-      else if (s === 'W/P') { presentDays++; weekOffs++; weekendPresents++; }
-      else if (s === '3/4P') threeQuarterDays++;
-      else if (s === '1/2P' || s === 'Half Day') halfDays++;
-      else if (s === '0.5P') { halfDays++; leavesCount += 0.5; }
-      else if (s === '1/4P') quarterDays++;
+      else if (s === 'W/P' || s === 'W.O/P') { presentDays++; weekOffs++; weekendPresents++; }
+      else if (s === '3/4P' || s === '0.75P') threeQuarterDays++;
+      else if (s === '1/2P' || s === 'Half Day' || s === '0.5P') halfDays++;
+      else if (s === '1/4P' || s === '0.25P') quarterDays++;
       else if (s === 'A') absentDays++;
       else if (s === 'W/O') weekOffs++;
-      else if (s === 'BL' || s === '1/2BL') { floatingHolidays += inc; weekOffs += inc; } // Blue Leave = counted as W/O + floating
-      else if (s === 'PL' || s === '1/2PL') { floatingHolidays += inc; weekOffs += inc; } // Pink Leave = counted as W/O + floating
+      else if (s === 'BL' || s === '1/2BL' || s === 'FH' || s === '0.5FH') { floatingHolidays += inc; weekOffs += inc; } // Blue Leave/Float
+      else if (s === 'PL' || s === '1/2PL' || s === '0.5PL') { floatingHolidays += inc; weekOffs += inc; } // Pink Leave
       else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
       else if (s === 'H') holidaysCount++;
       else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }
       else if (s.includes('SL') || s.includes('S/L')) { sickLeaves += inc; leavesCount += inc; }
       else if (s.includes('EL') || s.includes('E/L')) { earnedLeaves += inc; leavesCount += inc; }
       else if (s.includes('CL') || s.includes('C/L')) { casualLeaves += inc; leavesCount += inc; }
-      else if (s.includes('BL') || s.includes('F/H')) floatingHolidays += inc;
+      else if (s.includes('BL') || s.includes('F/H') || s.includes('FH')) floatingHolidays += inc;
       else if (s.includes('PL') || s.includes('P/L')) { floatingHolidays += inc; } // Pink Leave
-      else if (s.includes('C/O')) { compOffs += inc; leavesCount += inc; }
+      else if (s.includes('C/O') || s.includes('CO')) { compOffs += inc; leavesCount += inc; }
       else if (s.includes('LOP')) lossOfPay += inc;
-      else if (s === 'W/H') workFromHomeDays += inc;
+      else if (s === 'W/H' || s === 'WH') workFromHomeDays += inc;
       else if (s.includes('WFH')) workFromHomeDays += inc;
     };
 

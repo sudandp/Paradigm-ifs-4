@@ -283,9 +283,9 @@ export function evaluateSiteStaffStatus(params: any): string {
     baseWorkStatus = fieldStatus;
   } else if (effectiveWorkingHours > 0) {
     if (effectiveWorkingHours >= full) baseWorkStatus = 'P';
-    else if (effectiveWorkingHours >= threeQuarterHrs) baseWorkStatus = '3/4P';
-    else if (effectiveWorkingHours >= halfDayHrs) baseWorkStatus = '1/2P';
-    else if (effectiveWorkingHours >= quarterDayHrs) baseWorkStatus = '1/4P';
+    else if (effectiveWorkingHours >= threeQuarterHrs) baseWorkStatus = '0.75P';
+    else if (effectiveWorkingHours >= halfDayHrs) baseWorkStatus = '0.5P';
+    else if (effectiveWorkingHours >= quarterDayHrs) baseWorkStatus = '0.25P';
     else baseWorkStatus = 'A';
   } else if (hasPunchIn && hasPunchOut) {
     baseWorkStatus = 'P'; // Fallback if no hours but complete punch
@@ -297,37 +297,17 @@ export function evaluateSiteStaffStatus(params: any): string {
   const isWeeklyOffDay = weeklyOffDays.includes(dayOfWeek);
 
   const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && approvedLeave.day_option !== 'half';
+  const lType = approvedLeave ? String(approvedLeave.leaveType || approvedLeave.type || '').toLowerCase() : '';
+  const isCorrectionOrPermission = approvedLeave && (
+    lType.includes('correction') || 
+    lType.includes('permission') || 
+    String(approvedLeave.status || '').toLowerCase() === 'correction_made'
+  );
 
-  // CRITICAL: If employee actually worked (baseWorkStatus is P or 1/2P), their physical
-  // presence takes priority over an approved full-day leave. The leave may have been
-  // approved but the employee showed up and worked — credit their attendance.
-  if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P') {
-    if (isHoliday) {
-      // Overtime Rule: Only one HP or 1/2HP per day. 
-      return baseWorkStatus === 'P' ? 'HP' : '1/2HP';
-    }
-    if (isWeeklyOffDay) {
-      // Worked on weekly off -> W/P or W/0.5P
-      return baseWorkStatus === 'P' ? 'W/P' : 'W/0.5P';
-    }
-    return baseWorkStatus;
-  }
-
-  // If not working, check for Leaves or Weekly Offs
-  if (approvedLeave) {
-    const lType = String(approvedLeave.leaveType || approvedLeave.type || '').toLowerCase();
-    const isHalf = approvedLeave.dayOption === 'half' || approvedLeave.day_option === 'half';
-    
-    if (lType.includes('permission')) {
-      // Permission request not meeting full hours — show RP
-      return isHalf ? '1/2RP' : 'RP';
-    }
-    if (lType.includes('correction')) {
-      // Correction request not meeting full hours — show RC
-      return isHalf ? '1/2RC' : 'RC';
-    }
+  // NEW RULE: Approved full-day leaves take priority over physical presence, so if they applied for leave and it is approved, assign the leave-based notation.
+  if (approvedLeave && isFullDayLeave && !isCorrectionOrPermission) {
     if (lType.includes('earned') || lType === 'e/l' || lType === 'el') {
-       return isHalf ? '1/2EL' : 'EL';
+       return 'EL';
     }
     if (lType.includes('sick') || lType === 's/l' || lType === 'sl') {
        return 'SL';
@@ -336,18 +316,70 @@ export function evaluateSiteStaffStatus(params: any): string {
        return 'CL';
     }
     if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
-      return 'C/O';
+       return 'CO';
     }
     if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') {
-      return isHalf ? '1/2BL' : 'BL'; // Blue Leave
+       return 'FH';
     }
     if (lType.includes('pink')) {
-      return isHalf ? '1/2PL' : 'PL'; // Pink Leave
+       return 'PL';
     }
     if (lType.includes('maternity')) return 'ML';
-    if (lType.includes('child care')) return 'CC';
-    // Default leave mark if specific match not found
+    if (lType.includes('child care')) return 'CCL';
     return 'EL';
+  }
+
+  // CRITICAL: If employee actually worked (baseWorkStatus is P or 1/2P / 0.5P), their physical
+  // presence takes priority over an approved full-day leave. The leave may have been
+  // approved but the employee showed up and worked — credit their attendance.
+  if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P' || baseWorkStatus === '0.5P') {
+    if (isHoliday) {
+      // Overtime Rule: Only one HP or 0.5HP per day. 
+      return baseWorkStatus === 'P' ? 'HP' : '0.5HP';
+    }
+    if (isWeeklyOffDay) {
+      // Worked on weekly off -> W.O/P or W.O/0.5P
+      return baseWorkStatus === 'P' ? 'W.O/P' : 'W.O/0.5P';
+    }
+    return baseWorkStatus;
+  }
+
+  // If not working, check for Leaves or Weekly Offs
+  if (approvedLeave) {
+    const lType = String(approvedLeave.leaveType || approvedLeave.type || '').toLowerCase();
+    const isHalf = approvedLeave.dayOption === 'half' || approvedLeave.day_option === 'half';
+    const prefix = isHalf ? '0.5' : '';
+    
+    if (lType.includes('permission')) {
+      // Permission request not meeting full hours — show RP
+      return prefix + 'RP';
+    }
+    if (lType.includes('correction')) {
+      // Correction request not meeting full hours — show RC
+      return prefix + 'RC';
+    }
+    if (lType.includes('earned') || lType === 'e/l' || lType === 'el') {
+       return prefix + 'EL';
+    }
+    if (lType.includes('sick') || lType === 's/l' || lType === 'sl') {
+       return prefix + 'SL';
+    }
+    if (lType.includes('casual') || lType === 'c/l' || lType === 'cl') {
+       return prefix + 'CL';
+    }
+    if (lType.includes('comp') || lType === 'c/o' || lType === 'co') {
+       return prefix + 'CO';
+    }
+    if (lType.includes('floating') || lType === 'f/h' || lType === 'fh') {
+       return prefix + 'FH';
+    }
+    if (lType.includes('pink')) {
+       return prefix + 'PL';
+    }
+    if (lType.includes('maternity')) return prefix + 'ML';
+    if (lType.includes('child care')) return prefix + 'CCL';
+    // Default leave mark if specific match not found
+    return prefix + 'EL';
   }
 
   // Weekly Off logic

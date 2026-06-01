@@ -351,6 +351,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         else if (workingHours >= quarterDayHrs) normalPay = 0.25;
                         else normalPay = 0; // no qualifying hours → no pay
                     }
+                } else if (status === 'holiday-present' || status === 'weekend-present') {
+                    normalPay = 1.5;
                 } else {
                     normalPay = 1;
                 }
@@ -388,12 +390,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     useEffect(() => {
         if (onMonthPaydaysChange) {
-            onMonthPaydaysChange(monthlyPaydaysCount);
+            const cappedPay = Math.min(daysInMonth.length, monthlyPaydaysCount);
+            onMonthPaydaysChange(cappedPay);
         }
         if (onSiteOtDaysChange) {
             onSiteOtDaysChange(monthlySiteOtCount);
         }
-    }, [monthlyPaydaysCount, monthlySiteOtCount, onMonthPaydaysChange, onSiteOtDaysChange]);
+    }, [monthlyPaydaysCount, monthlySiteOtCount, onMonthPaydaysChange, onSiteOtDaysChange, daysInMonth]);
 
 
     return (
