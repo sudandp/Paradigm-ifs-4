@@ -18,8 +18,8 @@ import { dispatchNotificationFromRules } from '../../services/notificationServic
 import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
-import { format, differenceInMinutes, startOfDay, endOfDay, parseISO } from 'date-fns';
-import { calculateDistanceMeters } from '../../utils/locationUtils';
+import { format, startOfDay, endOfDay } from 'date-fns';
+import { calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -118,10 +118,16 @@ const ProfilePage: React.FC = () => {
                 const today = new Date();
                 const start = startOfDay(today).toISOString();
                 const end = endOfDay(today).toISOString();
-                const events = await api.getAttendanceEvents(user.id, start, end);
+
+                // Fetch both attendance events AND continuous GPS route points (same sources as Route View)
+                const [events, routePoints] = await Promise.all([
+                    api.getAttendanceEvents(user.id, start, end),
+                    api.getRoutePoints(user.id, start, end).catch(() => [])
+                ]);
+
                 if (cancelled) return;
 
-                if (events.length === 0) {
+                if (events.length === 0 && routePoints.length === 0) {
                     setTodayMetrics({
                         totalDistance: '0.00',
                         travelTime: '0h 0m',
@@ -131,101 +137,23 @@ const ProfilePage: React.FC = () => {
                     return;
                 }
 
-                // Parse events using same logic as TeamMemberProfile.tsx
-                const sorted = [...events]
-                    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-                    .filter((e, i, arr) => {
-                        if (i === 0) return true;
-                        const prev = arr[i - 1];
-                        return e.type !== prev.type || e.timestamp !== prev.timestamp;
-                    });
+                // Calculate travel distance + duration using the same algorithm as Route View:
+                // merges attendance events + route_history GPS pings, sorts chronologically,
+                // deduplicates points within 5m, and sums the cumulative path distance.
+                const { distance, duration } = calculateDailyPathTravelKm(events, routePoints);
 
-                const workSegments: any[] = [];
-                const travelSegments: any[] = [];
+                // Steps and sqft are captured on PUNCH-OUT events only (saved by stepCounterService on check-out)
+                const totalSteps = events
+                    .filter(e => e.type === 'punch-out' && e.steps != null)
+                    .reduce((sum, e) => sum + (e.steps || 0), 0);
 
-                let activeIn: any = null;
-                for (let i = 0; i < sorted.length; i++) {
-                    const evt = sorted[i];
-                    if (evt.type === 'punch-in') {
-                        if (!activeIn) activeIn = evt;
-                    } else if (evt.type === 'punch-out') {
-                        if (activeIn) {
-                            const startDt = parseISO(activeIn.timestamp);
-                            const endDt = parseISO(evt.timestamp);
-                            const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
-                            workSegments.push({
-                                id: `work-${activeIn.id}`,
-                                type: 'Work',
-                                startTime: activeIn.timestamp,
-                                endTime: evt.timestamp,
-                                durationMin,
-                                steps: evt.steps,
-                                sqft: evt.sqft
-                            });
-                            activeIn = null;
-                        }
-                    }
-                }
-
-                if (activeIn) {
-                    const endTs = new Date().toISOString();
-                    const startDt = parseISO(activeIn.timestamp);
-                    const endDt = parseISO(endTs);
-                    const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
-                    workSegments.push({
-                        id: `work-${activeIn.id}`,
-                        type: 'Work',
-                        startTime: activeIn.timestamp,
-                        endTime: endTs,
-                        durationMin
-                    });
-                }
-
-                for (let j = 0; j < workSegments.length - 1; j++) {
-                    const current = workSegments[j];
-                    const next = workSegments[j + 1];
-                    const startDt = parseISO(current.endTime);
-                    const endDt = parseISO(next.startTime);
-                    const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
-                    const outEvt = sorted.find(e => e.timestamp === current.endTime && e.type === 'punch-out');
-                    const inEvt = sorted.find(e => e.timestamp === next.startTime && e.type === 'punch-in');
-                    let dist = 0;
-                    if (outEvt?.latitude && outEvt?.longitude && inEvt?.latitude && inEvt?.longitude) {
-                        dist = calculateDistanceMeters(outEvt.latitude, outEvt.longitude, inEvt.latitude, inEvt.longitude) / 1000;
-                    }
-                    if (durationMin > 0 || dist > 0.05) {
-                        travelSegments.push({
-                            id: `travel-${j}`,
-                            type: 'Travel',
-                            startTime: current.endTime,
-                            endTime: next.startTime,
-                            durationMin,
-                            distance: Number(dist.toFixed(2))
-                        });
-                    }
-                }
-
-                const timeline = [...workSegments, ...travelSegments].sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-                let totalDist = 0;
-                let travelMin = 0;
-                let totalSteps = 0;
-                let totalSqft = 0;
-
-                timeline.forEach(s => {
-                    if (s.type === 'Work') {
-                        totalSteps += s.steps || 0;
-                        totalSqft += s.sqft || 0;
-                    }
-                    if (s.type === 'Travel') {
-                        travelMin += s.durationMin;
-                        totalDist += s.distance || 0;
-                    }
-                });
+                const totalSqft = events
+                    .filter(e => e.type === 'punch-out' && e.sqft != null)
+                    .reduce((sum, e) => sum + (e.sqft || 0), 0);
 
                 setTodayMetrics({
-                    totalDistance: totalDist.toFixed(2),
-                    travelTime: `${Math.floor(travelMin / 60)}h ${travelMin % 60}m`,
+                    totalDistance: distance.toFixed(2),
+                    travelTime: `${Math.floor(duration / 60)}h ${duration % 60}m`,
                     totalSteps,
                     totalSqft
                 });

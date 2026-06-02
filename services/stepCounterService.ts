@@ -7,7 +7,11 @@ interface StepCountChangedEvent {
 
 interface StepCounterPlugin {
   isStepCountingSupported(): Promise<{ supported: boolean }>;
+  checkPermissions(): Promise<{ activityRecognition: string }>;
+  requestPermissions(): Promise<{ activityRecognition: string }>;
+  /** @deprecated use checkPermissions / requestPermissions */
   getPermissionStatus(): Promise<{ granted: boolean }>;
+  /** @deprecated use checkPermissions / requestPermissions */
   requestPermission(): Promise<{ granted: boolean }>;
   startStepCount(): Promise<void>;
   stopStepCount(): Promise<void>;
@@ -20,115 +24,139 @@ class StepCounterService {
   private isCounting: boolean = false;
   private currentSteps: number = 0;
 
-  /**
-   * Get the current accumulated steps recorded since startCounting was called.
-   */
+  /** Get the current accumulated steps recorded since startCounting was called. */
   public getStepsCount(): number {
     return this.currentSteps;
   }
 
-  /**
-   * Check if step counting is supported on the current device / platform.
-   */
+  /** Check if step counting is supported on the current device / platform. */
   public async isSupported(): Promise<boolean> {
-    if (Capacitor.getPlatform() !== 'android') {
-      console.log('[StepCounterService] Step counting is only supported on Android hardware.');
-      return false;
-    }
+    if (Capacitor.getPlatform() !== 'android') return false;
     try {
       const { supported } = await StepCounter.isStepCountingSupported();
       return supported;
-    } catch (err) {
-      console.error('[StepCounterService] Error checking support status:', err);
+    } catch {
       return false;
     }
   }
 
   /**
-   * Get current permission status for ACTIVITY_RECOGNITION.
+   * Check current ACTIVITY_RECOGNITION permission state.
+   * Returns 'granted', 'denied', or 'prompt'.
    */
-  public async getPermissionStatus(): Promise<boolean> {
-    if (Capacitor.getPlatform() !== 'android') {
-      return true; // Auto-grant/mock on web/iOS
-    }
+  public async checkPermissionStatus(): Promise<'granted' | 'denied' | 'prompt'> {
+    if (Capacitor.getPlatform() !== 'android') return 'granted';
     try {
+      // Try Capacitor v5+ standard API first
+      if (typeof StepCounter.checkPermissions === 'function') {
+        const result = await StepCounter.checkPermissions();
+        return result.activityRecognition as 'granted' | 'denied' | 'prompt';
+      }
+      // Fallback to legacy API
       const { granted } = await StepCounter.getPermissionStatus();
-      return granted;
-    } catch (err) {
-      console.error('[StepCounterService] Error getting permission status:', err);
-      return false;
+      return granted ? 'granted' : 'prompt';
+    } catch {
+      return 'prompt';
     }
   }
 
   /**
-   * Request ACTIVITY_RECOGNITION permission.
+   * Request ACTIVITY_RECOGNITION permission and wait for user response.
+   * Returns true if granted, false if denied.
    */
-  public async requestPermission(): Promise<boolean> {
-    if (Capacitor.getPlatform() !== 'android') {
-      return true; // Mock success on non-Android platforms
+  public async ensurePermission(): Promise<boolean> {
+    if (Capacitor.getPlatform() !== 'android') return true;
+
+    const current = await this.checkPermissionStatus();
+    if (current === 'granted') return true;
+    if (current === 'denied') {
+      console.warn('[StepCounter] ACTIVITY_RECOGNITION permanently denied. User must enable in Settings.');
+      return false;
     }
+
     try {
+      // Try Capacitor v5+ standard API first
+      if (typeof StepCounter.requestPermissions === 'function') {
+        const result = await StepCounter.requestPermissions();
+        return result.activityRecognition === 'granted';
+      }
+      // Fallback to legacy API
       const { granted } = await StepCounter.requestPermission();
       return granted;
     } catch (err) {
-      console.error('[StepCounterService] Error requesting permission:', err);
+      console.error('[StepCounter] Error requesting permission:', err);
       return false;
     }
+  }
+
+  /**
+   * Pre-flight check: ensure sensor is available and permission is granted.
+   * Call this BEFORE startCounting() to surface permission UI early.
+   * Returns: { ok: boolean, reason?: string }
+   */
+  public async preflight(): Promise<{ ok: boolean; reason?: string }> {
+    if (Capacitor.getPlatform() !== 'android') {
+      return { ok: true }; // Web/iOS — will use simulation
+    }
+    const supported = await this.isSupported();
+    if (!supported) {
+      return { ok: false, reason: 'Step counter sensor not available on this device.' };
+    }
+    const granted = await this.ensurePermission();
+    if (!granted) {
+      return { ok: false, reason: 'Activity Recognition permission was denied. Steps cannot be counted.' };
+    }
+    return { ok: true };
   }
 
   /**
    * Start listening for step changes.
+   * Always call preflight() or ensurePermission() first to handle the permission dialog.
    * @param onStepChange Callback executed when step updates occur.
    */
   public async startCounting(onStepChange: (steps: number) => void): Promise<void> {
     if (this.isCounting) return;
 
-    const isSupported = await this.isSupported();
-    if (!isSupported) {
-      console.warn('[StepCounterService] Step counter is not supported or not running on Android.');
-      // Mock step counting on non-Android (increment steps periodically for prototype simulation)
-      if (Capacitor.getPlatform() !== 'android') {
-        this.simulateSteps(onStepChange);
-      }
+    // On non-Android: simulate steps for dev/web preview
+    if (Capacitor.getPlatform() !== 'android') {
+      this.simulateSteps(onStepChange);
       return;
     }
 
-    const hasPermission = await this.getPermissionStatus();
-    if (!hasPermission) {
-      const granted = await this.requestPermission();
-      if (!granted) {
-        throw new Error('Activity Recognition permission denied by user.');
-      }
+    const supported = await this.isSupported();
+    if (!supported) {
+      console.warn('[StepCounter] Step counter sensor not available on this device.');
+      return;
+    }
+
+    // Ensure permission is granted (will request if not yet asked)
+    const granted = await this.ensurePermission();
+    if (!granted) {
+      throw new Error('ACTIVITY_RECOGNITION permission denied. Steps cannot be counted.');
     }
 
     try {
-      // Reset step state at session start
       this.currentSteps = 0;
 
-      // Register event listener
       this.listenerHandle = await (StepCounter as any).addListener(
         'stepCountChanged',
         (data: StepCountChangedEvent) => {
-          console.log(`[StepCounterService] Steps update: ${data.steps} (Total cumulative: ${data.totalCumulativeSteps})`);
           this.currentSteps = data.steps;
           onStepChange(data.steps);
         }
       );
 
-      // Start the native service listener
       await StepCounter.startStepCount();
       this.isCounting = true;
-      console.log('[StepCounterService] Native step counting started.');
+      console.log('[StepCounter] Native step counting started.');
     } catch (err) {
-      console.error('[StepCounterService] Failed to start native step counting:', err);
+      console.error('[StepCounter] Failed to start native step counting:', err);
       this.cleanup();
       throw err;
     }
   }
 
-  /**
-   * Stop listening for step changes.
-   */
+  /** Stop listening for step changes. */
   public async stopCounting(): Promise<void> {
     this.cleanupSimulation();
     if (!this.isCounting) return;
@@ -137,12 +165,12 @@ class StepCounterService {
       try {
         await StepCounter.stopStepCount();
       } catch (err) {
-        console.warn('[StepCounterService] Error stopping native step counter:', err);
+        console.warn('[StepCounter] Error stopping native step counter:', err);
       }
     }
 
     this.cleanup();
-    console.log('[StepCounterService] Step counting stopped.');
+    console.log('[StepCounter] Step counting stopped.');
   }
 
   private cleanup(): void {
@@ -153,7 +181,7 @@ class StepCounterService {
     this.isCounting = false;
   }
 
-  // --- Prototype Simulation Logic for non-Android platforms ---
+  // --- Simulation Logic for non-Android platforms (dev/web preview) ---
   private simulationIntervalId: any = null;
   private simulatedSteps: number = 0;
 
@@ -162,9 +190,7 @@ class StepCounterService {
     this.isCounting = true;
     this.simulatedSteps = 0;
     this.currentSteps = 0;
-    console.log('[StepCounterService] Starting mock steps simulation.');
     this.simulationIntervalId = setInterval(() => {
-      // Add random steps between 1 and 5
       const delta = Math.floor(Math.random() * 5) + 1;
       this.simulatedSteps += delta;
       this.currentSteps = this.simulatedSteps;
@@ -178,7 +204,6 @@ class StepCounterService {
       this.simulationIntervalId = null;
       this.isCounting = false;
       this.simulatedSteps = 0;
-      console.log('[StepCounterService] Stopped mock steps simulation.');
     }
   }
 }

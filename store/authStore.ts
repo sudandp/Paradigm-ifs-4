@@ -843,10 +843,20 @@ export const useAuthStore = create<AuthState>()(
 
                 // Auto-resume step counter if the user is checked-in for field visit
                 if (isFieldCheckedIn && !isOnBreak) {
-                    import('../services/stepCounterService').then(({ stepCounterService }) => {
-                        stepCounterService.startCounting((steps) => {
-                            console.log(`[authStore] Resumed step counting: ${steps}`);
-                        }).catch(e => console.warn('[authStore] Failed to resume step counting:', e));
+                    import('../services/stepCounterService').then(async ({ stepCounterService }) => {
+                        try {
+                            // Pre-request permission on resume so it doesn't silently fail
+                            const { ok, reason } = await stepCounterService.preflight();
+                            if (!ok) {
+                                console.warn(`[authStore] Step counter resume skipped: ${reason}`);
+                                return;
+                            }
+                            await stepCounterService.startCounting((steps) => {
+                                console.log(`[authStore] Resumed step counting: ${steps}`);
+                            });
+                        } catch (e) {
+                            console.warn('[authStore] Failed to resume step counting:', e);
+                        }
                     });
                 }
             } catch (error) {
@@ -1101,11 +1111,22 @@ export const useAuthStore = create<AuthState>()(
 
                     if (newType === 'punch-in') {
                         // Start step counter for field visit
+                        // preflight() requests ACTIVITY_RECOGNITION permission BEFORE startCounting()
+                        // so the dialog appears immediately at check-in, not silently later
                         if (workType === 'field') {
-                            import('../services/stepCounterService').then(({ stepCounterService }) => {
-                                stepCounterService.startCounting((steps) => {
-                                    console.log(`[authStore] Current steps: ${steps}`);
-                                }).catch(err => console.warn('[authStore] Failed to start step counter:', err));
+                            import('../services/stepCounterService').then(async ({ stepCounterService }) => {
+                                try {
+                                    const { ok, reason } = await stepCounterService.preflight();
+                                    if (!ok) {
+                                        console.warn(`[authStore] Step counter preflight failed: ${reason}`);
+                                        return; // Permission denied — counting won't start, steps will be 0
+                                    }
+                                    await stepCounterService.startCounting((steps) => {
+                                        console.log(`[authStore] Current steps: ${steps}`);
+                                    });
+                                } catch (err) {
+                                    console.warn('[authStore] Failed to start step counter:', err);
+                                }
                             });
                         }
 

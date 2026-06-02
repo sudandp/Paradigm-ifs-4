@@ -763,9 +763,15 @@ const RouteView: React.FC<{
                     if (chunk.length < 2) break;
                     
                     const coordsString = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
-                    const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`);
-                    
-                    if (!response.ok) throw new Error('OSRM API failed');
+                    let response;
+                    try {
+                        response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`);
+                        if (!response.ok) throw new Error(`Primary OSRM failed: ${response.status}`);
+                    } catch (primaryErr) {
+                        console.warn('Primary OSRM failed, trying community fallback...', primaryErr);
+                        response = await fetch(`https://routing.openstreetmap.de/routed-car/route/v1/driving/${coordsString}?overview=full&geometries=geojson`);
+                        if (!response.ok) throw new Error(`Fallback OSRM failed: ${response.status}`);
+                    }
                     
                     const data = await response.json();
                     if (data.code === 'Ok' && data.routes && data.routes.length > 0) {

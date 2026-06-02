@@ -11,6 +11,7 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -46,12 +47,68 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
         call.resolve(ret);
     }
 
+    // -------------------------------------------------------------------------
+    // Capacitor v5 standard permission API: checkPermissions + requestPermissions
+    // These names are required by Capacitor's permission system to work correctly.
+    // -------------------------------------------------------------------------
+
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            PermissionState state = getPermissionState("activityRecognition");
+            // Map to JS-friendly string: "granted", "denied", "prompt"
+            String stateStr;
+            if (state == PermissionState.GRANTED) {
+                stateStr = "granted";
+            } else if (state == PermissionState.DENIED) {
+                stateStr = "denied";
+            } else {
+                stateStr = "prompt";
+            }
+            ret.put("activityRecognition", stateStr);
+        } else {
+            // Below Android 10, ACTIVITY_RECOGNITION is not a dangerous permission
+            ret.put("activityRecognition", "granted");
+        }
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (getPermissionState("activityRecognition") != PermissionState.GRANTED) {
+                requestPermissionForAlias("activityRecognition", call, "requestPermissionsCallback");
+            } else {
+                JSObject ret = new JSObject();
+                ret.put("activityRecognition", "granted");
+                call.resolve(ret);
+            }
+        } else {
+            JSObject ret = new JSObject();
+            ret.put("activityRecognition", "granted");
+            call.resolve(ret);
+        }
+    }
+
+    @PermissionCallback
+    private void requestPermissionsCallback(PluginCall call) {
+        JSObject ret = new JSObject();
+        boolean granted = getPermissionState("activityRecognition") == PermissionState.GRANTED;
+        ret.put("activityRecognition", granted ? "granted" : "denied");
+        call.resolve(ret);
+    }
+
+    // -------------------------------------------------------------------------
+    // Legacy API kept for backward compatibility
+    // -------------------------------------------------------------------------
+
     @PluginMethod
     public void getPermissionStatus(PluginCall call) {
         JSObject ret = new JSObject();
         boolean hasPermission = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            hasPermission = getPermissionState("activityRecognition") == com.getcapacitor.PermissionState.GRANTED;
+            hasPermission = getPermissionState("activityRecognition") == PermissionState.GRANTED;
         }
         ret.put("granted", hasPermission);
         call.resolve(ret);
@@ -60,8 +117,8 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
     @PluginMethod
     public void requestPermission(PluginCall call) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (getPermissionState("activityRecognition") != com.getcapacitor.PermissionState.GRANTED) {
-                requestPermissionForAlias("activityRecognition", call, "permissionCallback");
+            if (getPermissionState("activityRecognition") != PermissionState.GRANTED) {
+                requestPermissionForAlias("activityRecognition", call, "legacyPermissionCallback");
             } else {
                 JSObject ret = new JSObject();
                 ret.put("granted", true);
@@ -75,12 +132,16 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
     }
 
     @PermissionCallback
-    private void permissionCallback(PluginCall call) {
+    private void legacyPermissionCallback(PluginCall call) {
         JSObject ret = new JSObject();
-        boolean granted = getPermissionState("activityRecognition") == com.getcapacitor.PermissionState.GRANTED;
+        boolean granted = getPermissionState("activityRecognition") == PermissionState.GRANTED;
         ret.put("granted", granted);
         call.resolve(ret);
     }
+
+    // -------------------------------------------------------------------------
+    // Step counting
+    // -------------------------------------------------------------------------
 
     @PluginMethod
     public void startStepCount(PluginCall call) {
@@ -90,7 +151,7 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-            getPermissionState("activityRecognition") != com.getcapacitor.PermissionState.GRANTED) {
+            getPermissionState("activityRecognition") != PermissionState.GRANTED) {
             call.reject("Activity recognition permission not granted.");
             return;
         }
@@ -100,7 +161,6 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
             return;
         }
 
-        // Reset tracking offsets
         startSteps = -1;
         currentSteps = 0;
 
@@ -119,7 +179,6 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
             call.resolve();
             return;
         }
-
         sensorManager.unregisterListener(this);
         isListening = false;
         startSteps = -1;
@@ -130,13 +189,9 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
             float totalSteps = event.values[0];
-            
-            // The step counter sensor returns cumulative steps since reboot.
-            // We calculate delta since we started tracking.
             if (startSteps < 0) {
                 startSteps = totalSteps;
             }
-            
             currentSteps = totalSteps - startSteps;
 
             JSObject ret = new JSObject();
