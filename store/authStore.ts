@@ -840,6 +840,15 @@ export const useAuthStore = create<AuthState>()(
                 
                 // Sync tracking state after status update
                 get().syncRouteTracking();
+
+                // Auto-resume step counter if the user is checked-in for field visit
+                if (isFieldCheckedIn && !isOnBreak) {
+                    import('../services/stepCounterService').then(({ stepCounterService }) => {
+                        stepCounterService.startCounting((steps) => {
+                            console.log(`[authStore] Resumed step counting: ${steps}`);
+                        }).catch(e => console.warn('[authStore] Failed to resume step counting:', e));
+                    });
+                }
             } catch (error) {
                 console.error("Failed to check attendance status (unexpected error):", error);
                 set({ isAttendanceLoading: false });
@@ -928,6 +937,50 @@ export const useAuthStore = create<AuthState>()(
                     const currentDailyPunchCount = get().dailyPunchCount;
                     const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
 
+                    // Capture steps and sqft on field check-out
+                    let stepsValue: number | undefined = undefined;
+                    let sqftValue: number | undefined = undefined;
+                    let travelDistanceValue: number | undefined = undefined;
+
+                    if (newType === 'punch-out' && workType === 'field') {
+                        try {
+                            const { stepCounterService } = await import('../services/stepCounterService');
+                            stepsValue = stepCounterService.getStepsCount();
+                            sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
+                            await stepCounterService.stopCounting();
+                            console.log(`[authStore] Saved visit steps: ${stepsValue}, sqft: ${sqftValue}`);
+                        } catch (err) {
+                            console.warn('[authStore] Failed to capture step count on checkout:', err);
+                        }
+                    }
+
+                    if (newType === 'punch-in' && workType === 'field' && lat && lng) {
+                        try {
+                            const start = new Date();
+                            start.setHours(0, 0, 0, 0);
+                            const end = new Date();
+                            end.setHours(23, 59, 59, 999);
+                            const todayEvents = await api.getAttendanceEvents(user.id, start.toISOString(), end.toISOString());
+                            
+                            const lastPunchOut = [...todayEvents]
+                                .filter(e => e.type === 'punch-out')
+                                .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
+
+                            if (lastPunchOut?.latitude && lastPunchOut?.longitude) {
+                                const distMeters = calculateDistanceMeters(
+                                    lastPunchOut.latitude,
+                                    lastPunchOut.longitude,
+                                    lat,
+                                    lng
+                                );
+                                travelDistanceValue = Number((distMeters / 1000).toFixed(2));
+                                console.log(`[authStore] Calculated travel distance since last checkout: ${travelDistanceValue} km`);
+                            }
+                        } catch (err) {
+                            console.warn('[authStore] Failed to calculate travel distance for check-in:', err);
+                        }
+                    }
+
                     try {
                         await api.addAttendanceEvent({
                             userId: user.id,
@@ -941,7 +994,10 @@ export const useAuthStore = create<AuthState>()(
                             attachmentUrl: newType === 'punch-out' ? (attachmentUrl || undefined) : undefined,
                             workType: workType,
                             fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
-                            isOt: isOtCycle ? true : undefined
+                            isOt: isOtCycle ? true : undefined,
+                            steps: stepsValue,
+                            sqft: sqftValue,
+                            travelDistance: travelDistanceValue
                         });
                     } catch (err: any) {
                         return { success: false, message: err.message || 'Failed to record attendance' };
@@ -1044,6 +1100,15 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     if (newType === 'punch-in') {
+                        // Start step counter for field visit
+                        if (workType === 'field') {
+                            import('../services/stepCounterService').then(({ stepCounterService }) => {
+                                stepCounterService.startCounting((steps) => {
+                                    console.log(`[authStore] Current steps: ${steps}`);
+                                }).catch(err => console.warn('[authStore] Failed to start step counter:', err));
+                            });
+                        }
+
                         // Schedule Shift End Reminder (9 hours)
                         // If user has specific shift duration settings, we could use that. defaulting to 9h.
                         scheduleShiftEndReminder(new Date(), Math.max(9, get().totalWorkingDurationToday + 1 || 9));

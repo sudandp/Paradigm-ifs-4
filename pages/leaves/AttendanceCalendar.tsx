@@ -430,6 +430,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         const isToday = isSameDay(date, startOfDay(new Date()));
                         const isPast = isAfter(startOfDay(new Date()), startOfDay(date));
                         
+                        // Check for pending Correction / Permission request on this day
+                        const dateKey = format(date, 'yyyy-MM-dd');
+                        const hasPendingCorrOrPerm = leaveRequests?.some(req => {
+                            const lStatus = String(req.status || '').toLowerCase();
+                            const lType = String(req.leaveType || (req as any).leave_type || '');
+                            const isPending = ['pending_manager_approval', 'pending_hr_confirmation', 'pending_admin_correction'].includes(lStatus);
+                            const isCorrOrPerm = lType === 'Correction' || lType === 'Permission';
+                            if (!isPending || !isCorrOrPerm) return false;
+                            const start = startOfDay(new Date(req.startDate.replace(/-/g, '/')));
+                            const end = endOfDay(new Date(req.endDate.replace(/-/g, '/')));
+                            return date >= start && date <= end;
+                        }) ?? false;
+                        
                         let overlayText: string | null = null;
                         let customStyle: React.CSSProperties = {};
 
@@ -573,6 +586,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         <span className="text-[6px] text-white font-black leading-none">OT</span>
                                     </div>
                                 )}
+                                {/* Pending Correction/Permission indicator — animated orange dot */}
+                                {hasPendingCorrOrPerm && !isSiteOtPresent && (
+                                    <div
+                                        className="absolute top-[2px] right-[2px] w-[8px] h-[8px] bg-orange-400 rounded-full border border-white shadow-sm z-20 animate-pulse"
+                                        title="Correction/Permission request pending approval"
+                                        aria-label="Pending correction or permission"
+                                    />
+                                )}
                                 {holidayName && (
                                     <div className="absolute bottom-[-35px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[9px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-50 pointer-events-none transition-opacity shadow-lg">
                                         {holidayName}
@@ -661,6 +682,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                     const hasSiteOt = Array.from(dayStatusMap.values()).some(v => v.isSiteOtPresent);
                     if (hasSiteOt) usedCodes.add('OT');
 
+                    // Show pending RC/RP legend entry if any exist this month
+                    const hasPendingThisMonth = leaveRequests?.some(req => {
+                        const lStatus = String(req.status || '').toLowerCase();
+                        const lType = String(req.leaveType || (req as any).leave_type || '');
+                        return ['pending_manager_approval', 'pending_hr_confirmation', 'pending_admin_correction'].includes(lStatus)
+                            && (lType === 'Correction' || lType === 'Permission');
+                    }) ?? false;
+                    if (hasPendingThisMonth) usedCodes.add('PENDING_RC');
+
                     const activeNotations = ALL_NOTATIONS.filter(n => usedCodes.has(n.code));
                     if (activeNotations.length === 0) return null;
 
@@ -674,6 +704,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight leading-none">{label}</span>
                                     </div>
                                 ))}
+                                {/* Pending indicator legend — shown separately */}
+                                {hasPendingThisMonth && (
+                                    <div className="flex items-center gap-1.5 col-span-3">
+                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-orange-400 animate-pulse" />
+                                        <span className="text-[9px] font-bold text-orange-500 uppercase tracking-tight leading-none">Pending Correction/Permission</span>
+                                    </div>
+                                )}
                             </div>
                         </>
                     );

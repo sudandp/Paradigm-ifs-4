@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Loader2, Calendar as CalendarIcon, User, FileText, Info } from 'lucide-react';
+import { X, Save, Loader2, Calendar as CalendarIcon, User, FileText, Info, Clock } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
 import { User as UserType, LeaveType, LeaveBalance } from '../../types';
@@ -29,6 +29,22 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
     const [endDate, setEndDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
     const [dayOption, setDayOption] = useState<'full' | 'half'>('full');
     const [reason, setReason] = useState<string>('');
+    
+    // Correction/Permission specific state
+    const [correctionStatus, setCorrectionStatus] = useState<'Present' | 'Site Visit' | 'W/H'>('Present');
+    const [locationName, setLocationName] = useState<string>('');
+    const [punchIn, setPunchIn] = useState<string>('09:00');
+    const [punchOut, setPunchOut] = useState<string>('18:30');
+    const [includeSite, setIncludeSite] = useState<boolean>(false);
+    const [siteVisits, setSiteVisits] = useState<{in: string, out: string}[]>([{in: '10:00', out: '17:00'}]);
+
+    const addSiteVisit = () => setSiteVisits([...siteVisits, {in: '10:00', out: '17:00'}]);
+    const removeSiteVisit = (idx: number) => setSiteVisits(siteVisits.filter((_, i) => i !== idx));
+    const updateSiteVisit = (idx: number, field: 'in'|'out', value: string) => {
+        const newVisits = [...siteVisits];
+        newVisits[idx][field] = value;
+        setSiteVisits(newVisits);
+    };
     
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingBalance, setIsLoadingBalance] = useState(false);
@@ -61,6 +77,12 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
             setEndDate(format(new Date(), 'yyyy-MM-dd'));
             setDayOption('full');
             setReason('');
+            setCorrectionStatus('Present');
+            setLocationName('');
+            setPunchIn('09:00');
+            setPunchOut('18:30');
+            setIncludeSite(false);
+            setSiteVisits([{in: '10:00', out: '17:00'}]);
             setBalance(null);
             setToast(null);
         }
@@ -84,6 +106,76 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
         };
         fetchBalance();
     }, [selectedUserId, isOpen]);
+
+    useEffect(() => {
+        const fetchExistingLogs = async () => {
+            if (!isOpen || !selectedUserId || !isSingleDay || !['Correction', 'Permission'].includes(leaveType)) return;
+
+            try {
+                const startDateTime = `${startDate}T00:00:00Z`;
+                const endDateTime = `${startDate}T23:59:59Z`;
+
+                const { data, error: fetchError } = await supabase
+                    .from('attendance_events')
+                    .select('*')
+                    .eq('user_id', selectedUserId)
+                    .gte('timestamp', startDateTime)
+                    .lte('timestamp', endDateTime);
+
+                if (fetchError) throw fetchError;
+
+                if (data && data.length > 0) {
+                    const punchInEvent = data.find(e => e.type === 'punch-in' && e.work_type === 'office');
+                    const punchOutEvent = data.find(e => e.type === 'punch-out' && e.work_type === 'office');
+                    
+                    const fieldIns = data.filter(e => e.type === 'punch-in' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    const fieldOuts = data.filter(e => e.type === 'punch-out' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                    if (punchInEvent) setPunchIn(format(new Date(punchInEvent.timestamp), 'HH:mm'));
+                    if (punchOutEvent) setPunchOut(format(new Date(punchOutEvent.timestamp), 'HH:mm'));
+
+                    const firstEvent = data[0];
+                    if (firstEvent.location_name === 'Work From Home') {
+                        setCorrectionStatus('W/H');
+                    } else if (fieldIns.length > 0 || fieldOuts.length > 0 || data.some(e => e.work_type === 'field')) {
+                        setCorrectionStatus('Site Visit');
+                        setLocationName(firstEvent.location_name || '');
+                    } else {
+                        setCorrectionStatus('Present');
+                        setLocationName(firstEvent.location_name || '');
+                    }
+
+                    if (fieldIns.length > 0 || fieldOuts.length > 0) {
+                        setIncludeSite(true);
+                        const visits = [];
+                        const maxLen = Math.max(fieldIns.length, fieldOuts.length, 1);
+                        for (let i = 0; i < maxLen; i++) {
+                            visits.push({
+                                in: fieldIns[i] ? format(new Date(fieldIns[i].timestamp), 'HH:mm') : '10:00',
+                                out: fieldOuts[i] ? format(new Date(fieldOuts[i].timestamp), 'HH:mm') : '17:00'
+                            });
+                        }
+                        setSiteVisits(visits);
+                    } else {
+                        setIncludeSite(false);
+                        setSiteVisits([{in: '10:00', out: '17:00'}]);
+                    }
+                } else {
+                    // Reset to defaults if no records found
+                    setPunchIn('09:00');
+                    setPunchOut('18:30');
+                    setCorrectionStatus('Present');
+                    setLocationName('');
+                    setIncludeSite(false);
+                    setSiteVisits([{in: '10:00', out: '17:00'}]);
+                }
+            } catch (err) {
+                console.error('Error fetching existing logs for correction:', err);
+            }
+        };
+
+        fetchExistingLogs();
+    }, [isOpen, selectedUserId, isSingleDay, startDate, leaveType]);
 
     const availableBalance = useMemo(() => {
         if (!balance || !leaveType) return 0;
@@ -136,8 +228,8 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
         }
 
         // Balance Check
-        // Allow Loss of Pay or if balance is sufficient
-        if (leaveType !== 'Loss of Pay' && availableBalance < duration) {
+        // Allow Loss of Pay, WFH, Correction, Permission or if balance is sufficient
+        if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(leaveType) && availableBalance < duration) {
             setToast({ 
                 message: `Insufficient ${leaveType} balance. Available: ${availableBalance} days, requested: ${duration} days.`, 
                 type: 'error' 
@@ -156,7 +248,16 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                 startDate,
                 endDate,
                 reason,
-                dayOption: showHalfDayOption ? dayOption : 'full'
+                dayOption: showHalfDayOption ? dayOption : 'full',
+                correctionDetails: ['Correction', 'Permission'].includes(leaveType) ? {
+                    status: correctionStatus,
+                    locationName,
+                    punchIn,
+                    punchOut,
+                    includeSite,
+                    includeBreak: false,
+                    siteVisits
+                } : undefined
             });
 
             
@@ -256,40 +357,50 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                 <option value="Loss of Pay">Loss of Pay</option>
                                 {isFemale && <option value="Maternity">Maternity</option>}
                                 {isFemale && <option value="Child Care">Child Care</option>}
+                                <option value="WFH">Work From Home (WFH)</option>
+                                <option value="Correction">Correction (RC)</option>
+                                <option value="Permission">Permission (PC)</option>
                             </select>
                         </div>
 
                         {/* Date Range */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className={['Correction', 'Permission'].includes(leaveType) ? "space-y-1.5" : "grid grid-cols-2 gap-4"}>
                             <div className="space-y-1.5">
                                 <label className="text-sm font-semibold text-gray-700 flex items-center">
-                                    <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Start Date <span className="text-red-500">*</span>
+                                    <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> {['Correction', 'Permission'].includes(leaveType) ? 'Date' : 'Start Date'} <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                     type="date"
                                     value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
+                                    onChange={(e) => {
+                                        setStartDate(e.target.value);
+                                        if (['Correction', 'Permission'].includes(leaveType)) {
+                                            setEndDate(e.target.value);
+                                        }
+                                    }}
                                     className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
                                     required
                                 />
                             </div>
 
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-gray-700 flex items-center">
-                                    <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> End Date <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
-                                    required
-                                />
-                            </div>
+                            {!['Correction', 'Permission'].includes(leaveType) && (
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-semibold text-gray-700 flex items-center">
+                                        <CalendarIcon className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> End Date <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-gray-50/30 text-sm"
+                                        required
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Half Day Option */}
-                        {showHalfDayOption && (
+                        {showHalfDayOption && !['Correction', 'Permission'].includes(leaveType) && (
                             <div className="space-y-1.5">
                                 <label className="text-sm font-semibold text-gray-700">Day Option</label>
                                 <select
@@ -304,7 +415,7 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                         )}
 
                         {/* Balance Info */}
-                        {selectedUserId && (
+                        {selectedUserId && !['Correction', 'Permission'].includes(leaveType) && (
                             <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start gap-3">
                                 <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
                                 <div className="text-sm text-blue-800">
@@ -317,9 +428,126 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                         <div className="space-y-1">
                                             <p className="font-semibold">Current Balance: {availableBalance} days</p>
                                             <p className="text-xs text-blue-600">Requesting: {duration} days</p>
-                                            {availableBalance < duration && leaveType !== 'Loss of Pay' && (
+                                            {!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(leaveType) && availableBalance < duration && (
                                                 <p className="text-red-600 font-medium text-xs mt-1">Warning: Insufficient balance</p>
                                             )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+
+
+                        {/* Correction / Permission Fields */}
+                        {['Correction', 'Permission'].includes(leaveType) && (
+                            <div className="space-y-4 p-4 border border-gray-200 rounded-lg bg-gray-50/50">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">Status</label>
+                                        <select
+                                            value={correctionStatus}
+                                            onChange={(e) => setCorrectionStatus(e.target.value as any)}
+                                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                        >
+                                            <option value="Present">Present (Office)</option>
+                                            <option value="Site Visit">Site Visit (Field)</option>
+                                            <option value="W/H">Work From Home</option>
+                                        </select>
+                                    </div>
+                                    {(correctionStatus === 'Present' || correctionStatus === 'Site Visit') && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-semibold text-gray-700">Location Name</label>
+                                            <input
+                                                type="text"
+                                                value={locationName}
+                                                onChange={(e) => setLocationName(e.target.value)}
+                                                placeholder={correctionStatus === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
+                                                className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                            <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={punchIn}
+                                            onChange={(e) => setPunchIn(e.target.value)}
+                                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                                            <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={punchOut}
+                                            onChange={(e) => setPunchOut(e.target.value)}
+                                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2 pt-2 border-t border-gray-200">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            id="adminIncludeSite"
+                                            checked={includeSite}
+                                            onChange={(e) => setIncludeSite(e.target.checked)}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="adminIncludeSite" className="text-sm font-medium text-gray-700">
+                                            Include Site Visit?
+                                        </label>
+                                    </div>
+
+                                    {includeSite && (
+                                        <div className="space-y-3 mt-2">
+                                            {siteVisits.map((visit, idx) => (
+                                                <div key={idx} className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-md">
+                                                    <div className="flex-1 space-y-1">
+                                                        <label className="text-xs font-semibold text-gray-500">Site In</label>
+                                                        <input
+                                                            type="time"
+                                                            value={visit.in}
+                                                            onChange={(e) => updateSiteVisit(idx, 'in', e.target.value)}
+                                                            className="w-full p-1.5 border border-gray-300 rounded text-sm"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 space-y-1">
+                                                        <label className="text-xs font-semibold text-gray-500">Site Out</label>
+                                                        <input
+                                                            type="time"
+                                                            value={visit.out}
+                                                            onChange={(e) => updateSiteVisit(idx, 'out', e.target.value)}
+                                                            className="w-full p-1.5 border border-gray-300 rounded text-sm"
+                                                        />
+                                                    </div>
+                                                    {siteVisits.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeSiteVisit(idx)}
+                                                            className="p-1.5 mb-0.5 text-red-500 hover:bg-red-50 rounded"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                onClick={addSiteVisit}
+                                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                                            >
+                                                + Add Another Site Visit
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -350,7 +578,7 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={isSubmitting || (!!selectedUserId && !isLoadingBalance && availableBalance < duration && leaveType !== 'Loss of Pay')}
+                        disabled={isSubmitting || (!!selectedUserId && !isLoadingBalance && availableBalance < duration && !['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(leaveType))}
                         className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                     >
                         {isSubmitting ? (

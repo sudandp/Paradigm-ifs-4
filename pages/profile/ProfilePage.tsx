@@ -15,10 +15,11 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
-import { format } from 'date-fns';
+import { format, differenceInMinutes, startOfDay, endOfDay, parseISO } from 'date-fns';
+import { calculateDistanceMeters } from '../../utils/locationUtils';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -100,6 +101,145 @@ const ProfilePage: React.FC = () => {
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+    const [todayMetrics, setTodayMetrics] = useState({
+        totalDistance: '0.00',
+        travelTime: '0h 0m',
+        totalSteps: 0,
+        totalSqft: 0
+    });
+    const [isMetricsLoading, setIsMetricsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        let cancelled = false;
+        const fetchTodayMetrics = async () => {
+            setIsMetricsLoading(true);
+            try {
+                const today = new Date();
+                const start = startOfDay(today).toISOString();
+                const end = endOfDay(today).toISOString();
+                const events = await api.getAttendanceEvents(user.id, start, end);
+                if (cancelled) return;
+
+                if (events.length === 0) {
+                    setTodayMetrics({
+                        totalDistance: '0.00',
+                        travelTime: '0h 0m',
+                        totalSteps: 0,
+                        totalSqft: 0
+                    });
+                    return;
+                }
+
+                // Parse events using same logic as TeamMemberProfile.tsx
+                const sorted = [...events]
+                    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+                    .filter((e, i, arr) => {
+                        if (i === 0) return true;
+                        const prev = arr[i - 1];
+                        return e.type !== prev.type || e.timestamp !== prev.timestamp;
+                    });
+
+                const workSegments: any[] = [];
+                const travelSegments: any[] = [];
+
+                let activeIn: any = null;
+                for (let i = 0; i < sorted.length; i++) {
+                    const evt = sorted[i];
+                    if (evt.type === 'punch-in') {
+                        if (!activeIn) activeIn = evt;
+                    } else if (evt.type === 'punch-out') {
+                        if (activeIn) {
+                            const startDt = parseISO(activeIn.timestamp);
+                            const endDt = parseISO(evt.timestamp);
+                            const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
+                            workSegments.push({
+                                id: `work-${activeIn.id}`,
+                                type: 'Work',
+                                startTime: activeIn.timestamp,
+                                endTime: evt.timestamp,
+                                durationMin,
+                                steps: evt.steps,
+                                sqft: evt.sqft
+                            });
+                            activeIn = null;
+                        }
+                    }
+                }
+
+                if (activeIn) {
+                    const endTs = new Date().toISOString();
+                    const startDt = parseISO(activeIn.timestamp);
+                    const endDt = parseISO(endTs);
+                    const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
+                    workSegments.push({
+                        id: `work-${activeIn.id}`,
+                        type: 'Work',
+                        startTime: activeIn.timestamp,
+                        endTime: endTs,
+                        durationMin
+                    });
+                }
+
+                for (let j = 0; j < workSegments.length - 1; j++) {
+                    const current = workSegments[j];
+                    const next = workSegments[j + 1];
+                    const startDt = parseISO(current.endTime);
+                    const endDt = parseISO(next.startTime);
+                    const durationMin = Math.max(0, differenceInMinutes(endDt, startDt));
+                    const outEvt = sorted.find(e => e.timestamp === current.endTime && e.type === 'punch-out');
+                    const inEvt = sorted.find(e => e.timestamp === next.startTime && e.type === 'punch-in');
+                    let dist = 0;
+                    if (outEvt?.latitude && outEvt?.longitude && inEvt?.latitude && inEvt?.longitude) {
+                        dist = calculateDistanceMeters(outEvt.latitude, outEvt.longitude, inEvt.latitude, inEvt.longitude) / 1000;
+                    }
+                    if (durationMin > 0 || dist > 0.05) {
+                        travelSegments.push({
+                            id: `travel-${j}`,
+                            type: 'Travel',
+                            startTime: current.endTime,
+                            endTime: next.startTime,
+                            durationMin,
+                            distance: Number(dist.toFixed(2))
+                        });
+                    }
+                }
+
+                const timeline = [...workSegments, ...travelSegments].sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+                let totalDist = 0;
+                let travelMin = 0;
+                let totalSteps = 0;
+                let totalSqft = 0;
+
+                timeline.forEach(s => {
+                    if (s.type === 'Work') {
+                        totalSteps += s.steps || 0;
+                        totalSqft += s.sqft || 0;
+                    }
+                    if (s.type === 'Travel') {
+                        travelMin += s.durationMin;
+                        totalDist += s.distance || 0;
+                    }
+                });
+
+                setTodayMetrics({
+                    totalDistance: totalDist.toFixed(2),
+                    travelTime: `${Math.floor(travelMin / 60)}h ${travelMin % 60}m`,
+                    totalSteps,
+                    totalSqft
+                });
+            } catch (err) {
+                console.error('Failed to load today metrics:', err);
+            } finally {
+                if (!cancelled) setIsMetricsLoading(false);
+            }
+        };
+
+        fetchTodayMetrics();
+        return () => { cancelled = true; };
+    }, [user?.id, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, isOnBreak]);
+
     const [gateUser, setGateUser] = useState<GateUser | null>(null);
     const [isGateUserLoading, setIsGateUserLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -759,6 +899,46 @@ const ProfilePage: React.FC = () => {
                                                 {totalBreakDurationToday > 0 
                                                     ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m` 
                                                     : '0.0h'}
+                                            </p>
+                                         </div>
+                                    </div>
+
+                                    {/* Daily Activity Stats (Steps, Area, Distance, Travel) */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Footprints className="h-3.5 w-3.5 text-emerald-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                            </p>
+                                         </div>
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Maximize className="h-3.5 w-3.5 text-teal-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Area Covered</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
+                                            </p>
+                                         </div>
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Navigation className="h-3.5 w-3.5 text-blue-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Dist.</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                            </p>
+                                         </div>
+                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <MapPin className="h-3.5 w-3.5 text-amber-400" />
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Time</span>
+                                            </div>
+                                            <p className="text-xl font-bold text-white tabular-nums">
+                                                {isMetricsLoading ? '—' : todayMetrics.travelTime}
                                             </p>
                                          </div>
                                     </div>
@@ -1886,6 +2066,62 @@ const ProfilePage: React.FC = () => {
                                     )}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Today's Activity Card */}
+                    {user.role !== 'management' && (
+                        <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="p-2 bg-emerald-50 rounded-lg">
+                                    <Footprints className="h-5 w-5 text-emerald-600" />
+                                </div>
+                                <h3 className="text-sm font-bold text-gray-900">Today's Activity</h3>
+                            </div>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-2">
+                                    {/* Steps */}
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Footprints className="w-3.5 h-3.5 text-emerald-600" />
+                                            Daily Steps
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                            {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                        </p>
+                                    </div>
+                                    {/* Area Covered */}
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Maximize className="w-3.5 h-3.5 text-teal-600" />
+                                            Area Covered
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                            {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
+                                        </p>
+                                    </div>
+                                    {/* Travel Distance */}
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                                            Travel Distance
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                            {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                        </p>
+                                    </div>
+                                    {/* Travel Duration */}
+                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                            <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                                            Travel Time
+                                        </div>
+                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                            {isMetricsLoading ? '—' : todayMetrics.travelTime}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
                     </div> {/* End Horizontal Grid Row */}

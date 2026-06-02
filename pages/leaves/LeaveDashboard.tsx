@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
-import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator } from 'lucide-react';
+import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -13,7 +13,17 @@ import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay, startOfMonth, endOfMonth, differenceInMinutes, getDay, startOfYear, endOfYear, startOfWeek, subDays, eachDayOfInterval, startOfDay } from 'date-fns';
-import { calculateWorkingHours, getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, getStaffCategory, isTechnicalRole, calculateDailyTravelKm, calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
+
+const formatDuration = (mins: number): string => {
+  if (!mins || mins <= 0) return '';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
+};
 import DatePicker from '../../components/ui/DatePicker';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -212,6 +222,8 @@ const LeaveDashboard: React.FC = () => {
     const [threshold, setThreshold] = useState(8);
     const [monthlyPaydays, setMonthlyPaydays] = useState<number | null>(null);
     const [siteOtDays, setSiteOtDays] = useState(0);
+    const [monthlyTravelKm, setMonthlyTravelKm] = useState<number>(0);
+    const [monthlyTravelDuration, setMonthlyTravelDuration] = useState<number>(0);
     const currentYear = viewingDate.getFullYear();
 
     const formatPreciseHours = (hours: number) => {
@@ -261,7 +273,7 @@ const LeaveDashboard: React.FC = () => {
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
             // Fetch base data points
-            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData] = await Promise.all([
+            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData, routePointsData] = await Promise.all([
                 // Use the selected calendar month for balance calculation
                 api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
                 api.getLeaveRequests({
@@ -280,7 +292,8 @@ const LeaveDashboard: React.FC = () => {
                     startDate: startOfYearStr,
                     endDate: endOfYearStr
                 }).then(res => res.data).catch(() => []),
-                api.getUserChildren(user.id).catch(() => [])
+                api.getUserChildren(user.id).catch(() => []),
+                api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[])
             ]);
 
             setBalance(balanceData);
@@ -342,10 +355,23 @@ const LeaveDashboard: React.FC = () => {
 
             let totalOTHours = 0;
             let totalShortfallMinutes = 0;
+            let totalTravelKm = 0;
+            let totalTravelDurationMins = 0;
             const targetHours = 8;
+
+            const viewMonthStart = startOfMonth(viewingDate);
+            const viewMonthEnd = endOfMonth(viewingDate);
 
             Object.entries(dayLogs).forEach(([dateStr, dayEvents]) => {
                 const date = new Date(dateStr);
+                
+                if (date >= viewMonthStart && date <= viewMonthEnd) {
+                    const dayRoutePoints = (routePointsData || []).filter((p: RoutePoint) => isSameDay(new Date(p.timestamp), date));
+                    const travelRes = calculateDailyPathTravelKm(dayEvents, dayRoutePoints);
+                    totalTravelKm += travelRes.distance;
+                    totalTravelDurationMins += travelRes.duration;
+                }
+
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
                 
                 // OT
@@ -361,6 +387,8 @@ const LeaveDashboard: React.FC = () => {
 
             setCalculatedOTHours(parseFloat(totalOTHours.toFixed(1)));
             setCalculatedShortfallMins(totalShortfallMinutes);
+            setMonthlyTravelKm(Number(totalTravelKm.toFixed(2)));
+            setMonthlyTravelDuration(totalTravelDurationMins);
             setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays ?? true);
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
@@ -519,6 +547,7 @@ const LeaveDashboard: React.FC = () => {
         return { total, used, pending };
     };
 
+    const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings) : 'office';
     const blueLeaveStatus = getBlueLeaveStatusForViewingDate();
 
     const balanceCards = balanceDataState ? [
@@ -573,6 +602,13 @@ const LeaveDashboard: React.FC = () => {
             icon: Calculator,
             isExpired: false
         },
+        {
+            title: 'Monthly Travel KM',
+            value: `${monthlyTravelKm.toFixed(2)} KM`,
+            description: `Cumulative site-to-site travel for ${format(viewingDate, 'MMMM yyyy')}.${monthlyTravelDuration > 0 ? ` Duration: ${formatDuration(monthlyTravelDuration)}` : ''}`,
+            icon: MapPin,
+            isExpired: false
+        },
         ...(isTechnicalRole(user?.role) ? [{
             title: 'Site OT Days',
             value: `${siteOtDays || (balanceDataState?.siteOtDaysThisMonth || 0)}`,
@@ -594,6 +630,7 @@ const LeaveDashboard: React.FC = () => {
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
         { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
+        { title: 'Monthly Travel KM', value: '-', icon: MapPin, isLoading: true }
     ];
 
     // Maternity card (only for female users with non-zero balances)

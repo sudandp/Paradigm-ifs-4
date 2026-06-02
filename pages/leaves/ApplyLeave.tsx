@@ -5,11 +5,11 @@ import { getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalcula
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus } from '../../types';
-import { ArrowLeft, Clock, CloudOff } from 'lucide-react';
+import { ArrowLeft, Clock, CloudOff, X } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import Select from '../../components/ui/Select';
-import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
+import { useForm, Controller, SubmitHandler, Resolver, useFieldArray } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { format, differenceInCalendarDays, isSameDay } from 'date-fns';
@@ -38,6 +38,8 @@ type LeaveRequestFormData = {
     includeSiteOt?: boolean;
     siteOtIn?: string;
     siteOtOut?: string;
+    includeSite?: boolean;
+    siteVisits?: { in: string; out: string }[];
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
@@ -95,6 +97,16 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
     siteOtOut: yup.string().when(['leaveType', 'includeSiteOt'], {
         is: (lt: string, ot: boolean) => ['Correction', 'Permission'].includes(lt) && ot === true,
         then: schema => schema.required('Site OT out time is required'),
+        otherwise: schema => schema.optional()
+    }),
+    siteVisits: yup.array().when(['leaveType', 'includeSite'], {
+        is: (lt: string, inc: boolean) => ['Correction', 'Permission'].includes(lt) && inc === true,
+        then: schema => schema.of(
+            yup.object().shape({
+                in: yup.string().required('Site in time is required'),
+                out: yup.string().required('Site out time is required')
+            })
+        ).min(1, 'At least one site visit is required'),
         otherwise: schema => schema.optional()
     })
 });
@@ -165,8 +177,15 @@ const ApplyLeave: React.FC = () => {
             locationName: 'Office',
             includeSiteOt: false,
             siteOtIn: '20:00',
-            siteOtOut: '22:00'
+            siteOtOut: '22:00',
+            includeSite: false,
+            siteVisits: [{ in: '10:00', out: '17:00' }]
         }
+    });
+
+    const { fields: siteVisitFields, append: appendSiteVisit, remove: removeSiteVisit } = useFieldArray({
+        control,
+        name: 'siteVisits'
     });
 
     const watchStartDate = watch('startDate');
@@ -354,6 +373,8 @@ const ApplyLeave: React.FC = () => {
                     const breakOutEvents = events.filter(e => e.type === 'break-out' || (e as any).type === 'break_out');
                     const siteOtInEvents = events.filter(e => e.type === 'site-ot-in' || (e as any).type === 'site_ot_in');
                     const siteOtOutEvents = events.filter(e => e.type === 'site-ot-out' || (e as any).type === 'site_ot_out');
+                    const siteInEvents = events.filter(e => e.type === 'site-in' || (e as any).type === 'site_in');
+                    const siteOutEvents = events.filter(e => e.type === 'site-out' || (e as any).type === 'site_out');
 
                     // Punch In: Earliest
                     if (punchInEvents.length > 0) {
@@ -412,6 +433,24 @@ const ApplyLeave: React.FC = () => {
                             );
                             setValue('siteOtOut', format(new Date(latestOTOut.timestamp), 'HH:mm'), { shouldValidate: true });
                         }
+                    }
+
+                    // Site In/Out: Map into pairs
+                    if (siteInEvents.length > 0 || siteOutEvents.length > 0) {
+                        setValue('includeSite', true);
+                        const visits = [];
+                        // Sort events by timestamp
+                        const sortedIn = [...siteInEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                        const sortedOut = [...siteOutEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                        
+                        const maxLen = Math.max(sortedIn.length, sortedOut.length, 1);
+                        for (let i = 0; i < maxLen; i++) {
+                            visits.push({
+                                in: sortedIn[i] ? format(new Date(sortedIn[i].timestamp), 'HH:mm') : '10:00',
+                                out: sortedOut[i] ? format(new Date(sortedOut[i].timestamp), 'HH:mm') : '17:00'
+                            });
+                        }
+                        setValue('siteVisits', visits, { shouldValidate: true });
                     }
                 } else {
                     // FALLBACK: If no events found, pre-fill with configured office hours from rules
@@ -1150,7 +1189,74 @@ const ApplyLeave: React.FC = () => {
                                         />
                                     </div>
 
-                                    <div className="space-y-3">
+                                    <div className="space-y-3 pt-4 border-t border-emerald-500/10">
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="checkbox" 
+                                                id="includeSite" 
+                                                {...register('includeSite')} 
+                                                className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                                            />
+                                            <label htmlFor="includeSite" className="text-sm font-medium text-primary-text">Include Site Visit?</label>
+                                        </div>
+
+                                        {watch('includeSite') && (
+                                            <div className="space-y-4">
+                                                {siteVisitFields.map((field, index) => (
+                                                    <div key={field.id} className={`grid grid-cols-[1fr_1fr_auto] gap-4 p-5 rounded-2xl border items-start ${isMobile ? 'bg-blue-500/5 border-blue-500/20' : 'bg-blue-50 border-blue-100'}`}>
+                                                        <Controller 
+                                                            name={`siteVisits.${index}.in`} 
+                                                            control={control} 
+                                                            render={({ field }) => (
+                                                                <div className="space-y-1">
+                                                                    <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                        <Clock className="w-3.5 h-3.5 text-blue-500" /> Site In
+                                                                    </label>
+                                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
+                                                                    {errors.siteVisits?.[index]?.in && <p className="text-xs text-red-500">{errors.siteVisits[index]?.in?.message}</p>}
+                                                                </div>
+                                                            )} 
+                                                        />
+                                                        <Controller 
+                                                            name={`siteVisits.${index}.out`} 
+                                                            control={control} 
+                                                            render={({ field }) => (
+                                                                <div className="space-y-1">
+                                                                    <label className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1">
+                                                                        <Clock className="w-3.5 h-3.5 text-blue-500" /> Site Out
+                                                                    </label>
+                                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
+                                                                    {errors.siteVisits?.[index]?.out && <p className="text-xs text-red-500">{errors.siteVisits[index]?.out?.message}</p>}
+                                                                </div>
+                                                            )} 
+                                                        />
+                                                        {siteVisitFields.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeSiteVisit(index)}
+                                                                className="mt-6 p-2.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                                title="Remove Visit"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                <div className="flex justify-start">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => appendSiteVisit({ in: '10:00', out: '17:00' })}
+                                                        className="w-fit border-dashed border-2 text-blue-600 hover:bg-blue-50"
+                                                    >
+                                                        + Add Another Site Visit
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-3 pt-4 border-t border-emerald-500/10">
                                         <div className="flex items-center gap-2">
                                             <input 
                                                 type="checkbox" 

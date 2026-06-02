@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Download, Calendar, MapPin, Clock, 
-  Navigation, Briefcase, ChevronRight, Info, FileText, AlertTriangle, Monitor, Shield, Globe, Smartphone
+  Navigation, Briefcase, ChevronRight, Info, FileText, AlertTriangle, Monitor, Shield, Globe, Smartphone,
+  Footprints, Maximize
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import ViolationsView from '../../components/violations/ViolationsView';
@@ -71,6 +72,8 @@ interface ActivitySegment {
   latitude?: number;
   longitude?: number;
   distance?: number; // in km
+  steps?: number;
+  sqft?: number;
 }
 
 const TeamMemberProfile: React.FC = () => {
@@ -192,7 +195,9 @@ const TeamMemberProfile: React.FC = () => {
             durationMin,
             locationName: locName,
             latitude: activeIn.latitude,
-            longitude: activeIn.longitude
+            longitude: activeIn.longitude,
+            steps: evt.steps,
+            sqft: evt.sqft
           });
           activeIn = null;
         }
@@ -264,8 +269,14 @@ const TeamMemberProfile: React.FC = () => {
     let totalDist = 0;
     let workMin = 0;
     let travelMin = 0;
+    let totalSteps = 0;
+    let totalSqft = 0;
     timeline.forEach(s => {
-      if (s.type === 'Work') workMin += s.durationMin;
+      if (s.type === 'Work') {
+        workMin += s.durationMin;
+        totalSteps += s.steps || 0;
+        totalSqft += s.sqft || 0;
+      }
       if (s.type === 'Travel') {
         travelMin += s.durationMin;
         totalDist += s.distance || 0;
@@ -274,7 +285,9 @@ const TeamMemberProfile: React.FC = () => {
     return {
       totalDistance: totalDist.toFixed(2),
       workDuration: `${Math.floor(workMin / 60)}h ${workMin % 60}m`,
-      travelTime: `${Math.floor(travelMin / 60)}h ${travelMin % 60}m`
+      travelTime: `${Math.floor(travelMin / 60)}h ${travelMin % 60}m`,
+      totalSteps,
+      totalSqft
     };
   }, [timeline]);
 
@@ -416,6 +429,8 @@ const TeamMemberProfile: React.FC = () => {
             <MetricCard title="Total Distance" value={`${metrics.totalDistance} km`} subtext="Traveled across segments" icon={<Navigation className="w-5 h-5" />} color="bg-blue-500" />
             <MetricCard title="Work Duration" value={metrics.workDuration} subtext="Total time at site locations" icon={<Briefcase className="w-5 h-5" />} color="bg-green-500" />
             <MetricCard title="Travel Time" value={metrics.travelTime} subtext="Total time spent commuting" icon={<MapPin className="w-5 h-5" />} color="bg-orange-500" />
+            <MetricCard title="Daily Steps" value={`${metrics.totalSteps.toLocaleString()} steps`} subtext="Walked during site visits" icon={<Footprints className="w-5 h-5" />} color="bg-teal-500" />
+            <MetricCard title="Area Covered" value={`${metrics.totalSqft.toLocaleString()} sqft`} subtext="Estimated coverage area" icon={<Maximize className="w-5 h-5" />} color="bg-purple-500" />
             
             <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
               <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
@@ -468,6 +483,22 @@ const TeamMemberProfile: React.FC = () => {
                                 <span className="bg-background px-2 py-0.5 rounded-lg border border-border">{s.duration}</span>
                               </div>
                             </div>
+                            {s.type === 'Work' && ((s.steps !== undefined && s.steps !== null) || (s.sqft !== undefined && s.sqft !== null)) && (
+                              <div className="flex gap-4 mt-2 text-xs font-medium text-muted bg-accent/5 p-2 rounded-lg border border-accent/10 w-fit">
+                                {s.steps !== undefined && s.steps !== null && (
+                                  <span className="flex items-center gap-1">
+                                    <Footprints className="w-3.5 h-3.5 text-accent" />
+                                    {s.steps.toLocaleString()} steps
+                                  </span>
+                                )}
+                                {s.sqft !== undefined && s.sqft !== null && (
+                                  <span className="flex items-center gap-1">
+                                    <Maximize className="w-3.5 h-3.5 text-accent" />
+                                    {s.sqft.toLocaleString()} sqft
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

@@ -2593,6 +2593,20 @@ export const api = {
     return (data || []).map(toCamelCase) as RoutePoint[];
   },
 
+  getRoutePointsForUsers: async (userIds: string[], start: string, end: string): Promise<RoutePoint[]> => {
+    if (!userIds || userIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('route_history')
+      .select('*')
+      .in('user_id', userIds)
+      .gte('timestamp', start)
+      .lte('timestamp', end)
+      .order('timestamp', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map(toCamelCase) as RoutePoint[];
+  },
+
   requestAttendanceUnlock: async (reason: string): Promise<void> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) throw new Error('Not authenticated');
@@ -5223,8 +5237,8 @@ export const api = {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date, end_date, day_option, correction_details').eq('id', id).single();
     if (fetchError) throw fetchError;
     
-    // Check balance - skip for 'Loss of Pay', 'WFH', and 'Correction'
-    if (!['Loss of Pay', 'WFH', 'Correction'].includes(request.leave_type as any)) {
+    // Check balance - skip for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
+    if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(request.leave_type as any)) {
       const balance = await api.getLeaveBalancesForUser(request.user_id);
       const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
       
@@ -5374,6 +5388,38 @@ export const api = {
                 });
             }
 
+            // Optional Site Visits
+            if (details.includeSite && Array.isArray(details.siteVisits)) {
+                for (const visit of details.siteVisits) {
+                    if (visit.in && visit.out) {
+                        const sIn = new Date(`${timestampBase}T${visit.in}:00`);
+                        const sOut = new Date(`${timestampBase}T${visit.out}:00`);
+                        
+                        eventsToInsert.push({
+                            user_id: request.user_id,
+                            timestamp: sIn.toISOString(),
+                            type: 'site-in',
+                            location_name: details.locationName || 'Field Site',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: approverId,
+                            reason: 'Auto-updated from approved Correction Request'
+                        });
+
+                        eventsToInsert.push({
+                            user_id: request.user_id,
+                            timestamp: sOut.toISOString(),
+                            type: 'site-out',
+                            location_name: details.locationName || 'Field Site',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: approverId,
+                            reason: 'Auto-updated from approved Correction Request'
+                        });
+                    }
+                }
+            }
+
             await supabase.from('attendance_events').insert(eventsToInsert);
 
             // 3. Audit Log
@@ -5389,7 +5435,8 @@ export const api = {
                     segments: {
                         main: { in: details.punchIn, out: details.punchOut },
                         break: details.includeBreak ? { in: details.breakIn, out: details.breakOut } : null,
-                        siteOt: details.includeSiteOt ? { in: details.siteOtIn, out: details.siteOtOut } : null
+                        siteOt: details.includeSiteOt ? { in: details.siteOtIn, out: details.siteOtOut } : null,
+                        siteVisit: details.includeSite ? details.siteVisits : null
                     }
                 }
             }]);
@@ -5402,6 +5449,124 @@ export const api = {
           approval_history: updatedHistory 
         }).eq('id', id);
         if (error) throw error;
+
+        // Notify the employee that their correction was approved
+        await supabase.from('notifications').insert({
+            user_id: request.user_id,
+            message: `Your attendance correction request for ${request.start_date} has been approved by ${approverData.name}. Your attendance record has been updated.`,
+            type: 'approval_request',
+            is_read: false,
+            metadata: { title: 'Correction Approved ✅', leaveRequestId: id, date: request.start_date }
+        });
+        return;
+    }
+
+    // If it's a Permission request, insert supplemental attendance events on approval
+    if (request.leave_type === 'Permission') {
+        const details = toCamelCase(request.correction_details) as any;
+
+        if (details && details.punchIn && details.punchOut) {
+            const dateStr = request.start_date;
+            const timestampBase = dateStr;
+
+            // Build supplemental events — do NOT delete existing events for Permission
+            // (employee was partially present; we add the missing segment)
+            const eventsToInsert: any[] = [];
+
+            // Supplemental Punch In (for the permitted period)
+            const permInDate = new Date(`${timestampBase}T${details.punchIn}:00`);
+            eventsToInsert.push({
+                user_id: request.user_id,
+                timestamp: permInDate.toISOString(),
+                type: 'punch-in',
+                location_name: details.status === 'W/H' ? 'Work From Home' : (details.locationName || 'Office'),
+                work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                is_manual: true,
+                created_by: approverId,
+                reason: 'Auto-inserted from approved Permission Request'
+            });
+
+            // Supplemental Punch Out
+            const permOutDate = new Date(`${timestampBase}T${details.punchOut}:00`);
+            eventsToInsert.push({
+                user_id: request.user_id,
+                timestamp: permOutDate.toISOString(),
+                type: 'punch-out',
+                location_name: details.status === 'W/H' ? 'Work From Home' : (details.locationName || 'Office'),
+                work_type: details.status === 'Site Visit' ? 'field' : 'office',
+                is_manual: true,
+                created_by: approverId,
+                reason: 'Auto-inserted from approved Permission Request'
+            });
+
+            // Optional Site Visits
+            if (details.includeSite && Array.isArray(details.siteVisits)) {
+                for (const visit of details.siteVisits) {
+                    if (visit.in && visit.out) {
+                        const sIn = new Date(`${timestampBase}T${visit.in}:00`);
+                        const sOut = new Date(`${timestampBase}T${visit.out}:00`);
+                        
+                        eventsToInsert.push({
+                            user_id: request.user_id,
+                            timestamp: sIn.toISOString(),
+                            type: 'site-in',
+                            location_name: details.locationName || 'Field Site',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: approverId,
+                            reason: 'Auto-updated from approved Permission Request'
+                        });
+
+                        eventsToInsert.push({
+                            user_id: request.user_id,
+                            timestamp: sOut.toISOString(),
+                            type: 'site-out',
+                            location_name: details.locationName || 'Field Site',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: approverId,
+                            reason: 'Auto-updated from approved Permission Request'
+                        });
+                    }
+                }
+            }
+
+            await supabase.from('attendance_events').insert(eventsToInsert);
+
+            // Audit Log
+            await supabase.from('attendance_audit_logs').insert([{
+                action: 'PERMISSION_ENTRY_ADDED',
+                performed_by: approverId,
+                target_user_id: request.user_id,
+                details: {
+                    date: dateStr,
+                    status: details.status,
+                    reason: 'Automatic supplement from Permission Request approval',
+                    permissionRequestId: id,
+                    segments: { 
+                        main: { in: details.punchIn, out: details.punchOut },
+                        siteVisit: details.includeSite ? details.siteVisits : null
+                    }
+                }
+            }]);
+        }
+
+        // Finalize the permission request as approved
+        const { error: permError } = await supabase.from('leave_requests').update({
+            status: 'approved',
+            current_approver_id: null,
+            approval_history: updatedHistory
+        }).eq('id', id);
+        if (permError) throw permError;
+
+        // Notify the employee that their permission was approved
+        await supabase.from('notifications').insert({
+            user_id: request.user_id,
+            message: `Your permission request for ${request.start_date} has been approved by ${approverData.name}. Your attendance record has been updated.`,
+            type: 'approval_request',
+            is_read: false,
+            metadata: { title: 'Permission Approved ✅', leaveRequestId: id, date: request.start_date }
+        });
         return;
     }
 
@@ -5452,7 +5617,7 @@ export const api = {
     if (error) throw error;
   },
   rejectLeaveRequest: async (id: string, approverId: string, reason = ''): Promise<void> => {
-    const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history').eq('id', id).single();
+    const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date').eq('id', id).single();
     if (fetchError) throw fetchError;
     const { data: approverData, error: nameError } = await supabase.from('users').select('name').eq('id', approverId).single();
     if (nameError) throw nameError;
@@ -5467,6 +5632,20 @@ export const api = {
       actionText: 'has been rejected',
       locString: '',
       actor: { id: approverId, name: approverData.name, role: 'admin' }
+    });
+
+    // Notify the employee directly (covers RC/RP rejections)
+    const isCorrectionOrPermission = ['Correction', 'Permission'].includes(request.leave_type as string);
+    const msgSuffix = reason ? ` Reason: ${reason}` : '';
+    const requestLabel = isCorrectionOrPermission
+      ? `${request.leave_type} request for ${request.start_date}`
+      : `leave request (${request.leave_type})`;
+    await supabase.from('notifications').insert({
+        user_id: request.user_id,
+        message: `Your ${requestLabel} has been rejected by ${approverData.name}.${msgSuffix}`,
+        type: 'approval_request',
+        is_read: false,
+        metadata: { title: 'Request Rejected ❌', leaveRequestId: id, date: request.start_date }
     });
   },
   reconsiderLeaveRequest: async (id: string, approverId: string): Promise<void> => {

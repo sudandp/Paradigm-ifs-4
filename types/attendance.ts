@@ -46,6 +46,9 @@ export interface AttendanceEvent {
   networkProvider?: string;
   source?: string;
   isCached?: boolean;
+  steps?: number;
+  sqft?: number;
+  travelDistance?: number;
 }
 
 export interface RoutePoint {
@@ -465,6 +468,8 @@ export interface CorrectionDetails {
   includeSiteOt?: boolean;
   siteOtIn?: string;
   siteOtOut?: string;
+  includeSite?: boolean;
+  siteVisits?: { in: string; out: string }[];
 }
 
 export interface LeaveRequest {

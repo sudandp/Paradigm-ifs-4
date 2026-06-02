@@ -41,6 +41,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BreakAlarmPlugin.class);
         registerPlugin(TrackingPlugin.class);
         registerPlugin(KioskPlugin.class);
+        registerPlugin(StepCounterPlugin.class);
         super.onCreate(savedInstanceState);
         createNotificationChannel();
     }

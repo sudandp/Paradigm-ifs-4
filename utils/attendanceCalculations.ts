@@ -1,10 +1,11 @@
 // Attendance calculation utilities for hours-based attendance tracking
 
 import { differenceInMinutes, parseISO, isSameDay, format, startOfDay, isAfter, subDays } from 'date-fns';
-import type { AttendanceEvent, DailyAttendanceStatus } from '../types';
+import type { AttendanceEvent, DailyAttendanceStatus, RoutePoint } from '../types';
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
 import { evaluateSiteStaffStatus } from './siteStaffCalculations';
+import { calculateDistanceMeters } from './locationUtils';
 
 /**
  * Robust check for roles that require night-shift/field-style session anchoring.
@@ -837,4 +838,146 @@ export function evaluateAttendanceStatus(params: {
   return status;
 }
 
+/**
+ * Calculate the total travel distance in kilometers for a given set of daily events.
+ * It first sums the `travelDistance` database field if present, and falls back to dynamic geodetic calculation.
+ */
+export function calculateDailyTravelKm(events: AttendanceEvent[]): number {
+  if (!events || events.length === 0) return 0;
+
+  // 1. Sum up saved travelDistance fields if available
+  let savedDistance = 0;
+  let hasSavedDistance = false;
+  events.forEach(e => {
+    if (e.travelDistance !== undefined && e.travelDistance !== null) {
+      savedDistance += e.travelDistance;
+      hasSavedDistance = true;
+    }
+  });
+
+  if (hasSavedDistance) {
+    return Number(savedDistance.toFixed(2));
+  }
+
+  // 2. Fallback: calculate site-to-site travel dynamically from coordinates
+  const sorted = [...events]
+      .filter(e => e.type === 'punch-in' || e.type === 'punch-out')
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .filter((e, i, arr) => {
+          if (i === 0) return true;
+          const prev = arr[i - 1];
+          return e.type !== prev.type || e.timestamp !== prev.timestamp;
+      });
+
+  let totalDist = 0;
+  let lastPunchOut: AttendanceEvent | null = null;
+
+  for (let i = 0; i < sorted.length; i++) {
+      const evt = sorted[i];
+      if (evt.type === 'punch-out') {
+          lastPunchOut = evt;
+      } else if (evt.type === 'punch-in' && lastPunchOut) {
+          if (lastPunchOut.latitude && lastPunchOut.longitude && evt.latitude && evt.longitude) {
+              const dist = calculateDistanceMeters(
+                  lastPunchOut.latitude,
+                  lastPunchOut.longitude,
+                  evt.latitude,
+                  evt.longitude
+              ) / 1000;
+              totalDist += dist;
+          }
+          lastPunchOut = null;
+      }
+  }
+
+  return Number(totalDist.toFixed(2));
+}
+
+/**
+ * Calculate both travel distance (KM) and travel duration (minutes) for a daily path
+ * by merging attendance events and telemetry route points, sorting chronologically,
+ * and deduplicating coordinates within a 5-meter threshold (except events).
+ * 
+ * Returns: { distance: number (in KM), duration: number (in minutes) }
+ */
+export function calculateDailyPathTravelKm(
+  events: AttendanceEvent[],
+  routePoints: RoutePoint[]
+): { distance: number; duration: number } {
+  // If telemetry routePoints is empty, fallback to the standard site-to-site check-in/out travel calculation
+  if (!routePoints || routePoints.length === 0) {
+    const dist = calculateDailyTravelKm(events);
+    // Since we don't have telemetry, duration is not accurately measurable between events, default to 0
+    return { distance: dist, duration: 0 };
+  }
+
+  // 1. Map events that have coordinate data
+  const eventCoords = events
+    .filter(e => e.latitude && e.longitude)
+    .map(e => ({
+      latitude: Number(e.latitude),
+      longitude: Number(e.longitude),
+      timestamp: e.timestamp,
+      isEvent: true
+    }));
+
+  // 2. Map routePoints that have coordinate data
+  const routeCoords = routePoints
+    .filter(p => p.latitude && p.longitude)
+    .map(p => ({
+      latitude: Number(p.latitude),
+      longitude: Number(p.longitude),
+      timestamp: p.timestamp,
+      isEvent: false
+    }));
+
+  // 3. Combine and sort chronologically by timestamp
+  const combined = [...eventCoords, ...routeCoords].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+
+  if (combined.length < 2) {
+    return { distance: 0, duration: 0 };
+  }
+
+  // 4. Deduplicate points: skip consecutive coordinates within 5 meters of each other (unless they are events)
+  const deduped: typeof combined = [];
+  for (const pt of combined) {
+    if (deduped.length === 0) {
+      deduped.push(pt);
+    } else {
+      const prev = deduped[deduped.length - 1];
+      const dist = calculateDistanceMeters(prev.latitude, prev.longitude, pt.latitude, pt.longitude);
+      if (dist > 5 || pt.isEvent || prev.isEvent) {
+        deduped.push(pt);
+      }
+    }
+  }
+
+  if (deduped.length < 2) {
+    return { distance: 0, duration: 0 };
+  }
+
+  // 5. Calculate cumulative distance
+  let totalDist = 0;
+  for (let i = 0; i < deduped.length - 1; i++) {
+    const distMeters = calculateDistanceMeters(
+      deduped[i].latitude, deduped[i].longitude,
+      deduped[i + 1].latitude, deduped[i + 1].longitude
+    );
+    totalDist += distMeters;
+  }
+
+  const startTime = new Date(deduped[0].timestamp).getTime();
+  const endTime = new Date(deduped[deduped.length - 1].timestamp).getTime();
+  const totalDurationMs = endTime - startTime;
+  const durationMins = Math.max(0, Math.floor(totalDurationMs / (1000 * 60)));
+
+  return {
+    distance: Number((totalDist / 1000).toFixed(2)),
+    duration: durationMins
+  };
+}
+
 // Force Vite HMR
+

@@ -47,8 +47,15 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [siteOtInTime, setSiteOtInTime] = useState<string>('19:30');
     const [siteOtOutTime, setSiteOtOutTime] = useState<string>('21:30');
     const [includeSiteOt, setIncludeSiteOt] = useState<boolean>(false);
-    const [siteInTime, setSiteInTime] = useState<string>('09:00');
-    const [siteOutTime, setSiteOutTime] = useState<string>('18:00');
+    const [siteVisits, setSiteVisits] = useState<{in: string, out: string}[]>([{in: '09:00', out: '18:00'}]);
+
+    const addSiteVisit = () => setSiteVisits([...siteVisits, {in: '10:00', out: '17:00'}]);
+    const removeSiteVisit = (idx: number) => setSiteVisits(siteVisits.filter((_, i) => i !== idx));
+    const updateSiteVisit = (idx: number, field: 'in'|'out', value: string) => {
+        const newVisits = [...siteVisits];
+        newVisits[idx][field] = value;
+        setSiteVisits(newVisits);
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -129,8 +136,6 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     // Find granular segments
                     const punchIn = data.find(e => e.type === 'punch-in' && e.work_type === 'office');
                     const punchOut = data.find(e => e.type === 'punch-out' && e.work_type === 'office');
-                    const siteIn = data.find(e => e.type === 'punch-in' && e.work_type === 'field');
-                    const siteOut = data.find(e => e.type === 'punch-out' && e.work_type === 'field');
                     const breakIn = data.find(e => e.type === 'break-in');
                     const breakOut = data.find(e => e.type === 'break-out');
                     const siteOtIn = data.find(e => e.type === 'site-ot-in');
@@ -139,9 +144,23 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     // Populate times
                     if (punchIn) setCheckInTime(format(new Date(punchIn.timestamp), 'HH:mm'));
                     if (punchOut) setCheckOutTime(format(new Date(punchOut.timestamp), 'HH:mm'));
-                    
-                    if (siteIn) setSiteInTime(format(new Date(siteIn.timestamp), 'HH:mm'));
-                    if (siteOut) setSiteOutTime(format(new Date(siteOut.timestamp), 'HH:mm'));
+
+                    const fieldIns = data.filter(e => e.type === 'punch-in' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    const fieldOuts = data.filter(e => e.type === 'punch-out' && e.work_type === 'field').sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                    if (fieldIns.length > 0 || fieldOuts.length > 0) {
+                        const visits = [];
+                        const maxLen = Math.max(fieldIns.length, fieldOuts.length, 1);
+                        for (let i = 0; i < maxLen; i++) {
+                            visits.push({
+                                in: fieldIns[i] ? format(new Date(fieldIns[i].timestamp), 'HH:mm') : '09:00',
+                                out: fieldOuts[i] ? format(new Date(fieldOuts[i].timestamp), 'HH:mm') : '18:00'
+                            });
+                        }
+                        setSiteVisits(visits);
+                    } else {
+                        setSiteVisits([{in: '09:00', out: '18:00'}]);
+                    }
 
                     if (breakIn || breakOut) {
                         setIncludeBreak(true);
@@ -179,8 +198,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     setExistingEventIds([]);
                     setCheckInTime('09:00');
                     setCheckOutTime('19:30');
-                    setSiteInTime('09:00');
-                    setSiteOutTime('18:00');
+                    setSiteVisits([{in: '09:00', out: '18:00'}]);
                     setSiteOtInTime('19:30');
                     setSiteOtOutTime('21:30');
                     setIncludeBreak(false);
@@ -273,29 +291,31 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                 // B. Field/Site Visit Session (For Field Staff)
                 if (userCategory !== 'office' && status === 'Site Visit') {
-                    const siteInDate = new Date(`${timestampBase}T${siteInTime}:00`);
-                    const siteOutDate = new Date(`${timestampBase}T${siteOutTime}:00`);
-                    
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: siteInDate.toISOString(),
-                        type: 'punch-in',
-                        location_name: locationName,
-                        work_type: 'field',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
-                    });
+                    siteVisits.forEach(visit => {
+                        const siteInDate = new Date(`${timestampBase}T${visit.in}:00`);
+                        const siteOutDate = new Date(`${timestampBase}T${visit.out}:00`);
+                        
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: siteInDate.toISOString(),
+                            type: 'punch-in',
+                            location_name: locationName,
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
 
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: siteOutDate.toISOString(),
-                        type: 'punch-out',
-                        location_name: locationName,
-                        work_type: 'field',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: siteOutDate.toISOString(),
+                            type: 'punch-out',
+                            location_name: locationName,
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
                     });
                 }
 
@@ -385,8 +405,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     checkIn: (status === 'Present' || status === 'W/H' || status === 'Site Visit') ? checkInTime : 'N/A',
                     checkOut: (status === 'Present' || status === 'W/H' || status === 'Site Visit') ? checkOutTime : 'N/A',
                     includeSiteVisit: userCategory !== 'office' && status === 'Site Visit',
-                    siteIn: (userCategory !== 'office' && status === 'Site Visit') ? siteInTime : 'N/A',
-                    siteOut: (userCategory !== 'office' && status === 'Site Visit') ? siteOutTime : 'N/A',
+                    siteVisits: (userCategory !== 'office' && status === 'Site Visit') ? siteVisits : [],
                     includeSiteOt,
                     siteOtIn: includeSiteOt ? siteOtInTime : 'N/A',
                     siteOtOut: includeSiteOt ? siteOtOutTime : 'N/A',
@@ -573,33 +592,55 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                 <h3 className="text-sm font-bold text-gray-800 flex items-center">
                                     <FileText className="w-4 h-4 mr-2 text-green-600" /> Site Deployment Details
                                 </h3>
-                                <div className="grid grid-cols-2 gap-4 bg-green-50/40 p-4 rounded-xl border border-green-100/50">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Site Check In <span className="text-red-500 ml-1">*</span>
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={siteInTime}
-                                            onChange={(e) => setSiteInTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                            required
-                                        />
-                                    </div>
+                                <div className="space-y-4 bg-green-50/40 p-4 rounded-xl border border-green-100/50">
+                                    {siteVisits.map((visit, idx) => (
+                                        <div key={idx} className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-md">
+                                            <div className="flex-1 space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                                    Site Check In <span className="text-red-500 ml-1">*</span>
+                                                </label>
+                                                <input
+                                                    type="time"
+                                                    value={visit.in}
+                                                    onChange={(e) => updateSiteVisit(idx, 'in', e.target.value)}
+                                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
+                                                    required
+                                                />
+                                            </div>
 
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Site Check Out <span className="text-red-500 ml-1">*</span>
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={siteOutTime}
-                                            onChange={(e) => setSiteOutTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="col-span-2 space-y-1.5 pt-1">
+                                            <div className="flex-1 space-y-1.5">
+                                                <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                                    Site Check Out <span className="text-red-500 ml-1">*</span>
+                                                </label>
+                                                <input
+                                                    type="time"
+                                                    value={visit.out}
+                                                    onChange={(e) => updateSiteVisit(idx, 'out', e.target.value)}
+                                                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
+                                                    required
+                                                />
+                                            </div>
+                                            {siteVisits.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeSiteVisit(idx)}
+                                                    className="mb-1 p-2 text-red-500 hover:bg-red-50 rounded"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={addSiteVisit}
+                                        className="text-xs font-bold text-green-600 hover:text-green-800 tracking-wide uppercase"
+                                    >
+                                        + Add Another Site Visit
+                                    </button>
+
+                                    <div className="space-y-1.5 pt-2 border-t border-green-200/50">
                                         <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter">Site Name / Location</label>
                                         <input
                                             type="text"

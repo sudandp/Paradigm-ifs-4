@@ -2,14 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { format, getDaysInMonth, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, isAfter, isSameDay, isWithinInterval, endOfDay, startOfWeek, subDays, isBefore, addDays, startOfToday } from 'date-fns';
 import { Download, Lock, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
-import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory } from '../../utils/attendanceCalculations';
+import { processDailyEvents, calculateWorkingHours, isLateCheckIn, isEarlyCheckOut, evaluateAttendanceStatus, getStaffCategory, calculateDailyTravelKm, calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
-import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, Role, FieldAttendanceViolation, Holiday } from '../../types';
+import type { AttendanceEvent, User, StaffAttendanceRules, UserHoliday, Role, FieldAttendanceViolation, Holiday, RoutePoint } from '../../types';
 import Button from '../ui/Button';
 import { useSettingsStore } from '../../store/settingsStore';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { useAuthStore } from '../../store/authStore';
+
+const formatDuration = (mins: number): string => {
+  if (!mins || mins <= 0) return '';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
+};
+
 
 export interface DailyData {
   date: number;
@@ -24,6 +35,8 @@ export interface DailyData {
   ot: string;
   shortfall: string;
   shift: string;
+  travelDistance?: number;
+  travelDuration?: number;
 }
 
 export interface EmployeeMonthlyData {
@@ -36,6 +49,8 @@ export interface EmployeeMonthlyData {
   totalNetWorkDuration: number;
   totalBreakDuration: number;
   totalOT: number;
+  totalTravelDistance?: number;
+  totalTravelDuration?: number;
   presentDays: number;
   absentDays: number;
   weekOffs: number;
@@ -96,6 +111,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   const [userHolidaysPool, setUserHolidaysPool] = useState<UserHoliday[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [masterHolidays, setMasterHolidays] = useState<Holiday[]>([]);
+  // Map of userId -> Set of dateStr for pending RC/RP requests
+  const [pendingCorrectionDates, setPendingCorrectionDates] = useState<Map<string, Set<string>>>(new Map());
   const { attendance, officeHolidays: storeOfficeHolidays, fieldHolidays: storeFieldHolidays, siteHolidays: storeSiteHolidays, recurringHolidays: storeRecurringHolidays } = useSettingsStore();
 
   const resolveUserRules = (user: User, resolvedRole?: string) => {
@@ -192,12 +209,23 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const fetchStartDate = startOfWeek(subDays(startDate, 15), { weekStartsOn: 1 });
       
       const targetUserIds = targetUsers.map(u => u.id);
-      const allEvents = await api.getAttendanceEventsForUsers(
-        targetUserIds,
-        format(fetchStartDate, 'yyyy-MM-dd'), 
-        // Expand 12 hours forward to catch night shift ends
-        format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
-      );
+      
+      const [allEvents, routePointsList] = await Promise.all([
+        api.getAttendanceEventsForUsers(
+          targetUserIds,
+          format(fetchStartDate, 'yyyy-MM-dd'), 
+          // Expand 12 hours forward to catch night shift ends
+          format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+        ),
+        api.getRoutePointsForUsers(
+          targetUserIds,
+          format(startDate, 'yyyy-MM-dd'),
+          format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+        ).catch(err => {
+          console.warn('Failed to fetch route points for report:', err);
+          return [] as RoutePoint[];
+        })
+      ]);
 
       const eventsByUser = new Map<string, AttendanceEvent[]>();
       allEvents.forEach(e => {
@@ -206,17 +234,38 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           eventsByUser.get(uid)!.push(e);
       });
 
+      const routePointsByUser = new Map<string, RoutePoint[]>();
+      routePointsList.forEach(rp => {
+          const uid = String(rp.userId);
+          if (!routePointsByUser.has(uid)) routePointsByUser.set(uid, []);
+          routePointsByUser.get(uid)!.push(rp);
+      });
+
       const leavesByUser = new Map<string, any[]>();
+      // Track pending Correction / Permission requests separately (for visual indicator)
+      const pendingCorrMap = new Map<string, Set<string>>();
       (leavesData || []).forEach((l: any) => {
           const lUserId = String(l.userId || l.user_id);
           const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+          const lType = String(l.leaveType || l.leave_type || '');
           const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus);
+          const isPendingCorrOrPerm = lType === 'Correction' || lType === 'Permission'
+              ? ['pending_manager_approval', 'pending_hr_confirmation', 'pending_admin_correction'].includes(lStatus)
+              : false;
           
           if (isApproved) {
               if (!leavesByUser.has(lUserId)) leavesByUser.set(lUserId, []);
               leavesByUser.get(lUserId)!.push(l);
           }
+          if (isPendingCorrOrPerm) {
+              const dateStr = String(l.startDate || l.start_date || '').substring(0, 10);
+              if (dateStr) {
+                  if (!pendingCorrMap.has(lUserId)) pendingCorrMap.set(lUserId, new Set());
+                  pendingCorrMap.get(lUserId)!.add(dateStr);
+              }
+          }
       });
+      setPendingCorrectionDates(pendingCorrMap);
 
       if ((userId === undefined || userId === 'all') && selectedRole !== 'management') {
         targetUsers = targetUsers.filter(u => u.role !== 'management');
@@ -233,6 +282,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         const uid = String(user.id);
         const userEvents = eventsByUser.get(uid) || [];
         const userLeaves = leavesByUser.get(uid) || [];
+        const userRoutePoints = routePointsByUser.get(uid) || [];
         
         // Resolve role name if it's a UUID
         let resolvedRole = user.role;
@@ -257,7 +307,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           specificSiteHolidays.length > 0 ? specificSiteHolidays : currentSiteHolidays, // fallback to global if none allocated
           currentRecurringHolidays,
           leavesData || [], 
-          resolvedRole
+          resolvedRole,
+          userRoutePoints
         );
       });
 
@@ -286,7 +337,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     passedSiteHolidays: any[],
     passedRecurringHolidays: any[],
     allLeaves: any[] = [], 
-    resolvedRole?: string
+    resolvedRole?: string,
+    routePoints: RoutePoint[] = []
   ): EmployeeMonthlyData => {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = endOfMonth(monthStart);
@@ -295,7 +347,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     const daysInPeriod = effectiveEnd.getDate();
     const dailyData: DailyData[] = [];
     
-    let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0;
+    let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0, totalTravelDistance = 0, totalTravelDuration = 0;
     let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
     let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
     let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
@@ -468,10 +520,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       }
 
       let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
+      let currentDayTravelKm = 0;
+      let currentDayTravelDuration = 0;
       let netHours = 0, grossHours = 0, breakHours = 0;
       let fieldResultStatus = '';
       const dateStr = format(currentDate, 'yyyy-MM-dd');
       const dayEvents = eventsByGroup[dateStr] || [];
+      const dayRoutePoints = routePoints.filter(p => isSameDay(new Date(p.timestamp), currentDate));
       const hasActivity = dayEvents.length > 0;
       const isFuture = isAfter(currentDate, startOfDay(new Date()));
 
@@ -494,6 +549,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             fieldResultStatus = fRes.status;
         }
 
+        const travelRes = calculateDailyPathTravelKm(dayEvents, dayRoutePoints);
+        currentDayTravelKm = travelRes.distance;
+        currentDayTravelDuration = travelRes.duration;
+
         currentDayGrossDuration = formatTime(grossHours);
         currentDayNetWorkedHours = formatTime(netHours);
         currentDayBreakDuration = formatTime(breakHours);
@@ -508,6 +567,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             totalGrossWorkDuration += grossHours; 
             totalBreakDuration += breakHours;
             totalOT += ot; 
+            totalTravelDistance += currentDayTravelKm;
+            totalTravelDuration += currentDayTravelDuration;
             if (category === 'site' && netHours > 14) overtimeDays++;
         }
       }
@@ -557,7 +618,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       dailyData.push({
         date: day, status, inTime: currentDayInTime, outTime: currentDayOutTime, grossDuration: currentDayGrossDuration,
         breakIn: currentDayBreakIn, breakOut: currentDayBreakOut, breakDuration: currentDayBreakDuration,
-        netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift
+        netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift,
+        travelDistance: currentDayTravelKm,
+        travelDuration: currentDayTravelDuration
       });
     }
 
@@ -569,7 +632,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     return {
       employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
-      totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT,
+      totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration,
       presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
       halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,
       lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays: cappedPayableDays,
@@ -788,6 +851,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                     W/H <span className="bg-teal-200 text-teal-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.workFromHomeDays}</span>
                                 </span>
                             )}
+                            {employee.totalTravelDistance !== undefined && employee.totalTravelDistance > 0 && (
+                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-[11px] font-bold shadow-sm border border-emerald-200 flex items-center gap-1">
+                                    Travel <span className="bg-emerald-200 text-emerald-900 px-1.5 rounded-sm text-[10px] ml-0.5">
+                                        {employee.totalTravelDistance.toFixed(2)} KM
+                                        {employee.totalTravelDuration && employee.totalTravelDuration > 0 ? ` (${formatDuration(employee.totalTravelDuration)})` : ''}
+                                    </span>
+                                </span>
+                            )}
                         </div>
                         
                         {Object.keys(employee.shiftCounts).length > 0 && (
@@ -819,8 +890,11 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                   <tbody className="text-[8.5px] tracking-tighter text-gray-700 whitespace-nowrap">
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-1 px-1 font-semibold text-gray-700 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Status</td>
-                      {employee.dailyData.map(d => (
-                        <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0">
+                      {employee.dailyData.map(d => {
+                        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d.date).padStart(2,'0')}`;
+                        const hasPendingRC = pendingCorrectionDates.get(employee.employeeId)?.has(dateStr) ?? false;
+                        return (
+                        <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0 relative">
                             <span className={`inline-flex items-center justify-center w-full min-h-[18px] font-bold text-[9px] ${
                                 d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
                                 d.status === '0.75P' || d.status === '3/4P' ? 'bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-600' :
@@ -848,8 +922,17 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                             }`}>
                                 {d.status}
                             </span>
+                            {/* Pending RC/RP indicator — orange dot */}
+                            {hasPendingRC && (
+                                <span
+                                    title="Pending Correction/Permission request"
+                                    className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-orange-400 border border-white shadow-sm"
+                                    aria-label="Pending correction or permission request"
+                                />
+                            )}
                         </td>
-                      ))}
+                        );
+                      })}
                     </tr>
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">InTime</td>
@@ -878,6 +961,18 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     <tr className="bg-white border-b border-slate-200">
                       <td className="py-0.5 px-1 font-semibold text-gray-800 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Net Worked</td>
                       {employee.dailyData.map(d => <td key={d.date} className="p-0.5 text-center border-r border-slate-100 last:border-r-0">{d.netWorkedHours !== '0:00' ? d.netWorkedHours : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Travel (KM)</td>
+                      {employee.dailyData.map(d => (
+                        <td 
+                          key={d.date} 
+                          className="p-0.5 text-center border-r border-slate-100 last:border-r-0 cursor-help" 
+                          title={d.travelDistance && d.travelDistance > 0 ? `Distance: ${d.travelDistance.toFixed(2)} KM\nDuration: ${formatDuration(d.travelDuration || 0)}` : undefined}
+                        >
+                          {d.travelDistance && d.travelDistance > 0 ? d.travelDistance.toFixed(2) : '-'}
+                        </td>
+                      ))}
                     </tr>
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">OT</td>
@@ -942,6 +1037,12 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     ))}
                  </div>
                  <p className="text-[7px] text-gray-400 mt-1">* Prefix 1/2 = half-day variant. H/P &amp; W/P attract 1.5× payable credit.</p>
+                 <div className="flex items-center gap-1.5 mt-1.5">
+                     <span className="inline-flex items-center gap-1">
+                         <span className="w-2 h-2 rounded-full bg-orange-400 border border-white shadow-sm inline-block"></span>
+                         <span className="text-[7px] font-medium text-orange-600">Pending Correction / Permission request</span>
+                     </span>
+                 </div>
               </div>
            </div>
         </div>

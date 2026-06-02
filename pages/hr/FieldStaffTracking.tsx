@@ -2,7 +2,12 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { api } from '../../services/api';
 import type { AttendanceEvent, User, Location, RoutePoint, Role } from '../../types';
 import { Loader2, MapPin, List, Map as MapIcon, Route as RouteIcon, Calendar, Users, ChevronRight, ExternalLink, Clock, Filter, ArrowLeft, Download, RefreshCw, History, Battery, Smartphone, Network, Globe, Monitor, Tablet } from 'lucide-react';
-import { format } from 'date-fns';
+import { 
+    format, subDays, addDays, isSameDay, parseISO,
+    addMonths, subMonths, addYears, subYears,
+    differenceInCalendarDays, startOfMonth, endOfMonth,
+    startOfYear, endOfYear
+} from 'date-fns';
 import DatePicker from '../../components/ui/DatePicker';
 import Select from '../../components/ui/Select';
 import L from 'leaflet';
@@ -1635,6 +1640,90 @@ const FieldStaffTracking: React.FC = () => {
 
     const isMobile = useMediaQuery('(max-width: 767px)');
     const { user: currentUser } = useAuthStore();
+
+    const handleShiftRange = (direction: 'prev' | 'next') => {
+        try {
+            const start = parseISO(startDate);
+            const end = parseISO(endDate);
+            
+            // Check if it's a single day
+            if (isSameDay(start, end)) {
+                const newDate = direction === 'next' ? addDays(start, 1) : subDays(start, 1);
+                const formatted = format(newDate, 'yyyy-MM-dd');
+                setStartDate(formatted);
+                setEndDate(formatted);
+                return;
+            }
+            
+            // Check if it's exactly a full year (Jan 1 to Dec 31 of same year)
+            const isFullYear = isSameDay(start, startOfYear(start)) && isSameDay(end, endOfYear(end)) && start.getFullYear() === end.getFullYear();
+            if (isFullYear) {
+                const newStart = direction === 'next' ? addYears(start, 1) : subYears(start, 1);
+                const newEnd = endOfYear(newStart);
+                setStartDate(format(newStart, 'yyyy-MM-dd'));
+                setEndDate(format(newEnd, 'yyyy-MM-dd'));
+                return;
+            }
+
+            // Check if it's exactly a full month (1st of month to last of month of same year/month)
+            const isFullMonth = isSameDay(start, startOfMonth(start)) && isSameDay(end, endOfMonth(end)) && start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+            if (isFullMonth) {
+                const newStart = direction === 'next' ? addMonths(start, 1) : subMonths(start, 1);
+                const newEnd = endOfMonth(newStart);
+                setStartDate(format(newStart, 'yyyy-MM-dd'));
+                setEndDate(format(newEnd, 'yyyy-MM-dd'));
+                return;
+            }
+            
+            // Default: Shift by range length
+            const daysDiff = differenceInCalendarDays(end, start) + 1;
+            const newStart = direction === 'next' ? addDays(start, daysDiff) : subDays(start, daysDiff);
+            const newEnd = direction === 'next' ? addDays(end, daysDiff) : subDays(end, daysDiff);
+            
+            setStartDate(format(newStart, 'yyyy-MM-dd'));
+            setEndDate(format(newEnd, 'yyyy-MM-dd'));
+        } catch (e) {
+            console.error('Error shifting date range:', e);
+        }
+    };
+
+    const isEndDateTodayOrFuture = useMemo(() => {
+        try {
+            const end = parseISO(endDate);
+            const today = new Date();
+            return isSameDay(end, today) || end.getTime() > today.getTime();
+        } catch (e) {
+            return false;
+        }
+    }, [endDate]);
+
+    const formatRangeText = useMemo(() => {
+        try {
+            const start = parseISO(startDate);
+            const end = parseISO(endDate);
+            
+            if (isSameDay(start, end)) {
+                return format(start, 'dd MMM, yyyy');
+            }
+            
+            const isFullYear = isSameDay(start, startOfYear(start)) && isSameDay(end, endOfYear(end)) && start.getFullYear() === end.getFullYear();
+            if (isFullYear) {
+                return format(start, 'yyyy');
+            }
+            
+            const isFullMonth = isSameDay(start, startOfMonth(start)) && isSameDay(end, endOfMonth(end)) && start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+            if (isFullMonth) {
+                return format(start, 'MMMM yyyy');
+            }
+            
+            if (start.getFullYear() === end.getFullYear()) {
+                return `${format(start, 'dd MMM')} - ${format(end, 'dd MMM, yyyy')}`;
+            }
+            return `${format(start, 'dd MMM, yyyy')} - ${format(end, 'dd MMM, yyyy')}`;
+        } catch (e) {
+            return `${startDate} - ${endDate}`;
+        }
+    }, [startDate, endDate]);
     
     const roleLabelsMap = useMemo(() => {
         const labels: Record<string, string> = {};
@@ -2030,6 +2119,28 @@ const FieldStaffTracking: React.FC = () => {
                                 <option value="all">ALL AGENTS (A-Z)</option>
                                 {selectableUsers.map(u => <option key={u.id} value={u.id}>{u.name.toUpperCase()}</option>)}
                             </select>
+                        </div>
+
+                        <div className="flex items-center bg-white border border-border p-1 rounded-xl shadow-inner-soft min-w-fit select-none">
+                            <button 
+                                onClick={() => handleShiftRange('prev')} 
+                                className="p-1 px-2.5 bg-transparent hover:bg-accent/5 rounded-lg transition-colors font-black text-sm"
+                                title="Previous Date Range"
+                            >
+                                &larr;
+                            </button>
+                            <div className="flex items-center gap-2 px-3 py-1 text-xs font-semibold">
+                                <Calendar className="w-4 h-4 text-accent" />
+                                {formatRangeText}
+                            </div>
+                            <button 
+                                onClick={() => handleShiftRange('next')} 
+                                disabled={isEndDateTodayOrFuture} 
+                                className="p-1 px-2.5 bg-transparent hover:bg-accent/5 rounded-lg transition-colors font-black text-sm disabled:opacity-20"
+                                title="Next Date Range"
+                            >
+                                &rarr;
+                            </button>
                         </div>
 
                         <div className="flex gap-2 ml-auto">
