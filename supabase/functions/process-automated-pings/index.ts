@@ -48,7 +48,7 @@ serve(async (req: Request) => {
     // An active field staff is someone whose latest attendance event for today is 'check_in'
     const todayStr = new Date().toISOString().split('T')[0];
     
-    // Get all check-ins and check-outs for today
+    // Get all attendance events for today (check-ins and check-outs of all types)
     const { data: events, error: eventsError } = await supabase
       .from('attendance_events')
       .select('user_id, type, timestamp')
@@ -59,12 +59,18 @@ serve(async (req: Request) => {
       throw new Error("Failed to fetch events: " + eventsError.message);
     }
 
-    // Determine currently clocked-in users
+    // Active event types: punch-in, site-in, site-ot-in (field staff / site staff)
+    const ACTIVE_IN_TYPES = new Set(['punch-in', 'site-in', 'site-ot-in']);
+    // Clocked-out event types
+    const ACTIVE_OUT_TYPES = new Set(['punch-out', 'site-out', 'site-ot-out']);
+
+    // Determine currently clocked-in users (take the LATEST event per user)
     const userStatus = new Map<string, string>(); // user_id -> latest event_type
     if (events) {
       for (const event of events) {
-        if (event.type === 'punch-in' || event.type === 'punch-out') {
-          if (!userStatus.has(event.user_id)) {
+        // Only process the first occurrence per user (already sorted latest first)
+        if (!userStatus.has(event.user_id)) {
+          if (ACTIVE_IN_TYPES.has(event.type) || ACTIVE_OUT_TYPES.has(event.type)) {
             userStatus.set(event.user_id, event.type);
           }
         }
@@ -73,7 +79,7 @@ serve(async (req: Request) => {
 
     const activeUserIds = [];
     for (const [userId, eventType] of userStatus.entries()) {
-      if (eventType === 'punch-in') {
+      if (ACTIVE_IN_TYPES.has(eventType)) {
         activeUserIds.push(userId);
       }
     }
@@ -132,33 +138,43 @@ serve(async (req: Request) => {
 
     console.log(`[ProcessAutomatedPings] Dispatching SILENT_TRACKING_PING to ${usersToPing.length} users...`);
 
-    // 4. Send the push notification using the existing send-notification edge function logic
-    // We will invoke the send-notification edge function directly.
-    const invokeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        userIds: usersToPing,
-        title: "Location Ping",
-        body: "Background ping request",
-        data: {
-          type: "SILENT_TRACKING_PING",
-          timestamp: Date.now().toString(),
-          reason: "automated_interval"
-        }
-      })
-    });
+    // 4. For each user: send FCM with requestId+userId in the data payload
+    // The Android ParadigmFirebaseMessagingService.java reads data.get("requestId") and data.get("userId")
+    // and uses them to call the record-tracking-ping edge function which saves to route_history.
+    const results = [];
+    for (const userId of usersToPing) {
+      // Generate a unique requestId per user so the Android handler can correlate the response
+      const requestId = crypto.randomUUID();
 
-    const invokeData = await invokeRes.text();
+      const invokeRes = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userIds: [userId],
+          title: "Location Ping",
+          body: "Background ping request",
+          data: {
+            type: "SILENT_TRACKING_PING",
+            requestId: requestId,   // ← Android reads via data.get("requestId")
+            userId: userId,         // ← Android reads via data.get("userId")
+            timestamp: Date.now().toString(),
+            reason: "automated_interval"
+          }
+        })
+      });
+
+      const invokeData = await invokeRes.text();
+      console.log(`[ProcessAutomatedPings] Sent ping to user=${userId} requestId=${requestId} result=${invokeData}`);
+      results.push({ userId, requestId, result: invokeData });
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
       pingedUsersCount: usersToPing.length,
-      usersPinged: usersToPing,
-      sendNotificationResult: invokeData
+      results
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

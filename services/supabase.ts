@@ -12,8 +12,12 @@ import { Preferences } from '@capacitor/preferences';
 // reached.  If the dummy values are used, network calls to Supabase will
 // inevitably fail, but the rest of the app can still render and in many
 // cases will work with mock data.
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env)
+  ? import.meta.env.VITE_SUPABASE_URL
+  : process.env.VITE_SUPABASE_URL;
+export const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env)
+  ? import.meta.env.VITE_SUPABASE_ANON_KEY
+  : (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY);
 
 // When credentials are missing log a warning and use dummy values.  Using
 // `http://localhost` as the URL and a placeholder anon key is sufficient to
@@ -30,16 +34,28 @@ if (!supabaseUrl || !supabaseAnonKey) {
     );
 }
 
+const isBrowser = typeof window !== 'undefined';
+const memStorage: Record<string, string> = {};
+
 // Custom storage adapter for Capacitor
 const CapacitorStorage = {
   getItem: async (key: string): Promise<string | null> => {
+    if (!isBrowser) return memStorage[key] || null;
     const { value } = await Preferences.get({ key });
     return value;
   },
   setItem: async (key: string, value: string): Promise<void> => {
+    if (!isBrowser) {
+      memStorage[key] = value;
+      return;
+    }
     await Preferences.set({ key, value });
   },
   removeItem: async (key: string): Promise<void> => {
+    if (!isBrowser) {
+      delete memStorage[key];
+      return;
+    }
     await Preferences.remove({ key });
   },
 };

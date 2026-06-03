@@ -93,8 +93,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // 2. Update tracking_audit_logs status — filter by BOTH request_id AND target_user_id
-    const { error: patchError } = await supabase
+    // 2. Update tracking_audit_logs status if a matching audit row exists
+    // For automated pings from process-automated-pings, there may be no audit row — that's OK.
+    const { error: patchError, count: patchCount } = await supabase
       .from("tracking_audit_logs")
       .update({ status })
       .eq("request_id", requestId)
@@ -108,7 +109,7 @@ serve(async (req: Request) => {
       );
     }
 
-    console.log(`[RecordTrackingPing] tracking_audit_logs updated to '${status}' for request=${requestId}`);
+    console.log(`[RecordTrackingPing] tracking_audit_logs updated to '${status}' for request=${requestId} (rows matched: ${patchCount ?? 'unknown'})`);
 
     return new Response(
       JSON.stringify({ success: true, requestId, status }),

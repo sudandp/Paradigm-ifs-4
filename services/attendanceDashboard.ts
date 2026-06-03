@@ -35,12 +35,17 @@ export async function fetchTodayMetrics(
   societyId?: string,
   siteIds?: string[]
 ): Promise<TodayMetrics> {
-  const { data, error } = await supabase.rpc('get_today_metrics', {
-    p_society_id: societyId ?? null,
-    p_site_ids:   siteIds   ?? null,
-  });
-  if (error) throw error;
-  return data[0] as TodayMetrics;
+  try {
+    const { data, error } = await supabase.rpc('get_today_metrics', {
+      p_society_id: societyId ?? null,
+      p_site_ids:   siteIds   ?? null,
+    });
+    if (error) throw error;
+    return data[0] as TodayMetrics;
+  } catch (error: any) {
+    console.warn('[attendanceDashboard] get_today_metrics RPC failed, using fallback:', error.message);
+    return fetchTodayMetricsFallback(societyId, siteIds);
+  }
 }
 
 export async function fetchAttendanceSummary(
@@ -177,15 +182,20 @@ export async function fetchTopPerformers(
   siteIds?: string[],
   limit = 4
 ): Promise<TopPerformer[]> {
-  const { data, error } = await supabase.rpc('get_top_performers', {
-    p_start:      format(startDate, 'yyyy-MM-dd'),
-    p_end:        format(endDate,   'yyyy-MM-dd'),
-    p_society_id: societyId ?? null,
-    p_site_ids:   siteIds   ?? null,
-    p_limit:      limit,
-  });
-  if (error) throw error;
-  return data as TopPerformer[];
+  try {
+    const { data, error } = await supabase.rpc('get_top_performers', {
+      p_start:      format(startDate, 'yyyy-MM-dd'),
+      p_end:        format(endDate,   'yyyy-MM-dd'),
+      p_society_id: societyId ?? null,
+      p_site_ids:   siteIds   ?? null,
+      p_limit:      limit,
+    });
+    if (error) throw error;
+    return data as TopPerformer[];
+  } catch (error: any) {
+    console.warn('[attendanceDashboard] get_top_performers RPC failed, using fallback:', error.message);
+    return fetchTopPerformersFallback(startDate, endDate, societyId, siteIds, limit);
+  }
 }
 
 export function buildChartDatasets(rows: DaySummary[]) {
@@ -198,4 +208,220 @@ export function buildChartDatasets(rows: DaySummary[]) {
     productivityTrend: rows.map(r => r.avg_working_hours),
     totalActiveStaff:  rows[0]?.total_active_staff ?? 0,
   };
+}
+
+/** Direct-query fallback for get_today_metrics */
+async function fetchTodayMetricsFallback(
+  societyId?: string,
+  siteIds?: string[]
+): Promise<TodayMetrics> {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const startOfDayStr = `${todayStr}T00:00:00+05:30`;
+  const endOfDayStr = `${todayStr}T23:59:59+05:30`;
+
+  // 1. Get active staff count
+  let staffQuery = supabase
+    .from('users')
+    .select('id')
+    .not('role_id', 'is', null)
+    .neq('role_id', 'unverified');
+  if (societyId) staffQuery = staffQuery.eq('society_id', societyId);
+  if (siteIds?.length) staffQuery = staffQuery.in('organization_id', siteIds);
+  const { data: staffData, error: staffErr } = await staffQuery;
+  if (staffErr) {
+    console.error('[attendanceDashboard] fetchTodayMetricsFallback staff query failed:', staffErr.message);
+  }
+  const staff = staffData || [];
+  const staffIds = staff.map(u => u.id);
+  const totalActiveStaff = staff.length;
+
+  if (totalActiveStaff === 0) {
+    return {
+      present_today: 0,
+      absent_today: 0,
+      wfh_today: 0,
+      on_leave_today: 0,
+      late_arrivals_today: 0,
+      pending_leaves: 0,
+      approved_leaves: 0,
+      total_active_staff: 0
+    };
+  }
+
+  // 2. Fetch today's punches
+  const { data: punches } = await supabase
+    .from('attendance_events')
+    .select('user_id, timestamp, type')
+    .in('user_id', staffIds)
+    .gte('timestamp', startOfDayStr)
+    .lte('timestamp', endOfDayStr)
+    .eq('type', 'punch-in');
+
+  const presentUserIds = new Set((punches || []).map(p => p.user_id));
+
+  // Calculate late arrivals (after 09:30 AM)
+  const userFirstPunch: Record<string, Date> = {};
+  (punches || []).forEach(p => {
+    const ts = new Date(p.timestamp);
+    if (!userFirstPunch[p.user_id] || ts < userFirstPunch[p.user_id]) {
+      userFirstPunch[p.user_id] = ts;
+    }
+  });
+  let lateArrivalsToday = 0;
+  Object.values(userFirstPunch).forEach(ts => {
+    const hrs = ts.getHours();
+    const mins = ts.getMinutes();
+    if (hrs > 9 || (hrs === 9 && mins > 30)) {
+      lateArrivalsToday++;
+    }
+  });
+
+  // 3. Fetch leaves
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('user_id, status, leave_type, start_date, end_date')
+    .in('user_id', staffIds);
+
+  const parsedToday = new Date(todayStr);
+  let pendingLeaves = 0;
+  let approvedLeaves = 0;
+  const wfhTodaySet = new Set<string>();
+  const leaveTodaySet = new Set<string>();
+
+  (leaves || []).forEach(lr => {
+    if (!lr.start_date || !lr.end_date) return;
+    const start = new Date(lr.start_date);
+    const end = new Date(lr.end_date);
+    const isToday = parsedToday >= start && parsedToday <= end;
+    const isApproved = ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(lr.status).toLowerCase());
+    const isPending = String(lr.status).toLowerCase() === 'pending';
+
+    if (isToday) {
+      if (isApproved) {
+        approvedLeaves++;
+        const lType = String(lr.leave_type || '').toLowerCase();
+        const isWfh = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
+        if (isWfh) {
+          wfhTodaySet.add(lr.user_id);
+        } else {
+          leaveTodaySet.add(lr.user_id);
+        }
+      } else if (isPending) {
+        pendingLeaves++;
+      }
+    }
+  });
+
+  const wfh_today = wfhTodaySet.size;
+  const on_leave_today = leaveTodaySet.size;
+  const totalPresentToday = new Set([...presentUserIds, ...wfhTodaySet]).size;
+  const absent_today = Math.max(0, totalActiveStaff - totalPresentToday - on_leave_today);
+
+  return {
+    present_today: totalPresentToday,
+    absent_today,
+    wfh_today,
+    on_leave_today,
+    late_arrivals_today: lateArrivalsToday,
+    pending_leaves: pendingLeaves,
+    approved_leaves: approvedLeaves,
+    total_active_staff: totalActiveStaff
+  };
+}
+
+/** Direct-query fallback for get_top_performers */
+async function fetchTopPerformersFallback(
+  startDate: Date,
+  endDate: Date,
+  societyId?: string,
+  siteIds?: string[],
+  limit = 4
+): Promise<TopPerformer[]> {
+  const startStr = format(startDate, 'yyyy-MM-dd');
+  const endStr   = format(endDate,   'yyyy-MM-dd');
+
+  // 1. Get active users
+  let staffQuery = supabase
+    .from('users')
+    .select('id, name, role:roles(display_name)')
+    .not('role_id', 'is', null)
+    .neq('role_id', 'unverified');
+  if (societyId) staffQuery = staffQuery.eq('society_id', societyId);
+  if (siteIds?.length) staffQuery = staffQuery.in('organization_id', siteIds);
+  const { data: staffData, error: staffErr } = await staffQuery;
+  if (staffErr) {
+    console.error('[attendanceDashboard] fetchTopPerformersFallback staff query failed:', staffErr.message);
+  }
+  const staff = staffData || [];
+  const staffMap = new Map(staff.map(u => [u.id, u]));
+  const staffIds = staff.map(u => u.id);
+
+  if (staffIds.length === 0) return [];
+
+  // 2. Fetch events
+  const { data: events, error: evErr } = await supabase
+    .from('attendance_events')
+    .select('user_id, timestamp, type')
+    .in('user_id', staffIds)
+    .gte('timestamp', `${startStr}T00:00:00+05:30`)
+    .lte('timestamp', `${endStr}T23:59:59+05:30`)
+    .in('type', ['punch-in', 'punch-out', 'break-in', 'break-out']);
+
+  if (evErr) throw evErr;
+
+  // Group events by user and by day
+  const userDayEvents: Record<string, Record<string, any[]>> = {};
+  (events || []).forEach(e => {
+    const day = format(new Date(e.timestamp), 'yyyy-MM-dd');
+    if (!userDayEvents[e.user_id]) userDayEvents[e.user_id] = {};
+    if (!userDayEvents[e.user_id][day]) userDayEvents[e.user_id][day] = [];
+    userDayEvents[e.user_id][day].push(e);
+  });
+
+  // Calculate duration per user
+  const performers: TopPerformer[] = [];
+  for (const [userId, daysMap] of Object.entries(userDayEvents)) {
+    let totalHours = 0;
+    let daysPresent = 0;
+
+    for (const [day, dayEvts] of Object.entries(daysMap)) {
+      dayEvts.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const punchIn = dayEvts.find(e => e.type === 'punch-in');
+      const punchOut = [...dayEvts].reverse().find(e => e.type === 'punch-out');
+
+      if (punchIn && punchOut) {
+        const inTime = new Date(punchIn.timestamp);
+        const outTime = new Date(punchOut.timestamp);
+        
+        let breakSeconds = 0;
+        for (let i = 0; i < dayEvts.length; i++) {
+          if (dayEvts[i].type === 'break-out') {
+            const next = dayEvts.slice(i + 1).find(e => e.type === 'break-in' || e.type === 'punch-out');
+            if (next) {
+              breakSeconds += (new Date(next.timestamp).getTime() - new Date(dayEvts[i].timestamp).getTime()) / 1000;
+            }
+          }
+        }
+
+        const netWorked = Math.max(0, (outTime.getTime() - inTime.getTime()) / 1000 - breakSeconds);
+        totalHours += netWorked / 3600;
+        daysPresent++;
+      }
+    }
+
+    if (totalHours > 0) {
+      const u = staffMap.get(userId);
+      performers.push({
+        user_id: userId,
+        name: u?.name || 'Staff Member',
+        role_name: (u?.role as any)?.display_name || 'Staff',
+        total_hours: totalHours,
+        days_present: daysPresent
+      });
+    }
+  }
+
+  return performers
+    .sort((a, b) => b.total_hours - a.total_hours)
+    .slice(0, limit);
 }

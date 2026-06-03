@@ -318,7 +318,12 @@ public class ParadigmFirebaseMessagingService extends FirebaseMessagingService {
                                    Double latitude, Double longitude, Float accuracy,
                                    String deviceName, float batteryLevel, 
                                    String networkType, String ipAddress, String status) {
-        if (requestId == null || requestId.isEmpty() || supabaseUrl == null || supabaseUrl.isEmpty()) return;
+        if (supabaseUrl == null || supabaseUrl.isEmpty()) return;
+        // If requestId is missing (shouldn't happen after fix, but fallback gracefully)
+        if (requestId == null || requestId.isEmpty()) {
+            requestId = "auto-" + java.util.UUID.randomUUID().toString();
+            Log.w(TAG, "callEdgeFunction: requestId was null — generated fallback: " + requestId);
+        }
         Log.d(TAG, "callEdgeFunction: requestId=" + requestId + " status=" + status);
 
         try {

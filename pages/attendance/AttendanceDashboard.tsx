@@ -93,6 +93,7 @@ import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { exportToCsv } from '../../utils/fastExport';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { autoLockPreviousMonth } from '../../utils/autoLockService';
 import {
     Chart,
     BarController,
@@ -829,6 +830,54 @@ const AttendanceDashboard: React.FC = () => {
     const [isExportingLeaves, setIsExportingLeaves] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [reportPageSize, setReportPageSize] = useState<number>(20);
+
+    // Background Auto-locking check for immediately previous month
+    useEffect(() => {
+        const checkAndLockPreviousMonth = async () => {
+            if (!user || user.role !== 'admin') return;
+
+            // Date math to get the previous month
+            const today = new Date();
+            let prevMonth = today.getMonth(); // 0-indexed month of today is the 1-indexed value of previous month (e.g. June (5) -> May (5) which is 5th month).
+            let prevYear = today.getFullYear();
+            if (prevMonth === 0) { // January -> December of last year
+                prevMonth = 12;
+                prevYear -= 1;
+            }
+
+            const sessionKey = `autolock_checked_${prevYear}_${prevMonth}`;
+            if (sessionStorage.getItem(sessionKey)) return;
+
+            try {
+                // Check if already locked
+                const isLocked = await api.isMonthLocked(prevYear, prevMonth);
+                if (!isLocked) {
+                    setToast({
+                        message: `Locking previous month (${format(new Date(prevYear, prevMonth - 1, 1), 'MMMM yyyy')}) in the background...`,
+                        type: 'success'
+                    });
+
+                    const result = await autoLockPreviousMonth(prevYear, prevMonth, user);
+                    
+                    if (result.success) {
+                        let msg = `Successfully locked ${format(new Date(prevYear, prevMonth - 1, 1), 'MMMM yyyy')}. Frozen ${result.lockedCount} records.`;
+                        if (result.warnings && result.warnings.length > 0) {
+                            msg += ` Warnings for: ${result.warnings.join(', ')}`;
+                        }
+                        setToast({ message: msg, type: 'success' });
+                    } else {
+                        setToast({ message: `Auto-lock failed: ${result.message}`, type: 'error' });
+                    }
+                }
+                sessionStorage.setItem(sessionKey, 'true');
+            } catch (err: any) {
+                console.error('[AutoLock Dashboard] Background month lock check failed:', err);
+                sessionStorage.setItem(sessionKey, 'true'); // still mark to avoid infinite looping in error state
+            }
+        };
+
+        checkAndLockPreviousMonth();
+    }, [user]);
 
     // --- Pending Filter States (to implement Apply button logic) ---
     const [pendingDateRange, setPendingDateRange] = useState<Range>(dateRange);
@@ -2095,7 +2144,7 @@ const AttendanceDashboard: React.FC = () => {
 
             const processedUserEvents = userEvents.map(e => {
                 let displayType = e.type;
-                let wType = String(e.workType).toLowerCase();
+                const wType = String(e.workType).toLowerCase();
                 if (displayType === 'punch-in' && (wType === 'field' || wType === 'site')) {
                     displayType = 'site-in';
                 } else if (displayType === 'punch-out' && (wType === 'field' || wType === 'site')) {
@@ -2671,7 +2720,7 @@ const AttendanceDashboard: React.FC = () => {
         try {
             let dataToExport: any[] = [];
             let headers: { [key: string]: string } = {};
-            let fileName = `Attendance_Report_${reportType}_${format(new Date(), 'yyyyMMdd')}.csv`;
+            const fileName = `Attendance_Report_${reportType}_${format(new Date(), 'yyyyMMdd')}.csv`;
 
             switch (reportType) {
                 case 'basic':
@@ -2711,14 +2760,14 @@ const AttendanceDashboard: React.FC = () => {
                         csvContent += `\n`; // Empty row
                         
                         // Column Headers
-                        let headerRow = [`"Employee Name"`];
+                        const headerRow = [`"Employee Name"`];
                         daysInMonth.forEach(d => headerRow.push(`"${format(d, 'd')}"`));
                         headerRow.push(`"P"`, `"1/2P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"F/H"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
                         csvContent += headerRow.join(',') + '\n';
                         
                         // Data Rows
                         monthData.forEach(emp => {
-                            let rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
+                            const rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
                             const statuses = emp.statuses || [];
                             daysInMonth.forEach((_, i) => {
                                 rowData.push(`"${String(statuses[i] || '-').replace(/"/g, '""')}"`);
@@ -3377,11 +3426,9 @@ const AttendanceDashboard: React.FC = () => {
                                 <option value="basic">Basic Report</option>
                                 <option value="monthly">Monthly Summary</option>
                                 <option value="work_hours">Work Hours Report</option>
-                                {(isAdmin(user?.role) || user?.role?.toLowerCase().replace(/_/g, ' ') === 'hr ops') && (
-                                    <option value="site_ot">Site OT Report</option>
-                                )}
-                                {isAdmin(user?.role) && (
+                                {canViewAllAttendance && (
                                     <>
+                                        <option value="site_ot">Site OT Report</option>
                                         <option value="log">Attendance Logs</option>
                                         <option value="audit">Audit Logs</option>
                                     </>

@@ -462,8 +462,9 @@ const MapView: React.FC<{
                             </div>
                             {(() => {
                                 // Prefer liveRoutePoints timestamp (actual GPS ping) over attendance event
+                                // Sort by timestamp desc — DB insertion order ≠ chronological order
                                 const latestRoutePoint = liveRoutePoints.length > 0
-                                    ? liveRoutePoints[liveRoutePoints.length - 1]
+                                    ? liveRoutePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                     : null;
                                 const lastEvent = latestRoutePoint || events
                                     .filter(e => e.userId === selectedUser && e.latitude && e.longitude)
@@ -492,7 +493,7 @@ const MapView: React.FC<{
                                     {(() => {
                                         // Always show the latest GPS ping time (route_history), not the attendance event time
                                         const latestRoutePoint = liveRoutePoints.length > 0
-                                            ? liveRoutePoints[liveRoutePoints.length - 1]
+                                            ? liveRoutePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                             : null;
                                         const lastEvent = latestRoutePoint || events
                                             .filter(e => e.userId === selectedUser && e.latitude && e.longitude)
@@ -507,7 +508,7 @@ const MapView: React.FC<{
                                 <div className="text-xs font-bold text-slate-900 mt-1 leading-tight">
                                     {(() => {
                                         const latestRoutePoint = liveRoutePoints.length > 0
-                                            ? liveRoutePoints[liveRoutePoints.length - 1]
+                                            ? liveRoutePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                             : null;
                                         const lastEvent = latestRoutePoint || events
                                             .filter(e => e.userId === selectedUser && e.latitude && e.longitude)
@@ -531,7 +532,7 @@ const MapView: React.FC<{
                         {/* Device & Network Telemetry */}
                         {(() => {
                             const latestRoutePoint = liveRoutePoints.length > 0
-                                ? liveRoutePoints[liveRoutePoints.length - 1]
+                                ? liveRoutePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                 : null;
                             const lastEvent = latestRoutePoint || events
                                 .filter(e => e.userId === selectedUser && e.latitude && e.longitude)
@@ -1249,7 +1250,7 @@ const RouteView: React.FC<{
                                 <span className="text-xs font-black text-slate-700">
                                     {(() => {
                                         const lastPoint = routePoints.length > 0 
-                                            ? routePoints[routePoints.length - 1] 
+                                            ? routePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                             : userEvents.length > 0 
                                                 ? userEvents[userEvents.length - 1] 
                                                 : null;
@@ -1263,7 +1264,7 @@ const RouteView: React.FC<{
                                 <div className="text-xs font-bold text-slate-900 mt-1 leading-tight">
                                     {(() => {
                                         const lastPoint = routePoints.length > 0 
-                                            ? routePoints[routePoints.length - 1] 
+                                            ? routePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                             : userEvents.length > 0 
                                                 ? userEvents[userEvents.length - 1] 
                                                 : null;
@@ -1285,7 +1286,7 @@ const RouteView: React.FC<{
                         {/* Device & Network Telemetry */}
                         {(() => {
                             const lastPoint = routePoints.length > 0 
-                                ? routePoints[routePoints.length - 1] 
+                                ? routePoints.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
                                 : userEvents.length > 0 
                                     ? userEvents[userEvents.length - 1] 
                                     : null;
@@ -1825,12 +1826,17 @@ const FieldStaffTracking: React.FC = () => {
 
             // 2. Fetch dynamic signal data
             const promises: any[] = [
-                api.getAllAttendanceEvents(start.toISOString(), end.toISOString())
+                api.getAllAttendanceEvents(start.toISOString(), end.toISOString()),
+                // Always fetch route points so the metadata card has fresh GPS telemetry.
+                // Scope to the selected user when one is chosen, or all tracking users for the overview.
+                selectedUser !== 'all'
+                    ? api.getRoutePoints(selectedUser, start.toISOString(), end.toISOString())
+                    : api.getRoutePointsForUsers(
+                        users.map((u: any) => u.id),
+                        start.toISOString(),
+                        end.toISOString()
+                      )
             ];
-
-            if (selectedUser !== 'all') {
-                promises.push(api.getRoutePoints(selectedUser, start.toISOString(), end.toISOString()));
-            }
 
             const results = await Promise.all(promises);
             const eventsData = results[0];
@@ -1874,7 +1880,7 @@ const FieldStaffTracking: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [startDate, endDate, selectedUser, selectedRole, users.length, availableRoles.length]);
+    }, [startDate, endDate, selectedUser, selectedRole, users, availableRoles.length]);
 
     // Reference to the latest fetchData to avoid re-subscribing every time fetchData changes
     const fetchDataRef = useRef(fetchData);

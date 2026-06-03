@@ -845,8 +845,8 @@ export const useAuthStore = create<AuthState>()(
                 // Sync tracking state after status update
                 get().syncRouteTracking();
 
-                // Auto-resume step counter if the user is checked-in (any work type)
-                if ((isFieldCheckedIn || isCheckedIn || isSiteOtCheckedIn) && !isOnBreak) {
+                                // Auto-resume step counter if the user is checked-in (any work type)
+                if ((isFieldCheckedIn || currentlyCheckedIn || isSiteOtCheckedIn) && !isOnBreak) {
                     import('../services/stepCounterService').then(async ({ stepCounterService }) => {
                         try {
                             // Pre-request permission on resume so it doesn't silently fail
