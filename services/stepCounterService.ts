@@ -1,4 +1,5 @@
 import { registerPlugin, Capacitor, PluginListenerHandle } from '@capacitor/core';
+import { App } from '@capacitor/app';
 
 interface StepCountChangedEvent {
   steps: number;
@@ -15,18 +16,33 @@ interface StepCounterPlugin {
   requestPermission(): Promise<{ granted: boolean }>;
   startStepCount(): Promise<void>;
   stopStepCount(): Promise<void>;
+  getStepCount(): Promise<{ steps: number }>;
 }
 
 const StepCounter = registerPlugin<StepCounterPlugin>('StepCounter');
 
 class StepCounterService {
   private listenerHandle: PluginListenerHandle | null = null;
+  private appStateHandle: PluginListenerHandle | null = null;
   private isCounting: boolean = false;
   private currentSteps: number = 0;
+  private onStepChange: ((steps: number) => void) | null = null;
 
   /** Get the current accumulated steps recorded since startCounting was called. */
   public getStepsCount(): number {
     return this.currentSteps;
+  }
+
+  /** Read current step count natively and update state. Useful to fetch on demand. */
+  public async getStepCountFromNative(): Promise<number> {
+    if (Capacitor.getPlatform() !== 'android') return this.currentSteps;
+    try {
+      const result = await StepCounter.getStepCount();
+      this.currentSteps = result.steps;
+      return result.steps;
+    } catch {
+      return this.currentSteps;
+    }
   }
 
   /** Check if step counting is supported on the current device / platform. */
@@ -115,6 +131,8 @@ class StepCounterService {
    * @param onStepChange Callback executed when step updates occur.
    */
   public async startCounting(onStepChange: (steps: number) => void): Promise<void> {
+    this.onStepChange = onStepChange;
+
     if (this.isCounting) return;
 
     // On non-Android: simulate steps for dev/web preview
@@ -136,19 +154,46 @@ class StepCounterService {
     }
 
     try {
-      this.currentSteps = 0;
+      // Sync immediately on start
+      const initialSteps = await this.getStepCountFromNative();
+      if (this.onStepChange) this.onStepChange(initialSteps);
 
       this.listenerHandle = await (StepCounter as any).addListener(
         'stepCountChanged',
         (data: StepCountChangedEvent) => {
           this.currentSteps = data.steps;
-          onStepChange(data.steps);
+          if (this.onStepChange) this.onStepChange(data.steps);
         }
       );
 
       await StepCounter.startStepCount();
       this.isCounting = true;
       console.log('[StepCounter] Native step counting started.');
+
+      // Setup AppState listener to re-sync steps and re-attach listener on resume
+      this.appStateHandle = await App.addListener('appStateChange', async ({ isActive }) => {
+        if (isActive && this.isCounting) {
+          try {
+            const steps = await this.getStepCountFromNative();
+            if (this.onStepChange) this.onStepChange(steps);
+            
+            // Re-attach listener in case it was lost during backgrounding
+            if (this.listenerHandle) {
+              this.listenerHandle.remove();
+            }
+            this.listenerHandle = await (StepCounter as any).addListener(
+              'stepCountChanged',
+              (data: StepCountChangedEvent) => {
+                this.currentSteps = data.steps;
+                if (this.onStepChange) this.onStepChange(data.steps);
+              }
+            );
+          } catch (e) {
+            console.error('[StepCounter] Error syncing steps on resume:', e);
+          }
+        }
+      });
+      
     } catch (err) {
       console.error('[StepCounter] Failed to start native step counting:', err);
       this.cleanup();
@@ -178,6 +223,11 @@ class StepCounterService {
       this.listenerHandle.remove();
       this.listenerHandle = null;
     }
+    if (this.appStateHandle) {
+      this.appStateHandle.remove();
+      this.appStateHandle = null;
+    }
+    this.onStepChange = null;
     this.isCounting = false;
   }
 
@@ -194,7 +244,7 @@ class StepCounterService {
       const delta = Math.floor(Math.random() * 5) + 1;
       this.simulatedSteps += delta;
       this.currentSteps = this.simulatedSteps;
-      onStepChange(this.simulatedSteps);
+      if (this.onStepChange) this.onStepChange(this.simulatedSteps);
     }, 3000);
   }
 
@@ -204,6 +254,7 @@ class StepCounterService {
       this.simulationIntervalId = null;
       this.isCounting = false;
       this.simulatedSteps = 0;
+      this.currentSteps = 0; // Reset so next startCounting begins at 0
     }
   }
 }

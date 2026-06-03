@@ -28,6 +28,7 @@ type CallStatus = 'idle' | 'calling' | 'connected' | 'analyzing' | 'success' | '
 
 export const VoipDialer: React.FC = () => {
   const { user } = useAuthStore();
+  const isAuthorized = user && ['hr_recruitment', 'developer', 'admin', 'super_admin'].includes(user.role);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isClosed, setIsClosed] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dial' | 'recent' | 'candidates'>('dial');
@@ -411,52 +412,71 @@ export const VoipDialer: React.FC = () => {
     c.requested_role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (isClosed) return null;
+  if (isClosed || !isAuthorized) return null;
+
+  const keypadKeys = [
+    { digit: '1', letters: '' },
+    { digit: '2', letters: 'ABC' },
+    { digit: '3', letters: 'DEF' },
+    { digit: '4', letters: 'GHI' },
+    { digit: '5', letters: 'JKL' },
+    { digit: '6', letters: 'MNO' },
+    { digit: '7', letters: 'PQRS' },
+    { digit: '8', letters: 'TUV' },
+    { digit: '9', letters: 'WXYZ' },
+    { digit: '*', letters: '' },
+    { digit: '0', letters: '+' },
+    { digit: '#', letters: '' }
+  ];
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] font-sans">
+    <div className="fixed bottom-6 right-6 z-[9999] font-sans select-none">
       {/* ── Collapsed Bubble ── */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className={`flex items-center justify-center w-14 h-14 rounded-full text-white shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 ${
+          className={`flex items-center justify-center w-14 h-14 rounded-full text-white shadow-lg transition-all duration-300 hover:scale-110 active:scale-95 ${
             callStatus === 'connected'
-              ? 'bg-red-500 animate-pulse'
+              ? 'bg-gradient-to-tr from-rose-500 to-red-600 shadow-[0_0_22px_rgba(244,63,94,0.45)] border border-rose-400/30 animate-pulse'
               : callStatus === 'calling'
-              ? 'bg-amber-500 animate-bounce'
-              : 'bg-emerald-500 hover:shadow-emerald-500/20'
+              ? 'bg-gradient-to-tr from-amber-500 to-orange-500 shadow-[0_0_22px_rgba(245,158,11,0.45)] border border-amber-400/30 animate-bounce'
+              : 'bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-[0_0_22px_rgba(16,185,129,0.45)] border border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.6)]'
           }`}
           title="Paradigm VoIP Softphone"
         >
           {callStatus === 'connected' ? (
             <div className="flex flex-col items-center">
-              <PhoneOff className="w-5 h-5" />
-              <span className="text-[9px] font-bold mt-0.5">{formatTimer(timerSeconds)}</span>
+              <PhoneOff className="w-5 h-5 text-white animate-pulse" />
+              <span className="text-[8px] font-black mt-0.5 font-mono">{formatTimer(timerSeconds)}</span>
             </div>
           ) : (
-            <Phone className="w-6 h-6 animate-pulse" />
+            <Phone className="w-5.5 h-5.5 text-white animate-pulse" />
           )}
         </button>
       )}
 
       {/* ── Expanded softphone ── */}
       {isOpen && (
-        <div className="flex flex-col w-[340px] h-[540px] rounded-3xl bg-white border border-gray-200 shadow-2xl overflow-hidden transition-all duration-300 animate-fade-in text-gray-900">
+        <div className="flex flex-col w-[350px] h-[550px] rounded-[24px] bg-slate-900/95 backdrop-blur-xl border border-slate-800/80 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-300 animate-fade-in text-slate-100 relative">
+          {/* Decorative background glow */}
+          <div className="absolute top-[-50px] left-[-50px] w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-[-50px] right-[-50px] w-32 h-32 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+
           {/* Title bar */}
-          <div className="flex justify-between items-center bg-gray-50 border-b border-gray-200 px-4 py-3 select-none">
-            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500">
-              <div className={`w-2 h-2 rounded-full shadow-inner ${
+          <div className="flex justify-between items-center bg-slate-950/40 border-b border-slate-850/80 px-4 py-3.5 select-none relative z-10">
+            <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400">
+              <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
                 callStatus === 'connected'
-                  ? 'bg-red-500 animate-ping'
+                  ? 'bg-rose-500 animate-ping'
                   : 'bg-emerald-500 animate-pulse'
               }`} />
               PARADIGM AI · PHONE
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               {(import.meta.env as any).DEV && (
                 <button
                   onClick={handleSimulateWebhook}
-                  className="px-2 py-0.5 text-[8px] bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded font-black tracking-widest uppercase transition-colors"
+                  className="px-2 py-0.5 text-[8px] bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 rounded-full font-black tracking-widest uppercase transition-all duration-150"
                   title="Simulate call completion callback"
                 >
                   Sim callback
@@ -464,14 +484,14 @@ export const VoipDialer: React.FC = () => {
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-gray-700 p-1 rounded transition-colors"
+                className="text-slate-400 hover:text-slate-200 p-1 hover:bg-slate-800/50 rounded-lg transition-all duration-150"
                 title="Minimise to bubble"
               >
                 <Minimize2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setIsClosed(true)}
-                className="text-gray-400 hover:text-red-500 p-1 rounded transition-colors"
+                className="text-slate-400 hover:text-rose-400 p-1 hover:bg-slate-800/50 rounded-lg transition-all duration-150"
                 title="Close dialer completely"
               >
                 <X className="w-4 h-4" />
@@ -480,25 +500,28 @@ export const VoipDialer: React.FC = () => {
           </div>
 
           {/* Call Status Card */}
-          <div className="m-4 mb-2 p-4 bg-white border border-gray-200 shadow-sm rounded-2xl flex items-center gap-4">
+          <div className="m-4 mb-3 p-4 bg-slate-950/40 border border-slate-850/80 shadow-inner rounded-2xl flex items-center gap-4 relative overflow-hidden backdrop-blur-md">
             <div className="relative shrink-0">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold text-white bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-md`}>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white bg-gradient-to-tr from-emerald-600 to-teal-500 border border-emerald-400/20 shadow-lg shadow-emerald-500/10`}>
                 {activeCallName ? activeCallName[0].toUpperCase() : '👤'}
               </div>
               {callStatus !== 'idle' && (
-                <span className={`absolute -bottom-1 -right-1 flex h-4 w-4 rounded-full items-center justify-center border-2 border-white text-[8px] text-white ${
-                  callStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
-                }`}>
+                <span className={`absolute -bottom-1 -right-1 flex h-4 w-4 rounded-full items-center justify-center border-2 border-slate-900 text-[8px] text-white bg-emerald-500 animate-pulse`}>
                   📞
                 </span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-bold text-sm truncate">
+              <div className="font-bold text-sm text-slate-100 truncate">
                 {activeCallName || (dialNumber ? formatPhoneNumber(dialNumber) : 'VoIP Dialer Ready')}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
-                {callStatus === 'idle' && <span className="text-[10px] text-gray-500">Exotel Cloud Telephony Connected</span>}
+                {callStatus === 'idle' && (
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Exotel Telephony Connected
+                  </span>
+                )}
                 {callStatus === 'calling' && (
                   <>
                     <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
@@ -519,7 +542,7 @@ export const VoipDialer: React.FC = () => {
                 )}
                 {callStatus === 'success' && (
                   <>
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />
                     <span className="text-[10px] text-emerald-400 font-bold">Call logged to database!</span>
                   </>
                 )}
@@ -534,7 +557,7 @@ export const VoipDialer: React.FC = () => {
             {callStatus !== 'idle' && (
               <button
                 onClick={handleEndCallLocal}
-                className="w-8 h-8 rounded-full bg-red-600/10 hover:bg-red-600/20 text-red-500 border border-red-500/20 flex items-center justify-center transition-colors shadow-md"
+                className="w-8 h-8 rounded-full bg-red-600/10 hover:bg-red-600/20 text-red-500 border border-red-500/20 flex items-center justify-center transition-colors shadow-md active:scale-95"
                 title="Cancel Call (Local Only)"
               >
                 <PhoneOff className="w-4 h-4" />
@@ -548,32 +571,45 @@ export const VoipDialer: React.FC = () => {
               // Active call view
               <div className="flex-1 flex flex-col items-center justify-center text-center gap-6">
                 <div className="relative">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#4f6ef7] to-[#7c5ef7] flex items-center justify-center text-4xl shadow-lg shadow-blue-500/15">
-                    {callStatus === 'connected' ? '🎙️' : '📡'}
+                  <div className={`w-24 h-24 rounded-full bg-gradient-to-tr ${
+                    callStatus === 'connected' ? 'from-emerald-500/25 to-teal-500/20 border-emerald-500/40' : 'from-slate-900 to-slate-800 border-slate-750'
+                  } border-2 flex items-center justify-center text-4xl shadow-2xl relative`}>
+                    {callStatus === 'connected' ? '🎙️' : callStatus === 'analyzing' ? '🧠' : '📡'}
                   </div>
                   {callStatus === 'connected' && (
                     <span className="absolute inset-0 rounded-full border-4 border-emerald-500 animate-ping opacity-25"></span>
                   )}
                 </div>
+
                 <div className="space-y-1">
-                  <h3 className="text-xl font-bold">{activeCallName || 'Bridging Call'}</h3>
-                  <p className="text-sm text-gray-500 font-mono tracking-wider">{formatPhoneNumber(dialNumber)}</p>
+                  <h3 className="text-lg font-bold text-slate-100">{activeCallName || 'Bridging Call'}</h3>
+                  <p className="text-xs text-slate-400 font-mono tracking-wider">{formatPhoneNumber(dialNumber)}</p>
                 </div>
 
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl max-w-[270px] text-xs text-gray-600 leading-relaxed shadow-sm">
+                {callStatus === 'connected' && (
+                  <div className="flex gap-1 items-end justify-center h-4 my-1">
+                    <div className="w-1 bg-emerald-500 rounded-full animate-pulse h-3"></div>
+                    <div className="w-1 bg-emerald-400 rounded-full animate-pulse h-5 delay-75"></div>
+                    <div className="w-1 bg-emerald-600 rounded-full animate-pulse h-2 delay-150"></div>
+                    <div className="w-1 bg-emerald-400 rounded-full animate-pulse h-4 delay-200"></div>
+                    <div className="w-1 bg-emerald-500 rounded-full animate-pulse h-3 delay-300"></div>
+                  </div>
+                )}
+
+                <div className="p-4 bg-slate-950/50 border border-slate-850/60 rounded-2xl max-w-[280px] text-xs text-slate-400 leading-relaxed shadow-lg text-center backdrop-blur-sm">
                   {callStatus === 'calling' && (
                     <>
-                      Exotel is ringing <span className="text-gray-900 font-bold">your mobile phone</span> first. Answer it to connect automatically with the candidate.
+                      Exotel is ringing <span className="text-slate-200 font-bold">your mobile phone</span> first. Answer it to connect automatically with the candidate.
                     </>
                   )}
                   {callStatus === 'connected' && (
                     <>
-                      Call connected. Talk normally. Exotel is recording this call in the cloud. Hanging up will automatically trigger AI transcription.
+                      Call connected. Talk normally. Exotel is recording this call. Hanging up will automatically trigger transcription.
                     </>
                   )}
                   {callStatus === 'analyzing' && (
                     <>
-                      We are fetching the voice recording from Exotel and sending it to <span className="text-emerald-400 font-bold">Groq Whisper AI</span>. Please wait...
+                      We are fetching the voice recording and sending it to <span className="text-emerald-400 font-bold">Groq Whisper AI</span>. Please wait...
                     </>
                   )}
                   {callStatus === 'success' && (
@@ -588,7 +624,7 @@ export const VoipDialer: React.FC = () => {
               // Idle Tab Content
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Tab buttons */}
-                <div className="flex bg-gray-50 border border-gray-200 rounded-xl p-1 gap-1 mb-3">
+                <div className="flex bg-slate-950/50 border border-slate-850/60 rounded-xl p-1 gap-1 mb-4 shadow-inner">
                   {[
                     { id: 'dial', label: 'Dial', icon: Phone },
                     { id: 'recent', label: 'Recent', icon: Clock },
@@ -599,10 +635,10 @@ export const VoipDialer: React.FC = () => {
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                           activeTab === tab.id
-                            ? 'bg-white text-emerald-600 shadow-sm border border-gray-200'
-                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100/50'
+                            ? 'bg-slate-800 text-emerald-400 shadow-sm border border-slate-700/50'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/20'
                         }`}
                       >
                         <Icon className="w-3.5 h-3.5" />
@@ -613,22 +649,22 @@ export const VoipDialer: React.FC = () => {
                 </div>
 
                 {/* Tab content view */}
-                <div className="flex-1 overflow-y-auto no-scrollbar">
+                <div className="flex-1 overflow-y-auto no-scrollbar pr-0.5">
                   {activeTab === 'dial' && (
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-4 animate-fade-in">
                       {/* Readout */}
-                      <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 shadow-inner">
+                      <div className="flex items-center bg-slate-950/60 border border-slate-850/60 rounded-2xl px-4 py-2.5 shadow-inner focus-within:border-emerald-500/40 transition-colors">
                         <input
                           type="text"
                           value={dialNumber}
                           readOnly
                           placeholder="Enter phone number..."
-                          className="flex-1 bg-transparent border-none outline-none font-semibold text-lg tracking-wider text-gray-900 placeholder:text-gray-400"
+                          className="flex-1 bg-transparent border-none outline-none font-bold text-xl tracking-wider text-slate-100 placeholder:text-slate-600 font-mono"
                         />
                         {dialNumber && (
                           <button
                             onClick={handleBackspace}
-                            className="text-gray-400 hover:text-gray-700 transition-colors"
+                            className="text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 p-1.5 rounded-lg transition-colors"
                           >
                             <Delete className="w-5 h-5" />
                           </button>
@@ -637,13 +673,18 @@ export const VoipDialer: React.FC = () => {
 
                       {/* Keypad */}
                       <div className="grid grid-cols-3 gap-2">
-                        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(digit => (
+                        {keypadKeys.map(item => (
                           <button
-                            key={digit}
-                            onClick={() => handleKeypadPress(digit)}
-                            className="h-[46px] rounded-xl bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 active:scale-95 text-base font-bold text-gray-700 shadow-sm transition-all flex items-center justify-center"
+                            key={item.digit}
+                            onClick={() => handleKeypadPress(item.digit)}
+                            className="h-[52px] rounded-2xl bg-slate-950/20 border border-slate-800/40 hover:bg-slate-850/30 hover:border-slate-700/60 active:scale-95 text-slate-200 shadow-sm transition-all duration-150 flex flex-col items-center justify-center group relative overflow-hidden"
                           >
-                            {digit}
+                            <span className="text-lg font-bold group-hover:text-emerald-400 transition-colors">{item.digit}</span>
+                            {item.letters && (
+                              <span className="text-[7.5px] font-black tracking-widest text-slate-500 uppercase -mt-0.5 group-hover:text-slate-400 transition-colors">
+                                {item.letters}
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -653,40 +694,40 @@ export const VoipDialer: React.FC = () => {
                         <button
                           onClick={() => initiateCall(dialNumber)}
                           disabled={!dialNumber}
-                          className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-emerald-500/20"
+                          className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shadow-lg hover:shadow-[0_0_25px_rgba(16,185,129,0.35)] shadow-emerald-500/20 border border-emerald-400/20"
                         >
-                          <Phone className="w-6 h-6" />
+                          <Phone className="w-5.5 h-5.5 text-white" />
                         </button>
                       </div>
                     </div>
                   )}
 
                   {activeTab === 'recent' && (
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2.5 animate-fade-in">
                       {recents.length === 0 ? (
-                        <div className="text-center py-12 text-gray-500 text-xs">No recent calls yet.</div>
+                        <div className="text-center py-16 text-slate-500 text-xs font-semibold">No recent calls yet.</div>
                       ) : (
                         recents.map((item, index) => (
                           <div
                             key={index}
                             onClick={() => initiateCall(item.number, item.name)}
-                            className="p-3 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl shadow-sm flex items-center gap-3 cursor-pointer group transition-all"
+                            className="p-3.5 bg-slate-950/20 border border-slate-800/40 hover:bg-slate-850/40 hover:border-slate-700/60 rounded-2xl shadow-sm flex items-center gap-3.5 cursor-pointer group transition-all duration-200"
                           >
-                            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700">
+                            <div className="w-8.5 h-8.5 rounded-full bg-slate-800 border border-slate-750 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0 group-hover:bg-slate-700 transition-colors">
                               {item.name[0]}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs font-bold truncate group-hover:text-emerald-600 transition-colors text-gray-900">{item.name}</div>
-                              <div className="text-[10px] text-gray-500 mt-0.5">{item.date} · {item.time}</div>
+                              <div className="text-xs font-bold truncate group-hover:text-emerald-400 transition-colors text-slate-200">{item.name}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">{item.date} · {item.time}</div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="text-[10px] text-gray-500 font-mono">{item.duration || '—'}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">{item.duration || '—'}</div>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   initiateCall(item.number, item.name);
                                 }}
-                                className="text-emerald-400 hover:text-emerald-300 text-xs font-semibold mt-0.5"
+                                className="text-emerald-400 hover:text-emerald-300 text-xs font-bold mt-1 transition-colors"
                               >
                                 Call
                               </button>
@@ -698,43 +739,43 @@ export const VoipDialer: React.FC = () => {
                   )}
 
                   {activeTab === 'candidates' && (
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3.5 animate-fade-in">
                       {/* Search */}
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         <input
                           type="text"
                           placeholder="Search candidates..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full h-9 rounded-xl pl-9 pr-4 bg-white border border-gray-200 text-xs outline-none text-gray-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors shadow-sm"
+                          className="w-full h-10 rounded-2xl pl-10 pr-4 bg-slate-950/60 border border-slate-800/80 text-xs text-slate-200 placeholder:text-slate-500 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/40 transition-colors shadow-inner"
                         />
                       </div>
 
                       {/* List */}
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2.5">
                         {loadingCandidates ? (
-                          <div className="flex justify-center py-12">
-                            <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                          <div className="flex justify-center py-16">
+                            <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
                           </div>
                         ) : filteredCandidates.length === 0 ? (
-                          <div className="text-center py-12 text-gray-500 text-xs">No matching candidates found.</div>
+                          <div className="text-center py-16 text-slate-500 text-xs font-semibold">No candidates found.</div>
                         ) : (
                           filteredCandidates.map(cand => (
                             <div
                               key={cand.id}
-                              className="p-3 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl shadow-sm flex items-center justify-between transition-all"
+                              className="p-3.5 bg-slate-950/20 border border-slate-800/40 hover:bg-slate-850/40 hover:border-slate-700/60 rounded-2xl shadow-sm flex items-center justify-between transition-all duration-200"
                             >
                               <div className="min-w-0 pr-2">
-                                <div className="text-xs font-bold truncate text-gray-900">{cand.name}</div>
-                                <div className="text-[9px] uppercase tracking-wider text-gray-500 font-bold mt-0.5">
+                                <div className="text-xs font-bold text-slate-200 truncate">{cand.name}</div>
+                                <div className="text-[8.5px] uppercase tracking-wider text-slate-400 font-bold mt-0.5">
                                   {cand.requested_role} · {cand.current_stage}
                                 </div>
-                                <div className="text-[10px] text-gray-500 font-mono mt-0.5">{cand.phone_number}</div>
+                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">{cand.phone_number}</div>
                               </div>
                               <button
                                 onClick={() => initiateCall(cand.phone_number, cand.name)}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] active:scale-95 transition-all shadow-md shadow-emerald-500/10 shrink-0"
+                                className="px-3.5 py-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white font-bold text-[10px] hover:scale-105 active:scale-95 transition-all shadow-md shadow-emerald-500/10 shrink-0 border border-emerald-400/20"
                               >
                                 Call
                               </button>

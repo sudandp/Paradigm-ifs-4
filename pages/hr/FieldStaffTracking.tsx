@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
+import { getUserDevices } from '../../services/deviceService';
 import type { AttendanceEvent, User, Location, RoutePoint, Role } from '../../types';
 import { Loader2, MapPin, List, Map as MapIcon, Route as RouteIcon, Calendar, Users, ChevronRight, ExternalLink, Clock, Filter, ArrowLeft, Download, RefreshCw, History, Battery, Smartphone, Network, Globe, Monitor, Tablet } from 'lucide-react';
 import { 
@@ -298,8 +299,9 @@ const MapView: React.FC<{
     selectedUser: string,
     knownLocations: Location[],
     liveRoutePoints: RoutePoint[], // Fresh GPS pings from parent state
-    onSelectUser: (userId: string) => void
-}> = ({ events, users, selectedUser, knownLocations, liveRoutePoints, onSelectUser }) => {
+    onSelectUser: (userId: string) => void,
+    onShowDevices: () => void
+}> = ({ events, users, selectedUser, knownLocations, liveRoutePoints, onSelectUser, onShowDevices }) => {
     const mapRef = useRef<L.Map | null>(null);
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const markersRef = useRef<L.LayerGroup>(L.layerGroup());
@@ -449,7 +451,7 @@ const MapView: React.FC<{
 
             {/* Floating Detailed Metadata Card (Top Left Overlay) */}
             {selectedUser !== 'all' && (
-                <div className="absolute top-4 left-4 z-[1000] w-80 pointer-events-none">
+                <div className="absolute top-4 left-4 z-[1000] w-96 pointer-events-none">
                     <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200 rounded-sm shadow-2xl pointer-events-auto">
                         <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
                             <div className="flex flex-col">
@@ -551,7 +553,11 @@ const MapView: React.FC<{
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
+                                    <div 
+                                        className="flex items-center gap-2 cursor-pointer hover:bg-slate-100/50 p-1 rounded-sm transition-colors pointer-events-auto"
+                                        onClick={onShowDevices}
+                                        title="Click to view all registered devices"
+                                    >
                                         {(() => {
                                             const src = (lastEvent as any).source || '';
                                             const isAndroid = src.includes('android') || src === 'background_fcm';
@@ -573,9 +579,12 @@ const MapView: React.FC<{
                                                         {isAndroid ? <Smartphone className={`h-4 w-4 ${iconColor}`} /> : <Monitor className={`h-4 w-4 ${iconColor}`} />}
                                                         <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${dotColor} ring-1 ring-white`} />
                                                     </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Device Source</span>
-                                                        <span className={`text-[10px] font-black truncate max-w-[90px] ${isAndroid ? 'text-emerald-700' : isWeb ? 'text-blue-700' : 'text-slate-700'}`}>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                            Device Source
+                                                            <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
+                                                        </span>
+                                                        <span className={`text-[10px] font-black truncate max-w-[90px] ${isAndroid ? 'text-emerald-700' : isWeb ? 'text-blue-700' : 'text-slate-700'} hover:text-blue-600 transition-colors`}>
                                                             {label}
                                                         </span>
                                                         {isAndroid && lastEvent.deviceName && (
@@ -627,8 +636,9 @@ const RouteView: React.FC<{
     endDate: string, 
     users: User[],
     knownLocations: Location[],
-    onSelectUser: (userId: string) => void
-}> = ({ events, selectedUser, startDate, endDate, users, knownLocations, onSelectUser }) => {
+    onSelectUser: (userId: string) => void,
+    onShowDevices: () => void
+}> = ({ events, selectedUser, startDate, endDate, users, knownLocations, onSelectUser, onShowDevices }) => {
     const mapRef = useRef<L.Map | null>(null);
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const polylineRef = useRef<L.FeatureGroup | L.Polyline | null>(null);
@@ -756,7 +766,7 @@ const RouteView: React.FC<{
                 }
 
                 const chunkSize = 25;
-                let allSnapped: L.LatLngTuple[] = [];
+                const allSnapped: L.LatLngTuple[] = [];
 
                 for (let i = 0; i < cleanPoints.length; i += chunkSize - 1) {
                     const chunk = cleanPoints.slice(i, i + chunkSize);
@@ -1219,7 +1229,7 @@ const RouteView: React.FC<{
 
             {/* Floating Detailed Metadata Card (Top Left Overlay) */}
             {selectedUser !== 'all' && (
-                <div className="absolute top-4 left-4 z-[1000] w-80 pointer-events-none">
+                <div className="absolute top-4 left-4 z-[1000] w-96 pointer-events-none">
                     <div className="bg-white/95 backdrop-blur-md p-4 border border-slate-200 rounded-sm shadow-2xl pointer-events-auto">
                         <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
                             <div className="flex flex-col">
@@ -1296,13 +1306,20 @@ const RouteView: React.FC<{
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
+                                    <div 
+                                        className="flex items-center gap-2 cursor-pointer hover:bg-slate-100/50 p-1 rounded-sm transition-colors pointer-events-auto"
+                                        onClick={onShowDevices}
+                                        title="Click to view all registered devices"
+                                    >
                                         <div className="h-8 w-8 rounded-sm bg-slate-50 flex items-center justify-center">
-                                            <Smartphone className="h-4 w-4 text-slate-600" />
+                                            <Smartphone className="h-4 w-4 text-slate-600 animate-pulse" />
                                         </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Device</span>
-                                            <span className="text-[10px] font-bold text-slate-700 truncate max-w-[80px]">
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                                Device 
+                                                <span className="text-[7px] text-blue-500 font-bold lowercase">(view all)</span>
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-700 truncate max-w-[80px] hover:text-blue-600 transition-colors">
                                                 {lastPoint.deviceName || 'Unknown'}
                                             </span>
                                         </div>
@@ -1635,6 +1652,25 @@ const FieldStaffTracking: React.FC = () => {
     const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [selectedUser, setSelectedUser] = useState<string>('all');
     const [selectedRole, setSelectedRole] = useState<string>('all');
+
+    const [userDevices, setUserDevices] = useState<any[]>([]);
+    const [showDevicesModal, setShowDevicesModal] = useState(false);
+
+    useEffect(() => {
+        if (selectedUser === 'all') {
+            setUserDevices([]);
+            return;
+        }
+        const fetchDevices = async () => {
+            try {
+                const devices = await getUserDevices(selectedUser);
+                setUserDevices(devices);
+            } catch (err) {
+                console.error('Failed to fetch user devices:', err);
+            }
+        };
+        fetchDevices();
+    }, [selectedUser]);
 
     const [tempUser, setTempUser] = useState<string>('all');
     const [tempRole, setTempRole] = useState<string>('all');
@@ -2291,6 +2327,7 @@ const FieldStaffTracking: React.FC = () => {
                                 knownLocations={knownLocations}
                                 liveRoutePoints={liveRoutePoints}
                                 onSelectUser={setSelectedUser}
+                                onShowDevices={() => setShowDevicesModal(true)}
                             />
                         )}
 
@@ -2315,6 +2352,7 @@ const FieldStaffTracking: React.FC = () => {
                                         users={users} 
                                         knownLocations={knownLocations}
                                         onSelectUser={setSelectedUser}
+                                        onShowDevices={() => setShowDevicesModal(true)}
                                     />
                                 )}
                             </motion.div>
@@ -2336,6 +2374,82 @@ const FieldStaffTracking: React.FC = () => {
                 )}
             </div>
             
+            {/* Devices List Modal */}
+            <AnimatePresence>
+                {showDevicesModal && selectedUser !== 'all' && (
+                    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowDevicesModal(false)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                        />
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative w-full max-w-md bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-100 z-10"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Device Register</span>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase">
+                                        {users.find(u => u.id === selectedUser)?.name || 'User'}'s Devices
+                                    </h3>
+                                </div>
+                                <button 
+                                    onClick={() => setShowDevicesModal(false)}
+                                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            
+                            <div className="p-6 max-h-[300px] overflow-y-auto space-y-4">
+                                {userDevices.length === 0 ? (
+                                    <p className="text-xs text-slate-400 text-center font-bold uppercase tracking-widest py-8">
+                                        No registered devices found
+                                    </p>
+                                ) : (
+                                    userDevices.map(device => {
+                                        const Icon = device.deviceType === 'web' ? Monitor : Smartphone;
+                                        const statusColors: Record<string, string> = {
+                                            active: 'bg-emerald-100 text-emerald-700',
+                                            pending: 'bg-amber-100 text-amber-700',
+                                            revoked: 'bg-red-100 text-red-700'
+                                        };
+                                        return (
+                                            <div 
+                                                key={device.id} 
+                                                className="p-3.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center gap-3.5"
+                                            >
+                                                <div className="h-10 w-10 bg-white border border-slate-100 rounded-lg flex items-center justify-center text-slate-500 shadow-sm shrink-0">
+                                                    <Icon className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <h4 className="text-xs font-black text-slate-900 truncate uppercase">{device.deviceName}</h4>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider shrink-0 ${statusColors[device.status] || 'bg-slate-100 text-slate-600'}`}>
+                                                            {device.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-slate-400 font-bold">
+                                                        <span>ID: <span className="font-mono text-[9px] uppercase">{device.deviceIdentifier.slice(0, 8)}...</span></span>
+                                                        <span>•</span>
+                                                        <span>Last Used: {device.lastUsedAt ? format(new Date(device.lastUsedAt), 'dd MMM yyyy, HH:mm') : 'Never'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             {/* Global Visual Background Elements */}
             <div className="fixed inset-0 pointer-events-none z-[-1] opacity-[0.03] overflow-hidden grayscale">
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] border border-slate-900 rounded-full -mr-64 -mt-64" />

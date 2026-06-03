@@ -365,10 +365,12 @@ const MainLayoutWrapper: React.FC = () => {
   // User is authenticated and verified, show the main layout and its nested routes
   // Use MobileLayout for mobile devices, MainLayout for desktop
 
+  const isHrmsRoute = location.pathname.startsWith('/hrm');
+
   return (
     <>
       {isMobile ? <MobileLayout /> : <MainLayout />}
-      {user && user.role !== 'unverified' && <VoipDialer />}
+      {user && ['hr_recruitment', 'developer', 'admin', 'super_admin'].includes(user.role) && isHrmsRoute && <VoipDialer />}
     </>
   );
 };

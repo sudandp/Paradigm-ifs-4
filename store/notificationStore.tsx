@@ -42,6 +42,41 @@ interface NotificationState {
   updateBadgeCount: () => Promise<void>;
 }
 
+// Helper to automatically start the punch-out timer if a reminder is received
+const checkAndStartAutoPunchOutTimer = (notif: Notification) => {
+  const msgLower = notif.message.toLowerCase();
+  const isPunchOutReminder = msgLower.includes('punch out') || 
+                             msgLower.includes("haven't punched out") ||
+                             msgLower.includes('punch out requested');
+  
+  if (isPunchOutReminder && !useAuthStore.getState().pendingAutoPunchOut) {
+      const createdDate = new Date(notif.createdAt);
+      const today = new Date();
+      const isToday = createdDate.getDate() === today.getDate() &&
+                      createdDate.getMonth() === today.getMonth() &&
+                      createdDate.getFullYear() === today.getFullYear();
+                      
+      const { isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, user } = useAuthStore.getState();
+      const isUserCheckedInAtAll = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+
+      // Ensure that only "office users" (or users currently checked into the office) 
+      // are subjected to this automatic punch out.
+      const isOfficeSession = isCheckedIn;
+      const role = (user?.role || '').toLowerCase();
+      const isOfficeRole = !role.includes('field') && !role.includes('site');
+
+      if (isToday && isUserCheckedInAtAll && user && (isOfficeSession || isOfficeRole)) {
+          console.log('[NotificationStore] Auto-starting punch out timer for missed punch-out reminder', notif.id);
+          const executeAt = createdDate.getTime() + 5 * 60 * 1000;
+          useAuthStore.getState().setPendingAutoPunchOut({
+              userId: user.id,
+              executeAt,
+              notificationId: notif.id
+          });
+      }
+  }
+};
+
 export const useNotificationStore = create<NotificationState>()((set, get) => ({
   notifications: [],
   unreadCount: 0,
@@ -146,6 +181,19 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
         totalUnreadCount,
         isLoading: false 
       });
+
+      // Auto-start punch out timer for the most recent unread punch out reminder
+      const { pendingAutoPunchOut } = useAuthStore.getState();
+      if (!pendingAutoPunchOut) {
+          const recentReminder = notifications.find(n => !n.isRead && (
+             n.message.toLowerCase().includes('punch out') ||
+             n.message.toLowerCase().includes("haven't punched out") ||
+             n.message.toLowerCase().includes('punch out requested')
+          ));
+          if (recentReminder) {
+              checkAndStartAutoPunchOutTimer(recentReminder);
+          }
+      }
       
       // Update global app icon badge count
       if (Capacitor.isNativePlatform()) {
@@ -306,6 +354,7 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
 
           if (payload.eventType === 'INSERT') {
             const newNotif = api.toCamelCase(payload.new) as Notification;
+            checkAndStartAutoPunchOutTimer(newNotif);
           
           set((state) => {
             const newUnreadCount = state.unreadCount + 1;

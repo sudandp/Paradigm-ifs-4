@@ -946,7 +946,256 @@ export const api = {
     }));
   },
 
-  // --- Onboarding & Verification ---
+  // --- Attendance Rule Versioning ---
+
+  /**
+   * Fetch the attendance rule version that was active during a given month.
+   * Falls back to the live settings if no version is found (backward compat).
+   */
+  getRuleVersionForMonth: async (
+    year: number,
+    month: number,
+    scopeType: 'global' | 'entity' | 'company' | 'location' = 'global',
+    scopeId: string | null = null
+  ): Promise<any | null> => {
+    try {
+      const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
+      let query = supabase
+        .from('attendance_rule_versions')
+        .select('id, settings, effective_from, effective_till, change_reason')
+        .eq('scope_type', scopeType)
+        .lte('effective_from', monthStr)
+        .order('effective_from', { ascending: false })
+        .limit(1);
+
+      if (scopeId) {
+        query = query.eq('scope_id', scopeId);
+      } else {
+        query = query.is('scope_id', null);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error || !data) return null;
+
+      // Verify effective_till doesn't exclude this month
+      if (data.effective_till && data.effective_till < monthStr) return null;
+
+      return { ...toCamelCase(data.settings), _versionId: data.id };
+    } catch (e) {
+      console.warn('[RuleVersion] Failed to fetch versioned rule, falling back to live settings:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Save a new attendance rule version with an effective-from date.
+   * Automatically closes the previous version's effective_till.
+   */
+  saveAttendanceRuleVersion: async (
+    settings: any,
+    effectiveFrom: string, // YYYY-MM-DD
+    createdById: string,
+    createdByName: string,
+    changeReason?: string,
+    scopeType: string = 'global',
+    scopeId: string | null = null
+  ): Promise<{ id: string }> => {
+    // 1. Close the previous active version (set effective_till to one day before new effectiveFrom)
+    const prevEffectiveTill = format(subDays(new Date(effectiveFrom), 1), 'yyyy-MM-dd');
+
+    const closePrevQuery = supabase
+      .from('attendance_rule_versions')
+      .update({ effective_till: prevEffectiveTill })
+      .eq('scope_type', scopeType)
+      .is('effective_till', null);
+
+    if (scopeId) {
+      await closePrevQuery.eq('scope_id', scopeId);
+    } else {
+      await closePrevQuery.is('scope_id', null);
+    }
+
+    // 2. Insert the new version
+    const { data, error } = await supabase
+      .from('attendance_rule_versions')
+      .insert({
+        scope_type: scopeType,
+        scope_id: scopeId,
+        settings: toSnakeCase(settings),
+        effective_from: effectiveFrom,
+        created_by: createdById,
+        created_by_name: createdByName,
+        change_reason: changeReason || null,
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+
+    // 3. Also update the live settings singleton so current reads still work
+    await supabase
+      .from('settings')
+      .update({ attendance_settings: toSnakeCase(settings) })
+      .eq('id', 'singleton');
+
+    return { id: data.id };
+  },
+
+  /**
+   * List all rule versions (for the history timeline UI).
+   */
+  listRuleVersions: async (
+    scopeType: string = 'global',
+    scopeId: string | null = null
+  ): Promise<any[]> => {
+    let query = supabase
+      .from('attendance_rule_versions')
+      .select('id, scope_type, scope_id, effective_from, effective_till, created_by_name, change_reason, created_at')
+      .eq('scope_type', scopeType)
+      .order('effective_from', { ascending: false });
+
+    if (scopeId) {
+      query = query.eq('scope_id', scopeId);
+    } else {
+      query = query.is('scope_id', null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(toCamelCase);
+  },
+
+  // --- Month Snapshot (Locking) ---
+
+  /**
+   * Check whether a given year/month has been locked (snapshot exists for ANY employee).
+   */
+  isMonthLocked: async (year: number, month: number): Promise<boolean> => {
+    const { count, error } = await supabase
+      .from('attendance_month_snapshots')
+      .select('id', { count: 'exact', head: true })
+      .eq('year', year)
+      .eq('month', month);
+
+    if (error) return false;
+    return (count || 0) > 0;
+  },
+
+  /**
+   * Fetch the locked snapshot for a single employee+month. Returns null if unlocked.
+   */
+  getMonthSnapshot: async (
+    employeeId: string,
+    year: number,
+    month: number
+  ): Promise<any | null> => {
+    const { data, error } = await supabase
+      .from('attendance_month_snapshots')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('year', year)
+      .eq('month', month)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+      ...toCamelCase(data),
+      dailyData: data.daily_data,
+      summary: toCamelCase(data.summary),
+    };
+  },
+
+  /**
+   * Fetch locked snapshots for multiple employees in a single month (bulk).
+   */
+  getMonthSnapshotsBulk: async (
+    employeeIds: string[],
+    year: number,
+    month: number
+  ): Promise<any[]> => {
+    if (employeeIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('attendance_month_snapshots')
+      .select('*')
+      .in('employee_id', employeeIds)
+      .eq('year', year)
+      .eq('month', month);
+
+    if (error) return [];
+    return (data || []).map(row => ({
+      ...toCamelCase(row),
+      dailyData: row.daily_data,
+      summary: toCamelCase(row.summary),
+    }));
+  },
+
+  /**
+   * Save (lock) month snapshots for all employees in one batch upsert.
+   * Called by the upgraded handleLockMonth flow.
+   */
+  saveMonthSnapshots: async (
+    snapshots: Array<{
+      employeeId: string;
+      year: number;
+      month: number;
+      dailyData: any[];
+      summary: any;
+      ruleVersionId?: string;
+      lockedBy: string;
+      lockedByName: string;
+    }>
+  ): Promise<void> => {
+    if (snapshots.length === 0) return;
+
+    const rows = snapshots.map(s => ({
+      employee_id: s.employeeId,
+      year: s.year,
+      month: s.month,
+      daily_data: s.dailyData,
+      summary: toSnakeCase(s.summary),
+      rule_version_id: s.ruleVersionId || null,
+      locked_by: s.lockedBy,
+      locked_by_name: s.lockedByName,
+      locked_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from('attendance_month_snapshots')
+      .upsert(rows, { onConflict: 'employee_id,year,month' });
+
+    if (error) throw error;
+  },
+
+  /**
+   * Unlock a month (super-admin only). Deletes all snapshots for the month
+   * so the next view triggers a fresh recalculation.
+   */
+  unlockMonth: async (
+    year: number,
+    month: number,
+    unlockedBy: string,
+    reason: string
+  ): Promise<void> => {
+    // Soft-unlock: record reason then delete
+    const { error } = await supabase
+      .from('attendance_month_snapshots')
+      .delete()
+      .eq('year', year)
+      .eq('month', month);
+
+    if (error) throw error;
+
+    // Log to audit
+    await supabase.from('attendance_audit_logs').insert({
+      action: 'MONTH_UNLOCKED',
+      target_user_id: null,
+      performed_by: unlockedBy,
+      metadata: { year, month, reason },
+      created_at: new Date().toISOString(),
+    }).then(() => {});  // best-effort
+  },
+
+
   getVerificationSubmissions: async (status?: string, organizationId?: string, managerId?: string): Promise<OnboardingData[]> => {
     return fetchWithCache(`verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`, async () => {
       let query = supabase.from('onboarding_submissions').select('*, user:user_id(reporting_manager_id)');

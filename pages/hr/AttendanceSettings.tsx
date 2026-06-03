@@ -6,16 +6,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon, Sun, BarChart3, Briefcase, Building2, Palmtree, Shield, FileText, IndianRupee } from 'lucide-react';
+import { Trash2, Plus, Settings, Calendar, Clock, LifeBuoy, Bell, Save, Monitor, Edit, Moon, Sun, BarChart3, Briefcase, Building2, Palmtree, Shield, FileText, IndianRupee, Lock, AlertTriangle, History } from 'lucide-react';
 import DatePicker from '../../components/ui/DatePicker';
 import Toast from '../../components/ui/Toast';
 import Checkbox from '../../components/ui/Checkbox';
 import Select from '../../components/ui/Select';
+import { format, subDays } from 'date-fns';
 import type { StaffAttendanceRules, AttendanceSettings, RecurringHolidayRule, Role, SiteStaffDesignation, SiteShiftDefinition } from '../../types';
 import SiteAttendanceConfig from '../../components/attendance/SiteAttendanceConfig';
 import SiteAttendanceSummary from '../../components/attendance/SiteAttendanceSummary';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { api } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { supabase } from '../../services/supabase';
@@ -61,6 +63,24 @@ const AttendanceSettings: React.FC = () => {
     const [newPoolHolidayName, setNewPoolHolidayName] = useState('');
     const [newPoolHolidayDate, setNewPoolHolidayDate] = useState('');
     const [editingPoolIndex, setEditingPoolIndex] = useState<number | null>(null);
+
+    // Rule Versioning Modal state
+    const [ruleVersionModal, setRuleVersionModal] = useState<{
+        open: boolean;
+        effectiveFrom: string;
+        changeReason: string;
+        affectedMonths: { label: string; locked: boolean }[];
+        isLoadingImpact: boolean;
+    }>({
+        open: false,
+        effectiveFrom: format(new Date(), 'yyyy-MM-dd'),
+        changeReason: '',
+        affectedMonths: [],
+        isLoadingImpact: false,
+    });
+
+    const { user: currentUser } = useAuthStore();
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -436,8 +456,40 @@ const AttendanceSettings: React.FC = () => {
     };
 
     const handleSave = async () => {
+        const isGlobal = selectedLocation === 'global' && !selectedCompanyId && !selectedEntityId;
+
+        // For global scope: show the rule versioning impact modal first
+        if (isGlobal) {
+            setRuleVersionModal(prev => ({ ...prev, open: true, isLoadingImpact: true }));
+
+            // Detect affected unlocked months (last 6 months)
+            const impactMonths: { label: string; locked: boolean }[] = [];
+            const today = new Date();
+            for (let i = 1; i <= 6; i++) {
+                const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                const locked = await api.isMonthLocked(d.getFullYear(), d.getMonth() + 1).catch(() => false);
+                impactMonths.push({
+                    label: format(d, 'MMMM yyyy'),
+                    locked,
+                });
+            }
+            setRuleVersionModal(prev => ({
+                ...prev,
+                isLoadingImpact: false,
+                affectedMonths: impactMonths,
+            }));
+            return;
+        }
+
+        // Non-global scope: save directly (no versioning for scoped settings yet)
+        await doSave();
+    };
+
+    const doSave = async (withVersion?: { effectiveFrom: string; changeReason: string }) => {
         setIsSaving(true);
         try {
+            const isGlobal = selectedLocation === 'global' && !selectedCompanyId && !selectedEntityId;
+
             let scope: 'location' | 'company' | 'entity' | 'global' = 'global';
             let scopeId = '';
 
@@ -453,7 +505,19 @@ const AttendanceSettings: React.FC = () => {
             }
 
             if (scope === 'global') {
-                await api.updateAttendanceSettings(localAttendance);
+                if (withVersion && currentUser) {
+                    // Save as versioned rule — closes previous version, inserts new
+                    await api.saveAttendanceRuleVersion(
+                        localAttendance,
+                        withVersion.effectiveFrom,
+                        currentUser.id,
+                        currentUser.name,
+                        withVersion.changeReason || undefined
+                    );
+                } else {
+                    // Fallback plain save (non-global, or no user context)
+                    await api.updateAttendanceSettings(localAttendance);
+                }
                 updateStore(localAttendance);
             } else {
                 await api.saveScopedAttendanceSettings(scope as any, scopeId, localAttendance);
@@ -461,12 +525,7 @@ const AttendanceSettings: React.FC = () => {
 
             if (activeTab === 'site') {
                 const siteId = selectedEntityId || selectedCompanyId || 'global';
-                // Remove existing ones for this site to overwrite
-                await supabase
-                    .from('lumpsum_billing_items')
-                    .delete()
-                    .eq('site_id', siteId);
-
+                await supabase.from('lumpsum_billing_items').delete().eq('site_id', siteId);
                 if (lumpsumItems.length > 0) {
                     const toInsert = lumpsumItems.map(item => ({
                         site_id: siteId,
@@ -474,20 +533,20 @@ const AttendanceSettings: React.FC = () => {
                         rate_per_month: item.ratePerMonth,
                         is_active: item.isActive
                     }));
-                    await supabase
-                        .from('lumpsum_billing_items')
-                        .insert(toInsert);
+                    await supabase.from('lumpsum_billing_items').insert(toInsert);
                 }
             }
 
             setIsDirty(false);
-            setToast({ message: 'Settings saved successfully!', type: 'success' });
+            setRuleVersionModal(prev => ({ ...prev, open: false }));
+            setToast({ message: `Settings saved${withVersion ? ` (effective ${withVersion.effectiveFrom})` : ''}!`, type: 'success' });
         } catch (error) {
             setToast({ message: 'Failed to save settings.', type: 'error' });
         } finally {
             setIsSaving(false);
         }
     };
+
 
     if (isLoadingRoles) {
         return <LoadingScreen message="Loading page data..." />;
@@ -496,6 +555,104 @@ const AttendanceSettings: React.FC = () => {
     return (
         <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full pb-40">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
+            {/* ── Rule Version Impact Modal ───────────────────────────────────────── */}
+            {ruleVersionModal.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-200">
+                        {/* Header */}
+                        <div className="bg-amber-50 border-b border-amber-200 p-5 flex items-start gap-3">
+                            <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
+                                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <h2 className="text-base font-bold text-amber-900">Rule Change Impact</h2>
+                                <p className="text-xs text-amber-700 mt-0.5">
+                                    This rule change will be versioned. Past locked months are protected.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            {/* Effective From */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                                    Effective From <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="date"
+                                    value={ruleVersionModal.effectiveFrom}
+                                    onChange={e => setRuleVersionModal(prev => ({ ...prev, effectiveFrom: e.target.value }))}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                                <p className="text-[10px] text-gray-500 mt-1">
+                                    New rule applies from the 1st of this month. Previous rule stays active for dates before this.
+                                </p>
+                            </div>
+
+                            {/* Change Reason */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1.5">Change Reason (optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. New financial year policy"
+                                    value={ruleVersionModal.changeReason}
+                                    onChange={e => setRuleVersionModal(prev => ({ ...prev, changeReason: e.target.value }))}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                            </div>
+
+                            {/* Impact Preview */}
+                            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Past 6 Months Impact</p>
+                                {ruleVersionModal.isLoadingImpact ? (
+                                    <p className="text-xs text-gray-400 animate-pulse">Checking locked months...</p>
+                                ) : (
+                                    <div className="space-y-1.5">
+                                        {ruleVersionModal.affectedMonths.map(m => (
+                                            <div key={m.label} className="flex items-center justify-between">
+                                                <span className="text-xs text-gray-700">{m.label}</span>
+                                                {m.locked ? (
+                                                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                        <Lock className="h-2.5 w-2.5" /> Protected
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                                        <AlertTriangle className="h-2.5 w-2.5" /> Will recalculate
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                                💡 Lock past months first to freeze their data before saving this rule change.
+                            </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="border-t border-gray-100 p-4 flex gap-2 justify-end">
+                            <button
+                                onClick={() => setRuleVersionModal(prev => ({ ...prev, open: false }))}
+                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => doSave({ effectiveFrom: ruleVersionModal.effectiveFrom, changeReason: ruleVersionModal.changeReason })}
+                                disabled={isSaving || !ruleVersionModal.effectiveFrom}
+                                className="px-5 py-2 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-lg disabled:opacity-60 flex items-center gap-2"
+                            >
+                                <History className="h-4 w-4" />
+                                {isSaving ? 'Saving...' : `Save from ${ruleVersionModal.effectiveFrom || '...'}`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
 
             <AdminPageHeader title="Attendance & Leave Rules">
                 <div className="flex items-center gap-3 flex-wrap">

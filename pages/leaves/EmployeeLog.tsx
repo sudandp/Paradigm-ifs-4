@@ -386,6 +386,14 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         </span>
                                                     </div>
                                                 )}
+                                                {event.source === 'auto_system' && (
+                                                    <div className="flex items-start gap-2 text-sm bg-rose-50 max-md:bg-[#2c0e15] px-3 py-1.5 rounded-lg border border-rose-200 max-md:border-rose-900/50 max-w-md mt-2 md:mt-0">
+                                                        <Clock className="h-4 w-4 text-rose-400 max-md:text-rose-500 md:text-rose-600 flex-shrink-0 mt-0.5" />
+                                                        <span className="text-xs break-words text-rose-700 max-md:text-rose-300 font-medium">
+                                                            Auto punched out By Paradigm AI Agent
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

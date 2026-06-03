@@ -266,6 +266,13 @@ const ProfilePage: React.FC = () => {
     const isPunchUnlocked = useAuthStore(s => s.isPunchUnlocked);
     const dailyUnlockRequestCount = useAuthStore(s => s.dailyUnlockRequestCount);
     const approvedUnlockCount = useAuthStore(s => s.approvedUnlockCount);
+
+    const [liveSteps, setLiveSteps] = useState<number>(0);
+    useEffect(() => {
+        return useAuthStore.subscribe((state) => {
+            setLiveSteps(state.liveSteps);
+        });
+    }, []);
     
     // Blocked if: Punched Today AND Not Currently Checked In (office or field) AND Not Unlocked
     const isPunchBlocked = hasPunchedToday && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
@@ -831,44 +838,97 @@ const ProfilePage: React.FC = () => {
                                          </div>
                                     </div>
 
-                                    {/* Daily Activity Stats (Steps, Area, Distance, Travel) */}
+                                    {/* Daily Activity Stats — role-aware */}
                                     <div className="grid grid-cols-2 gap-3">
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Footprints className="h-3.5 w-3.5 text-emerald-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
-                                            </p>
-                                         </div>
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Maximize className="h-3.5 w-3.5 text-teal-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Area Covered</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
-                                            </p>
-                                         </div>
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Navigation className="h-3.5 w-3.5 text-blue-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Dist.</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
-                                            </p>
-                                         </div>
-                                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <MapPin className="h-3.5 w-3.5 text-amber-400" />
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Time</span>
-                                            </div>
-                                            <p className="text-xl font-bold text-white tabular-nums">
-                                                {isMetricsLoading ? '—' : todayMetrics.travelTime}
-                                            </p>
-                                         </div>
+                                        {isOfficeStaffRole ? (
+                                            /* ── Office Staff: Work Session Stats ── */
+                                            <>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Clock className="h-3.5 w-3.5 text-blue-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Hours Worked</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {totalWorkingDurationToday > 0
+                                                            ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m`
+                                                            : effectivelyCheckedIn ? <span className="text-emerald-400 animate-pulse text-base">Active</span> : '—'
+                                                        }
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Coffee className="h-3.5 w-3.5 text-amber-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Break Time</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {totalBreakDurationToday > 0
+                                                            ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m`
+                                                            : '0h 0m'
+                                                        }
+                                                    </p>
+                                                </div>
+                                                {/* Daily Steps — full width */}
+                                                <div className="col-span-2 bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Footprints className="h-3.5 w-3.5 text-emerald-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
+                                                        {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                        {effectivelyCheckedIn && liveSteps > 0 && (
+                                                            <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
+                                                                ({liveSteps} live)
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            /* ── Field / Site Staff: Activity Metrics ── */
+                                            <>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Footprints className="h-3.5 w-3.5 text-emerald-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
+                                                        {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                        {effectivelyCheckedIn && liveSteps > 0 && (
+                                                            <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
+                                                                ({liveSteps} live)
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Maximize className="h-3.5 w-3.5 text-teal-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Area Covered</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <Navigation className="h-3.5 w-3.5 text-blue-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Dist.</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <MapPin className="h-3.5 w-3.5 text-amber-400" />
+                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Time</span>
+                                                    </div>
+                                                    <p className="text-xl font-bold text-white tabular-nums">
+                                                        {isMetricsLoading ? '—' : todayMetrics.travelTime}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -2001,53 +2061,113 @@ const ProfilePage: React.FC = () => {
                     {user.role !== 'management' && (
                         <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow">
                             <div className="flex items-center gap-3 mb-5">
-                                <div className="p-2 bg-emerald-50 rounded-lg">
-                                    <Footprints className="h-5 w-5 text-emerald-600" />
+                                <div className={`p-2 rounded-lg ${isOfficeStaffRole ? 'bg-blue-50' : 'bg-emerald-50'}`}>
+                                    {isOfficeStaffRole
+                                        ? <Clock className="h-5 w-5 text-blue-600" />
+                                        : <Footprints className="h-5 w-5 text-emerald-600" />
+                                    }
                                 </div>
-                                <h3 className="text-sm font-bold text-gray-900">Today's Activity</h3>
+                                <h3 className="text-sm font-bold text-gray-900">
+                                    {isOfficeStaffRole ? "Today's Session" : "Today's Activity"}
+                                </h3>
                             </div>
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-2">
-                                    {/* Steps */}
-                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
-                                            <Footprints className="w-3.5 h-3.5 text-emerald-600" />
-                                            Daily Steps
-                                        </div>
-                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                            {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
-                                        </p>
-                                    </div>
-                                    {/* Area Covered */}
-                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
-                                            <Maximize className="w-3.5 h-3.5 text-teal-600" />
-                                            Area Covered
-                                        </div>
-                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                            {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
-                                        </p>
-                                    </div>
-                                    {/* Travel Distance */}
-                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
-                                            <Navigation className="w-3.5 h-3.5 text-blue-600" />
-                                            Travel Distance
-                                        </div>
-                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                            {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
-                                        </p>
-                                    </div>
-                                    {/* Travel Duration */}
-                                    <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                        <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
-                                            <MapPin className="w-3.5 h-3.5 text-amber-600" />
-                                            Travel Time
-                                        </div>
-                                        <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                            {isMetricsLoading ? '—' : todayMetrics.travelTime}
-                                        </p>
-                                    </div>
+                                    {isOfficeStaffRole ? (
+                                        /* ── Office Staff: Work Session Summary ── */
+                                        <>
+                                            {/* Hours Worked */}
+                                            <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-blue-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                                                    Hours Worked
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {totalWorkingDurationToday > 0
+                                                        ? `${Math.floor(totalWorkingDurationToday)}h ${Math.round((totalWorkingDurationToday % 1) * 60)}m`
+                                                        : effectivelyCheckedIn ? <span className="text-emerald-600 animate-pulse text-sm">Active</span> : '—'
+                                                    }
+                                                </p>
+                                            </div>
+                                            {/* Break Time */}
+                                            <div className="bg-amber-50/70 p-3 rounded-xl border border-amber-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-amber-600 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Coffee className="w-3.5 h-3.5 text-amber-600" />
+                                                    Break Time
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {totalBreakDurationToday > 0
+                                                        ? `${Math.floor(totalBreakDurationToday)}h ${Math.round((totalBreakDurationToday % 1) * 60)}m`
+                                                        : '0h 0m'
+                                                    }
+                                                </p>
+                                            </div>
+                                            {/* Daily Steps — full width */}
+                                            <div className="col-span-2 bg-emerald-50/70 p-3 rounded-xl border border-emerald-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-emerald-600 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Footprints className="w-3.5 h-3.5 text-emerald-600" />
+                                                    Daily Steps
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
+                                                    {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                    {effectivelyCheckedIn && liveSteps > 0 && (
+                                                        <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
+                                                            ({liveSteps} live)
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        /* ── Field / Site Staff: Activity Metrics ── */
+                                        <>
+                                            {/* Steps */}
+                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Footprints className="w-3.5 h-3.5 text-emerald-600" />
+                                                    Daily Steps
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
+                                                    {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                    {effectivelyCheckedIn && liveSteps > 0 && (
+                                                        <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
+                                                            ({liveSteps} live)
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
+                                            {/* Area Covered */}
+                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Maximize className="w-3.5 h-3.5 text-teal-600" />
+                                                    Area Covered
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
+                                                </p>
+                                            </div>
+                                            {/* Travel Distance */}
+                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                                                    Travel Distance
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                                </p>
+                                            </div>
+                                            {/* Travel Duration */}
+                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                                <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                                                    Travel Time
+                                                </div>
+                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
+                                                    {isMetricsLoading ? '—' : todayMetrics.travelTime}
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>

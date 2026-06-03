@@ -640,6 +640,8 @@ const MyTeamPage: React.FC = () => {
                 .slice((currentPage - 1) * pageSize, currentPage * pageSize)
                 .map((member) => {
                   const loc = latestLocations[member.id];
+                  const userLocInfo = memberLocations[member.id];
+                  const locationDisplay = userLocInfo ? `${userLocInfo.city}, ${userLocInfo.state}` : (member.locationName || member.location);
                   return (
                     <Link
                       key={member.id}
@@ -668,6 +670,12 @@ const MyTeamPage: React.FC = () => {
                         <p className="text-[11px] text-gray-400 truncate mt-0.5">
                           {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </p>
+                        {locationDisplay && (
+                          <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+                            <MapPin className="w-3 h-3 text-emerald-400" />
+                            <span className="truncate">{locationDisplay}</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1">
                           <Clock className="w-3.5 h-3.5 text-emerald-400" />
                           <span className="truncate">
@@ -956,6 +964,8 @@ const MyTeamPage: React.FC = () => {
               .slice((currentPage - 1) * pageSize, currentPage * pageSize)
               .map((member) => {
               const loc = latestLocations[member.id];
+              const userLocInfo = memberLocations[member.id];
+              const locationDisplay = userLocInfo ? `${userLocInfo.city}, ${userLocInfo.state}` : (member.locationName || member.location);
               return (
                 <Link
                   key={member.id}
@@ -982,9 +992,16 @@ const MyTeamPage: React.FC = () => {
                       <h3 className="font-bold text-primary-text truncate group-hover:text-accent transition-colors">
                         {member.name}
                       </h3>
-                      <p className="text-xs text-muted mb-2 truncate">
+                      <p className="text-xs text-muted truncate">
                         {member.role.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                       </p>
+                      {locationDisplay && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted mt-1 mb-2">
+                          <MapPin className="w-3 h-3 text-accent" />
+                          <span className="truncate">{locationDisplay}</span>
+                        </div>
+                      )}
+                      {!locationDisplay && <div className="mb-2" />}
                       
                       <div className="flex items-center gap-1.5 text-xs text-muted">
                         <Clock className="w-3.5 h-3.5" />

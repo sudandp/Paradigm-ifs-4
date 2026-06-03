@@ -1,12 +1,15 @@
 package com.paradigm.ifs;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.hardware.SensorManager;
 import android.os.Build;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -25,25 +28,48 @@ import com.getcapacitor.annotation.PermissionCallback;
         )
     }
 )
-public class StepCounterPlugin extends Plugin implements SensorEventListener {
-    private SensorManager sensorManager;
-    private Sensor stepCounterSensor;
-    private boolean isListening = false;
-    private float startSteps = -1;
-    private float currentSteps = 0;
+public class StepCounterPlugin extends Plugin {
+    
+    private BroadcastReceiver stepUpdateReceiver;
 
     @Override
     public void load() {
-        sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
-        if (sensorManager != null) {
-            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        stepUpdateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (TrackingService.ACTION_STEP_UPDATE.equals(intent.getAction())) {
+                    int steps = intent.getIntExtra(TrackingService.EXTRA_STEPS, 0);
+                    int totalCumulativeSteps = intent.getIntExtra(TrackingService.EXTRA_TOTAL_STEPS, 0);
+
+                    JSObject ret = new JSObject();
+                    ret.put("steps", steps);
+                    ret.put("totalCumulativeSteps", totalCumulativeSteps);
+                    notifyListeners("stepCountChanged", ret);
+                }
+            }
+        };
+        LocalBroadcastManager.getInstance(getContext()).registerReceiver(
+                stepUpdateReceiver, new IntentFilter(TrackingService.ACTION_STEP_UPDATE)
+        );
+    }
+    
+    @Override
+    protected void handleOnDestroy() {
+        if (stepUpdateReceiver != null) {
+            LocalBroadcastManager.getInstance(getContext()).unregisterReceiver(stepUpdateReceiver);
         }
+        super.handleOnDestroy();
     }
 
     @PluginMethod
     public void isStepCountingSupported(PluginCall call) {
+        SensorManager sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
+        boolean supported = false;
+        if (sensorManager != null) {
+            supported = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER) != null;
+        }
         JSObject ret = new JSObject();
-        ret.put("supported", stepCounterSensor != null);
+        ret.put("supported", supported);
         call.resolve(ret);
     }
 
@@ -145,64 +171,30 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
 
     @PluginMethod
     public void startStepCount(PluginCall call) {
-        if (stepCounterSensor == null) {
-            call.reject("Step counter sensor not available on this device.");
-            return;
-        }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
             getPermissionState("activityRecognition") != PermissionState.GRANTED) {
             call.reject("Activity recognition permission not granted.");
             return;
         }
 
-        if (isListening) {
-            call.resolve();
-            return;
-        }
-
-        startSteps = -1;
-        currentSteps = 0;
-
-        boolean success = sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_UI);
-        if (success) {
-            isListening = true;
-            call.resolve();
-        } else {
-            call.reject("Failed to register step counter sensor listener.");
-        }
+        // Sensor registration is now handled by TrackingService.
+        // We just resolve the call here.
+        call.resolve();
     }
 
     @PluginMethod
     public void stopStepCount(PluginCall call) {
-        if (!isListening) {
-            call.resolve();
-            return;
-        }
-        sensorManager.unregisterListener(this);
-        isListening = false;
-        startSteps = -1;
+        // We no longer stop the step counter, TrackingService handles it.
         call.resolve();
     }
-
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
-            float totalSteps = event.values[0];
-            if (startSteps < 0) {
-                startSteps = totalSteps;
-            }
-            currentSteps = totalSteps - startSteps;
-
-            JSObject ret = new JSObject();
-            ret.put("steps", (int) currentSteps);
-            ret.put("totalCumulativeSteps", (int) totalSteps);
-            notifyListeners("stepCountChanged", ret);
-        }
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Not used
+    
+    @PluginMethod
+    public void getStepCount(PluginCall call) {
+        SharedPreferences prefs = getContext().getSharedPreferences("StepCounterPrefs", Context.MODE_PRIVATE);
+        int stepsToday = prefs.getInt("steps_today", 0);
+        
+        JSObject ret = new JSObject();
+        ret.put("steps", stepsToday);
+        call.resolve(ret);
     }
 }

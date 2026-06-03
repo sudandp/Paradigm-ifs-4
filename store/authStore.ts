@@ -133,6 +133,8 @@ interface AuthState {
     setLoading: (loading: boolean) => void;
     isLoginAnimationPending: boolean;
     setLoginAnimationPending: (pending: boolean) => void;
+    liveSteps: number;
+    setLiveSteps: (steps: number) => void;
     geofencingSettings: { enabled: boolean; maxViolationsPerMonth: number } | null;
     breakLimit: number;
     breakReminderInterval: number; // user-selected reminder interval in minutes (web + native)
@@ -281,6 +283,8 @@ export const useAuthStore = create<AuthState>()(
 
         isLoginAnimationPending: false,
         setLoginAnimationPending: (pending) => set({ isLoginAnimationPending: pending }),
+        liveSteps: 0,
+        setLiveSteps: (steps) => set({ liveSteps: steps }),
 
         setUser: (user) => set({ user, error: null, loading: false }),
         setInitialized: (initialized) => set({ isInitialized: initialized }),
@@ -841,8 +845,8 @@ export const useAuthStore = create<AuthState>()(
                 // Sync tracking state after status update
                 get().syncRouteTracking();
 
-                // Auto-resume step counter if the user is checked-in for field visit
-                if (isFieldCheckedIn && !isOnBreak) {
+                // Auto-resume step counter if the user is checked-in (any work type)
+                if ((isFieldCheckedIn || isCheckedIn || isSiteOtCheckedIn) && !isOnBreak) {
                     import('../services/stepCounterService').then(async ({ stepCounterService }) => {
                         try {
                             // Pre-request permission on resume so it doesn't silently fail
@@ -853,6 +857,7 @@ export const useAuthStore = create<AuthState>()(
                             }
                             await stepCounterService.startCounting((steps) => {
                                 console.log(`[authStore] Resumed step counting: ${steps}`);
+                                set({ liveSteps: steps });
                             });
                         } catch (e) {
                             console.warn('[authStore] Failed to resume step counting:', e);
@@ -947,18 +952,22 @@ export const useAuthStore = create<AuthState>()(
                     const currentDailyPunchCount = get().dailyPunchCount;
                     const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
 
-                    // Capture steps and sqft on field check-out
+                    // Capture steps on punch-out (all work types)
                     let stepsValue: number | undefined = undefined;
                     let sqftValue: number | undefined = undefined;
                     let travelDistanceValue: number | undefined = undefined;
 
-                    if (newType === 'punch-out' && workType === 'field') {
-                        try {
-                            const { stepCounterService } = await import('../services/stepCounterService');
-                            stepsValue = stepCounterService.getStepsCount();
-                            sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
-                            await stepCounterService.stopCounting();
-                            console.log(`[authStore] Saved visit steps: ${stepsValue}, sqft: ${sqftValue}`);
+                    if (newType === 'punch-out') {
+                             try {
+                              const { stepCounterService } = await import('../services/stepCounterService');
+                              await stepCounterService.getStepCountFromNative();
+                              stepsValue = stepCounterService.getStepsCount();
+                              if (workType === 'field') {
+                                  sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
+                              }
+                              await stepCounterService.stopCounting();
+                              set({ liveSteps: 0 }); // Reset live display after checkout
+                            console.log(`[authStore] Saved steps: ${stepsValue}, sqft: ${sqftValue}`);
                         } catch (err) {
                             console.warn('[authStore] Failed to capture step count on checkout:', err);
                         }
@@ -1110,25 +1119,24 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     if (newType === 'punch-in') {
-                        // Start step counter for field visit
+                        // Start step counter for all staff types (office, field, site)
                         // preflight() requests ACTIVITY_RECOGNITION permission BEFORE startCounting()
                         // so the dialog appears immediately at check-in, not silently later
-                        if (workType === 'field') {
-                            import('../services/stepCounterService').then(async ({ stepCounterService }) => {
-                                try {
-                                    const { ok, reason } = await stepCounterService.preflight();
-                                    if (!ok) {
-                                        console.warn(`[authStore] Step counter preflight failed: ${reason}`);
-                                        return; // Permission denied — counting won't start, steps will be 0
-                                    }
-                                    await stepCounterService.startCounting((steps) => {
-                                        console.log(`[authStore] Current steps: ${steps}`);
-                                    });
-                                } catch (err) {
-                                    console.warn('[authStore] Failed to start step counter:', err);
+                        import('../services/stepCounterService').then(async ({ stepCounterService }) => {
+                            try {
+                                const { ok, reason } = await stepCounterService.preflight();
+                                if (!ok) {
+                                    console.warn(`[authStore] Step counter preflight failed: ${reason}`);
+                                    return; // Permission denied — counting won't start, steps will be 0
                                 }
-                            });
-                        }
+                                await stepCounterService.startCounting((steps) => {
+                                    console.log(`[authStore] Current steps: ${steps}`);
+                                    set({ liveSteps: steps });
+                                });
+                            } catch (err) {
+                                console.warn('[authStore] Failed to start step counter:', err);
+                            }
+                        });
 
                         // Schedule Shift End Reminder (9 hours)
                         // If user has specific shift duration settings, we could use that. defaulting to 9h.

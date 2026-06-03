@@ -4,6 +4,7 @@ import { hrmApi } from '../../services/hrm.api';
 import { supabase } from '../../services/supabase';
 import StageBadge from '../../components/hr/StageBadge';
 import LogCallModal from '../../components/hr/LogCallModal';
+import { useAuthStore } from '../../store/authStore';
 import LogCallPanel from '../../components/hr/LogCallPanel';
 import CallHistoryTimeline from '../../components/hr/CallHistoryTimeline';
 import ScreeningFormPanel from '../../components/hr/ScreeningFormPanel';
@@ -34,6 +35,8 @@ const CandidateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const { user } = useAuthStore();
+  const isHrRecruitment = user && ['hr_recruitment', 'developer', 'admin', 'super_admin'].includes(user.role);
   
   const [candidate, setCandidate] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -155,20 +158,22 @@ const CandidateDetailPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
-          <button
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('voip:dial', {
-                detail: {
-                  number: candidate.candidate_mobile,
-                  name: candidate.candidate_name
-                }
-              }));
-            }}
-            className={`btn bg-emerald-600 hover:bg-emerald-700 text-white btn-md gap-2 flex-1 md:flex-none active:scale-95 transition-all shadow-xl shadow-emerald-600/20`}
-          >
-            <Phone className="w-4 h-4" />
-            <span className="font-semibold text-sm">Call Candidate</span>
-          </button>
+          {isHrRecruitment && (
+            <button
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('voip:dial', {
+                  detail: {
+                    number: candidate.candidate_mobile,
+                    name: candidate.candidate_name
+                  }
+                }));
+              }}
+              className={`btn bg-emerald-600 hover:bg-emerald-700 text-white btn-md gap-2 flex-1 md:flex-none active:scale-95 transition-all shadow-xl shadow-emerald-600/20`}
+            >
+              <Phone className="w-4 h-4" />
+              <span className="font-semibold text-sm">Call Candidate</span>
+            </button>
+          )}
           
           <button
             onClick={() => {

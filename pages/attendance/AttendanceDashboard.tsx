@@ -5,6 +5,8 @@ import { isAdmin } from '../../utils/auth';
 // number increments on the chart axes, and unify the report generation/download flow into a single action.
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
+import { fetchTodayMetrics, fetchAttendanceSummary, fetchTopPerformers, buildChartDatasets, TodayMetrics, DaySummary, TopPerformer } from '../../services/attendanceDashboard';
+
 import { fetchKioskDevices, type KioskDevice } from '../../services/gateApi';
 import { pdf } from '@react-pdf/renderer';
 import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
@@ -172,7 +174,8 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                 borderColor: '#004218',
                                 borderWidth: 1,
                                 borderRadius: 4,
-                                maxBarThickness: 60,
+                                categoryPercentage: 0.85,
+                                barPercentage: 0.9,
                             },
                             {
                                 label: 'Absent',
@@ -181,13 +184,19 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                 borderColor: '#DC2626',
                                 borderWidth: 1,
                                 borderRadius: 4,
-                                maxBarThickness: 60,
+                                categoryPercentage: 0.85,
+                                barPercentage: 0.9,
                             }
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index' as const,
+                            intersect: false,
+                            axis: 'x' as const,
+                        },
                         scales: {
                             y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,0.1)' } },
                             x: {
@@ -217,16 +226,87 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                 }
                             },
                             tooltip: {
+                                mode: 'index' as const,
+                                intersect: false,
                                 backgroundColor: '#0F172A',
-                                titleFont: { family: "'Manrope', sans-serif" },
+                                titleFont: { family: "'Manrope', sans-serif", weight: 'bold' as const },
                                 bodyFont: { family: "'Manrope', sans-serif" },
                                 cornerRadius: 8,
-                                padding: 10,
+                                padding: 12,
                                 displayColors: true,
                                 boxPadding: 4,
+                                callbacks: {
+                                    title: (items: any[]) => {
+                                        // Use dataIndex to pull the correct label from chart data
+                                        // This avoids any mismatch from Chart.js internal label resolution
+                                        if (items.length > 0) {
+                                            const idx = items[0].dataIndex;
+                                            return items[0].chart.data.labels?.[idx] as string ?? '';
+                                        }
+                                        return '';
+                                    },
+                                    label: (ctx: any) => {
+                                        const label = ctx.dataset.label ?? '';
+                                        const value = ctx.parsed.y ?? 0;
+                                        return ` ${label}: ${value} employees`;
+                                    }
+                                }
                             }
                         }
-                    }
+                    },
+                    plugins: [{
+                        id: 'correctHoverIndex',
+                        beforeEvent(chart: any, args: any) {
+                            const event = args.event;
+                            if (event.type !== 'mousemove' && event.type !== 'click') return;
+                            
+                            const xScale = chart.scales.x;
+                            if (!xScale) return;
+                            
+                            // For category scales, use getValueForPixel to find the correct index
+                            // based on the cursor's x position within the chart area
+                            const mouseX = event.x;
+                            if (mouseX < xScale.left || mouseX > xScale.right) return;
+                            
+                            const rawIdx = xScale.getValueForPixel(mouseX);
+                            if (rawIdx == null) return;
+                            
+                            const idx = Math.max(0, Math.min(chart.data.labels.length - 1, Math.round(rawIdx)));
+                            
+                            // Store the correct index for tooltip use
+                            (chart as any)._correctHoverIndex = idx;
+                        },
+                        beforeTooltipDraw(chart: any, args: any) {
+                            const tooltip = args.tooltip;
+                            if (!tooltip || tooltip.dataPoints?.length === 0) return;
+                            
+                            const correctIdx = (chart as any)._correctHoverIndex;
+                            if (correctIdx == null) return;
+                            
+                            // If the tooltip's detected index doesn't match the correct one,
+                            // update all tooltip data points to use the correct index
+                            const currentIdx = tooltip.dataPoints[0]?.dataIndex;
+                            if (currentIdx !== correctIdx) {
+                                tooltip.title = [chart.data.labels[correctIdx]];
+                                tooltip.dataPoints.forEach((dp: any, i: number) => {
+                                    dp.dataIndex = correctIdx;
+                                    dp.label = chart.data.labels[correctIdx];
+                                    dp.parsed.y = chart.data.datasets[i]?.data[correctIdx] ?? 0;
+                                    dp.formattedValue = String(dp.parsed.y);
+                                    dp.raw = dp.parsed.y;
+                                });
+                                // Re-run label callbacks with corrected data
+                                const callbacks = chart.options.plugins?.tooltip?.callbacks;
+                                if (callbacks?.label) {
+                                    tooltip.body = tooltip.dataPoints.map((dp: any) => ({
+                                        before: [],
+                                        lines: [callbacks.label(dp)],
+                                        after: [],
+                                    }));
+                                }
+                            }
+                        }
+                    }]
                 });
             }
         }
@@ -235,13 +315,12 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                 chartInstance.current.destroy();
             }
         };
-    }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(data)]);
 
     return (
-        <div className="h-full w-full flex flex-col">
-            <div className="flex-grow relative">
-                <canvas ref={chartRef}></canvas>
-            </div>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <canvas ref={chartRef}></canvas>
         </div>
     );
 };
@@ -280,6 +359,11 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index' as const,
+                            intersect: false,
+                            axis: 'x' as const,
+                        },
                         scales: {
                             // Use whole-number tick steps on the y-axis so average hours are easy to read.  If
                             // fractional hours are returned they will be rounded when rendered.
@@ -323,13 +407,22 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                                 },
                             },
                             tooltip: {
+                                mode: 'index' as const,
+                                intersect: false,
                                 backgroundColor: '#0F172A',
-                                titleFont: { family: "'Manrope', sans-serif" },
+                                titleFont: { family: "'Manrope', sans-serif", weight: 'bold' as const },
                                 bodyFont: { family: "'Manrope', sans-serif" },
                                 cornerRadius: 8,
-                                padding: 10,
+                                padding: 12,
                                 displayColors: true,
                                 boxPadding: 4,
+                                callbacks: {
+                                    title: (items: any[]) => items[0]?.label ?? '',
+                                    label: (ctx: any) => {
+                                        const value = ctx.parsed.y ?? 0;
+                                        return ` Average Hours Worked: ${value}h`;
+                                    }
+                                }
                             },
                         },
                     }
@@ -341,13 +434,12 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                 chartInstance.current.destroy();
             }
         };
-    }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(data)]);
 
     return (
-        <div className="h-full w-full flex flex-col">
-            <div className="flex-grow relative">
-                <canvas ref={chartRef}></canvas>
-            </div>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <canvas ref={chartRef}></canvas>
         </div>
     );
 };
@@ -421,32 +513,7 @@ const RoleDistributionChart: React.FC<{ data: { labels: string[], values: number
     );
 };
 
-const TopPerformersList: React.FC<{ performers?: { name: string; role: string; value: string }[] }> = ({ performers }) => {
-    return (
-        <div className="w-full h-full flex flex-col pt-2">
-            <h3 className="text-[15px] font-bold text-gray-800 mb-4">Top Performers</h3>
-            <div className="flex-grow overflow-y-auto">
-                <ul className="space-y-4">
-                    {(performers || []).map((p, i) => (
-                        <li key={i} className="flex justify-between items-center">
-                            <div>
-                                <p className="text-sm font-bold text-gray-900 leading-tight">{p.name}</p>
-                                <p className="text-xs text-gray-500 capitalize">{p.role.replace(/_/g, ' ')}</p>
-                            </div>
-                            <div className="flex items-center text-emerald-600 font-bold text-sm">
-                                <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                                {p.value}
-                            </div>
-                        </li>
-                    ))}
-                    {(!performers || performers.length === 0) && (
-                        <div className="text-sm text-gray-400 text-center py-6">No data available</div>
-                    )}
-                </ul>
-            </div>
-        </div>
-    );
-};
+
 
 
 interface DashboardData {
@@ -618,6 +685,50 @@ const DashboardStatCard: React.FC<{
     );
 };
 
+
+const TodayMetricsRow = ({ data, loading }: { data: TodayMetrics | null, loading: boolean }) => {
+    if (loading || !data) return (
+        <>
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 w-full bg-[#0b291a] md:bg-gray-100 animate-pulse rounded-xl"></div>)}
+        </>
+    );
+    return (
+        <>
+            <DashboardStatCard icon={UserCheck} label="Total Present" value={data.present_today} color="#10b981" suffix="Employees" />
+            <DashboardStatCard icon={UserX} label="Total Absent" value={data.absent_today} color="#df0637" suffix="Employees" />
+            <DashboardStatCard icon={Clock} label="Late Arrivals" value={data.late_arrivals_today} color="#f59e0b" suffix="Employees" />
+            <DashboardStatCard icon={Users} label="Pending Leaves" value={data.pending_leaves} color="#3b82f6" suffix="Pending" />
+        </>
+    );
+};
+
+const AttendanceCharts = ({ data, loading }: { data: ReturnType<typeof buildChartDatasets> | null, loading: boolean }) => {
+    if (loading || !data) return <div className="h-64 md:h-[320px] bg-[#0b291a] md:bg-gray-100 animate-pulse rounded-xl"></div>;
+    return (
+        <div className="h-64 md:h-[320px] relative mt-4">
+            <AttendanceTrendChart data={{ labels: data.labels, present: data.presentTrend, absent: data.absentTrend }} />
+        </div>
+    );
+};
+
+const TopPerformersList = ({ data, loading }: { data: TopPerformer[], loading: boolean }) => {
+    if (loading) return <div className="h-[260px] bg-[#0b291a] md:bg-gray-100 animate-pulse rounded-xl"></div>;
+    return (
+        <div className="flex flex-col gap-4 overflow-y-auto h-full pr-2">
+            <h3 className="text-sm font-semibold text-white md:text-gray-900 sticky top-0 bg-[#0b291a] md:bg-white pb-2 z-10">Top Performers</h3>
+            {data.map(p => (
+                <div key={p.user_id} className="flex items-center justify-between">
+                    <div>
+                        <div className="text-sm font-medium text-white md:text-gray-900">{p.name}</div>
+                        <div className="text-xs text-gray-400">{p.role_name}</div>
+                    </div>
+                    <div className="text-sm font-bold text-[#22c55e]">{p.total_hours.toFixed(1)}h</div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const AttendanceDashboard: React.FC = () => {
     const isSmallScreen = useMediaQuery('(max-width: 639px)');
     const { user } = useAuthStore();
@@ -636,6 +747,10 @@ const AttendanceDashboard: React.FC = () => {
     // Map of userId -> FieldAttendanceViolation[] for field staff
     const [fieldViolationsMap, setFieldViolationsMap] = useState<Record<string, FieldAttendanceViolation[]>>({});
     const [allRoles, setAllRoles] = useState<Role[]>([]);
+        const [todayMetrics,  setTodayMetrics]  = useState<TodayMetrics | null>(null);
+    const [chartDatasets, setChartDatasets] = useState<ReturnType<typeof buildChartDatasets> | null>(null);
+    const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
+
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
@@ -1485,6 +1600,47 @@ const AttendanceDashboard: React.FC = () => {
         loadData();
     }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, users]);
 
+    
+    // Phase 1 — KPI cards (loads in ~100ms)
+    useEffect(() => {
+        fetchTodayMetrics(
+            selectedCompany !== 'all' ? selectedCompany : undefined,
+            selectedSite    !== 'all' ? [selectedSite]  : undefined,
+        )
+        .then(setTodayMetrics)
+        .catch(console.error);
+    }, [selectedCompany, selectedSite]);
+
+    // Phase 2 — Chart trends (loads in ~200-400ms)
+    useEffect(() => {
+        if (!dateRange.startDate || !dateRange.endDate) return;
+        // If single day is selected (like Today), fetch 3 days for the trend chart
+        const isSingleDay = isSameDay(dateRange.startDate, dateRange.endDate);
+        const chartStart = isSingleDay ? subDays(dateRange.startDate, 2) : dateRange.startDate;
+        
+        fetchAttendanceSummary(
+            chartStart,
+            dateRange.endDate,
+            selectedCompany !== 'all' ? selectedCompany : undefined,
+            selectedSite    !== 'all' ? [selectedSite]  : undefined,
+        )
+        .then(rows => setChartDatasets(buildChartDatasets(rows)))
+        .catch(console.error);
+    }, [dateRange, selectedCompany, selectedSite]);
+
+    // Phase 3 — Top Performers (loads last)
+    useEffect(() => {
+        if (!dateRange.startDate || !dateRange.endDate) return;
+        fetchTopPerformers(
+            dateRange.startDate,
+            dateRange.endDate,
+            selectedCompany !== 'all' ? selectedCompany : undefined,
+            selectedSite    !== 'all' ? [selectedSite]  : undefined,
+        )
+        .then(setTopPerformers)
+        .catch(console.error);
+    }, [dateRange, selectedCompany, selectedSite]);
+
     const reportTypeId = useId();
     const employeeId = useId();
     const roleId = useId();
@@ -1802,7 +1958,9 @@ const AttendanceDashboard: React.FC = () => {
                     // Detect auto-checkout (punched out by AI/System)
                     const isAutoCheckout = !!(punchOut && (
                         punchOut.locationName === 'Auto Check-out' || 
-                        (punchOut as any).reason?.includes('Auto-checkout')
+                        (punchOut as any).reason?.includes('Auto-checkout') ||
+                        punchOut.source === 'auto_system' ||
+                        punchOut.checkoutNote?.includes('Auto punch-out')
                     ));
 
                     checkIn = format(new Date(punchIn?.timestamp || earliest.timestamp), 'HH:mm');
@@ -1867,6 +2025,7 @@ const AttendanceDashboard: React.FC = () => {
                     case 'missing_checkout': return hasCheckIn && !hasCheckOut;
                     case 'missing_checkin': return !hasCheckIn && hasCheckOut;
                     case 'incomplete': return !hasCheckIn || !hasCheckOut;
+                    case 'auto_checkout': return row.isAutoCheckout === true;
                     default: return true;
                 }
             });
@@ -1973,7 +2132,13 @@ const AttendanceDashboard: React.FC = () => {
             if (finalType === 'site in') finalType = 'Site Check In';
             if (finalType === 'site out') finalType = 'Site Check Out';
             if (finalType === 'punch in') finalType = 'Punch In';
-            if (finalType === 'punch out') finalType = 'Punch Out';
+            if (finalType === 'punch out') {
+                if (e.source === 'auto_system' || e.checkoutNote?.includes('Auto punch-out') || e.locationName === 'Auto Check-out' || (e as any).reason?.includes('Auto-checkout')) {
+                    finalType = 'AP , Auto Punched out';
+                } else {
+                    finalType = 'Punch Out';
+                }
+            }
 
             // Use session-anchored date for night shifts
             const sessionDateStr = dayKeyMapLogs[e.id];
@@ -3423,6 +3588,7 @@ const AttendanceDashboard: React.FC = () => {
                                 <option value="missing_checkout">Missing Punch-out</option>
                                 <option value="missing_checkin">Missing Punch-in</option>
                                 <option value="incomplete">Incomplete (Any Missing)</option>
+                                <option value="auto_checkout">Auto Punch-out</option>
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />
@@ -3466,6 +3632,7 @@ const AttendanceDashboard: React.FC = () => {
                 </div>
             </div>
 
+            
             {/* Stats Summary */}
             <div className={`grid grid-cols-2 gap-3 md:gap-6 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} bg-transparent p-0 rounded-none`}>
                 {isEmployeeView ? (
@@ -3486,39 +3653,8 @@ const AttendanceDashboard: React.FC = () => {
                             color={stat.color}
                         />
                     ))
-                ) : isClientOrManagerView ? (
-                    // Organizational Stats for Clients and Managers
-                    [
-                        { title: "Total Present", value: dashboardData?.presentToday || 0, icon: UserCheck, color: "#10b981", suffix: `Employees` },
-                        { title: "Total Absent", value: dashboardData?.absentToday || 0, icon: UserX, color: "#df0637", suffix: `Employees` },
-                        { title: "Late Arrivals", value: dashboardData?.lateArrivalsToday || 0, icon: Clock, color: "#f59e0b", suffix: `Employees` },
-                        { title: "Leave Requests", value: dashboardData?.pendingLeavesToday || 0, icon: Users, color: "#3b82f6", suffix: `Pending` }
-                    ].map((stat, i) => (
-                        <DashboardStatCard
-                            key={i}
-                            icon={stat.icon}
-                            label={stat.title}
-                            value={stat.value}
-                            color={stat.color}
-                            suffix={stat.suffix}
-                        />
-                    ))
                 ) : (
-                    // Organizational Stats for Admins/HR
-                    [
-                        { title: "Total Employees", value: dashboardData?.totalEmployees || 0, icon: Users, color: "#0d9488" },
-                        { title: `Present ${statDateLabel}`, value: dashboardData?.presentToday || 0, icon: UserCheck, color: "#0eb161" },
-                        { title: `Absent ${statDateLabel}`, value: dashboardData?.absentToday || 0, icon: UserX, color: "#df0637" },
-                        { title: `On Leave ${statDateLabel}`, value: dashboardData?.onLeaveToday || 0, icon: Clock, color: "#2563eb" }
-                    ].map((stat, i) => (
-                        <DashboardStatCard
-                            key={i}
-                            icon={stat.icon}
-                            label={stat.title}
-                            value={stat.value}
-                            color={stat.color}
-                        />
-                    ))
+                    <TodayMetricsRow data={todayMetrics} loading={!todayMetrics} />
                 )}
             </div>
 
@@ -3533,16 +3669,11 @@ const AttendanceDashboard: React.FC = () => {
                                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100"></div> Absent</div>
                             </div>
                         </div>
-                        <div className="h-64 md:h-[320px] relative mt-4">
-                            {dashboardData ? <AttendanceTrendChart data={dashboardData.attendanceTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
-                        </div>
+                        <AttendanceCharts data={chartDatasets} loading={!chartDatasets} />
                     </div>
                     <div className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
-                            {dashboardData?.roleDistribution ? <RoleDistributionChart data={dashboardData.roleDistribution} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
-                        </div>
-                        <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
-                            {dashboardData?.topPerformers ? <TopPerformersList performers={dashboardData.topPerformers} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                            <TopPerformersList data={topPerformers} loading={topPerformers.length === 0} />
                         </div>
                     </div>
                 </div>
@@ -3553,22 +3684,19 @@ const AttendanceDashboard: React.FC = () => {
                             <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                             <h3 className="font-semibold text-white md:text-primary-text">Attendance Trend</h3>
                         </div>
-                        <div className="h-64 md:h-80 relative">
-                            {dashboardData ? <AttendanceTrendChart data={dashboardData.attendanceTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
-                        </div>
+                        <AttendanceCharts data={chartDatasets} loading={!chartDatasets} />
                     </div>
                     <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
                         <div className="flex items-center mb-6">
                             <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                             <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
                         </div>
-                        <div className="h-64 md:h-80 relative">
-                            {dashboardData ? <ProductivityChart data={dashboardData.productivityTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                        <div className="h-64 md:h-[320px] relative">
+                            {dashboardData?.productivityTrend ? <ProductivityChart data={dashboardData.productivityTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
                         </div>
                     </div>
                 </div>
             )}
-
 
             {/* Report Preview Section */}
             <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
