@@ -102,7 +102,7 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections'>('pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'>('pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [correctionRequestId, setCorrectionRequestId] = useState<string | null>(null);
@@ -205,13 +205,23 @@ const LeaveManagement: React.FC = () => {
             
             // Determine filter based on role and current filter tab
             const leaveFilter: any = { 
-                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections') ? filter : undefined,
+                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave') ? filter : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
                 startDate: startDate || undefined,
                 endDate: endDate || undefined,
                 page: currentPage,
                 pageSize: pageSize
             };
+
+            if (filter === 'sick_leave') {
+                leaveFilter.leaveType = 'Sick';
+            } else if (filter === 'earned_leave') {
+                leaveFilter.leaveType = 'Earned';
+            } else if (filter === 'lop_leave') {
+                leaveFilter.leaveType = 'Loss of Pay';
+            } else if (filter === 'comp_off_leave') {
+                leaveFilter.leaveType = 'Comp Off';
+            }
 
             // Admin / SuperAdmin / HR / Management see all requests.
             if (!['admin', 'super_admin', 'hr', 'management'].includes(user.role)) {
@@ -482,10 +492,40 @@ const LeaveManagement: React.FC = () => {
         setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
     };
 
-    const fetchAllForExport = async (statusFilter: LeaveRequestStatus | 'all'): Promise<LeaveRequest[]> => {
+    const fetchAllForExport = async (statusFilter: any): Promise<LeaveRequest[]> => {
         if (!user) return [];
+
+        let actualStatus: any = statusFilter !== 'all' ? statusFilter : undefined;
+        let exportLeaveType: string | undefined = undefined;
+
+        if (statusFilter === 'sick_leave') {
+            actualStatus = undefined;
+            exportLeaveType = 'Sick';
+        } else if (statusFilter === 'earned_leave') {
+            actualStatus = undefined;
+            exportLeaveType = 'Earned';
+        } else if (statusFilter === 'lop_leave') {
+            actualStatus = undefined;
+            exportLeaveType = 'Loss of Pay';
+        } else if (statusFilter === 'comp_off_leave') {
+            actualStatus = undefined;
+            exportLeaveType = 'Comp Off';
+        } else {
+            // Inherit from active filter if the current tab is category-specific
+            if (filter === 'sick_leave') {
+                exportLeaveType = 'Sick';
+            } else if (filter === 'earned_leave') {
+                exportLeaveType = 'Earned';
+            } else if (filter === 'lop_leave') {
+                exportLeaveType = 'Loss of Pay';
+            } else if (filter === 'comp_off_leave') {
+                exportLeaveType = 'Comp Off';
+            }
+        }
+
         const leaveFilter: any = {
-            status: statusFilter !== 'all' ? statusFilter : undefined,
+            status: actualStatus,
+            leaveType: exportLeaveType,
             userId: selectedUserId !== 'all' ? selectedUserId : undefined,
             startDate: startDate || undefined,
             endDate: endDate || undefined,
@@ -540,18 +580,22 @@ const LeaveManagement: React.FC = () => {
         { header: 'Applied On', key: 'createdAt', width: 30 },
     ];
 
-    const getStatusLabel = (status: LeaveRequestStatus | 'all') => {
+    const getStatusLabel = (status: any) => {
         const labels: Record<string, string> = {
             approved: 'Approved',
             rejected: 'Rejected',
             pending_manager_approval: 'Pending',
             pending_hr_confirmation: 'Pending HR',
+            sick_leave: 'Sick Leave',
+            earned_leave: 'Earned Leave',
+            lop_leave: 'LOP',
+            comp_off_leave: 'Comp Off',
             all: 'All',
         };
         return labels[status] || status.replace(/_/g, ' ');
     };
 
-    const handleExportExcel = async (statusFilter: LeaveRequestStatus | 'all') => {
+    const handleExportExcel = async (statusFilter: any) => {
         setIsExporting(true);
         setIsExportMenuOpen(false);
         try {
@@ -561,15 +605,29 @@ const LeaveManagement: React.FC = () => {
                 return;
             }
             const reportData = prepareReportData(data);
+            
+            let docTitle = `Leave Requests — ${getStatusLabel(statusFilter)}`;
+            let filePrefix = `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}`;
+            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave') {
+                const categoryLabel = getStatusLabel(filter);
+                if (statusFilter === 'all' || statusFilter === filter) {
+                    docTitle = `${categoryLabel} Requests`;
+                    filePrefix = `${categoryLabel.replace(/\s/g, '_')}_Requests`;
+                } else {
+                    docTitle = `${categoryLabel} Requests — ${getStatusLabel(statusFilter)}`;
+                    filePrefix = `${categoryLabel.replace(/\s/g, '_')}_Requests_${getStatusLabel(statusFilter).replace(/\s/g, '_')}`;
+                }
+            }
+
             await exportGenericReportToExcel(
                 reportData,
                 REPORT_COLUMNS_EXCEL,
-                `Leave Requests — ${getStatusLabel(statusFilter)}`,
+                docTitle,
                 {
                     startDate: parseSafeDate(startDate) || new Date(new Date().getFullYear(), 0, 1),
                     endDate: parseSafeDate(endDate) || new Date(),
                 },
-                `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_${getFileSuffix()}`,
+                `${filePrefix}_${getFileSuffix()}`,
                 undefined,
                 user?.name
             );
@@ -582,7 +640,7 @@ const LeaveManagement: React.FC = () => {
         }
     };
 
-    const handleExportPDF = async (statusFilter: LeaveRequestStatus | 'all') => {
+    const handleExportPDF = async (statusFilter: any) => {
         setIsExporting(true);
         setIsExportMenuOpen(false);
         try {
@@ -592,12 +650,26 @@ const LeaveManagement: React.FC = () => {
                 return;
             }
             const reportData = prepareReportData(data);
+            
+            let docTitle = `Leave Requests — ${getStatusLabel(statusFilter)}`;
+            let filePrefix = `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_Report`;
+            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave') {
+                const categoryLabel = getStatusLabel(filter);
+                if (statusFilter === 'all' || statusFilter === filter) {
+                    docTitle = `${categoryLabel} Requests`;
+                    filePrefix = `${categoryLabel.replace(/\s/g, '_')}_Requests_Report`;
+                } else {
+                    docTitle = `${categoryLabel} Requests — ${getStatusLabel(statusFilter)}`;
+                    filePrefix = `${categoryLabel.replace(/\s/g, '_')}_Requests_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_Report`;
+                }
+            }
+
             exportLeaveReportToPDF({
-                title: `Leave Requests — ${getStatusLabel(statusFilter)}`,
+                title: docTitle,
                 subtitle: getReportSubtitle(),
                 columns: REPORT_COLUMNS_PDF,
                 data: reportData,
-                fileName: `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_Report_${getFileSuffix()}`,
+                fileName: `${filePrefix}_${getFileSuffix()}`,
                 generatedBy: user?.name,
             });
             setToast({ message: `${getStatusLabel(statusFilter)} leave report exported to PDF.`, type: 'success' });
@@ -635,7 +707,11 @@ const LeaveManagement: React.FC = () => {
     };
 
     const handleExportReport = async () => {
-        await handleExportExcel(filter === 'claims' || filter === 'holiday_selection' ? 'all' : filter as LeaveRequestStatus | 'all');
+        await handleExportExcel(
+            (filter === 'claims' || filter === 'holiday_selection' || filter === 'corrections') 
+                ? 'all' 
+                : filter
+        );
     };
 
     type ExportStatusOption = { label: string; value: LeaveRequestStatus | 'all'; color: string; icon: string };
@@ -647,14 +723,27 @@ const LeaveManagement: React.FC = () => {
         { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
     ];
 
-    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections'> = ['pending_manager_approval', 'claims', 'pending_hr_confirmation', 'holiday_selection', 'corrections', 'approved', 'rejected', 'all']
+    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'> = [
+        'pending_manager_approval', 
+        'claims', 
+        'pending_hr_confirmation', 
+        'holiday_selection', 
+        'corrections', 
+        'sick_leave',
+        'earned_leave',
+        'lop_leave',
+        'comp_off_leave',
+        'approved', 
+        'rejected', 
+        'all'
+    ]
         .filter(tab => {
             // Hide 'pending_hr_confirmation' tab if finalConfirmationRole is 'reporting_manager'
             if (tab === 'pending_hr_confirmation' && finalConfirmationRole === 'reporting_manager') {
                 return false;
             }
             return true;
-        }) as Array<LeaveRequestStatus | 'all' | 'claims'>;
+        }) as any;
 
     const handleDeleteLeave = async (id: string) => {
         if (!window.confirm('Are you sure you want to permanently delete this leave record? This action cannot be undone.')) return;
@@ -782,7 +871,13 @@ const LeaveManagement: React.FC = () => {
         return null;
     };
 
-    const formatTabName = (tab: string) => tab.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const formatTabName = (tab: string) => {
+        if (tab === 'lop_leave') return 'LOP';
+        if (tab === 'comp_off_leave') return 'Comp Off';
+        if (tab === 'sick_leave') return 'Sick Leave';
+        if (tab === 'earned_leave') return 'Earned Leave';
+        return tab.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    };
 
     if (isLoading) {
         return <LoadingScreen message="Loading approval data..." />;

@@ -46,6 +46,7 @@ export interface DailyData {
   shift: string;
   travelDistance?: number;
   travelDuration?: number;
+  isAutoCheckout?: boolean;
 }
 
 export interface EmployeeMonthlyData {
@@ -310,6 +311,7 @@ export function processEmployeeMonth(
     const dayRoutePoints = routePoints.filter(p => isSameDay(new Date(p.timestamp), currentDate));
     const hasActivity = dayEvents.length > 0;
     const isFuture = isAfter(currentDate, startOfDay(new Date()));
+    let isAutoCheckout = false;
 
     if (hasActivity) {
       const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents, currentDate);
@@ -342,6 +344,14 @@ export function processEmployeeMonth(
       
       currentDayShortfall = netHours > 0 && netHours < (maxDailyHours * 0.75) ? 'YES' : '-';
       currentDayOT = ot > 0 ? formatTime(ot) : '-';
+      
+      const punchOut = [...dayEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-out');
+      isAutoCheckout = !!(punchOut && (
+          punchOut.locationName === 'Auto Check-out' || 
+          (punchOut as any).reason?.includes('Auto-checkout') ||
+          punchOut.source === 'auto_system' ||
+          (punchOut as any).checkoutNote?.includes('Auto punch-out')
+      ));
 
       if (!isFuture) { 
           totalNetWorkDuration += netHours; 
@@ -404,7 +414,8 @@ export function processEmployeeMonth(
       breakIn: currentDayBreakIn, breakOut: currentDayBreakOut, breakDuration: currentDayBreakDuration,
       netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift,
       travelDistance: currentDayTravelKm,
-      travelDuration: currentDayTravelDuration
+      travelDuration: currentDayTravelDuration,
+      isAutoCheckout
     });
   }
 

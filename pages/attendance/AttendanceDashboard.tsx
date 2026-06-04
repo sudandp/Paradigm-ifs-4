@@ -1383,12 +1383,12 @@ const AttendanceDashboard: React.FC = () => {
                         const userOrgs = u.organizationId.split(',').map(s => s.trim());
                         return managerOrgs.some(org => userOrgs.includes(org));
                     });
-                } else {
-                    if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
-                    if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
-                    if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
-                    if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
                 }
+                
+                if (selectedCompany !== 'all') activeStaff = activeStaff.filter(u => u.societyId === selectedCompany);
+                if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
+                if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
+                if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
@@ -2369,6 +2369,7 @@ const AttendanceDashboard: React.FC = () => {
                                         userId={selectedUser === 'all' ? undefined : selectedUser} 
                                         scopedSettings={scopedSettings}
                                         selectedStatus={selectedStatus}
+                                        selectedRecordType={selectedRecordType}
                                         selectedSite={selectedSite}
                                         selectedLocation={selectedLocation}
                                         selectedCompany={selectedCompany}
@@ -2442,11 +2443,17 @@ const AttendanceDashboard: React.FC = () => {
                                             scopedSettings={scopedSettings}
                                             hideHeader={false}
                                             selectedStatus={selectedStatus}
+                                            selectedRecordType={selectedRecordType}
                                             selectedSite={selectedSite}
                                             selectedLocation={selectedLocation}
                                             selectedCompany={selectedCompany}
                                             selectedRole={selectedRole}
                                             users={users}
+                                            onDataLoaded={(data) => {
+                                                if (monthsInRange[0] && m.getTime() === monthsInRange[0].getTime()) {
+                                                    setExportedMonthlyData(data);
+                                                }
+                                            }}
                                         />
                                     </div>
                                 ))}
@@ -3757,7 +3764,7 @@ const AttendanceDashboard: React.FC = () => {
             )}
 
             {/* Report Preview Section */}
-            <div className="hidden md:block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
+            <div className="block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div className="flex flex-col gap-1">
                         <h2 className="text-lg font-bold text-white md:text-gray-900">Report Preview</h2>

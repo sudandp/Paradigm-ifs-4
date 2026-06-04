@@ -38,6 +38,7 @@ interface MonthlyHoursReportProps {
   hideHeader?: boolean;
   scopedSettings?: any[];
   selectedStatus?: string;
+  selectedRecordType?: string;
   selectedSite?: string;
   selectedCompany?: string;
   selectedLocation?: string;
@@ -48,7 +49,7 @@ interface MonthlyHoursReportProps {
 
 const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({ 
   month, year, userId, data: externalData, hideHeader, scopedSettings = [],
-  selectedStatus = 'all', selectedSite = 'all', selectedCompany = 'all', selectedLocation = 'all', selectedRole = 'all',
+  selectedStatus = 'all', selectedRecordType = 'all', selectedSite = 'all', selectedCompany = 'all', selectedLocation = 'all', selectedRole = 'all',
   onDataLoaded, users: externalUsers
 }) => {
   const [reportData, setReportData] = useState<EmployeeMonthlyData[]>([]);
@@ -98,7 +99,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     } else {
       loadReportData();
     }
-  }, [month, year, userId, externalData, selectedStatus, selectedSite, selectedCompany, selectedLocation, selectedRole]);
+  }, [month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole]);
   const resolveUserLocation = (u: User, orgStructure: any[]) => {
     if (u.location || u.locationName) return u.location || u.locationName;
     if (!u.societyId || orgStructure.length === 0) return '';
@@ -116,6 +117,89 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
   };
 
   const loadReportData = async () => {
+    const applyFilters = (data: EmployeeMonthlyData[]): EmployeeMonthlyData[] => {
+      let filtered = data;
+
+      // ── Status Filtering ─────────────────────────────
+      if (selectedStatus && selectedStatus !== 'all') {
+        if (selectedStatus === 'ACTIVE_USERS') {
+          filtered = filtered.filter(report => 
+            report.presentDays > 0 || 
+            report.halfDays > 0 || 
+            report.threeQuarterDays > 0 || 
+            report.quarterDays > 0
+          );
+        } else {
+          const matchStatus = (statusValue: string, targetStatus: string): boolean => {
+            const normVal = statusValue.trim().toUpperCase();
+            const normTarget = targetStatus.trim().toUpperCase();
+            if (normVal === normTarget) return true;
+            
+            if (normTarget === 'P') {
+              return normVal === 'P';
+            }
+            if (normTarget === 'SL') {
+              return normVal === 'SL' || normVal === 'S/L' || normVal.includes('SL') || normVal.includes('S/L');
+            }
+            if (normTarget === 'EL') {
+              return normVal === 'EL' || normVal === 'E/L' || normVal.includes('EL') || normVal.includes('E/L');
+            }
+            if (normTarget === 'C/O') {
+              return normVal === 'C/O' || normVal === 'CO' || normVal.includes('C/O');
+            }
+            if (normTarget === 'LOP') {
+              return normVal === 'LOP' || normVal === 'L.O.P' || normVal.includes('LOP');
+            }
+            if (normTarget === 'W/O') {
+              return normVal === 'W/O' || normVal === 'WOP' || normVal.includes('W/O');
+            }
+            if (normTarget === '1/2P') {
+              return normVal === '1/2P' || normVal === '0.5P';
+            }
+            if (normTarget === '3/4P') {
+              return normVal === '3/4P' || normVal === '0.75P';
+            }
+            if (normTarget === '1/4P') {
+              return normVal === '1/4P' || normVal === '0.25P';
+            }
+            
+            return normVal.includes(normTarget);
+          };
+
+          filtered = filtered.filter(report => 
+            report.dailyData.some(d => matchStatus(d.status, selectedStatus))
+          );
+        }
+      }
+
+      // ── Record Type Filtering ─────────────────────────
+      if (selectedRecordType && selectedRecordType !== 'all') {
+        filtered = filtered.filter(report => {
+          return report.dailyData.some(d => {
+            const hasCheckIn = d.inTime && d.inTime !== '-' && d.inTime !== '';
+            const hasCheckOut = d.outTime && d.outTime !== '-' && d.outTime !== '';
+            
+            switch (selectedRecordType) {
+              case 'complete':
+                return hasCheckIn && hasCheckOut;
+              case 'missing_checkout':
+                return hasCheckIn && !hasCheckOut;
+              case 'missing_checkin':
+                return !hasCheckIn && hasCheckOut;
+              case 'incomplete':
+                return (hasCheckIn && !hasCheckOut) || (!hasCheckIn && hasCheckOut);
+              case 'auto_checkout':
+                return d.isAutoCheckout === true;
+              default:
+                return true;
+            }
+          });
+        });
+      }
+
+      return filtered;
+    };
+
     setLoading(true);
     try {
       const startDate = startOfMonth(new Date(year, month - 1));
@@ -139,6 +223,20 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         let targetUsers = usersData;
         if (userId && userId !== 'all') {
           targetUsers = usersData.filter(u => u.id === userId);
+        } else {
+          if (selectedRole !== 'all') targetUsers = targetUsers.filter(u => u.role === selectedRole);
+          if (selectedSite !== 'all') targetUsers = targetUsers.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
+          if (selectedCompany !== 'all') targetUsers = targetUsers.filter(u => u.societyId === selectedCompany);
+          if (selectedLocation !== 'all') {
+            const orgStructureData = await api.getOrganizationStructure().catch(() => []);
+            targetUsers = targetUsers.filter(u => {
+              const loc = resolveUserLocation(u, orgStructureData || []);
+              return loc && loc.toLowerCase() === selectedLocation.toLowerCase();
+            });
+          }
+          if (selectedStatus === 'ACTIVE_USERS') {
+            targetUsers = targetUsers.filter(u => (u as any).isActive !== false);
+          }
         }
         const employeeIds = targetUsers.map(u => u.id);
         const snapshots = await api.getMonthSnapshotsBulk(employeeIds, year, month);
@@ -175,8 +273,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
               overtimeDays: summary.overtimeDays ?? 0,
             };
           });
-          setReportData(restored);
-          if (onDataLoaded) onDataLoaded(restored);
+          const filteredRestored = applyFilters(restored);
+          setReportData(filteredRestored);
+          if (onDataLoaded) onDataLoaded(filteredRestored);
           setLoading(false);
           return; // ← skip recalculation entirely
         }
@@ -347,12 +446,10 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         );
       });
 
-      if (selectedStatus === 'ACTIVE_USERS') {
-          employeeReports = employeeReports.filter(report => report.presentDays > 0 || report.halfDays > 0 || report.threeQuarterDays > 0 || report.quarterDays > 0);
-      }
+      const filteredReports = applyFilters(employeeReports);
 
-      setReportData(employeeReports);
-      if (onDataLoaded) onDataLoaded(employeeReports);
+      setReportData(filteredReports);
+      if (onDataLoaded) onDataLoaded(filteredReports);
     } catch (error) {
       console.error('Error loading monthly report:', error);
     } finally {

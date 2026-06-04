@@ -4688,7 +4688,7 @@ export const api = {
     const { error } = await supabase.from('leave_requests').delete().eq('id', id);
     if (error) throw error;
   },
-  getLeaveRequests: async (filter?: { userId?: string, userIds?: string[], status?: string | string[], forApproverId?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: LeaveRequest[], total: number }> => {
+  getLeaveRequests: async (filter?: { userId?: string, userIds?: string[], status?: string | string[], leaveType?: string, leaveTypes?: string[], forApproverId?: string, startDate?: string, endDate?: string, page?: number, pageSize?: number }): Promise<{ data: LeaveRequest[], total: number }> => {
     const status = await Network.getStatus();
     if (!status.connected) {
         const cached = await offlineDb.getCache('leave_requests') || [];
@@ -4698,6 +4698,8 @@ export const api = {
     let query = supabase.from('leave_requests').select('*, users!leave_requests_user_id_fkey(name, photo_url)', { count: 'exact' });
     if (filter?.userId) query = query.eq('user_id', filter.userId);
     if (filter?.userIds) query = query.in('user_id', filter.userIds);
+    if (filter?.leaveType) query = query.eq('leave_type', filter.leaveType);
+    if (filter?.leaveTypes) query = query.in('leave_type', filter.leaveTypes);
     
     if (filter?.status) {
       if (Array.isArray(filter.status)) {
