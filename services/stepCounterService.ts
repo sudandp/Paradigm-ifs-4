@@ -135,9 +135,8 @@ class StepCounterService {
 
     if (this.isCounting) return;
 
-    // On non-Android: simulate steps for dev/web preview
+    // On non-Android: do not simulate steps, just return (no hardware access)
     if (Capacitor.getPlatform() !== 'android') {
-      this.simulateSteps(onStepChange);
       return;
     }
 
