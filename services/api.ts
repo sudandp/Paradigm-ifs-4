@@ -2812,6 +2812,30 @@ export const api = {
     }
   },
 
+  updateActiveSessionSteps: async (userId: string, steps: number): Promise<void> => {
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
+    
+    const { data: events, error: fetchError } = await supabase
+      .from('attendance_events')
+      .select('id')
+      .eq('user_id', userId)
+      .in('type', ['punch-in', 'site-ot-in'])
+      .gte('timestamp', startOfDay)
+      .order('timestamp', { ascending: false })
+      .limit(1);
+
+    if (fetchError) throw fetchError;
+    if (!events || events.length === 0) return;
+
+    const { error: updateError } = await supabase
+      .from('attendance_events')
+      .update({ steps })
+      .eq('id', events[0].id);
+
+    if (updateError) throw updateError;
+  },
+
   addRoutePoint: async (point: Omit<RoutePoint, 'id'>): Promise<void> => {
     const status = await Network.getStatus();
     if (!status.connected) {

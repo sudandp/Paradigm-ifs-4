@@ -278,6 +278,17 @@ const ProfilePage: React.FC = () => {
     const isPunchBlocked = hasPunchedToday && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
     // Combined check-in state: true if user is checked in via either office or field
     const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+
+    // Poll attendance status / live steps when checked in
+    useEffect(() => {
+        if (!effectivelyCheckedIn || !user?.id) return;
+        
+        const interval = setInterval(() => {
+            checkAttendanceStatus(true);
+        }, 15000); // Poll every 15 seconds
+        
+        return () => clearInterval(interval);
+    }, [effectivelyCheckedIn, user?.id, checkAttendanceStatus]);
     // Is the next unlock request for OT? (1st request = duty, 2nd+ = OT)
     const isNextRequestOT = dailyUnlockRequestCount >= 1;
     // Technical roles can carry OT/site sessions across midnight.

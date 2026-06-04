@@ -135,6 +135,7 @@ interface AuthState {
     setLoginAnimationPending: (pending: boolean) => void;
     liveSteps: number;
     setLiveSteps: (steps: number) => void;
+    syncLiveSteps: (steps: number) => Promise<void>;
     geofencingSettings: { enabled: boolean; maxViolationsPerMonth: number } | null;
     breakLimit: number;
     breakReminderInterval: number; // user-selected reminder interval in minutes (web + native)
@@ -187,6 +188,9 @@ const CapacitorStorage = {
     await Preferences.remove({ key });
   },
 };
+
+let lastSyncedSteps = 0;
+let lastSyncTime = 0;
 
 export const useAuthStore = create<AuthState>()(
 
@@ -285,6 +289,27 @@ export const useAuthStore = create<AuthState>()(
         setLoginAnimationPending: (pending) => set({ isLoginAnimationPending: pending }),
         liveSteps: 0,
         setLiveSteps: (steps) => set({ liveSteps: steps }),
+        syncLiveSteps: async (steps: number) => {
+            const { user } = get();
+            if (!user) return;
+
+            if (Capacitor.getPlatform() !== 'android') return;
+
+            const now = Date.now();
+            const timeElapsed = now - lastSyncTime;
+            const stepsChanged = steps !== lastSyncedSteps;
+
+            if (stepsChanged && (timeElapsed > 60000 || lastSyncTime === 0)) {
+                lastSyncTime = now;
+                lastSyncedSteps = steps;
+                try {
+                    await api.updateActiveSessionSteps(user.id, steps);
+                    console.log(`[authStore] Synced live steps to database: ${steps}`);
+                } catch (err) {
+                    console.warn('[authStore] Failed to sync live steps to database:', err);
+                }
+            }
+        },
 
         setUser: (user) => set({ user, error: null, loading: false }),
         setInitialized: (initialized) => set({ isInitialized: initialized }),
@@ -803,6 +828,14 @@ export const useAuthStore = create<AuthState>()(
                     }
                 }
 
+                let activeSteps = 0;
+                if (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn) {
+                    const activeEvent = events.slice().reverse().find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
+                    if (activeEvent && typeof activeEvent.steps === 'number') {
+                        activeSteps = activeEvent.steps;
+                    }
+                }
+
                 set({
                     isCheckedIn: currentlyCheckedIn || (!isOfficeStaffRole && isSiteOtCheckedIn),
                     isOnBreak: isOnBreak,
@@ -823,7 +856,8 @@ export const useAuthStore = create<AuthState>()(
                     isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
                     isSiteOtCheckedIn,
                     hasPreviousDayOpenSession,
-                    previousDaySessionInfo
+                    previousDaySessionInfo,
+                    liveSteps: activeSteps
                 });
 
                 // If user is still on break and the app just resumed / reloaded,
@@ -858,6 +892,7 @@ export const useAuthStore = create<AuthState>()(
                             await stepCounterService.startCounting((steps) => {
                                 console.log(`[authStore] Resumed step counting: ${steps}`);
                                 set({ liveSteps: steps });
+                                get().syncLiveSteps(steps);
                             });
                         } catch (e) {
                             console.warn('[authStore] Failed to resume step counting:', e);
@@ -1129,10 +1164,11 @@ export const useAuthStore = create<AuthState>()(
                                     console.warn(`[authStore] Step counter preflight failed: ${reason}`);
                                     return; // Permission denied — counting won't start, steps will be 0
                                 }
-                                await stepCounterService.startCounting((steps) => {
-                                    console.log(`[authStore] Current steps: ${steps}`);
-                                    set({ liveSteps: steps });
-                                });
+                                 await stepCounterService.startCounting((steps) => {
+                                     console.log(`[authStore] Current steps: ${steps}`);
+                                     set({ liveSteps: steps });
+                                     get().syncLiveSteps(steps);
+                                 });
                             } catch (err) {
                                 console.warn('[authStore] Failed to start step counter:', err);
                             }
