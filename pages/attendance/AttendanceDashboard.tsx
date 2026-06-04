@@ -1467,8 +1467,16 @@ const AttendanceDashboard: React.FC = () => {
                 const absentTrend: number[] = [];
                 const productivityTrend: number[] = [];
 
+                const todayDateStr = format(today, 'yyyy-MM-dd');
+                // For today's bar: only start showing absent after 11 AM IST.
+                // Before that, the day is still early and many employees haven't punched in yet —
+                // counting them as absent would inflate the bar with false data.
+                const todayAbsentCutoffHour = 11;
+                const showTodayAbsent = today.getHours() >= todayAbsentCutoffHour;
+
                 days.forEach(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
+                    const isToday = dateStr === todayDateStr;
                     const rawDayEvents = eventsByDate.get(dateStr) || [];
                     const dayEvents = rawDayEvents.filter(e => activeStaffIds.has(e.userId));
                     
@@ -1481,7 +1489,10 @@ const AttendanceDashboard: React.FC = () => {
                     const dayWFHUserIds = new Set(dayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
                     const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
                     const usersOnLeave = new Set(dayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
-                    const absent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave - inactiveCount);
+                    // For today: only show absent if we're past the cut-off hour, to avoid inflating
+                    // the bar with employees who are simply yet to punch in during an in-progress day.
+                    const rawAbsent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave - inactiveCount);
+                    const absent = isToday && !showTodayAbsent ? 0 : rawAbsent;
 
                     totalPresentForRange += uniqueUsersPresent;
                     totalOnLeaveForRange += usersOnLeave;

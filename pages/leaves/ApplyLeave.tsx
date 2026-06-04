@@ -53,9 +53,12 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
         }),
     reason: yup.string().required('A reason for the leave is required').min(10, 'Please provide a more detailed reason.'),
     dayOption: yup.string().oneOf(['full', 'half']).optional(),
-    // Doctor certificate is ALWAYS optional at submission time.
-    // If not provided, a 24-hour window applies: user must upload within 24h or leave converts to LOP.
-    doctorCertificate: yup.mixed<UploadedFile | null>().nullable().optional(),
+    // Doctor certificate is MANDATORY for Sick Leave — must be submitted with the request.
+    doctorCertificate: yup.mixed<UploadedFile | null>().when('leaveType', {
+        is: (val: string) => val === 'Sick',
+        then: schema => schema.required("A doctor's certificate or prescription is required for Sick Leave."),
+        otherwise: schema => schema.nullable().optional(),
+    }),
     // Correction validation
     correctionStatus: yup.string().when('leaveType', {
         is: (val: string) => ['Correction', 'Permission'].includes(val),
@@ -1370,21 +1373,20 @@ const ApplyLeave: React.FC = () => {
                             </div>
 
                             {watchLeaveType === 'Sick' && (
-                                <div className={`p-4 rounded-xl border ${isMobile ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+                                <div className={`p-4 rounded-xl border ${isMobile ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'}`}>
                                     <div className="flex items-start gap-3">
                                         <div className="shrink-0 mt-0.5">
-                                            <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
                                             </svg>
                                         </div>
                                         <div className="space-y-1">
-                                            <p className={`text-sm font-black uppercase tracking-wide ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
-                                                ⚠ Doctor Certificate Required Within 24 Hours
+                                            <p className={`text-sm font-black uppercase tracking-wide ${isMobile ? 'text-red-400' : 'text-red-700'}`}>
+                                                ⚠ Doctor Certificate Required
                                             </p>
-                                            <p className={`text-xs leading-relaxed ${isMobile ? 'text-amber-300/80' : 'text-amber-600'}`}>
-                                                You may submit this Sick Leave now without a doctor's certificate or prescription.
-                                                However, you <strong>must upload the document within 24 hours</strong> of submission.
-                                                If not uploaded in time, this leave will be <strong>automatically converted to Loss of Pay (LOP)</strong>.
+                                            <p className={`text-xs leading-relaxed ${isMobile ? 'text-red-300/80' : 'text-red-600'}`}>
+                                                A doctor's certificate or prescription <strong>must be attached</strong> when submitting a Sick Leave request.
+                                                Requests without a certificate will not be accepted.
                                             </p>
                                         </div>
                                     </div>
@@ -1398,7 +1400,7 @@ const ApplyLeave: React.FC = () => {
                                         control={control} 
                                         render={({ field, fieldState }) => (
                                             <UploadDocument 
-                                                label="Doctor's Certificate (Optional — Upload now or within 24 hrs)"
+                                                label="Doctor's Certificate (Required)"
                                                 file={field.value} 
                                                 onFileChange={field.onChange} 
                                                 error={fieldState.error?.message} 

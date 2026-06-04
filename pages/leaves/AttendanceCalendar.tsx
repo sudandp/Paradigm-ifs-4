@@ -25,6 +25,21 @@ interface AttendanceCalendarProps {
     onSiteOtDaysChange?: (otDays: number) => void;
 }
 
+const getLeaveAbbreviation = (leaveType?: string): string => {
+    const type = String(leaveType || '').toLowerCase().trim();
+    if (type.includes('earned') || type === 'el') return 'EL';
+    if (type.includes('sick') || type === 'sl') return 'SL';
+    if (type.includes('comp') || type === 'co') return 'CO';
+    if (type.includes('floating') || type === 'fh') return 'FH';
+    if (type.includes('maternity') || type === 'ml') return 'ML';
+    if (type.includes('child care') || type === 'ccl') return 'CCL';
+    if (type.includes('loss') || type.includes('lop')) return 'LOP';
+    if (type.includes('wfh') || type === 'wh') return 'WH';
+    if (type.includes('permission') || type === 'rp') return 'RP';
+    if (type.includes('pink') || type === 'pl') return 'PL';
+    return 'WH';
+};
+
 const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ 
     leaveRequests = [], 
     userHolidays = [], 
@@ -472,10 +487,17 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     borderColor: 'transparent'
                                 };
                             } else if (relevantLeave && relevantLeave.dayOption === 'half') {
-                                overlayText = status === 'holiday-present' ? 'H/0.5P' : status === 'weekend-present' ? 'W.O/0.5P' : '0.5P';
+                                const leaveCode = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);
+                                overlayText = status === 'holiday-present' 
+                                    ? `H/0.5P+0.5 ${leaveCode}` 
+                                    : status === 'weekend-present' 
+                                        ? `W.O/0.5P+0.5 ${leaveCode}` 
+                                        : `0.5P+0.5 ${leaveCode}`;
                                 const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
+                                const isPink = String(relevantLeave.leaveType || '').toLowerCase().includes('pink');
+                                const rightColor = isPink ? '#ec4899' : '#2563eb';
                                 customStyle = {
-                                    background: `linear-gradient(135deg, ${leftColor} 50%, #2563eb 50%)`, // Half Holiday/Sunday / Half Blue
+                                    background: `linear-gradient(135deg, ${leftColor} 50%, ${rightColor} 50%)`, // Half Holiday/Sunday / Half Blue or Pink
                                     borderColor: 'transparent'
                                 };
                             } else if (workingHours >= shiftThreshold) {
@@ -537,31 +559,22 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                         borderColor: 'transparent'
                                     };
                                 } else if (request.dayOption === 'half') {
-                                    const isPink = String(request.leaveType).toLowerCase().includes('pink');
-                                    overlayText = '0.5P';
+                                    const leaveCode = getLeaveAbbreviation(request.leaveType || (request as any).leave_type);
+                                    overlayText = `0.5 A + 0.5 ${leaveCode}`;
+                                    const isPink = String(request.leaveType || '').toLowerCase().includes('pink');
+                                    const rightColor = isPink ? '#ec4899' : '#2563eb';
                                     customStyle = {
-                                        background: `linear-gradient(135deg, #10b981 50%, ${isPink ? '#ec4899' : '#2563eb'} 50%)`, // Half Green / Half Pink or Blue
+                                        background: `linear-gradient(135deg, #ef4444 50%, ${rightColor} 50%)`, // Half Red (Absent) / Half Blue or Pink
                                         borderColor: 'transparent'
                                     };
                                 } else {
-                                    switch (request.leaveType) {
-                                        case 'Earned': overlayText = 'EL'; break;
-                                        case 'Sick': overlayText = 'SL'; break;
-                                        case 'Comp Off': overlayText = 'CO'; break;
-                                        case 'Floating': overlayText = 'FH'; break;
-                                        case 'Maternity': overlayText = 'ML'; break;
-                                        case 'Child Care': overlayText = 'CCL'; break;
-                                        case 'Loss of Pay': overlayText = 'LOP'; break;
-                                        case 'WFH': overlayText = 'WH'; break;
-                                        case 'Permission': overlayText = 'RP'; break;
-                                        case 'Pink Leave':
-                                            overlayText = 'PL';
-                                            customStyle = {
-                                                background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)', // Premium pink gradient
-                                                borderColor: 'transparent'
-                                            };
-                                            break;
-                                        default: overlayText = 'WH'; break;
+                                    const code = getLeaveAbbreviation(request.leaveType || (request as any).leave_type);
+                                    overlayText = code;
+                                    if (code === 'PL') {
+                                        customStyle = {
+                                            background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)', // Premium pink gradient
+                                            borderColor: 'transparent'
+                                        };
                                     }
                                 }
                             } else {
@@ -635,7 +648,12 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             });
                             const isCorrection = relevantLeave && String(relevantLeave.leaveType || '').toLowerCase().includes('correction');
                             if (isCorrection) { usedCodes.add('P'); return; }
-                            if (relevantLeave?.dayOption === 'half') { usedCodes.add('0.5P'); return; }
+                            if (relevantLeave?.dayOption === 'half') {
+                                usedCodes.add('0.5P');
+                                const code = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);
+                                usedCodes.add(code);
+                                return;
+                            }
                             if (workingHours >= shiftThreshold) {
                                 if (s === 'holiday-present') usedCodes.add('H/P');
                                 else if (s === 'weekend-present') usedCodes.add('W.O/P');
@@ -662,20 +680,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const lType = String(req.leaveType || '').toLowerCase();
                             if (lType.includes('correction')) { usedCodes.add('RC'); return; }
                             if (lType.includes('permission')) { usedCodes.add('RP'); return; }
-                            if (req.dayOption === 'half') { usedCodes.add('0.5P'); return; }
-                            switch (req.leaveType) {
-                                case 'Earned':      usedCodes.add('EL');  break;
-                                case 'Sick':        usedCodes.add('SL');  break;
-                                case 'Comp Off':    usedCodes.add('CO');  break;
-                                case 'Floating':    usedCodes.add('FH');  break;
-                                case 'Maternity':   usedCodes.add('ML');  break;
-                                case 'Child Care':  usedCodes.add('CCL'); break;
-                                case 'Loss of Pay': usedCodes.add('LOP'); break;
-                                case 'WFH':         usedCodes.add('WH');  break;
-                                case 'Permission':  usedCodes.add('RP');  break;
-                                case 'Pink Leave':  usedCodes.add('PL');  break;
-                                default:            usedCodes.add('WH');  break;
+                            if (req.dayOption === 'half') {
+                                usedCodes.add('0.5P');
+                                const code = getLeaveAbbreviation(req.leaveType || (req as any).leave_type);
+                                usedCodes.add(code);
+                                return;
                             }
+                            const code = getLeaveAbbreviation(req.leaveType || (req as any).leave_type);
+                            usedCodes.add(code);
                         }
                     });
                     // Also add OT if any site OT days

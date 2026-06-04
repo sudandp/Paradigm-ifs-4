@@ -149,23 +149,41 @@ async function fetchAttendanceSummaryFallback(
   // 4. Generate day-by-day result
   const result: DaySummary[] = [];
   const cursor = new Date(startDate);
+  
+  // Pre-fetch metrics if we need them for today
+  let todayMetrics: TodayMetrics | null = null;
+  if (todayStr >= format(startDate, 'yyyy-MM-dd') && todayStr <= format(endDate, 'yyyy-MM-dd')) {
+    todayMetrics = await fetchTodayMetricsFallback(societyId, siteIds);
+  }
+
   while (cursor <= endDate) {
     const dayStr     = format(cursor, 'yyyy-MM-dd');
+    const isToday    = dayStr === todayStr;
     const presentSet = dayPresentMap[dayStr] ?? new Set();
     const hoursInfo  = dayHoursMap[dayStr];
-    const presentCnt = presentSet.size;
-    const absentCnt  = Math.max(0, staffCount - presentCnt);
+    
+    let presentCnt = presentSet.size;
+    let wfhCnt = 0;
+    let onLeaveCnt = 0;
+    let absentCnt  = Math.max(0, staffCount - presentCnt);
+
+    if (isToday && todayMetrics) {
+        presentCnt = todayMetrics.present_today;
+        wfhCnt = todayMetrics.wfh_today;
+        onLeaveCnt = todayMetrics.on_leave_today;
+        absentCnt = todayMetrics.absent_today;
+    }
 
     result.push({
       day:                dayStr,
       present_count:      presentCnt,
-      wfh_count:          0,
-      on_leave_count:     0,
+      wfh_count:          wfhCnt,
+      on_leave_count:     onLeaveCnt,
       absent_count:       absentCnt,
       avg_working_hours:  hoursInfo
         ? Math.round((hoursInfo.totalHours / hoursInfo.count) * 10) / 10
         : 0,
-      late_arrivals:      0,
+      late_arrivals:      isToday ? (todayMetrics?.late_arrivals_today ?? 0) : 0,
       total_active_staff: staffCount,
     });
     cursor.setDate(cursor.getDate() + 1);
