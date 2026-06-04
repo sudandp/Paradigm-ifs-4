@@ -419,8 +419,9 @@ const LeaveDashboard: React.FC = () => {
     }, [fetchData]);
 
     // --- 24-hour Sick Leave → LOP auto-conversion ---
-    // Runs each time requests are loaded. Any approved Sick Leave without a doctor cert
-    // that was submitted more than 24 hours ago is automatically converted to Loss of Pay.
+    // Policy effective from: June 1, 2026. Only applies to Sick Leaves submitted on or after this date.
+    // If no doctor cert is uploaded within 24 hours of submission, the leave is converted to LOP.
+    const CERT_POLICY_START = '2026-06-01';
     useEffect(() => {
         const convertExpiredSickLeaves = async () => {
             if (!requests.length) return;
@@ -430,6 +431,8 @@ const LeaveDashboard: React.FC = () => {
                 if (req.leaveType !== 'Sick') return false;
                 if (req.doctorCertificate) return false; // already has cert
                 if (!req.createdAt) return false;
+                // Only apply policy to leaves submitted on/after June 1, 2026
+                if (req.createdAt < CERT_POLICY_START) return false;
                 const created = new Date(req.createdAt);
                 const hoursElapsed = (now.getTime() - created.getTime()) / (1000 * 60 * 60);
                 return hoursElapsed > 24;
@@ -927,14 +930,16 @@ const LeaveDashboard: React.FC = () => {
                                                      req.leaveType === 'Floating' ? Plane : 
                                                      req.leaveType === 'Comp Off' ? CalendarClock : Briefcase;
 
-                                    // --- 24-hour cert window helper ---
+                                    // --- 24-hour cert window helper (policy from Jun 1, 2026 only) ---
                                     const now = new Date();
                                     const isSickNoCert = req.leaveType === 'Sick' && !req.doctorCertificate;
                                     const createdAt = req.createdAt ? new Date(req.createdAt) : null;
+                                    // Only enforce cert policy for leaves submitted on/after June 1, 2026
+                                    const isAfterPolicyStart = req.createdAt ? req.createdAt >= CERT_POLICY_START : false;
                                     const hoursElapsed = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60) : null;
                                     const isWithin24h = hoursElapsed !== null && hoursElapsed <= 24;
                                     const isPast24h = hoursElapsed !== null && hoursElapsed > 24;
-                                    const certPendingUpload = isSickNoCert && isWithin24h;
+                                    const certPendingUpload = isSickNoCert && isWithin24h && isAfterPolicyStart;
                                     const hoursLeft = createdAt ? Math.max(0, 24 - hoursElapsed!) : null;
                                     
                                     return (
