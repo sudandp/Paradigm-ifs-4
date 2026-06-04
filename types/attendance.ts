@@ -489,7 +489,10 @@ export interface LeaveRequest {
   approvalHistory: ApprovalRecord[];
   doctorCertificate?: UploadedFile | null;
   correctionDetails?: CorrectionDetails | null;
+  /** ISO timestamp of when the request was created. Used for 24h doctor cert window tracking. */
+  createdAt?: string;
 }
+
 
 export interface ExtraWorkLog {
   id: string;

@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -133,6 +133,9 @@ const LeaveDashboard: React.FC = () => {
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all'>('all');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningRequestId, setActioningRequestId] = useState<string | null>(null);
+    const [certUploadRequest, setCertUploadRequest] = useState<LeaveRequest | null>(null);
+    const [certFile, setCertFile] = useState<UploadedFile | null>(null);
+    const [isUploadingCert, setIsUploadingCert] = useState(false);
     const isMobile = useMediaQuery('(max-width: 767px)');
     const navigate = useNavigate();
     const [calculatedOTHours, setCalculatedOTHours] = useState<number>(0);
@@ -414,6 +417,62 @@ const LeaveDashboard: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // --- 24-hour Sick Leave → LOP auto-conversion ---
+    // Runs each time requests are loaded. Any approved Sick Leave without a doctor cert
+    // that was submitted more than 24 hours ago is automatically converted to Loss of Pay.
+    useEffect(() => {
+        const convertExpiredSickLeaves = async () => {
+            if (!requests.length) return;
+            const now = new Date();
+
+            const expired = requests.filter(req => {
+                if (req.leaveType !== 'Sick') return false;
+                if (req.doctorCertificate) return false; // already has cert
+                if (!req.createdAt) return false;
+                const created = new Date(req.createdAt);
+                const hoursElapsed = (now.getTime() - created.getTime()) / (1000 * 60 * 60);
+                return hoursElapsed > 24;
+            });
+
+            for (const req of expired) {
+                try {
+                    await api.updateLeaveType(req.id, 'Loss of Pay');
+                    await api.createNotification({
+                        userId: req.userId,
+                        message: `Your Sick Leave (${req.startDate}) has been automatically converted to Loss of Pay because no doctor's certificate was uploaded within 24 hours.`,
+                        type: 'warning',
+                        linkTo: '/leaves/dashboard'
+                    });
+                } catch (e) {
+                    console.error('Failed to auto-convert sick leave to LOP:', e);
+                }
+            }
+
+            if (expired.length > 0) {
+                fetchData(); // refresh list after conversions
+            }
+        };
+
+        convertExpiredSickLeaves();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [requests]);
+
+    const handleUploadCertificate = async () => {
+        if (!certUploadRequest || !certFile) return;
+        setIsUploadingCert(true);
+        try {
+            await api.updateLeaveRequest(certUploadRequest.id, { doctorCertificate: certFile });
+            setToast({ message: 'Doctor\'s certificate uploaded successfully. Your Sick Leave is now confirmed.', type: 'success' });
+            setCertUploadRequest(null);
+            setCertFile(null);
+            fetchData();
+        } catch {
+            setToast({ message: 'Failed to upload certificate. Please try again.', type: 'error' });
+        } finally {
+            setIsUploadingCert(false);
+        }
+    };
 
     const handleNewRequest = () => {
         navigate('/leaves/apply');
@@ -867,6 +926,16 @@ const LeaveDashboard: React.FC = () => {
                                     const LeaveIcon = req.leaveType === 'Sick' ? HeartPulse : 
                                                      req.leaveType === 'Floating' ? Plane : 
                                                      req.leaveType === 'Comp Off' ? CalendarClock : Briefcase;
+
+                                    // --- 24-hour cert window helper ---
+                                    const now = new Date();
+                                    const isSickNoCert = req.leaveType === 'Sick' && !req.doctorCertificate;
+                                    const createdAt = req.createdAt ? new Date(req.createdAt) : null;
+                                    const hoursElapsed = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60) : null;
+                                    const isWithin24h = hoursElapsed !== null && hoursElapsed <= 24;
+                                    const isPast24h = hoursElapsed !== null && hoursElapsed > 24;
+                                    const certPendingUpload = isSickNoCert && isWithin24h;
+                                    const hoursLeft = createdAt ? Math.max(0, 24 - hoursElapsed!) : null;
                                     
                                     return (
                                         <tr key={req.id} className="leave-row-card group border-b border-border/40 last:border-0">
@@ -883,6 +952,12 @@ const LeaveDashboard: React.FC = () => {
                                                              req.leaveType}
                                                         </p>
                                                         {req.dayOption === 'half' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Half Day</span>}
+                                                        {/* 24h cert warning badge */}
+                                                        {certPendingUpload && (
+                                                            <span className="mt-1 flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">
+                                                                ⚠ Upload Cert — {Math.floor(hoursLeft!)}h {Math.round((hoursLeft! % 1) * 60)}m left
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>
@@ -905,30 +980,43 @@ const LeaveDashboard: React.FC = () => {
                                                 <LeaveStatusChip status={req.status} />
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
-                                                {['pending_manager_approval', 'rejected', 'cancelled', 'withdrawn'].includes(req.status) ? (
-                                                    <div className="flex justify-end gap-1">
-                                                        {actioningRequestId === req.id ? (
-                                                            <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                                                        ) : (
-                                                            <>
-                                                                <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
-                                                                    <Edit className="h-4 w-4" />
-                                                                </button>
-                                                                {req.status === 'pending_manager_approval' ? (
-                                                                    <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Withdraw Request">
-                                                                        <XCircle className="h-4 w-4" />
+                                                <div className="flex justify-end gap-1 flex-wrap">
+                                                    {/* Upload Certificate button — shown within the 24h window */}
+                                                    {certPendingUpload && (
+                                                        <button 
+                                                            onClick={() => { setCertUploadRequest(req); setCertFile(null); }}
+                                                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors"
+                                                            title="Upload doctor's certificate before the 24h deadline"
+                                                        >
+                                                            <Upload className="h-3.5 w-3.5" />
+                                                            Upload Cert
+                                                        </button>
+                                                    )}
+                                                    {['pending_manager_approval', 'rejected', 'cancelled', 'withdrawn'].includes(req.status) ? (
+                                                        <>
+                                                            {actioningRequestId === req.id ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                                                            ) : (
+                                                                <>
+                                                                    <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
+                                                                        <Edit className="h-4 w-4" />
                                                                     </button>
-                                                                ) : (
-                                                                    <button onClick={() => handleDeleteRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Delete Record">
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </button>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[10px] text-muted italic font-medium">Finalized</span>
-                                                )}
+                                                                    {req.status === 'pending_manager_approval' ? (
+                                                                        <button onClick={() => handleCancelRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Withdraw Request">
+                                                                            <XCircle className="h-4 w-4" />
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button onClick={() => handleDeleteRequest(req.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors" title="Delete Record">
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        !certPendingUpload && <span className="text-[10px] text-muted italic font-medium">Finalized</span>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -982,6 +1070,36 @@ const LeaveDashboard: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Certificate Upload Modal */}
+            {certUploadRequest && (
+                <Modal onClose={() => { setCertUploadRequest(null); setCertFile(null); }}>
+                    <div className="p-6 space-y-4 max-w-md">
+                        <h3 className="text-lg font-bold text-primary-text">Upload Doctor's Certificate</h3>
+                        <p className="text-sm text-muted">
+                            Upload the doctor's certificate or prescription for your <strong>Sick Leave ({certUploadRequest.startDate})</strong>.
+                            Failure to upload within 24 hours will convert this leave to <strong>Loss of Pay</strong>.
+                        </p>
+                        <UploadDocument
+                            label="Doctor's Certificate / Prescription"
+                            file={certFile}
+                            onFileChange={setCertFile}
+                            allowCapture
+                        />
+                        <div className="flex gap-3 pt-2">
+                            <Button variant="secondary" onClick={() => { setCertUploadRequest(null); setCertFile(null); }} className="flex-1">Cancel</Button>
+                            <Button 
+                                onClick={handleUploadCertificate} 
+                                isLoading={isUploadingCert} 
+                                disabled={!certFile || isUploadingCert}
+                                className="flex-1"
+                            >
+                                Submit Certificate
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
 
             {/* Employee Attendance Log */}
             <EmployeeLog initialEvents={events} />
