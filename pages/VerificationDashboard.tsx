@@ -87,12 +87,15 @@ const VerificationDashboard: React.FC = () => {
     }, [fetchSubmissions]);
 
     const filteredSubmissions = useMemo(() => {
-        return submissions.filter(s =>
-        (s.personal.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.organizationName?.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+        return submissions.filter(s => {
+            const siteName = s.organizationName || s.organization?.organizationName || '';
+            return (
+                s.personal.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.personal.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.personal.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                siteName.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        });
     }, [submissions, searchTerm]);
 
     const handleAction = async (action: 'approve' | 'reject', id: string) => {
@@ -177,7 +180,7 @@ const VerificationDashboard: React.FC = () => {
                             {statusFilter !== 'verified' && (
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
                             )}
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Portal Verification</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Designation</th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
@@ -202,14 +205,19 @@ const VerificationDashboard: React.FC = () => {
                                             </div>
                                         </div>
                                     </td>
-                                    <td data-label="Site" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-text">{s.organizationName}</td>
+                                    <td data-label="Site" className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-text">{s.organizationName || s.organization?.organizationName || '-'}</td>
                                     {statusFilter !== 'verified' && (
                                         <td data-label="Status" className="px-6 py-4 whitespace-nowrap">
                                             <StatusChip status={s.status} />
                                         </td>
                                     )}
-                                    <td data-label="Portal Verification" className="px-6 py-4 whitespace-nowrap">
-                                        <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                    <td data-label="Designation" className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm font-medium text-primary-text">{s.organization?.designation || '-'}</div>
+                                        {s.status === 'verified' && (
+                                            <div className="mt-1">
+                                                <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                            </div>
+                                        )}
                                     </td>
                                     <td data-label="Actions" className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                         <div className="flex items-center gap-2">

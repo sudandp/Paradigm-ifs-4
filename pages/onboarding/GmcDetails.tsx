@@ -63,6 +63,9 @@ const GmcDetails = () => {
     const spouse = useMemo(() => onboardingData.family.find(m => m.relation === 'Spouse'), [onboardingData.family]);
     const children = useMemo(() => onboardingData.family.filter(m => m.relation === 'Child'), [onboardingData.family]);
 
+    const isMarried = onboardingData.personal.maritalStatus === 'Married';
+    const hasSpouseInFamily = !!spouse;
+
     const dependents = useMemo(() => {
         const all = [];
         if (spouse) all.push(spouse);
@@ -152,6 +155,17 @@ const GmcDetails = () => {
                         )}
                     />
 
+                    {isMarried && isOptedIn === null && (
+                        <p className="mt-2 text-xs text-emerald-400 bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 animate-pulse">
+                            💡 Since you are Married, we recommend opting in to cover your spouse under the group medical cover.
+                        </p>
+                    )}
+                    {isMarried && !hasSpouseInFamily && isOptedIn === true && (
+                        <p className="mt-2 text-xs text-yellow-400 bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
+                            ⚠️ You are marked as Married, but have not listed a Spouse in the Family Details section. Add them if you want to include them in the policy.
+                        </p>
+                    )}
+
                     {isOptedIn === true && (
                         <div className="pt-4 space-y-4 animate-fade-in-down">
                             <label className="text-sm font-medium text-gray-400">Select Dependents</label>
@@ -211,6 +225,16 @@ const GmcDetails = () => {
                         )}
                     />
                     {errors.isOptedIn && <p className="mt-1 text-xs text-red-600">{errors.isOptedIn.message}</p>}
+                    {isMarried && isOptedIn === null && (
+                        <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20 animate-pulse">
+                            💡 Since you are Married, we recommend opting in to cover your spouse under the group medical cover.
+                        </p>
+                    )}
+                    {isMarried && !hasSpouseInFamily && isOptedIn === true && (
+                        <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
+                            ⚠️ You are marked as Married, but have not listed a Spouse in the Family Details section. Add them if you want to include them in the policy.
+                        </p>
+                    )}
                 </div>
 
                 {isOptedIn === true && (

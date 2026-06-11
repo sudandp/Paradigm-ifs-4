@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Avatars } from './Avatars';
 import { supabase } from '../../services/supabase';
+import { getProxyUrl } from '../../utils/fileUrl';
 
 interface ProfilePlaceholderProps {
     className?: string;
@@ -34,7 +35,7 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
             photoUrl.startsWith('./') ||
             photoUrl.startsWith('blob:')
         ) {
-            return photoUrl;
+            return getProxyUrl(photoUrl);
         }
 
         // Handle storage paths (e.g., 'avatars/xyz.jpg' or '123/documents/...')
@@ -44,7 +45,7 @@ export const ProfilePlaceholder: React.FC<ProfilePlaceholderProps> = ({ classNam
             const path = isAvatar ? photoUrl.replace('avatars/', '') : photoUrl;
             
             const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-            return data.publicUrl;
+            return getProxyUrl(data.publicUrl);
         } catch (err) {
             console.warn('Failed to resolve photo URL path:', photoUrl, err);
             return null;

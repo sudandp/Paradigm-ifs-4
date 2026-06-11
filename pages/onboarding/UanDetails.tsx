@@ -51,7 +51,11 @@ const UanDetails = () => {
     
     useEffect(() => {
         // Sync form with global store data, which might have been pre-filled
-        reset(data.uan);
+        const uanData = { ...data.uan };
+        if (uanData.uanNumber && !uanData.hasPreviousPf) {
+            uanData.hasPreviousPf = true;
+        }
+        reset(uanData);
     }, [data.uan, reset]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.

@@ -21,7 +21,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 interface DatePickerProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
-  label: string;
+  label: React.ReactNode;
   id: string;
   error?: string;
   value?: string | null;

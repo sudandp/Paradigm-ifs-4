@@ -6,6 +6,11 @@ interface ImportMetaEnv {
     readonly VITE_SUPABASE_URL: string;
     readonly VITE_SUPABASE_ANON_KEY: string;
     readonly VITE_API_KEY: string;
+    readonly VITE_API_KEY_1: string;
+    readonly VITE_API_KEY_2: string;
+    readonly VITE_API_KEY_3: string;
+    readonly VITE_API_KEY_4: string;
+    readonly VITE_API_KEY_5: string;
     readonly VITE_FIREBASE_API_KEY: string;
     readonly VITE_FIREBASE_AUTH_DOMAIN: string;
     readonly VITE_FIREBASE_PROJECT_ID: string;

@@ -5,7 +5,7 @@ import type { OnboardingData } from '@/types';
 import StatusChip from '@/components/ui/StatusChip';
 import Button from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
-import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square } from 'lucide-react';
+import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square, Edit2, Trash2 } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import TableSkeleton from '@/components/skeletons/TableSkeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -66,20 +66,20 @@ const VerificationDashboard: React.FC = () => {
     const navigate = useNavigate();
     const isMobile = useMediaQuery('(max-width: 767px)');
 
-    const fetchSubmissions = useCallback(async () => {
-        setIsLoading(true);
+    const fetchSubmissions = useCallback(async (showSkeleton = false) => {
+        if (showSkeleton) setIsLoading(true);
         try {
             const data = await api.getVerificationSubmissions(statusFilter === 'all' ? undefined : statusFilter);
             setSubmissions(data);
         } catch (error) {
             console.error("Failed to fetch submissions", error);
         } finally {
-            setIsLoading(false);
+            if (showSkeleton) setIsLoading(false);
         }
     }, [statusFilter]);
 
     useEffect(() => {
-        fetchSubmissions();
+        fetchSubmissions(true);
 
         // REAL-TIME LISTENER
         const channel = supabase.channel('submissions-feed')
@@ -88,8 +88,8 @@ const VerificationDashboard: React.FC = () => {
                 { event: '*', schema: 'public', table: 'onboarding_submissions' },
                 (payload) => {
                     console.log('Real-time change received!', payload);
-                    // Simple and effective way to update is to just refetch the data
-                    fetchSubmissions();
+                    // Background refresh without flashing skeleton
+                    fetchSubmissions(false);
                 }
             )
             .subscribe();
@@ -102,12 +102,15 @@ const VerificationDashboard: React.FC = () => {
 
     const filteredSubmissions = useMemo(() => {
         if (!submissions) return [];
-        return submissions.filter(s =>
-        (s.personal.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.personal.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.organizationName?.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+        return submissions.filter(s => {
+            const siteName = s.organizationName || s.organization?.organizationName || '';
+            return (
+                s.personal.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.personal.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                s.personal.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                siteName.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        });
     }, [submissions, searchTerm]);
 
     const handleAction = async (action: 'approve' | 'reject', id: string) => {
@@ -142,6 +145,18 @@ const VerificationDashboard: React.FC = () => {
             setToast({ message: 'An error occurred during sync.', type: 'error' });
         } finally {
             setSyncingId(null);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm("Are you sure you want to delete this submission? This action cannot be undone.")) return;
+        try {
+            await api.deleteOnboardingSubmission(id);
+            setToast({ message: 'Submission deleted successfully!', type: 'success' });
+            fetchSubmissions(false);
+        } catch (error) {
+            console.error("Failed to delete submission", error);
+            setToast({ message: 'Failed to delete submission.', type: 'error' });
         }
     };
 
@@ -254,22 +269,46 @@ const VerificationDashboard: React.FC = () => {
                                     
                                     <div className="flex flex-col gap-2.5 bg-black/20 rounded-[14px] p-3 border border-[#1d422f]/30 mt-1">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Site Location</span>
-                                            <span className="text-xs text-gray-200 font-medium">{s.organizationName}</span>
+                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Designation</span>
+                                            <span className="text-xs text-gray-200 font-medium">{s.organization?.designation || '-'}</span>
                                         </div>
                                         <div className="w-full h-px bg-[#1d422f]/30"></div>
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Verifications</span>
-                                            <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                            <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Site Location</span>
+                                            <span className="text-xs text-gray-200 font-medium">{s.organizationName || s.organization?.organizationName || '-'}</span>
                                         </div>
+                                        {s.status === 'verified' && (
+                                            <>
+                                                <div className="w-full h-px bg-[#1d422f]/30"></div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Verifications</span>
+                                                    <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center justify-end gap-2 mt-1 pt-3 border-t border-[#1d422f]/40">
                                         <button 
                                             onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
                                             className="px-4 py-2.5 text-gray-300 hover:text-white bg-[#123824] hover:bg-[#1a4a30] rounded-[12px] text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-[#1d422f]"
+                                            title="View Details"
                                         >
                                             <Eye className="h-3.5 w-3.5" /> View
+                                        </button>
+                                        <button 
+                                            onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                            className="px-4 py-2.5 text-gray-300 hover:text-white bg-[#123824] hover:bg-[#1a4a30] rounded-[12px] text-xs font-bold transition-all duration-200 flex items-center gap-1.5 border border-[#1d422f]"
+                                            title="Edit Submission"
+                                        >
+                                            <Edit2 className="h-3.5 w-3.5" /> Edit
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDelete(s.id!)}
+                                            className="px-4 py-2.5 text-red-400 bg-red-400/10 hover:bg-red-400/20 rounded-[12px] text-xs font-bold transition-all duration-200 border border-red-400/30 flex items-center gap-1.5"
+                                            title="Delete Submission"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" /> Delete
                                         </button>
                                         
                                         {s.status === 'pending' && (
@@ -314,7 +353,7 @@ const VerificationDashboard: React.FC = () => {
                                 {statusFilter !== 'verified' && (
                                     <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Status</th>
                                 )}
-                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Portal Verification</th>
+                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Designation</th>
                                 <th scope="col" className="px-5 py-3 text-right text-[10px] font-bold text-gray-400 md:text-gray-500 uppercase tracking-wider border-b border-[#1d422f] md:border-gray-100">Actions</th>
                             </tr>
                         </thead>
@@ -352,15 +391,20 @@ const VerificationDashboard: React.FC = () => {
                                             </div>
                                         </td>
                                         <td data-label="Site" className="px-5 py-3 whitespace-nowrap">
-                                            <div className="text-sm font-medium text-gray-300 md:text-gray-700">{s.organizationName}</div>
+                                            <div className="text-sm font-medium text-gray-300 md:text-gray-700">{s.organizationName || s.organization?.organizationName || '-'}</div>
                                         </td>
                                         {statusFilter !== 'verified' && (
                                             <td data-label="Status" className="px-5 py-3 whitespace-nowrap">
                                                 <StatusChip status={s.status} />
                                             </td>
                                         )}
-                                        <td data-label="Portal Verification" className="px-5 py-3 whitespace-nowrap">
-                                            <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                        <td data-label="Designation" className="px-5 py-3 whitespace-nowrap">
+                                            <div className="text-sm font-medium text-gray-300 md:text-gray-700">{s.organization?.designation || '-'}</div>
+                                            {s.status === 'verified' && (
+                                                <div className="mt-1">
+                                                    <VerificationChecks submission={s} isSyncing={syncingId === s.id} />
+                                                </div>
+                                            )}
                                         </td>
                                         <td data-label="Actions" className="px-5 py-3 whitespace-nowrap text-right">
                                             <div className="flex items-center justify-end gap-1">
@@ -372,11 +416,25 @@ const VerificationDashboard: React.FC = () => {
                                                     <Eye className="h-4.5 w-4.5" />
                                                 </button>
                                                 <button 
+                                                    onClick={() => navigate(`/onboarding/add/personal?id=${s.id}`)}
+                                                    className="p-2 text-gray-400 hover:text-[#22c55e] md:hover:text-emerald-600 hover:bg-[#1d422f] md:hover:bg-emerald-50 rounded-lg transition-all duration-200"
+                                                    title="Edit Submission"
+                                                >
+                                                    <Edit2 className="h-4.5 w-4.5" />
+                                                </button>
+                                                <button 
                                                     onClick={() => navigate(`/onboarding/pdf/${s.id}`)}
                                                     className="p-2 text-gray-400 hover:text-[#22c55e] md:hover:text-emerald-600 hover:bg-[#1d422f] md:hover:bg-emerald-50 rounded-lg transition-all duration-200"
                                                     title="Download Forms"
                                                 >
                                                     <FileText className="h-4.5 w-4.5" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDelete(s.id!)}
+                                                    className="p-2 text-gray-400 hover:text-red-500 md:hover:text-red-600 hover:bg-[#1d422f] md:hover:bg-red-50 rounded-lg transition-all duration-200"
+                                                    title="Delete Submission"
+                                                >
+                                                    <Trash2 className="h-4.5 w-4.5" />
                                                 </button>
                                                 {s.status === 'pending' && (
                                                     <div className="flex items-center gap-1 border-l border-[#1d422f] md:border-gray-100 ml-1 pl-1">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, useWatch, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';
@@ -54,6 +54,7 @@ const EsiDetails = () => {
     const { data, updateEsi, setEsiVerifiedStatus } = useOnboardingStore();
     const { esiCtcThreshold, enableEsiRule } = useEnrollmentRulesStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const autoCheckedRef = useRef(false);
     
     const { register, control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<EsiDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -68,8 +69,15 @@ const EsiDetails = () => {
 
     useEffect(() => {
         // Sync form with global store data, which might have been pre-filled
-        reset(data.esi);
-    }, [data.esi, reset]);
+        const esiData = { ...data.esi };
+        const isNewForm = !esiData.esiNumber && !esiData.esicBranch && !esiData.esiRegistrationDate;
+        if (isEligibleForEsi && !esiData.hasEsi && isNewForm && !autoCheckedRef.current) {
+            esiData.hasEsi = true;
+            autoCheckedRef.current = true;
+            updateEsi({ hasEsi: true });
+        }
+        reset(esiData);
+    }, [data.esi, reset, isEligibleForEsi, updateEsi]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {

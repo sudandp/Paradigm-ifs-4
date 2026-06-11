@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useForm, useWatch, type SubmitHandler, type Resolver } from 'react-hook-form';
 // The named import from react-router-dom is correct. No changes needed.
 import { useOutletContext } from 'react-router-dom';
@@ -6,7 +6,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import type { AddressDetails, Address } from '../../types';
+import type { AddressDetails, Address, ExtractedAddress } from '../../types';
 import Input from '../../components/ui/Input';
 import FormHeader from '../../components/onboarding/FormHeader';
 import { api } from '../../services/api';
@@ -42,6 +42,27 @@ const AddressDetails = () => {
     const [isPincodeLoading, setIsPincodeLoading] = useState(false);
     const [pincodeError, setPincodeError] = useState('');
 
+    const uniqueAddresses = useMemo(() => {
+        const list = data.address.extractedAddresses || [];
+        const uniqueMap = new Map<string, ExtractedAddress & { sources: string[] }>();
+        
+        for (const addr of list) {
+            const normalized = `${(addr.line1 || '').trim().toLowerCase()}|${(addr.line2 || '').trim().toLowerCase()}|${(addr.city || '').trim().toLowerCase()}|${(addr.state || '').trim().toLowerCase()}|${(addr.pincode || '').trim().toLowerCase()}`;
+            if (uniqueMap.has(normalized)) {
+                const existing = uniqueMap.get(normalized)!;
+                if (!existing.sources.includes(addr.source)) {
+                    existing.sources.push(addr.source);
+                }
+            } else {
+                uniqueMap.set(normalized, {
+                    ...addr,
+                    sources: [addr.source]
+                });
+            }
+        }
+        return Array.from(uniqueMap.values());
+    }, [data.address.extractedAddresses]);
+
     const { register, handleSubmit, formState: { errors }, control, setValue, trigger, getValues, reset, watch } = useForm<AddressDetails>({
         resolver: yupResolver(addressDetailsSchema) as unknown as Resolver<AddressDetails>,
         defaultValues: data.address,
@@ -53,8 +74,21 @@ const AddressDetails = () => {
 
     useEffect(() => {
         // Sync form with global store data, which might have been pre-filled
-        reset(data.address);
-    }, [data.address, reset]);
+        const addressData = JSON.parse(JSON.stringify(data.address));
+        let updated = false;
+        if (!addressData.present.country) {
+            addressData.present.country = 'India';
+            updated = true;
+        }
+        if (!addressData.permanent.country) {
+            addressData.permanent.country = 'India';
+            updated = true;
+        }
+        if (updated) {
+            updateAddress(addressData);
+        }
+        reset(addressData);
+    }, [data.address, reset, updateAddress]);
 
     // This effect syncs the form state back to the Zustand store on change, with a debounce.
     useEffect(() => {
@@ -136,6 +170,63 @@ const AddressDetails = () => {
             <div className="space-y-8">
                 <div>
                     <h4 className="text-md font-semibold text-primary-text mb-4">Present Address</h4>
+                    
+                    {uniqueAddresses && uniqueAddresses.length >= 2 && (
+                        <div className="mb-6 bg-[#243524]/20 p-4 rounded-lg border border-emerald-950/20">
+                            <label htmlFor="address-select" className="block text-xs font-semibold text-emerald-400 mb-2">
+                                Select an address extracted from your documents:
+                            </label>
+                            <select
+                                id="address-select"
+                                onChange={(e) => {
+                                    const idx = parseInt(e.target.value);
+                                    if (!isNaN(idx)) {
+                                        const addr = uniqueAddresses[idx];
+                                        setValue('present.line1', addr.line1, { shouldValidate: true });
+                                        setValue('present.line2', addr.line2 || '', { shouldValidate: true });
+                                        setValue('present.city', addr.city, { shouldValidate: true });
+                                        setValue('present.state', addr.state, { shouldValidate: true });
+                                        setValue('present.country', addr.country, { shouldValidate: true });
+                                        setValue('present.pincode', addr.pincode, { shouldValidate: true });
+                                        
+                                        // Mark them as verified since they came from parsed official documents
+                                        setAddressVerifiedStatus('present', {
+                                            line1: true,
+                                            city: true,
+                                            state: true,
+                                            pincode: true,
+                                            country: true
+                                        });
+
+                                        if (sameAsPresent) {
+                                            setValue('permanent.line1', addr.line1, { shouldValidate: true });
+                                            setValue('permanent.line2', addr.line2 || '', { shouldValidate: true });
+                                            setValue('permanent.city', addr.city, { shouldValidate: true });
+                                            setValue('permanent.state', addr.state, { shouldValidate: true });
+                                            setValue('permanent.country', addr.country, { shouldValidate: true });
+                                            setValue('permanent.pincode', addr.pincode, { shouldValidate: true });
+                                            setAddressVerifiedStatus('permanent', {
+                                                line1: true,
+                                                city: true,
+                                                state: true,
+                                                pincode: true,
+                                                country: true
+                                            });
+                                        }
+                                    }
+                                }}
+                                className="w-full bg-[#1b271b] border border-emerald-900/40 rounded px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            >
+                                <option value="">-- Choose Address --</option>
+                                {uniqueAddresses.map((addr, index) => (
+                                    <option key={index} value={index}>
+                                        [{addr.sources.join(', ')}] {addr.line1 ? `${addr.line1}, ` : ''}{addr.city}, {addr.state} - {addr.pincode}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div className="sm:col-span-2">
                              <VerifiedInput label="Address Line 1" id="present.line1" 

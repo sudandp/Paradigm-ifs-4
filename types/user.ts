@@ -164,8 +164,10 @@ export interface PersonalDetails {
   photo?: UploadedFile | null;
   idProofFront?: UploadedFile | null;
   idProofBack?: UploadedFile | null;
+  panCard?: UploadedFile | null;
   emergencyContactName: string;
   emergencyContactNumber: string;
+  emergencyContactId?: string;
   relationship: 'Spouse' | 'Child' | 'Father' | 'Mother' | 'Sibling' | 'Other' | '';
   salary: number | null;
   verifiedStatus?: {
@@ -193,10 +195,21 @@ export interface Address {
   };
 }
 
+export interface ExtractedAddress {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+  source: string;
+}
+
 export interface AddressDetails {
   present: Address;
   permanent: Address;
   sameAsPresent: boolean;
+  extractedAddresses?: ExtractedAddress[];
 }
 
 export interface FamilyMember {
@@ -286,6 +299,9 @@ export interface OrganizationDetails {
   workType: 'Full-time' | 'Part-time' | 'Contract' | '';
   site?: string;
   defaultSalary?: number | null;
+  groupId?: string;
+  location?: string;
+  companyId?: string;
 }
 
 export interface EmployeeUniformSelection {

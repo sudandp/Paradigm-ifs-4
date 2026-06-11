@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // Fix: Use inline type import for SubmitHandler
 import { useForm, Controller, type SubmitHandler, type Resolver } from 'react-hook-form';
 import { useOutletContext } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import type { OrganizationDetails, Organization } from '../../types';
+import type { OrganizationDetails, Organization, OrganizationGroup } from '../../types';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import FormHeader from '../../components/onboarding/FormHeader';
@@ -36,6 +36,7 @@ const OrganizationDetails = () => {
     const { user } = useAuthStore();
     const { data, updateOrganization } = useOnboardingStore();
     const [organizations, setOrganizations] = useState<Organization[]>([]);
+    const [structure, setStructure] = useState<OrganizationGroup[]>([]);
     const isMobile = useMediaQuery('(max-width: 767px)');
     
     const { register, handleSubmit, formState: { errors }, control, watch, setValue, reset } = useForm<OrganizationDetails>({
@@ -46,9 +47,35 @@ const OrganizationDetails = () => {
     const selectedOrgId = watch('organizationId');
     const designation = watch('designation');
     const isOrgPreselected = !!data.organization.organizationId;
+    const { location, companyId, groupId } = data.organization;
+
+    const isBangalore = useMemo(() => location?.trim().toLowerCase() === 'bangalore', [location]);
+
+    const filteredEntities = useMemo(() => {
+        if (!isBangalore || !structure || !companyId) return [];
+        const group = structure.find(g => g.id === groupId);
+        const companies = group ? group.companies : structure.flatMap(g => g.companies);
+        const company = companies.find(c => c.id === companyId);
+        return company ? company.entities : [];
+    }, [structure, groupId, companyId, isBangalore]);
+
+    const dropdownOptions = useMemo(() => {
+        if (isBangalore) {
+            return filteredEntities.map(entity => ({
+                id: entity.organizationId || entity.id,
+                name: entity.name
+            }));
+        } else {
+            return organizations.map(org => ({
+                id: org.id,
+                name: org.shortName
+            }));
+        }
+    }, [isBangalore, filteredEntities, organizations]);
 
     useEffect(() => {
         api.getOrganizations().then(setOrganizations);
+        api.getOrganizationStructure().then(setStructure);
     }, []);
 
     useEffect(() => {
@@ -73,11 +100,11 @@ const OrganizationDetails = () => {
 
 
     useEffect(() => {
-        const selectedOrg = organizations.find(o => o.id === selectedOrgId);
+        const selectedOrg = dropdownOptions.find(o => o.id === selectedOrgId);
         if (selectedOrg) {
-            setValue('organizationName', selectedOrg.shortName);
+            setValue('organizationName', selectedOrg.name);
         }
-    }, [selectedOrgId, organizations, setValue]);
+    }, [selectedOrgId, dropdownOptions, setValue]);
     
     useEffect(() => {
         if (designation) {
@@ -100,9 +127,9 @@ const OrganizationDetails = () => {
             <form onSubmit={handleSubmit(onSubmit)} id="organization-form">
                  <div className="space-y-6">
                     <p className="text-sm text-gray-400">Provide the employment details for the new employee within the organization.</p>
-                    <select {...register('organizationId')} className="pro-select pro-select-arrow" disabled={isOrgPreselected}>
+                    <select {...register('organizationId')} className="pro-select pro-select-arrow" disabled={isOrgPreselected && !isBangalore}>
                         <option value="">Select Organization</option>
-                        {organizations.map(org => <option key={org.id} value={org.id}>{org.shortName}</option>)}
+                        {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
                     </select>
                     {errors.organizationId && <p className="mt-1 text-xs text-red-500">{errors.organizationId.message}</p>}
 
@@ -132,9 +159,9 @@ const OrganizationDetails = () => {
             <FormHeader title="Organization Details" subtitle="Your employment details within the organization." />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <Select label="Organization / Client" id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')} disabled={isOrgPreselected}>
+                <Select label="Organization / Client" id="organizationId" error={errors.organizationId?.message} registration={register('organizationId')} disabled={isOrgPreselected && !isBangalore}>
                     <option value="">Select Organization</option>
-                    {organizations.map(org => <option key={org.id} value={org.id}>{org.shortName}</option>)}
+                    {dropdownOptions.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
                 </Select>
                 <Input
                     label="Designation"

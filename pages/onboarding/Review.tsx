@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/ui/Button';
 import FormHeader from '../../components/onboarding/FormHeader';
-import { Loader2, CheckCircle, XCircle, AlertTriangle, ShieldCheck, FileText } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertTriangle, ShieldCheck, FileText, Save } from 'lucide-react';
 import { api } from '../../services/api';
 import type { VerificationResult, EducationRecord, UploadedFile } from '../../types';
 import { useAuthStore } from '../../store/authStore';
+import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
@@ -54,6 +55,21 @@ const Review = () => {
 
     const [verificationState, setVerificationState] = useState<'idle' | 'verifying' | 'success' | 'failed'>('idle');
     const [verificationMessage, setVerificationMessage] = useState('');
+
+    // Draft save state for the Review page
+    const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('idle');
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+    const handleSaveAsDraft = useCallback(async () => {
+        setDraftSaveStatus('saving');
+        try {
+            await api.saveDraft(data);
+            setDraftSaveStatus('saved');
+            setLastSavedAt(new Date());
+        } catch {
+            setDraftSaveStatus('dirty');
+        }
+    }, [data]);
 
     const uploadedFingerprints = useMemo(() => Object.entries(data.biometrics.fingerprints)
         .filter(([, value]) => value !== null)
@@ -308,13 +324,33 @@ const Review = () => {
             </div>
 
             <div className="mt-8 pt-6 border-t">
-                <div className="flex items-start">
-                    <div className="flex items-center h-5">
-                        <input id="confirmation" name="confirmation" type="checkbox" required className="focus:ring-accent h-4 w-4 text-accent border-gray-300 rounded" disabled={!canSubmit} />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex flex-col gap-1">
+                        <DraftSaveIndicator
+                            status={draftSaveStatus}
+                            lastSavedAt={lastSavedAt}
+                            onManualSave={handleSaveAsDraft}
+                        />
+                        <p className="text-xs text-muted">All data is auto-saved as you fill each step.</p>
                     </div>
-                    <div className="ml-3 text-sm">
-                        <label htmlFor="confirmation" className={`font-medium ${!canSubmit ? 'text-gray-400' : 'text-gray-700'}`}>Declaration</label>
-                        <p className={`${!canSubmit ? 'text-gray-400' : 'text-muted'}`}>I hereby declare that the information provided is true and correct to the best of my knowledge.</p>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleSaveAsDraft}
+                            isLoading={draftSaveStatus === 'saving'}
+                            disabled={!canSubmit}
+                        >
+                            <Save className="mr-2 h-4 w-4" />
+                            Save as Draft
+                        </Button>
+                        <Button
+                            type="submit"
+                            isLoading={false}
+                            disabled={!canSubmit}
+                        >
+                            Submit Application
+                        </Button>
                     </div>
                 </div>
             </div>

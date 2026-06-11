@@ -13,6 +13,7 @@ import { Type } from '@google/genai';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { AlertTriangle } from 'lucide-react';
 
 const formatNameToTitleCase = (value: string | undefined) => {
     if (!value) return '';
@@ -73,6 +74,36 @@ const BankDetails = () => {
     }, [watch, updateBank]);
     
     const bankData = watch();
+
+    const employeeFullName = `${data.personal.firstName || ''} ${data.personal.lastName || ''}`.trim().toLowerCase();
+    const accountHolderNameLower = (bankData.accountHolderName || '').trim().toLowerCase();
+    const isNameMismatch = !!(bankData.accountHolderName && employeeFullName && accountHolderNameLower !== employeeFullName);
+
+    useEffect(() => {
+        const ifsc = bankData.ifscCode;
+        if (!ifsc) return;
+        const normalizedIfsc = ifsc.toUpperCase().trim();
+        const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+        if (ifscRegex.test(normalizedIfsc)) {
+            const fetchBankDetails = async () => {
+                try {
+                    const response = await fetch(`https://ifsc.razorpay.com/${normalizedIfsc}`);
+                    if (response.ok) {
+                        const resData = await response.json();
+                        if (resData.BANK) {
+                            setValue('bankName', resData.BANK, { shouldValidate: true });
+                        }
+                        if (resData.BRANCH) {
+                            setValue('branchName', resData.BRANCH, { shouldValidate: true });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch bank details from IFSC:", err);
+                }
+            };
+            fetchBankDetails();
+        }
+    }, [bankData.ifscCode, setValue]);
 
     const onSubmit: SubmitHandler<BankDetails> = async (formData) => {
         updateBank(formData);
@@ -149,7 +180,15 @@ const BankDetails = () => {
             <form onSubmit={handleSubmit(onSubmit)} id="bank-form">
                 <p className="text-sm text-gray-400 mb-6">Your salary will be credited to this account.</p>
                 <div className="space-y-4">
-                    <input placeholder="Account Holder Name" {...register('accountHolderName')} onBlur={handleNameBlur} className="form-input"/>
+                    <div>
+                        <input placeholder="Account Holder Name" {...register('accountHolderName')} onBlur={handleNameBlur} className="form-input w-full"/>
+                        {isNameMismatch && (
+                            <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 flex-shrink-0 text-yellow-500" />
+                                Name mismatch: Profile name is "{data.personal.firstName || ''} {data.personal.lastName || ''}"
+                            </p>
+                        )}
+                    </div>
                     <input placeholder="Bank Name" {...register('bankName')} className="form-input"/>
                     <input placeholder="Account Number" {...register('accountNumber')} className="form-input"/>
                     <input placeholder="Confirm Account Number" {...register('confirmAccountNumber')} className="form-input"/>
@@ -180,16 +219,24 @@ const BankDetails = () => {
                     />
                 )}/>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t">
-                    <VerifiedInput 
-                        label="Account Holder Name" 
-                        id="accountHolderName" 
-                        hasValue={!!bankData.accountHolderName}
-                        isVerified={data.bank.verifiedStatus?.accountHolderName === true}
-                        onManualInput={() => handleManualInput(['accountHolderName'])}
-                        error={errors.accountHolderName?.message} 
-                        registration={register('accountHolderName')} 
-                        onBlur={handleNameBlur}
-                    />
+                    <div>
+                        <VerifiedInput 
+                            label="Account Holder Name" 
+                            id="accountHolderName" 
+                            hasValue={!!bankData.accountHolderName}
+                            isVerified={data.bank.verifiedStatus?.accountHolderName === true}
+                            onManualInput={() => handleManualInput(['accountHolderName'])}
+                            error={errors.accountHolderName?.message} 
+                            registration={register('accountHolderName')} 
+                            onBlur={handleNameBlur}
+                        />
+                        {isNameMismatch && (
+                            <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 flex-shrink-0 text-yellow-500" />
+                                Name mismatch: Profile name is "{data.personal.firstName || ''} {data.personal.lastName || ''}"
+                            </p>
+                        )}
+                    </div>
                     <VerifiedInput label="Bank Name" id="bankName" hasValue={!!bankData.bankName} isVerified={false} error={errors.bankName?.message} registration={register('bankName')} />
                     <VerifiedInput label="Account Number" id="accountNumber" hasValue={!!bankData.accountNumber} isVerified={data.bank.verifiedStatus?.accountNumber === true} onManualInput={() => handleManualInput(['accountNumber'])} error={errors.accountNumber?.message} registration={register('accountNumber')} />
                     <VerifiedInput label="Confirm Account Number" id="confirmAccountNumber" hasValue={!!bankData.confirmAccountNumber} isVerified={data.bank.verifiedStatus?.accountNumber === true} onManualInput={() => handleManualInput(['accountNumber'])} error={errors.confirmAccountNumber?.message} registration={register('confirmAccountNumber')} />

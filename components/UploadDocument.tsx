@@ -87,11 +87,12 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
         const preview = base64FromCapture ? `data:${selectedFile.type};base64,${base64FromCapture}` : URL.createObjectURL(selectedFile);
         
-        const fileData: UploadedFile = {
+        // Show a local preview immediately while upload + OCR run in background
+        const localFileData: UploadedFile = {
             name: selectedFile.name, type: selectedFile.type, size: selectedFile.size,
             preview, file: selectedFile,
         };
-        onFileChange(fileData);
+        onFileChange(localFileData);
 
         if (costingItemName) {
             logVerificationUsage(costingItemName);
@@ -114,6 +115,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 }
             }
 
+            // Run OCR if configured
             if (onOcrComplete && ocrSchema && setToast) {
                 try {
                     const extractedData = await api.extractDataFromImage(base64, selectedFile.type, ocrSchema, docType);
@@ -123,6 +125,29 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     setToast({ message: `AI extraction failed. Please check the document.`, type: 'error' });
                 }
             }
+
+            // Upload to Supabase storage after OCR. Replace the local blob with the server URL
+            // so the file is persisted on the server and not kept in browser memory.
+            try {
+                const { url, path } = await api.uploadDocument(selectedFile, 'onboarding-documents');
+                // Revoke the old blob URL to free memory
+                if (preview.startsWith('blob:')) URL.revokeObjectURL(preview);
+                const storedFileData: UploadedFile = {
+                    name: selectedFile.name,
+                    type: selectedFile.type,
+                    size: selectedFile.size,
+                    preview: getProxyUrl(url),
+                    url: getProxyUrl(url),
+                    path,
+                    // No 'file' field — signals this is a server-stored file
+                };
+                onFileChange(storedFileData);
+            } catch (uploadErr: any) {
+                // Upload failed — keep the local file data but warn the user
+                console.error("Supabase upload failed:", uploadErr);
+                if (setToast) setToast({ message: 'Document saved locally but cloud upload failed. It will retry on save.', type: 'error' });
+            }
+
         } catch (e: any) {
             setUploadError(e.message || "Processing failed.");
         } finally {
@@ -202,7 +227,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
 
     return (
         <div className="w-full">
-            <ImagePreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} imageUrl={file?.preview || ''} />
+            <ImagePreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} imageUrl={file?.preview ? getProxyUrl(file.preview) : ''} />
             {isCameraOpen && <CameraCaptureModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} captureGuidance={captureGuidance} autoConfirm={true} />}
 
             <div className="flex items-center gap-2 mb-2">
@@ -226,7 +251,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                             {file.type.startsWith('image/') && (
                                  <div className={`relative flex items-center justify-center ${label.toLowerCase().includes('photo') ? 'w-32 h-32 rounded-full ring-4 ring-white shadow-xl' : 'w-full'} bg-black/5 overflow-hidden`}>
                                     <img 
-                                        src={file.preview} 
+                                        src={getProxyUrl(file.preview)} 
                                         alt="preview" 
                                         onError={(e) => {
                                             const target = e.target as HTMLImageElement;
@@ -266,7 +291,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                                     {file.type === 'application/pdf' && file.preview && (
                                         <div className="w-full h-[180px] bg-white relative group/pdf">
                                             <iframe 
-                                                src={`${file.preview}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                                src={`${getProxyUrl(file.preview)}#toolbar=0&navpanes=0&scrollbar=0`} 
                                                 className="w-full h-full border-none pointer-events-none"
                                                 title="PDF Preview"
                                             />

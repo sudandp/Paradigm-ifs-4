@@ -23,7 +23,7 @@ import {
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null };
+const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null, removeCache: async (key?: string) => {} };
 import { Network } from '@capacitor/network';
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
 import { isTechnicalRole, calculateWorkingHours } from '../utils/attendanceCalculations';
@@ -54,23 +54,132 @@ const BACKGROUND_BUCKET = 'background';
 // here.  Alternatively you can reuse SUPPORT_ATTACHMENTS_BUCKET if you prefer.
 const TASK_ATTACHMENTS_BUCKET = 'task-attachments';
 
-// Resolve the Google GenAI API key from Vite environment variables.  When running
-// locally without a real key, the application should still boot and render
-// normally; AI-powered features will be disabled.  If a key is provided, the
-// GoogleGenAI client is instantiated for use by downstream functions.  If the
-// key is missing, log a warning and set `ai` to null.  Downstream functions
-// should check for a null `ai` and provide sensible fallbacks rather than
-// throwing.
-const apiKey = import.meta.env.VITE_API_KEY;
-let ai: GoogleGenAI | null = null;
-if (!apiKey) {
-  console.warn(
-    "VITE_API_KEY for Google GenAI is not set in the environment variables. " +
-    "AI-powered features (document extraction, name cross‑verification, fingerprint detection, document enhancement) will be disabled."
-  );
-} else {
-  ai = new GoogleGenAI({ apiKey });
+// ── Gemini API key rotation — sequential exhaustion + per-key cooldown ────────
+// Strategy: use Key 1 fully → Key 2 → Key 3 → Key 4 → Key 5
+// Each key tracks daily usage and cools down when it hits its safe limit.
+// Keys: VITE_API_KEY_1 … VITE_API_KEY_5 (VITE_API_KEY = backward compat alias for _1)
+const rawKeys = [
+  import.meta.env.VITE_API_KEY_1 || import.meta.env.VITE_API_KEY,
+  import.meta.env.VITE_API_KEY_2,
+  import.meta.env.VITE_API_KEY_3,
+  import.meta.env.VITE_API_KEY_4,
+  import.meta.env.VITE_API_KEY_5,
+].filter(Boolean) as string[];
+
+// Free-tier: 1,500 req/day per key. We switch at 1,400 to leave a 100-req buffer.
+const DAILY_SAFE_LIMIT = 1_400;
+const RPM_COOLDOWN_MS  = 65_000;   // 65 s cooldown after an RPM 429
+
+// Milliseconds remaining until midnight IST (UTC+05:30 = UTC+18:30 previous day)
+const msUntilMidnightIST = (): number => {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setUTCHours(18, 30, 0, 0);         // 18:30 UTC = 00:00 IST next day
+  if (midnight <= now) midnight.setUTCDate(midnight.getUTCDate() + 1);
+  return midnight.getTime() - now.getTime();
+};
+
+interface KeyState {
+  client: GoogleGenAI;
+  dailyCount: number;     // requests used today
+  dailyResetAt: number;   // timestamp when dailyCount was last zeroed (midnight IST)
+  cooldownUntil: number;  // timestamp until which this key must not be used
 }
+
+const keyPool: KeyState[] = rawKeys.map(k => ({
+  client: new GoogleGenAI({ apiKey: k }),
+  dailyCount: 0,
+  dailyResetAt: Date.now(),
+  cooldownUntil: 0,
+}));
+
+/** Reset a key's daily counter if a new IST day has started. */
+const refreshDailyCount = (state: KeyState): void => {
+  const now = Date.now();
+  if (now >= state.dailyResetAt + msUntilMidnightIST()) {
+    state.dailyCount = 0;
+    state.dailyResetAt = now;
+    state.cooldownUntil = 0;   // daily limit cooldown also lifts at reset
+    console.info('Gemini key daily counter reset for a new IST day.');
+  }
+};
+
+if (keyPool.length === 0) {
+  console.warn('No VITE_API_KEY_1…5 configured — AI features disabled.');
+} else {
+  console.info(`Gemini: ${keyPool.length} key(s) loaded. Sequential exhaustion active (safe limit: ${DAILY_SAFE_LIMIT}/day per key).`);
+}
+
+// Convenience alias for legacy `if (!ai)` guards
+let ai: GoogleGenAI | null = keyPool[0]?.client ?? null;
+
+/**
+ * Returns the first key (by index 0→4) that:
+ *   1. Is not in cooldown
+ *   2. Has not yet reached DAILY_SAFE_LIMIT for today
+ * Returns null if all keys are unavailable.
+ */
+const pickKey = (): { state: KeyState; idx: number } | null => {
+  const now = Date.now();
+  for (let i = 0; i < keyPool.length; i++) {
+    const state = keyPool[i];
+    refreshDailyCount(state);
+    if (now < state.cooldownUntil) continue;          // cooling down
+    if (state.dailyCount >= DAILY_SAFE_LIMIT) continue; // daily cap reached
+    return { state, idx: i };
+  }
+  return null;
+};
+
+/**
+ * Calls `fn` with the current active key (lowest-index with remaining quota).
+ * On 429 / quota errors the key is cooled down and the next one is tried.
+ * Throws only when all keys are exhausted or on non-quota errors.
+ */
+const callWithFallback = async <T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> => {
+  if (keyPool.length === 0) throw new Error('No Gemini API keys configured.');
+
+  for (let attempt = 0; attempt < keyPool.length; attempt++) {
+    const picked = pickKey();
+    if (!picked) {
+      const soonest = Math.min(...keyPool.map(s => s.cooldownUntil || Infinity));
+      const waitSec = soonest === Infinity
+        ? 'tomorrow (daily limit reached on all keys)'
+        : `~${Math.ceil((soonest - Date.now()) / 1000)}s`;
+      throw new Error(`All Gemini keys exhausted. Retry in ${waitSec}.`);
+    }
+
+    const { state, idx } = picked;
+    state.cooldownUntil = Date.now() + 200; // brief lock while in-flight
+
+    try {
+      const result = await fn(state.client);
+      state.cooldownUntil = 0;
+      state.dailyCount++;
+      console.debug(`Gemini key #${idx + 1} used (today: ${state.dailyCount}/${DAILY_SAFE_LIMIT})`);
+      return result;
+    } catch (err: any) {
+      const msg = (err?.message || '').toLowerCase();
+      const isRpm   = err?.status === 429 || msg.includes('429') ||
+                      msg.includes('rate limit') || msg.includes('resource_exhausted');
+      const isDaily = msg.includes('daily') || msg.includes('per day') ||
+                      msg.includes('quota exceeded');
+
+      if (isRpm || isDaily) {
+        const cooldown = isDaily ? msUntilMidnightIST() : RPM_COOLDOWN_MS;
+        state.cooldownUntil = Date.now() + cooldown;
+        if (isDaily) state.dailyCount = DAILY_SAFE_LIMIT; // mark as exhausted
+        const label  = isDaily ? 'daily limit' : 'RPM limit';
+        const resume = new Date(state.cooldownUntil).toLocaleTimeString('en-IN');
+        console.warn(`Gemini key #${idx + 1} hit ${label} — cooling until ${resume}. Moving to key #${idx + 2}...`);
+        continue;
+      }
+      state.cooldownUntil = 0;
+      throw err;
+    }
+  }
+  throw new Error('All Gemini API keys exhausted.');
+};
 
 // --- Location Constants & Helpers ---
 
@@ -1197,8 +1306,12 @@ export const api = {
 
 
   getVerificationSubmissions: async (status?: string, organizationId?: string, managerId?: string): Promise<OnboardingData[]> => {
-    return fetchWithCache(`verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`, async () => {
+    const cacheKey = `verification_submissions_${status || 'all'}_${organizationId || 'all'}_${managerId || 'all'}`;
+    return fetchWithCache(cacheKey, async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       let query = supabase.from('onboarding_submissions').select('*, user:user_id(reporting_manager_id)');
+      // Always filter by the logged-in user so RLS policies apply correctly
+      if (session?.user?.id) query = query.eq('user_id', session.user.id);
       if (status) query = query.eq('status', status);
       if (organizationId) query = query.eq('organization_id', organizationId);
       const { data, error } = await query.order('created_at', { ascending: false }).limit(5000);
@@ -1239,7 +1352,11 @@ export const api = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) throw new Error("User not authenticated");
 
-    const submissionId = (data.id && !data.id.startsWith('draft_')) ? data.id : (data.id || crypto.randomUUID());
+    // Bug fix: draft_ prefixed IDs are local-only placeholders and must never
+    // be used as the Supabase record ID (UUID column). Always generate a real UUID.
+    const submissionId = (data.id && !data.id.startsWith('draft_'))
+        ? data.id
+        : crypto.randomUUID();
     
     const status = await Network.getStatus();
     if (!status.connected) {
@@ -1258,6 +1375,8 @@ export const api = {
       user_id: session.user.id,
       employee_id: data.personal?.employeeId || null,
       status: asDraft ? 'draft' : data.status,
+      organization_id: data.organization?.organizationId || null,
+      organization_name: data.organization?.organizationName || null,
     };
 
     // Remove any client-side only properties that don't have columns
@@ -1272,6 +1391,9 @@ export const api = {
     }
     // Update cache
     await offlineDb.setCache(`onboarding_${savedData.id}`, toCamelCase(dbData));
+    // Bust the submission list cache so MySubmissions immediately shows new/updated drafts.
+    // Setting to null makes fetchWithCache treat it as a miss and re-query Supabase.
+    await offlineDb.setCache('verification_submissions_all_all_all', null);
     return { draftId: savedData.id };
   },
 
@@ -1458,6 +1580,11 @@ export const api = {
             actor: { id: user.id, name: user.email || 'Admin', role: 'admin' }
         });
     }
+  },
+
+  deleteOnboardingSubmission: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('onboarding_submissions').delete().eq('id', id);
+    if (error) throw error;
   },
 
   syncPortals: async (id: string): Promise<OnboardingData> => {
@@ -2333,7 +2460,7 @@ export const api = {
       companyMap.get(targetGroupId)!.push(companyWithEntities);
     });
 
-    const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: [] }));
+    const structure = camelGroups.map(group => ({ ...group, companies: companyMap.get(group.id) || [], locations: Array.isArray(group.locations) ? group.locations : [] }));
 
     const unassignedCompanies = companyMap.get('unassigned_group') || [];
     const validGroupIds = new Set(camelGroups.map(g => g.id));
@@ -6327,14 +6454,11 @@ export const api = {
     return { success, message: success ? 'UAN found and linked.' : 'UAN not found in EPFO database.', verifiedFields: { name: null, dob: null, aadhaar: null, bank: null, uan: success, esi: null } };
   },
   extractDataFromImage: async (base64: string, mimeType: string, schema: any, docType?: string): Promise<any> => {
-    // If AI is not available return an empty object.  This prevents the
-    // application from crashing when running without an API key.  Otherwise,
-    // call the Gemini model to extract structured data from the image.
-    if (!ai) {
-      console.warn('AI feature disabled: cannot extract data from image. Returning empty result.');
+    if (keyPool.length === 0) {
+      console.warn('AI disabled: no API keys configured.');
       return {};
     }
-    const response = await ai.models.generateContent({
+    return callWithFallback(client => client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
         parts: [
@@ -6346,9 +6470,7 @@ export const api = {
         responseMimeType: 'application/json',
         responseSchema: schema,
       },
-    });
-    const jsonStr = response.text.trim();
-    return JSON.parse(jsonStr);
+    }).then(r => JSON.parse(r.text.trim())));
   },
   extractDataFromImageLocal: async (base64: string, docType?: string): Promise<any> => {
     const worker = await createWorker('eng');
@@ -6379,21 +6501,15 @@ export const api = {
     }
   },
   crossVerifyNames: async (name1: string, name2: string): Promise<{ isMatch: boolean; reason: string }> => {
-    // Without the AI client fall back to a simple case-insensitive
-    // comparison.  Return a basic match result with a reason.  This ensures
-    // the application continues to operate without a Google API key.
-    if (!ai) {
+    if (keyPool.length === 0) {
       const isMatch = name1.trim().toLowerCase() === name2.trim().toLowerCase();
-      return {
-        isMatch,
-        reason: isMatch ? 'Names are identical (case-insensitive match) without AI.' : 'AI disabled; simple case-insensitive comparison used.'
-      };
+      return { isMatch, reason: isMatch ? 'Exact match (AI disabled).' : 'No match (AI disabled).' };
     }
-    const response = await ai.models.generateContent({
+    return callWithFallback(client => client.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Are these two names referring to the same person? Name 1: "${name1}", Name 2: "${name2}". Respond in JSON format with two keys: "isMatch" (boolean) and "reason" (a brief string explanation).`,
+      contents: `Are these two names referring to the same person? Name 1: "${name1}", Name 2: "${name2}". Respond in JSON with keys: "isMatch" (boolean) and "reason" (string).`,
       config: {
-        responseMimeType: "application/json",
+        responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -6402,9 +6518,7 @@ export const api = {
           }
         }
       }
-    });
-    const jsonStr = response.text.trim();
-    return JSON.parse(jsonStr);
+    }).then(r => JSON.parse(r.text.trim())));
   },
   verifyFingerprintImage: async (base64: string, mimeType: string): Promise<{ containsFingerprints: boolean; reason: string }> => {
     // When AI is unavailable return a default response indicating that no

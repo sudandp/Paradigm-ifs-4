@@ -8,11 +8,12 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import type { OnboardingStep } from '../../types';
 import type { Step } from '../../types/stepper';
-import { Loader2, User, MapPin, Building, Users, GraduationCap, IndianRupee, BadgeCheck, ShieldPlus, HeartPulse, Files, FileCheck, Trash2, CheckCircle, X, ArrowLeft, Shirt, Fingerprint, Home } from 'lucide-react';
+import { Loader2, User, MapPin, Building, Users, GraduationCap, IndianRupee, BadgeCheck, ShieldPlus, HeartPulse, Files, FileCheck, Trash2, CheckCircle, X, ArrowLeft, Shirt, Fingerprint, Home, Save } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
 
 
 const stepDefinitions: Omit<Step, 'status'>[] = [
@@ -52,7 +53,8 @@ const AddEmployee: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [isClearModalOpen, setIsClearModalOpen] = useState(false);
     
-    const [saveStatus, setSaveStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved'>('idle');
+    const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>('idle');
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const debounceTimeoutRef = useRef<number | null>(null);
     
     const isMobile = useMediaQuery('(max-width: 767px)');
@@ -123,12 +125,21 @@ const AddEmployee: React.FC = () => {
         setSaveStatus('saving');
         try {
             const { draftId } = await api.saveDraft(data);
+            // After the first save the real UUID comes back — update the store
+            // so all subsequent auto-saves upsert the same row (not new records).
             if (draftId !== data.id) {
-                setData({ ...data, id: draftId }); 
+                setData({ ...data, id: draftId });
             }
             setSaveStatus('saved');
-        } catch (error) {
-            setToast({ message: 'Auto-save failed. Check your connection.', type: 'error' });
+            setLastSavedAt(new Date());
+        } catch (error: any) {
+            const isAuthError = error?.message?.includes('not authenticated') || error?.message?.includes('session');
+            setToast({
+                message: isAuthError
+                    ? 'Session expired. Please refresh and log in again.'
+                    : 'Auto-save failed. Check your connection.',
+                type: 'error',
+            });
             setSaveStatus('dirty');
         }
     }, [data, setData]);
@@ -207,11 +218,12 @@ const AddEmployee: React.FC = () => {
             if (prevStepIndex >= 0) {
                 navigate(`/onboarding/add/${stepKeys[prevStepIndex]}`);
             } else {
-                 navigate('/onboarding/select-organization');
+                navigate('/onboarding/pre-upload');
             }
 
         } else {
-            navigate('/onboarding/select-organization');
+            // First step → go back to document upload page
+            navigate('/onboarding/pre-upload');
         }
     };
     
@@ -327,20 +339,43 @@ const AddEmployee: React.FC = () => {
                     </div>
                 </main>
 
-                <footer className="fixed bottom-0 left-0 right-0 p-4 flex items-center justify-between gap-2 bg-card border-t border-[#123820] z-10">
-                    <Button type="button" onClick={handleBack} variant="secondary">Back</Button>
-                    <Button
-                        type="button"
-                        onClick={() => navigate('/onboarding')}
-                        variant="secondary"
-                        className="!p-3 !rounded-full"
-                        aria-label="Go to Home"
-                    >
-                        <Home className="h-5 w-5" />
-                    </Button>
-                     <Button id="save-and-next-button" type="submit" form={`${stepKeys[currentStepIndex]}-form`}>
-                       {isReviewStep ? 'Submit' : 'Next'}
-                   </Button>
+                <footer className="fixed bottom-0 left-0 right-0 bg-card border-t border-[#123820] z-10">
+                    {/* Save status bar */}
+                    <div className="flex items-center justify-between px-4 pt-2 pb-1">
+                        <DraftSaveIndicator
+                            status={saveStatus}
+                            lastSavedAt={lastSavedAt}
+                            onManualSave={handleSaveDraft}
+                        />
+                        {saveStatus === 'dirty' && (
+                            <button
+                                type="button"
+                                onClick={handleSaveDraft}
+                                className="flex items-center gap-1 text-xs text-accent font-medium"
+                            >
+                                <Save className="h-3 w-3" />
+                                Save draft
+                            </button>
+                        )}
+                        {saveStatus === 'saved' && (
+                            <DraftSaveIndicator status="saved" lastSavedAt={lastSavedAt} compact />
+                        )}
+                    </div>
+                    <div className="p-4 flex items-center justify-between gap-2">
+                        <Button type="button" onClick={handleBack} variant="secondary">Back</Button>
+                        <Button
+                            type="button"
+                            onClick={() => navigate('/onboarding')}
+                            variant="secondary"
+                            className="!p-3 !rounded-full"
+                            aria-label="Go to Home"
+                        >
+                            <Home className="h-5 w-5" />
+                        </Button>
+                        <Button id="save-and-next-button" type="submit" form={`${stepKeys[currentStepIndex]}-form`}>
+                            {isReviewStep ? 'Submit' : 'Next'}
+                        </Button>
+                    </div>
                 </footer>
             </div>
         )
@@ -369,31 +404,19 @@ const AddEmployee: React.FC = () => {
                 </div>
 
                 <div className="mt-8 flex justify-between items-center">
-                    <Button onClick={handleBack} disabled={currentStepIndex === 0} variant="secondary">
+                    <Button onClick={handleBack} variant="secondary">
                         Back
                     </Button>
                     <div className="flex flex-wrap gap-4 justify-end items-center">
-                         <div className="flex items-center gap-2 text-sm text-muted italic transition-opacity duration-300 min-h-[20px]">
-                            {saveStatus === 'saving' && (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    <span>Saving...</span>
-                                </>
-                            )}
-                            {saveStatus === 'saved' && (
-                                <>
-                                    <CheckCircle className="h-4 w-4 text-accent" />
-                                    <span>Draft saved</span>
-                                </>
-                            )}
-                            {saveStatus === 'dirty' && (
-                                <span className="text-gray-500">Unsaved changes</span>
-                            )}
-                        </div>
-                         {!isReviewStep && (
-                           <Button id="save-and-next-button" type="submit" form={`${stepKeys[currentStepIndex]}-form`}>
-                               Save & Next
-                           </Button>
+                        <DraftSaveIndicator
+                            status={saveStatus}
+                            lastSavedAt={lastSavedAt}
+                            onManualSave={handleSaveDraft}
+                        />
+                        {!isReviewStep && (
+                            <Button id="save-and-next-button" type="submit" form={`${stepKeys[currentStepIndex]}-form`}>
+                                Save & Next
+                            </Button>
                         )}
                     </div>
                 </div>

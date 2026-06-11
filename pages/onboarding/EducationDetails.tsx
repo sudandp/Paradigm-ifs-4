@@ -35,8 +35,16 @@ const EducationDetails = () => {
       id: yup.string().required(),
       degree: yup.string().required('Degree is required'),
       institution: yup.string().required('Institution is required'),
-      startYear: yup.string().required('Start year is required').matches(/^\d{4}$/, 'Must be a 4-digit year'),
+      startYear: yup.string().required('Start year is required').matches(/^\d{4}$/, 'Must be a 4-digit year')
+        .test('not-in-future', 'Start year cannot be in the future', (value) => {
+          if (!value) return true;
+          return parseInt(value) <= new Date().getFullYear();
+        }),
       endYear: yup.string().required('End year is required').matches(/^\d{4}$/, 'Must be a 4-digit year')
+        .test('not-in-future', 'End year cannot be in the future', (value) => {
+          if (!value) return true;
+          return parseInt(value) <= new Date().getFullYear();
+        })
         .test('is-after-start-year', 'End year must be on or after start year', function(value) {
           const { startYear } = this.parent;
           return !startYear || !value || parseInt(value) >= parseInt(startYear);
