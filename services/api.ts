@@ -1617,6 +1617,19 @@ export const api = {
    * @param docName  (optional) descriptive name of the document (e.g. 'idProofFront')
    */
   ensureBucket: async (bucket: string): Promise<void> => {
+    // In client/browser environments, or if we do not have administrative permissions,
+    // we should NOT attempt to list, create, or update storage buckets. Trying to do so
+    // violates Row-Level Security (RLS) policies. Buckets are pre-created during database setup/migrations.
+    if (typeof window !== 'undefined') {
+      return;
+    }
+    const serviceRoleKey = typeof process !== 'undefined' && process.env
+      ? (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY)
+      : undefined;
+    if (!serviceRoleKey) {
+      return;
+    }
+
     // [SECURITY FIX H2 + M3] Define allowed MIME types and size limits.
     // Only branding buckets (logo, background) should be public.
     const ALLOWED_MIME_TYPES = [
@@ -6836,6 +6849,17 @@ export const api = {
     return Promise.resolve({ siteName: 'Mock Site', siteAddress: 'Mock Address', invoiceNumber: 'INV-001', invoiceDate: '2023-01-31', statementMonth: 'January-2023', lineItems: [] });
   },
   getSupportTickets: async (): Promise<SupportTicket[]> => {
+    const parseAttachmentFallback = (ticket: any): any => {
+      if (ticket && !ticket.attachmentUrl && ticket.description) {
+        const match = ticket.description.match(/\[Attachment:\s*([^\]]+)\]/);
+        if (match) {
+          ticket.attachmentUrl = match[1].trim();
+          ticket.description = ticket.description.replace(/\[Attachment:\s*([^\]]+)\]/, '').trim();
+        }
+      }
+      return ticket;
+    };
+
     const status = await Network.getStatus();
     if (status.connected) {
       try {
@@ -6845,21 +6869,51 @@ export const api = {
           'Fetch support tickets timed out'
         )) as any;
         if (error) throw error;
-        const formatted = (data || []).map(toCamelCase);
+        const formatted = (data || []).map(toCamelCase).map(parseAttachmentFallback);
         await offlineDb.setCache('support_tickets', formatted);
         return formatted;
       } catch (err) {
         console.warn('Failed to fetch support tickets from cloud, falling back to cache');
       }
     }
-    return await offlineDb.getCache('support_tickets') || [];
+    const cached = await offlineDb.getCache('support_tickets') || [];
+    return (cached as any[]).map(parseAttachmentFallback);
   },
   getSupportTicketById: async (id: string): Promise<SupportTicket | null> => {
+    const parseAttachmentFallback = (ticket: any): any => {
+      if (ticket && !ticket.attachmentUrl && ticket.description) {
+        const match = ticket.description.match(/\[Attachment:\s*([^\]]+)\]/);
+        if (match) {
+          ticket.attachmentUrl = match[1].trim();
+          ticket.description = ticket.description.replace(/\[Attachment:\s*([^\]]+)\]/, '').trim();
+        }
+      }
+      return ticket;
+    };
+
     const { data, error } = await supabase.from('support_tickets').select('*, posts:ticket_posts(*, comments:ticket_comments(*))').eq('id', id).single();
     if (error) throw error;
-    return toCamelCase(data);
+    return parseAttachmentFallback(toCamelCase(data));
   },
   createSupportTicket: async (ticketData: Partial<SupportTicket>): Promise<SupportTicket> => {
+    // Generate a unique ticket number if not provided by client
+    if (!ticketData.ticketNumber) {
+      const datePart = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const randomPart = Math.floor(1000 + Math.random() * 9000);
+      ticketData.ticketNumber = `TKT-${datePart}-${randomPart}`;
+    }
+
+    const parseAttachmentFallback = (ticket: any): any => {
+      if (ticket && !ticket.attachmentUrl && ticket.description) {
+        const match = ticket.description.match(/\[Attachment:\s*([^\]]+)\]/);
+        if (match) {
+          ticket.attachmentUrl = match[1].trim();
+          ticket.description = ticket.description.replace(/\[Attachment:\s*([^\]]+)\]/, '').trim();
+        }
+      }
+      return ticket;
+    };
+
     const status = await Network.getStatus();
     if (!status.connected) {
       const offlineId = `st_offline_${Date.now()}`;
@@ -6871,56 +6925,194 @@ export const api = {
       return offlineTicket;
     }
 
+    // Auto assignment logic for Software related issues
+    const isSoftwareIssue = ticketData.category === 'Software Developer' || 
+                            (ticketData.category && ticketData.category.toLowerCase().includes('software')) ||
+                            (ticketData.title && ticketData.title.toLowerCase().includes('software')) ||
+                            (ticketData.description && ticketData.description.toLowerCase().includes('software'));
+
+    if (isSoftwareIssue && !ticketData.assignedToId) {
+      try {
+        // Query users with developer role_id or role
+        const { data: devUsers } = await supabase
+          .from('users')
+          .select('id, name')
+          .or('role.eq.developer,role_id.eq.developer');
+        
+        if (devUsers && devUsers.length > 0) {
+          // Assign to the first developer
+          ticketData.assignedToId = devUsers[0].id;
+          ticketData.assignedToName = devUsers[0].name;
+          ticketData.status = 'In Progress'; // Set to In Progress since it is assigned
+        } else {
+          // No developer found, assign to admin directly
+          const { data: adminUsers } = await supabase
+            .from('users')
+            .select('id, name')
+            .or('role.eq.admin,role_id.eq.admin,role.eq.super_admin,role_id.eq.super_admin');
+          
+          if (adminUsers && adminUsers.length > 0) {
+            ticketData.assignedToId = adminUsers[0].id;
+            ticketData.assignedToName = adminUsers[0].name;
+            ticketData.status = 'In Progress';
+          }
+        }
+      } catch (err) {
+        console.error('[Support] Auto-assignment failed:', err);
+      }
+    }
+
     // If an attachment was provided with a File object, upload it to the support attachments bucket
     const attachment: any = (ticketData as any).attachment;
     if (attachment && attachment.file instanceof File) {
       try {
-        const { path } = await api.uploadDocument(attachment.file as File, SUPPORT_ATTACHMENTS_BUCKET);
-        (ticketData as any).attachment = {
-          name: attachment.name,
-          type: attachment.type,
-          size: attachment.size,
-          path,
-        };
+        const { path, url } = await api.uploadDocument(attachment.file as File, SUPPORT_ATTACHMENTS_BUCKET);
+        // Map the public URL/path to attachmentUrl and clean up attachment so we don't insert a non-existent column
+        ticketData.attachmentUrl = url || path;
+        delete (ticketData as any).attachment;
       } catch (uploadErr) {
         console.error('Failed to upload support ticket attachment:', uploadErr);
-        // Remove attachment to prevent sending File object to database
         delete (ticketData as any).attachment;
       }
+    } else {
+      delete (ticketData as any).attachment;
     }
-    const { data, error } = await supabase.from('support_tickets').insert(toSnakeCase(ticketData)).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
-    if (error) throw error;
+
+    let insertData: any;
+    try {
+      const { data, error } = await supabase.from('support_tickets').insert(toSnakeCase(ticketData)).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+      if (error) throw error;
+      insertData = data;
+    } catch (insertErr: any) {
+      // Check if it's a PGRST204 column missing error for attachment_url
+      if (insertErr.code === 'PGRST204' || (insertErr.message && insertErr.message.includes('attachment_url'))) {
+        console.warn('Database schema does not have attachment_url column. Falling back to appending to description.');
+        const fallbackTicketData = { ...ticketData };
+        if (fallbackTicketData.attachmentUrl) {
+          fallbackTicketData.description = `${fallbackTicketData.description}\n\n[Attachment: ${fallbackTicketData.attachmentUrl}]`;
+          delete fallbackTicketData.attachmentUrl;
+        }
+        const { data, error } = await supabase.from('support_tickets').insert(toSnakeCase(fallbackTicketData)).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+        if (error) throw error;
+        insertData = data;
+      } else {
+        throw insertErr;
+      }
+    }
 
     // Trigger notification
     dispatchNotificationFromRules('support_ticket', {
         actorName: ticketData.raisedByName || 'A user',
         actionText: 'has raised a new support ticket',
         locString: `: ${ticketData.title}`,
-        actor: { id: ticketData.raisedById || '', name: ticketData.raisedByName || 'User', role: 'staff' }
+        actor: { id: ticketData.raisedById || '', name: ticketData.raisedByName || 'User', role: 'staff' },
+        severity: 'High',
+        title: `Support Ticket: #${ticketData.ticketNumber}`
     });
 
-    return toCamelCase(data);
+    if (ticketData.assignedToId && insertData) {
+      try {
+        const notificationMsg = `${ticketData.raisedByName || 'A user'} raised a ticket and assigned it to you: ${ticketData.title}`;
+        await supabase.from('notifications').insert({
+          user_id: ticketData.assignedToId,
+          message: notificationMsg,
+          type: 'task_assigned',
+          link_to: `/support/ticket/${insertData.id || insertData.Id}`,
+          severity: 'High',
+          metadata: {
+            ticketId: insertData.id || insertData.Id,
+            ticketNumber: ticketData.ticketNumber,
+            employeeName: ticketData.raisedByName,
+            employeeId: ticketData.raisedById
+          }
+        });
+
+        // Trigger push via Edge Function
+        supabase.functions.invoke('send-notification', {
+          body: {
+            userIds: [ticketData.assignedToId],
+            title: `Support Ticket Assigned: #${ticketData.ticketNumber}`,
+            message: notificationMsg,
+            data: {
+              link: `/support/ticket/${insertData.id || insertData.Id}`,
+              ticketId: insertData.id || insertData.Id
+            }
+          }
+        }).catch(err => console.warn('Failed to send assignee FCM push:', err));
+      } catch (err) {
+        console.warn('Failed to create assignee notification:', err);
+      }
+    }
+
+    return parseAttachmentFallback(toCamelCase(insertData));
   },
   updateSupportTicket: async (id: string, updates: Partial<SupportTicket>): Promise<SupportTicket> => {
+    const parseAttachmentFallback = (ticket: any): any => {
+      if (ticket && !ticket.attachmentUrl && ticket.description) {
+        const match = ticket.description.match(/\[Attachment:\s*([^\]]+)\]/);
+        if (match) {
+          ticket.attachmentUrl = match[1].trim();
+          ticket.description = ticket.description.replace(/\[Attachment:\s*([^\]]+)\]/, '').trim();
+        }
+      }
+      return ticket;
+    };
+
     // Handle attachment upload when updating a ticket
     const attachment: any = (updates as any).attachment;
     if (attachment && attachment.file instanceof File) {
       try {
-        const { path } = await api.uploadDocument(attachment.file as File, SUPPORT_ATTACHMENTS_BUCKET);
-        (updates as any).attachment = {
-          name: attachment.name,
-          type: attachment.type,
-          size: attachment.size,
-          path,
-        };
+        const { path, url } = await api.uploadDocument(attachment.file as File, SUPPORT_ATTACHMENTS_BUCKET);
+        updates.attachmentUrl = url || path;
+        delete (updates as any).attachment;
       } catch (uploadErr) {
         console.error('Failed to upload updated support ticket attachment:', uploadErr);
         delete (updates as any).attachment;
       }
+    } else {
+      delete (updates as any).attachment;
     }
-    const { data, error } = await supabase.from('support_tickets').update(toSnakeCase(updates)).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+
+    let updatedData: any;
+    try {
+      const { data, error } = await supabase.from('support_tickets').update(toSnakeCase(updates)).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+      if (error) throw error;
+      updatedData = data;
+    } catch (updateErr: any) {
+      if (updateErr.code === 'PGRST204' || (updateErr.message && updateErr.message.includes('attachment_url'))) {
+        console.warn('Database schema does not have attachment_url column. Falling back to appending to description on update.');
+        const fallbackUpdates = { ...updates };
+        if (fallbackUpdates.attachmentUrl) {
+          let description = fallbackUpdates.description;
+          if (!description) {
+            const currentTicket = await api.getSupportTicketById(id);
+            description = currentTicket?.description || '';
+          }
+          fallbackUpdates.description = `${description}\n\n[Attachment: ${fallbackUpdates.attachmentUrl}]`;
+          delete fallbackUpdates.attachmentUrl;
+        }
+        const { data, error } = await supabase.from('support_tickets').update(toSnakeCase(fallbackUpdates)).eq('id', id).select('*, posts:ticket_posts(*, comments:ticket_comments(*))').single();
+        if (error) throw error;
+        updatedData = data;
+      } else {
+        throw updateErr;
+      }
+    }
+
+    return parseAttachmentFallback(toCamelCase(updatedData));
+  },
+  deleteSupportTicket: async (id: string): Promise<void> => {
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      await offlineDb.addToOutbox({ table_name: 'support_tickets', action: 'DELETE', payload: { id } });
+      
+      const cached = await offlineDb.getCache('support_tickets') || [];
+      await offlineDb.setCache('support_tickets', cached.filter((t: any) => t.id !== id));
+      return;
+    }
+
+    const { error } = await supabase.from('support_tickets').delete().eq('id', id);
     if (error) throw error;
-    return toCamelCase(data);
   },
   addTicketPost: async (ticketId: string, postData: Partial<TicketPost>): Promise<TicketPost> => {
     const status = await Network.getStatus();
@@ -6942,7 +7134,9 @@ export const api = {
         actorName: postData.authorName || 'Staff',
         actionText: 'has responded to a support ticket',
         locString: '',
-        actor: { id: postData.authorId || '', name: postData.authorName || 'Staff', role: postData.authorRole || 'hr' }
+        actor: { id: postData.authorId || '', name: postData.authorName || 'Staff', role: postData.authorRole || 'hr' },
+        severity: 'High',
+        title: `Ticket Response: #${ticketId}`
     });
 
     return toCamelCase(data);

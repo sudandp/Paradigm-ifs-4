@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import Button from './Button';
 
 interface ModalProps {
@@ -15,26 +16,48 @@ interface ModalProps {
     extraActions?: React.ReactNode; // Optional extra buttons
     footer?: React.ReactNode; // Optional full footer override
     hideFooter?: boolean;
+    containerClassName?: string;
+    headerClassName?: string;
+    titleClassName?: string;
+    contentClassName?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, children, confirmButtonVariant = 'danger', confirmButtonText = 'Confirm', isConfirming = false, isLoading, maxWidth = 'md:max-w-md', extraActions, footer, hideFooter = false }) => {
+const Modal: React.FC<ModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    onConfirm, 
+    title, 
+    children, 
+    confirmButtonVariant = 'danger', 
+    confirmButtonText = 'Confirm', 
+    isConfirming = false, 
+    isLoading, 
+    maxWidth = 'md:max-w-md', 
+    extraActions, 
+    footer, 
+    hideFooter = false,
+    containerClassName,
+    headerClassName,
+    titleClassName,
+    contentClassName
+}) => {
     if (!isOpen) return null;
 
     // Use isLoading if provided, otherwise fall back to isConfirming
     const loading = isLoading !== undefined ? isLoading : isConfirming;
 
-    return (
+    return createPortal(
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black bg-opacity-50" aria-modal="true" role="dialog">
             {/* Full screen on mobile, centered modal on desktop */}
-            <div className={`bg-card shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-auto md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale`}>
+            <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-auto md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
                 {/* Header */}
-                <div className="flex-shrink-0 p-6 border-b border-border">
-                    <h3 className="text-lg font-bold text-primary-text">{title}</h3>
+                <div className={`flex-shrink-0 p-6 ${headerClassName || 'border-b border-border'}`}>
+                    <h3 className={`text-lg font-bold ${titleClassName || 'text-primary-text'}`}>{title}</h3>
                 </div>
 
                 {/* Scrollable Content */}
                 <div className="flex-1 overflow-y-auto p-6">
-                    <div className="text-sm text-muted">
+                    <div className={`text-sm ${contentClassName || 'text-muted'}`}>
                         {children}
                     </div>
                 </div>
@@ -66,7 +89,8 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, onConfirm, title, childr
                 </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

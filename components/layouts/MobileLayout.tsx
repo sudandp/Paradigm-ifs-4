@@ -7,7 +7,6 @@ import { useNotificationStore } from '../../store/notificationStore';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
-
 import ReferralModal from '../modals/ReferralModal';
 
 const MobileLayout: React.FC = () => {
@@ -127,6 +126,8 @@ const MobileLayout: React.FC = () => {
              !location.pathname.startsWith('/referral/') && (
                 <BottomNav />
             )}
+
+
 
             {/* Notification Panel Overlay */}
             {isPanelOpen && (

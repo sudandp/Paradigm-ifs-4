@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { SupportTicket, User } from '../../types';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info, Clock } from 'lucide-react';
+import { Loader2, Plus, LifeBuoy, Users, Phone, MessageSquare, MessageCircle, Video, Search, Filter, UserCheck, AlertTriangle, Download, Trophy, Award, Info, Clock, Trash2 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { formatDistanceToNow } from 'date-fns';
@@ -28,46 +28,68 @@ const PriorityIndicator: React.FC<{ priority: SupportTicket['priority'] }> = ({ 
 
 const StatusChip: React.FC<{ status: SupportTicket['status'] }> = ({ status }) => {
     const styles = {
-        Open: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-        'In Progress': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-        'Pending Requester': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-        Resolved: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-        Closed: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+        Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'In Progress': 'bg-blue-50 text-blue-700 border-blue-200',
+        'Pending Requester': 'bg-amber-50 text-amber-700 border-amber-200',
+        Resolved: 'bg-slate-100 text-slate-600 border-slate-200',
+        Closed: 'bg-gray-50 text-gray-500 border-gray-200',
     };
 
     return (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[status]}`}>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[status]}`}>
             {status}
         </span>
     );
 };
 
-const TicketCard: React.FC<{ ticket: SupportTicket, onClick: () => void }> = ({ ticket, onClick }) => (
+const TicketCard: React.FC<{ 
+    ticket: SupportTicket; 
+    isMobile?: boolean; 
+    isAdmin?: boolean; 
+    onClick: () => void; 
+    onDelete?: (e: React.MouseEvent) => void; 
+}> = ({ ticket, isMobile, isAdmin, onClick, onDelete }) => (
     <div
         onClick={onClick}
-        className="group bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 hover:border-emerald-500/30 cursor-pointer transition-all duration-500 flex flex-col justify-between h-full shadow-sm md:shadow-sm dark:shadow-lg hover:shadow-emerald-500/5 hover:translate-y-[-2px]"
+        className="group p-5 rounded-2xl border border-border bg-card transition-all duration-300 flex flex-col justify-between h-full shadow-sm hover:-translate-y-0.5 cursor-pointer relative hover:border-emerald-300 hover:shadow-md"
     >
         <div>
             <div className="flex justify-between items-start gap-3 mb-2">
-                <h4 className="font-bold text-gray-900 dark:text-emerald-50 leading-snug group-hover:text-accent transition-colors line-clamp-2">
+                <h4 className="font-bold leading-snug group-hover:text-emerald-500 transition-colors line-clamp-2 text-primary-text">
                     {ticket.title}
                 </h4>
                 <div className="flex-shrink-0 mt-1"><PriorityIndicator priority={ticket.priority} /></div>
             </div>
-            <p className="text-xs text-muted font-mono">#{ticket.ticketNumber}</p>
+            <p className="text-xs font-mono text-muted/80">#{ticket.ticketNumber}</p>
         </div>
-        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-emerald-500/10">
-            <div className="flex justify-between items-center text-[10px] text-gray-500 dark:text-muted mb-3 font-medium uppercase tracking-wider">
+        <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex justify-between items-center text-[10px] mb-3 font-medium uppercase tracking-wider text-muted">
                 <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] text-white font-black shadow-lg">
+                    <div className="w-6 h-6 rounded-full bg-[#006B3F] flex items-center justify-center text-[10px] text-white font-black shadow">
                         {ticket.raisedByName.charAt(0)}
                     </div>
-                    <span>{ticket.raisedByName}</span>
+                    <span className="font-bold text-primary-text">{ticket.raisedByName}</span>
                 </div>
-                <span>{formatDistanceToNow(new Date(ticket.raisedAt), { addSuffix: true })}</span>
+                <span className="font-semibold">{formatDistanceToNow(new Date(ticket.raisedAt), { addSuffix: true })}</span>
             </div>
             <div className="flex justify-between items-center">
                 <StatusChip status={ticket.status} />
+                {isAdmin && onDelete && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(e);
+                        }}
+                        className={`p-1.5 rounded-lg border transition-all active:scale-95 ${
+                            isMobile 
+                                ? 'text-red-400 hover:text-red-300 bg-red-500/10 border-red-500/20' 
+                                : 'text-red-500 hover:text-red-700 bg-red-50 border-red-200'
+                        }`}
+                        title="Delete Ticket"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                )}
             </div>
         </div>
     </div>
@@ -79,58 +101,58 @@ const NearbyUserItem: React.FC<{
     onPing: (user: User) => void,
     isMobile?: boolean
 }> = ({ user, onAction, onPing, isMobile }) => (
-    <div className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 ${isMobile ? 'bg-[#0a1c13] border border-[#1d422f]' : user.isNearby ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-emerald-500/5 shadow-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 hover:border-emerald-500/20 shadow-sm md:shadow-sm'}`}>
+    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${isMobile ? 'bg-[#0a1c13] border border-[#1d422f] p-4 rounded-2xl gap-4' : user.isNearby ? 'bg-emerald-50 border border-emerald-200 shadow-sm' : 'bg-slate-50 border border-slate-200/80 hover:bg-white hover:border-slate-300 hover:shadow-sm'}`}>
         <div className="relative flex-shrink-0">
-            <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className="w-12 h-12 rounded-full shadow-sm" />
-            <span className={`absolute -bottom-0.5 -right-0.5 block h-4 w-4 rounded-full ${user.isAvailable ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-rose-600 shadow-[0_0_6px_rgba(225,29,72,0.6)]'} ring-2 ring-white`}></span>
+            <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} className={`rounded-full shadow-sm ${isMobile ? 'w-12 h-12' : 'w-10 h-10'}`} />
+            <span className={`absolute -bottom-0.5 -right-0.5 block rounded-full ${user.isAvailable ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)]' : 'bg-rose-500'} ring-2 ring-white ${isMobile ? 'h-4 w-4' : 'h-3 w-3'}`}></span>
         </div>
         <div className="flex-grow min-w-0">
-            <div className="flex items-center gap-2">
-                <p className={`text-sm font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900 dark:text-emerald-50'}`}>{user.name}</p>
+            <div className="flex items-center gap-1.5">
+                <p className={`font-bold truncate ${isMobile ? 'text-white text-sm' : 'text-slate-800 text-xs'}`}>{user.name}</p>
                 {user.isTeamMember && (
-                    <span className="text-[10px] bg-blue-500/20 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Team</span>
+                    <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter border border-blue-200">Team</span>
                 )}
                 {user.isNearby && !user.isTeamMember && (
-                    <span className={`text-[10px] ${isMobile ? 'bg-[#041b0f] text-emerald-500' : 'bg-accent/20 text-accent'} px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter`}>Nearby</span>
+                    <span className={`text-[9px] ${isMobile ? 'bg-[#041b0f] text-emerald-500' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'} px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter`}>Nearby</span>
                 )}
             </div>
-            <p className={`text-xs ${isMobile ? 'text-gray-400' : 'text-muted'} truncate`}>
-                {user.locationName && <span className="text-emerald-500/80 font-medium">{user.locationName} • </span>}
+            <p className={`truncate ${isMobile ? 'text-xs text-gray-400' : 'text-[10px] text-slate-500 mt-0.5'}`}>
+                {user.locationName && <span className={`font-medium ${isMobile ? 'text-emerald-500/80' : 'text-[#006B3F]'}`}>{user.locationName} • </span>}
                 {user.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
             <button
-                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
-                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                className={`transition-all active:scale-95 ${isMobile ? 'text-green-500 p-1' : 'p-1.5 rounded-lg hover:opacity-90 shadow-sm'}`}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF' }}
                 title="Ping (Internal)"
                 onClick={() => onPing(user)}
             >
-                <AlertTriangle className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+                <AlertTriangle className={isMobile ? 'h-6 w-6' : 'h-3.5 w-3.5'} />
             </button>
             <button
-                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
-                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                className={`transition-all active:scale-95 ${isMobile ? 'text-green-500 p-1' : 'p-1.5 rounded-lg hover:opacity-90 shadow-sm'}`}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF' }}
                 title="Call"
                 onClick={() => onAction(user, 'call')}
             >
-                <Phone className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+                <Phone className={isMobile ? 'h-6 w-6' : 'h-3.5 w-3.5'} />
             </button>
             <button
-                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
-                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                className={`transition-all active:scale-95 ${isMobile ? 'text-green-500 p-1' : 'p-1.5 rounded-lg hover:opacity-90 shadow-sm'}`}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF' }}
                 title="WhatsApp"
                 onClick={() => onAction(user, 'whatsapp')}
             >
-                <MessageCircle className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+                <MessageCircle className={isMobile ? 'h-6 w-6' : 'h-3.5 w-3.5'} />
             </button>
             <button
-                className={`transition-opacity ${isMobile ? 'text-green-500 p-1' : 'border p-2 rounded-md hover:opacity-90'} `}
-                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF', borderColor: '#005632' }}
+                className={`transition-all active:scale-95 ${isMobile ? 'text-green-500 p-1' : 'p-1.5 rounded-lg hover:opacity-90 shadow-sm'}`}
+                style={isMobile ? {} : { backgroundColor: '#006B3F', color: '#FFFFFF' }}
                 title="SMS"
                 onClick={() => onAction(user, 'sms')}
             >
-                <MessageSquare className={isMobile ? 'h-6 w-6' : 'h-4 w-4'} />
+                <MessageSquare className={isMobile ? 'h-6 w-6' : 'h-3.5 w-3.5'} />
             </button>
         </div>
     </div>
@@ -363,9 +385,20 @@ const SupportDashboard: React.FC = () => {
         }
     };
 
+    const handleDeleteTicket = async (ticketId: string) => {
+        if (!window.confirm("Are you sure you want to delete this ticket? This action cannot be undone.")) return;
+        try {
+            await api.deleteSupportTicket(ticketId);
+            setTickets(prev => prev.filter(t => t.id !== ticketId));
+            setToast({ message: 'Ticket deleted successfully.', type: 'success' });
+        } catch (err) {
+            setToast({ message: 'Failed to delete ticket.', type: 'error' });
+        }
+    };
+
     return (
         <>
-        <div className={`flex-1 flex flex-col w-full p-4 lg:p-8 space-y-8 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white' : ''}`}>
+        <div className={`flex-1 flex flex-col w-full space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white p-4' : 'bg-slate-50 min-h-screen p-4 md:p-6'}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Modals */}
@@ -422,8 +455,8 @@ const SupportDashboard: React.FC = () => {
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
-                    <h2 className={`text-2xl lg:text-3xl font-bold tracking-tight uppercase ${isMobile ? 'text-primary-dark-theme-text' : 'text-gray-900 dark:text-primary-text'}`}>Support & Audit</h2>
-                    <p className={`text-sm mt-1 font-medium italic opacity-80 font-mono tracking-tight lowercase ${isMobile ? 'text-gray-400' : 'text-gray-500 dark:text-muted'}`}>
+                    <h2 className={`text-2xl font-bold tracking-tight ${isMobile ? 'text-white uppercase' : 'text-slate-900'}`}>Support & Audit</h2>
+                    <p className={`text-sm mt-1 ${isMobile ? 'text-gray-400 font-medium italic opacity-80 font-mono tracking-tight lowercase' : 'text-slate-500'}`}>
                         Track issues, request audits, and connect with support staff in real-time.
                     </p>
                 </div>
@@ -472,7 +505,8 @@ const SupportDashboard: React.FC = () => {
                             )}
                             <Button
                                 onClick={() => navigate('/support/ticket/new')}
-                                className="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className="flex-1 lg:flex-none text-white"
+                                style={{ backgroundColor: '#006B3F', color: '#FFFFFF' }}
                             >
                                 <Plus className="mr-1.5 h-3.5 w-3.5" /> New Ticket
                             </Button>
@@ -481,31 +515,31 @@ const SupportDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Global Filters Card - Emerald Glassmorphism on Mobile, Clean on Web */}
-            <div className={`${isMobile ? 'bg-black/30 border border-[#1d422f] shadow-lg p-6 rounded-2xl' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl'} flex flex-col gap-6`}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Global Filters Card */}
+            <div className={`${isMobile ? 'bg-black/30 border border-[#1d422f] shadow-lg p-6 rounded-2xl' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'} flex flex-col gap-6`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="relative">
-                        <label htmlFor="search-input" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Search Tickets</label>
+                        <label htmlFor="search-input" className={`block text-[10px] font-bold mb-1.5 uppercase tracking-widest ml-1 ${isMobile ? 'text-emerald-500' : 'text-slate-400'}`}>Search Tickets</label>
                         <div className="relative">
-                            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 ${isMobile ? 'text-emerald-500/70' : 'text-gray-400 dark:text-emerald-500/30'}`} />
+                            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${isMobile ? 'text-emerald-500/70' : 'text-slate-400'}`} />
                             <Input
                                 id="search-input"
                                 name="search"
                                 placeholder="Ticket #, title..."
-                                className={`!pl-12 h-12 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white focus:bg-[#041b0f] placeholder:text-emerald-900/50' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 focus:bg-white md:focus:bg-white dark:focus:bg-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text placeholder:text-gray-400 dark:placeholder:text-emerald-500/20'}`}
+                                className={`!pl-10 h-10 rounded-xl transition-all ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white focus:bg-[#041b0f] placeholder:text-emerald-900/50' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white'}`}
                                 value={filters.searchTerm}
                                 onChange={e => setFilters(f => ({ ...f, searchTerm: e.target.value }))}
                             />
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="role-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Filter by Role</label>
+                        <label htmlFor="role-filter-global" className={`block text-[10px] font-bold mb-1.5 uppercase tracking-widest ml-1 ${isMobile ? 'text-emerald-500' : 'text-slate-400'}`}>Filter by Role</label>
                         <Select
                             id="role-filter-global"
                             name="role"
                             value={roleFilter}
                             onChange={e => setRoleFilter(e.target.value)}
-                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Roles</option>
                             {uniqueRoles.map(r => (
@@ -514,13 +548,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="status-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Status</label>
+                        <label htmlFor="status-filter-global" className={`block text-[10px] font-bold mb-1.5 uppercase tracking-widest ml-1 ${isMobile ? 'text-emerald-500' : 'text-slate-400'}`}>Status</label>
                         <Select
                             id="status-filter-global"
                             name="status"
                             value={filters.status}
                             onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Status</option>
                             <option>Open</option>
@@ -531,13 +565,13 @@ const SupportDashboard: React.FC = () => {
                         </Select>
                     </div>
                     <div>
-                        <label htmlFor="priority-filter-global" className={`block text-[10px] font-black mb-2 uppercase tracking-[0.2em] ml-1 ${isMobile ? 'text-emerald-500' : 'text-gray-400 dark:text-emerald-500/50'}`}>Priority</label>
+                        <label htmlFor="priority-filter-global" className={`block text-[10px] font-bold mb-1.5 uppercase tracking-widest ml-1 ${isMobile ? 'text-emerald-500' : 'text-slate-400'}`}>Priority</label>
                         <Select
                             id="priority-filter-global"
                             name="priority"
                             value={filters.priority}
                             onChange={e => setFilters(f => ({ ...f, priority: e.target.value }))}
-                            className={`h-12 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-gray-50/50 md:bg-gray-50/50 dark:bg-emerald-500/5 border-gray-200 md:border-gray-200 dark:border-emerald-500/10 text-gray-900 md:text-gray-900 dark:text-primary-text'}`}
+                            className={`h-10 rounded-xl ${isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
                         >
                             <option value="all">All Priority</option>
                             <option>Low</option>
@@ -549,19 +583,22 @@ const SupportDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Stats Grid - Unified Horizontal Pattern */}
+            {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {[
-                    { title: "Total Tickets", value: stats.total, icon: LifeBuoy, shadow: "shadow-gray-500/10", darkTextColor: "text-indigo-400" },
-                    { title: "Open Issues", value: stats.open, icon: AlertTriangle, shadow: "shadow-rose-500/10", textColor: "text-rose-500", darkTextColor: "text-rose-500" },
-                    { title: "In Progress", value: stats.inProgress, icon: Loader2, shadow: "shadow-blue-500/10", textColor: "text-blue-500", darkTextColor: "text-blue-400" },
-                    { title: "Resolved Jobs", value: stats.resolved, icon: UserCheck, shadow: "shadow-emerald-500/10", textColor: "text-emerald-500", darkTextColor: "text-emerald-500" },
-                    { title: "Pending For You", value: stats.pendingYourAction, icon: Clock, shadow: "shadow-amber-500/10", textColor: "text-amber-500", darkTextColor: "text-amber-500" }
+                    { title: "Total Tickets", value: stats.total, color: '#3b82f6', darkTextColor: "text-indigo-400" },
+                    { title: "Open Issues", value: stats.open, color: '#ef4444', darkTextColor: "text-rose-500" },
+                    { title: "In Progress", value: stats.inProgress, color: '#3b82f6', darkTextColor: "text-blue-400" },
+                    { title: "Resolved Jobs", value: stats.resolved, color: '#006B3F', darkTextColor: "text-emerald-500" },
+                    { title: "Pending For You", value: stats.pendingYourAction, color: '#f59e0b', darkTextColor: "text-amber-500" }
                 ].map((stat, i) => (
-                    <div key={i} className={`flex items-center gap-4 ${isMobile ? 'bg-black/30 border-[#1d422f] p-4 rounded-2xl border' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-5 rounded-2xl border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:' + stat.shadow} transition-all hover:scale-[1.02]`}>
+                    <div key={i} className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-4 rounded-2xl border' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 hover:shadow-md transition-all'}`}>
                         <div className="flex flex-col min-w-0">
-                            <p className={`text-[9px] font-black mb-1 truncate uppercase tracking-[0.15em] opacity-60 ${isMobile ? 'text-gray-400' : 'text-gray-400 dark:text-muted'}`}>{stat.title}</p>
-                            <p className={`text-2xl font-black ${isMobile ? (stat.darkTextColor || 'text-white') : (stat.textColor || 'text-gray-900 dark:text-primary-text')} leading-none tracking-tighter`}>{stat.value}</p>
+                            <p className={`text-[9px] font-bold mb-2 truncate uppercase tracking-widest ${isMobile ? 'text-gray-400' : 'text-slate-400'}`}>{stat.title}</p>
+                            <p className={`text-2xl font-black leading-none tracking-tighter ${isMobile ? stat.darkTextColor : ''}`}
+                               style={isMobile ? {} : { color: stat.color }}>
+                                {stat.value}
+                            </p>
                         </div>
                     </div>
                 ))}
@@ -569,24 +606,24 @@ const SupportDashboard: React.FC = () => {
 
 
             {/* ─── Top Performers Section ─── */}
-            <div className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-6 rounded-2xl border' : 'bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl p-8'}`}>
+            <div className={`${isMobile ? 'bg-black/30 border-[#1d422f] p-6 rounded-2xl border' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6'}`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-amber-50 md:bg-amber-50 dark:bg-amber-500/10 border border-amber-200 md:border-amber-200 dark:border-amber-500/20 rounded-2xl shadow-sm md:shadow-sm dark:shadow-xl dark:shadow-amber-500/5">
-                            <Trophy className="h-6 w-6 text-amber-600 md:text-amber-600 dark:text-amber-500" />
+                        <div className={`p-2.5 rounded-xl border ${isMobile ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+                            <Trophy className="h-5 w-5 text-amber-600" />
                         </div>
                         <div>
-                            <h3 className={`text-lg font-bold flex items-center gap-2 ${isMobile ? 'text-white' : 'text-gray-900 dark:text-primary-text'}`}>
+                            <h3 className={`text-base font-bold flex items-center gap-2 ${isMobile ? 'text-white' : 'text-slate-800'}`}>
                                 Team Performance
                                 <button
                                     onClick={() => setIsScoreInfoModalOpen(true)}
-                                    className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-muted transition-colors"
+                                    className={`p-1 rounded-full transition-colors ${isMobile ? 'text-muted hover:bg-white/10' : 'text-slate-400 hover:bg-slate-100'}`}
                                     title="How are scores calculated?"
                                 >
                                     <Info className="w-4 h-4" />
                                 </button>
                             </h3>
-                            <p className="text-xs text-muted">{showAllScores ? 'All employees' : 'Top 3 per department'} · Monthly scorecard</p>
+                            <p className={`text-xs ${isMobile ? 'text-muted' : 'text-slate-500'}`}>{showAllScores ? 'All employees' : 'Top 3 per department'} · Monthly scorecard</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -639,7 +676,7 @@ const SupportDashboard: React.FC = () => {
                                         return (
                                             <div
                                                 key={emp.userId}
-                                                className={`relative backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-md rounded-2xl border shadow-sm md:shadow-sm dark:shadow-xl p-5 hover:border-amber-500/40 hover:scale-[1.02] transition-all duration-500 group ${isMobile ? 'bg-[#041b0f] border-amber-500/30' : 'bg-white md:bg-white dark:bg-[#0d2c18]/40 border-amber-200 md:border-amber-200 dark:border-amber-500/20'}`}
+                                                className={`relative rounded-2xl border p-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group ${isMobile ? 'bg-[#041b0f] border-amber-500/30 shadow' : 'bg-white border-slate-200/80 shadow-sm hover:border-amber-200'}`}
                                             >
                                                 {/* Rank Badge */}
                                                 <div className={`absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shadow-md z-10 bg-gradient-to-br ${medalColor} text-white`}>
@@ -650,8 +687,8 @@ const SupportDashboard: React.FC = () => {
                                                 <div className="flex items-center gap-3 mb-4">
                                                     <ProfilePlaceholder photoUrl={emp.userPhotoUrl} seed={emp.userId} className="w-10 h-10 rounded-full shadow-sm" />
                                                     <div className="min-w-0">
-                                                        <p className={`text-sm font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900 dark:text-white'}`}>{emp.userName}</p>
-                                                        <p className="text-[10px] text-gray-400 dark:text-muted uppercase tracking-wider font-medium truncate">{emp.userRole.replace(/_/g, ' ')}</p>
+                                                        <p className={`text-sm font-bold truncate ${isMobile ? 'text-white' : 'text-slate-800'}`}>{emp.userName}</p>
+                                                        <p className={`text-[10px] uppercase tracking-wider font-medium truncate ${isMobile ? 'text-gray-400' : 'text-slate-400'}`}>{emp.userRole.replace(/_/g, ' ')}</p>
                                                     </div>
                                                 </div>
 
@@ -669,23 +706,23 @@ const SupportDashboard: React.FC = () => {
                                                                 </svg>
                                                                 <span className="relative z-10 text-white font-bold text-[11px]">{badge.value}</span>
                                                             </div>
-                                                            <span className="text-[8px] uppercase font-bold text-muted tracking-wider">{badge.label}</span>
+                                                            <span className={`text-[8px] uppercase font-bold tracking-wider ${isMobile ? 'text-muted' : 'text-slate-400'}`}>{badge.label}</span>
                                                         </div>
                                                     ))}
                                                 </div>
 
                                                 {/* Overall Score Bar */}
                                                 <div className="flex items-center gap-2">
-                                                    <div className={`flex-1 h-2 rounded-full overflow-hidden border ${isMobile ? 'bg-black/50 border-[#1d422f]' : 'bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/5 border-gray-100 md:border-gray-100 dark:border-emerald-500/10'}`}>
+                                                    <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isMobile ? 'bg-black/50' : 'bg-slate-100'}`}>
                                                         <div
                                                             className={`h-full rounded-full transition-all duration-500 ${
-                                                                emp.scores.overallScore >= 80 ? 'bg-green-500' :
+                                                                emp.scores.overallScore >= 80 ? 'bg-emerald-500' :
                                                                 emp.scores.overallScore >= 60 ? 'bg-amber-500' : 'bg-red-500'
                                                             }`}
                                                             style={{ width: `${emp.scores.overallScore}%` }}
                                                         />
                                                     </div>
-                                                    <span className={`text-xs font-black min-w-[28px] text-right ${isMobile ? 'text-white' : 'text-gray-900 dark:text-primary-text'}`}>{emp.scores.overallScore}</span>
+                                                    <span className={`text-xs font-black min-w-[28px] text-right ${isMobile ? 'text-white' : 'text-slate-700'}`}>{emp.scores.overallScore}</span>
                                                 </div>
                                             </div>
                                         );
@@ -697,15 +734,15 @@ const SupportDashboard: React.FC = () => {
                 )}
             </div>
 
-            <div className="lg:grid lg:grid-cols-3 lg:gap-8">
+            <div className="lg:grid lg:grid-cols-3 lg:gap-6">
                 {/* Main Content - Ticket List */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className={`${isMobile ? 'bg-[#041b0f] border-[#1d422f] rounded-2xl p-4' : 'bg-white md:bg-white dark:bg-[#0d2c18]/20 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-lg p-6 rounded-[2rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/5 shadow-sm md:shadow-sm'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className={`font-black flex items-center gap-2 uppercase tracking-tight ${isMobile ? 'text-white' : 'text-gray-900 dark:text-emerald-100'}`}>
-                                <MessageSquare className="h-5 w-5 text-emerald-500" /> Active Tickets
+                <div className="lg:col-span-2 space-y-4">
+                    <div className={`${isMobile ? 'bg-[#041b0f] border-[#1d422f] rounded-2xl p-4' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5'}`}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className={`font-bold flex items-center gap-2 ${isMobile ? 'text-white uppercase tracking-tight' : 'text-slate-800 text-base'}`}>
+                                <MessageSquare className={`h-4 w-4 ${isMobile ? 'text-emerald-500' : 'text-[#006B3F]'}`} /> Active Tickets
                             </h3>
-                            <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${isMobile ? 'bg-black/50 text-emerald-500 border border-[#1d422f]' : 'bg-gray-100 md:bg-gray-100 dark:bg-emerald-500/10 text-gray-500 dark:text-emerald-500'}`}>
+                            <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest ${isMobile ? 'bg-black/50 text-emerald-500 border border-[#1d422f]' : 'bg-slate-100 text-slate-500'}`}>
                                 {filteredTickets.length} Found
                             </span>
                         </div>
@@ -717,15 +754,21 @@ const SupportDashboard: React.FC = () => {
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {filteredTickets.length > 0 ? filteredTickets.map(ticket => (
-                                    <div key={ticket.id} className={isMobile ? '[&>div]:bg-black/30 [&>div]:border-[#1d422f]' : ''}>
-                                        <TicketCard ticket={ticket} onClick={() => navigate(`/support/ticket/${ticket.id}`)} />
+                                    <div key={ticket.id}>
+                                        <TicketCard 
+                                            ticket={ticket} 
+                                            isMobile={isMobile}
+                                            isAdmin={user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'developer'}
+                                            onClick={() => navigate(`/support/ticket/${ticket.id}`)} 
+                                            onDelete={() => handleDeleteTicket(ticket.id)}
+                                        />
                                     </div>
                                 )) : (
-                                    <div className="col-span-full flex flex-col items-center justify-center py-12 text-muted">
-                                        <div className="p-4 bg-accent/5 rounded-full mb-3">
+                                    <div className={`col-span-full flex flex-col items-center justify-center py-12 ${isMobile ? 'text-muted' : 'text-slate-400'}`}>
+                                        <div className={`p-4 rounded-full mb-3 ${isMobile ? 'bg-accent/5' : 'bg-slate-50'}`}>
                                             <Search className="h-8 w-8 opacity-50" />
                                         </div>
-                                        <p>No tickets match your filters.</p>
+                                        <p className="text-sm">No tickets match your filters.</p>
                                     </div>
                                 )}
                             </div>
@@ -734,25 +777,26 @@ const SupportDashboard: React.FC = () => {
                 </div>
 
                 {/* Sidebar - Nearby Users (Desktop) */}
-                <aside className="hidden lg:block space-y-6">
-                    <div className="bg-white md:bg-white dark:bg-[#0d2c18]/30 backdrop-blur-none md:backdrop-blur-none dark:backdrop-blur-xl p-8 rounded-[2.5rem] border border-gray-100 md:border-gray-100 dark:border-emerald-500/10 shadow-sm md:shadow-sm dark:shadow-2xl sticky top-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="font-bold text-lg text-gray-900 dark:text-emerald-50 flex items-center gap-2">
-                                <Users className="h-5 w-5 text-accent" /> Nearby Support
+                <aside className="hidden lg:block">
+                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 sticky top-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                                <Users className="h-4 w-4 text-[#006B3F]" /> Nearby Support
                             </h3>
-                            <span className="text-xs font-medium bg-gray-100 md:bg-gray-100 dark:bg-accent/10 text-gray-500 dark:text-accent px-2 py-1 rounded-full">
+                            <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
                                 {nearbyUsers.filter(u => u.isAvailable).length} Online
                             </span>
                         </div>
 
-                        <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto pr-1 custom-scrollbar">
+                        <div className="space-y-2.5 max-h-[calc(100vh-260px)] overflow-y-auto pr-1 custom-scrollbar">
                             {nearbyUsers.length > 0 ? (
                                 nearbyUsers.map(u => (
                                     <NearbyUserItem key={u.id} user={u} onAction={handleCommunication} onPing={handlePing} />
                                 ))
                             ) : (
-                                <div className="text-center py-8 text-muted">
-                                    <p>No support staff found nearby.</p>
+                                <div className="text-center py-8 text-slate-400">
+                                    <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                                    <p className="text-sm">No support staff found nearby.</p>
                                 </div>
                             )}
                         </div>

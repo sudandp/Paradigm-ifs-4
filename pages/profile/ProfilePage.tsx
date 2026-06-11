@@ -15,12 +15,13 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
+import HelpTicketModal from '../../components/support/HelpTicketModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
@@ -171,6 +172,7 @@ const ProfilePage: React.FC = () => {
     const [gateUser, setGateUser] = useState<GateUser | null>(null);
     const [isGateUserLoading, setIsGateUserLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
     const [isEnrolling, setIsEnrolling] = useState(false);
     const [isRegistering, setIsRegistering] = useState(false);
 
@@ -741,11 +743,11 @@ const ProfilePage: React.FC = () => {
                         </div>
 
                         {/* Custom Avatar Controls */}
-                        <div className="flex items-center justify-center gap-2 relative z-50 pointer-events-auto">
+                        <div className="flex flex-wrap items-center justify-center gap-1 relative z-50 pointer-events-auto">
                             <button 
                                 type="button"
                                 onClick={() => document.getElementById('avatar-upload')?.click()}
-                                className="cursor-pointer px-4 py-2 bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:opacity-70"
+                                className="cursor-pointer px-2 py-1.5 bg-transparent border-none text-white text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <Edit className="w-3 h-3 text-emerald-400" />
                                 Change
@@ -753,7 +755,7 @@ const ProfilePage: React.FC = () => {
                             <button 
                                 type="button"
                                 onClick={() => document.getElementById('avatar-hidden-capture-btn')?.click()}
-                                className="px-4 py-2 bg-transparent border-none text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 active:scale-95 transition-all hover:opacity-70"
+                                className="px-2 py-1.5 bg-transparent border-none text-rose-500 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <Camera className="w-3 h-3" />
                                 Capture
@@ -761,10 +763,18 @@ const ProfilePage: React.FC = () => {
                             <button 
                                 type="button"
                                 onClick={() => { triggerHaptic(); setIsSettingsOpen(true); }}
-                                className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 rounded-full active:scale-95 transition-all hover:bg-emerald-500/20"
+                                className="px-2 py-1.5 bg-transparent border-none text-emerald-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <Settings className="w-3 h-3" />
                                 Settings
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); setIsHelpModalOpen(true); }}
+                                className="px-2 py-1.5 bg-transparent border-none text-amber-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
+                            >
+                                <HelpCircle className="w-3 h-3 text-amber-400" />
+                                Help
                             </button>
                         </div>
                     </motion.div>
@@ -1495,6 +1505,7 @@ const ProfilePage: React.FC = () => {
                             />
                         )}
 
+                        <HelpTicketModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
                 </div>
         );
     }
@@ -2333,6 +2344,8 @@ const ProfilePage: React.FC = () => {
                     isLoading={isRegistering}
                 />
             )}
+
+            <HelpTicketModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
         </div>
     );
 };

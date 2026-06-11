@@ -123,7 +123,7 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
 
             // Trigger real push notification via FCM Edge Function
             // These event types ALWAYS get push notifications:
-            const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast', ...selfNotifyEvents];
+            const triggerPushTypes = ['security', 'approval_request', 'task_assigned', 'team_activity', 'emergency_broadcast', 'support_ticket', 'support_response', ...selfNotifyEvents];
             const pushRecipients = finalNotifications
                 .filter((n) => {
                     const flags = recipients.get(n.user_id);
