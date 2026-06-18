@@ -135,8 +135,9 @@ class StepCounterService {
 
     if (this.isCounting) return;
 
-    // On non-Android: do not simulate steps, just return (no hardware access)
+    // On non-Android: use simulation
     if (Capacitor.getPlatform() !== 'android') {
+      this.simulateSteps();
       return;
     }
 
@@ -234,7 +235,7 @@ class StepCounterService {
   private simulationIntervalId: any = null;
   private simulatedSteps: number = 0;
 
-  private simulateSteps(onStepChange: (steps: number) => void) {
+  private simulateSteps() {
     if (this.simulationIntervalId) return;
     this.isCounting = true;
     this.simulatedSteps = 0;

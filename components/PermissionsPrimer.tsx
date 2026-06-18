@@ -2,8 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
 import Logo from './ui/Logo';
+import Button from './ui/Button';
 import { checkRequiredPermissions, requestAllPermissions } from '../utils/permissionUtils';
-import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Share, Users, Bluetooth, Image, Music } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Users } from 'lucide-react';
+import './PermissionsPrimer.css';
 
 interface PermissionsPrimerProps {
   onComplete: () => void;
@@ -137,113 +139,89 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
   }
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gray-200/50 sm:p-6 text-center overflow-auto" style={{ backgroundColor: Capacitor.isNativePlatform() ? 'transparent' : 'rgba(243, 244, 246, 0.5)' }}>
-      {/* Immersive Mobile Content (White) / Centered Desktop Card */}
-      <div 
-        className={`bg-white sm:rounded-[40px] shadow-2xl w-full h-full sm:h-auto min-h-screen sm:min-h-0 flex flex-col items-center p-8 sm:p-10 border-none sm:border border-gray-100 overflow-y-auto transition-all duration-500 ${
-          Capacitor.isNativePlatform() ? 'sm:max-w-md' : 'sm:max-w-md lg:max-w-5xl'
-        }`}
-        style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
-      >
+    <div className="permissions-primer-page">
+      <div className="permissions-primer-container">
         
-        <div className={`w-full flex-1 flex flex-col ${Capacitor.isNativePlatform() ? 'items-center' : 'lg:flex-row lg:items-start lg:gap-16'}`}>
+        {/* Header with Logo */}
+        <header className="permissions-primer-nav">
+          <Logo className="h-9" variant="bottle-green" />
+          <div className="permissions-primer-nav-badge">
+            Security Checkpoint
+          </div>
+        </header>
+
+        <main className="permissions-primer-grid">
           
-          {/* Left Column (Logo & Intro) - Static on Native, Flexible on Web */}
-          <div className={`${Capacitor.isNativePlatform() ? 'w-full flex flex-col items-center' : 'w-full lg:w-2/5 flex flex-col items-center lg:items-start lg:text-left'}`}>
-            {/* Logo */}
-            <div className="mb-10 mt-4 lg:mt-8">
-              <Logo className="h-14 lg:h-16" />
-            </div>
-
-            {/* Shield Icon */}
-            <div className="mb-8">
-              <div className="bg-orange-50 p-6 lg:p-8 rounded-[35px] inline-flex shadow-inner" style={{ backgroundColor: '#fff7ed' }}>
-                 <ShieldCheck className="h-16 w-16 lg:h-20 lg:w-20 text-orange-500" />
+          {/* Left Panel: Compliance Info */}
+          <section className="permissions-primer-main-panel">
+            <div className="permissions-primer-header-section">
+              <div className="permissions-primer-shield-wrapper">
+                <ShieldCheck size={36} />
               </div>
+              
+              <h1 className="permissions-primer-main-title">Compliance Check</h1>
+              <p className="permissions-primer-main-description">
+                Paradigm IFS requires these <strong>{permissionList.length} primary categories</strong> to be Allowed for secure operations.
+              </p>
             </div>
-
-            {/* Title & Desc */}
-            <h2 className="text-2xl lg:text-4xl font-bold text-gray-900 mb-4 tracking-tight" style={{ color: '#0f172a' }}>
-              Compliance Check
-            </h2>
-            
-            <p className="text-gray-400 text-[14px] lg:text-[16px] leading-relaxed mb-10 px-6 lg:px-0" style={{ color: '#9ca3af' }}>
-              Paradigm IFS requires these <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>{permissionList.length} primary categories</span> to be <span className="text-emerald-600 font-bold" style={{ color: '#059669' }}>Allowed</span> for secure operations.
-            </p>
 
             {/* PWA Prompt inside left column on Web */}
             {isMobileBrowser && (
-              <div className="w-full mb-10 p-5 bg-emerald-900 rounded-3xl text-left shadow-lg" style={{ backgroundColor: '#064e3b' }}>
-                 <div className="flex items-start gap-4">
-                   <div className="p-2.5 rounded-xl mt-1" style={{ backgroundColor: '#065f46' }}>
-                     <Smartphone className="h-5 w-5 text-emerald-400" />
-                   </div>
-                   <div>
-                     <h3 className="text-sm font-bold text-white mb-1.5 leading-tight">Native Experience</h3>
-                     <p className="text-[12px] text-emerald-100/70 leading-relaxed">
-                       Tap <span className="text-emerald-300 font-bold inline-flex items-center gap-1 mx-0.5"><Share className="h-3.5 w-3.5" /> (Share)</span> then <span className="text-white font-bold">"Add to Home Screen"</span>.
-                     </p>
-                   </div>
-                 </div>
+              <div className="pwa-prompt-card">
+                <div className="pwa-prompt-icon-wrapper">
+                  <Smartphone size={20} />
+                </div>
+                <div className="pwa-prompt-details">
+                  <h3 className="pwa-prompt-title">Native Experience Available</h3>
+                  <p className="pwa-prompt-desc">
+                    Tap the browser menu button at the bottom/top of your screen, then select <strong>"Add to Home Screen"</strong> for a native application experience.
+                  </p>
+                </div>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Right Column (List & Actions) */}
-          <div className="w-full lg:flex-1 flex flex-col justify-center">
-            {/* Permission Items */}
-            <div className="w-full space-y-4 mb-8">
+          {/* Right Panel: Permissions List & Actions */}
+          <section className="permissions-primer-side-panel">
+            <div className="permissions-list-stack">
               {permissionList.map((p) => {
                 const isMissing = missingPermissions.includes(p.id);
                 const isActive = currentRequesting === p.id;
-
+                
                 return (
                   <div 
                     key={p.id} 
-                    className={`flex items-center justify-between gap-4 p-5 rounded-3xl transition-all duration-300 ${
-                      isActive 
-                        ? 'bg-emerald-50 border border-emerald-100 ring-4 ring-emerald-500/10' 
-                        : 'bg-gray-50 border border-gray-100 hover:bg-gray-100/50'
-                    }`}
-                    style={{ backgroundColor: isActive ? '#ecfdf5' : '#f9fafb', borderColor: isActive ? '#d1fae5' : '#f3f4f6' }}
+                    className={`permission-item-card ${isActive ? 'is-active-requesting' : ''}`}
                   >
                     <div className="flex items-center gap-4">
-                      <div 
-                        className={`p-3 rounded-full flex items-center justify-center shadow-sm ${isActive ? 'bg-emerald-600 text-white' : 'bg-white text-gray-300'}`}
-                        style={{ backgroundColor: isActive ? '#059669' : '#ffffff', color: isActive ? '#ffffff' : '#d1d5db' }}
-                      >
-                        <div className="relative h-6 w-6 flex items-center justify-center">
-                          <p.icon className={`h-6 w-6 ${isActive ? 'opacity-40' : ''}`} />
-                          {isActive && (
-                            <div className="absolute inset-0 h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          )}
-                        </div>
+                      <div className={`permission-item-icon-wrapper ${isActive ? 'is-active-requesting' : ''}`}>
+                        <p.icon size={18} />
+                        {isActive && <div className="spinner-active-requesting" />}
                       </div>
-                      <div className="flex flex-col items-start text-left">
-                          <span className="text-[15px] font-bold" style={{ color: isMissing ? '#9ca3af' : '#374151' }}>
-                              {p.id === 'Notifications' && !Capacitor.isNativePlatform() ? (
-                                  <span className="text-[13px] leading-tight">Push Notifications (Web)</span>
-                              ) : p.label}
-                          </span>
-                          {isMissing && !Capacitor.isNativePlatform() && p.id === 'Notifications' && (
-                               <span className="text-[11px] text-amber-600 font-medium" style={{ color: '#d97706' }}>Non-blocking for Web Mode</span>
-                          )}
+                      
+                      <div className="permission-item-info">
+                        <span className={`permission-item-name ${isMissing ? 'is-missing' : ''}`}>
+                          {p.id === 'Notifications' && !Capacitor.isNativePlatform() ? 'Push Notifications (Web)' : p.label}
+                        </span>
+                        {isMissing && !Capacitor.isNativePlatform() && p.id === 'Notifications' && (
+                          <span className="permission-item-subtitle">Non-blocking for Web Mode</span>
+                        )}
                       </div>
                     </div>
-                    
+
                     {isActive ? (
-                       <span className="text-[10px] font-bold text-emerald-600 animate-pulse uppercase tracking-[0.2em]" style={{ color: '#059669' }}>Active</span>
+                      <span className="status-badge-active-request">Active</span>
                     ) : isMissing ? (
-                       !Capacitor.isNativePlatform() && p.id === 'Notifications' ? (
-                         <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 rounded-full border border-amber-100" style={{ backgroundColor: '#fffbeb', borderColor: '#fef3c7' }}>
-                           <AlertCircle className="h-4 w-4 text-amber-500" />
-                           <span className="text-[11px] font-bold text-amber-600 uppercase" style={{ color: '#d97706' }}>WEB</span>
-                         </div>
-                       ) : (
-                         <AlertCircle className="h-5 w-5 text-amber-500" />
-                       )
+                      !Capacitor.isNativePlatform() && p.id === 'Notifications' ? (
+                        <div className="status-badge-web-warning">
+                          <AlertCircle size={12} />
+                          <span>WEB</span>
+                        </div>
+                      ) : (
+                        <AlertCircle size={20} className="status-icon-missing" />
+                      )
                     ) : (
-                       <CheckCircle2 className="h-6 w-6 text-emerald-500 animate-in zoom-in-50 duration-300" style={{ color: '#10b981' }} />
+                      <CheckCircle2 size={22} className="status-icon-allowed" />
                     )}
                   </div>
                 );
@@ -251,39 +229,34 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
             </div>
 
             {/* Bottom Actions Area */}
-            <div className="w-full space-y-5 pt-2">
-              <button
+            <div className="permissions-primer-actions">
+              <Button
+                variant="primary"
                 onClick={handleStartSetup}
-                disabled={isRequesting}
-                className={`w-full py-5 lg:py-6 rounded-[24px] font-bold transition-all text-lg shadow-xl ${
-                  isRequesting 
-                    ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98] hover:shadow-emerald-500/20'
-                }`}
-                style={{ 
-                    backgroundColor: isRequesting ? '#f3f4f6' : '#059669', 
-                    color: isRequesting ? '#d1d5db' : '#ffffff',
-                    boxShadow: isRequesting ? 'none' : '0 20px 25px -5px rgba(16, 185, 129, 0.2)' 
-                }}
+                isLoading={isRequesting}
+                className="w-full md:w-auto flex-1"
               >
                 {isRequesting ? 'Respond to system prompts...' : 'Grant All Permissions'}
-              </button>
+              </Button>
 
               <button
                 onClick={handleOpenSettings}
-                className="w-full py-2 flex items-center justify-center gap-2 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors"
-                style={{ color: '#9ca3af' }}
+                className="pp-settings-link-btn"
               >
-                <Settings className="h-4 w-4" />
-                Manual Security Settings
+                <Settings size={15} />
+                <span>Manual Security Settings</span>
               </button>
-
-              <p className="text-[10px] text-gray-300 text-center leading-relaxed uppercase tracking-[0.2em] font-bold mt-4" style={{ color: '#d1d5db' }}>
-                PROTOCOL V2.2 • SECURE ENVIRONMENT
-              </p>
             </div>
-          </div>
-        </div>
+          </section>
+
+        </main>
+        
+        {/* Footer info */}
+        <footer className="permissions-primer-system-footer">
+          <div>Paradigm Protection Engine v4.0</div>
+          <div>PROTOCOL V2.2 • SECURE ENVIRONMENT</div>
+        </footer>
+
       </div>
     </div>
   );

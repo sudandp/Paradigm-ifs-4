@@ -1,0 +1,377 @@
+/* Compliance Check Page - Standalone Full Page Web Redesign */
+
+.permissions-primer-page {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background-color: var(--color-page) !important; /* #f9fafb */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 9999 !important;
+    padding: 32px 40px !important;
+    overflow-y: auto !important;
+    font-family: var(--font-sans), system-ui, sans-serif !important;
+}
+
+.permissions-primer-container {
+    width: 100% !important;
+    max-width: 1280px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 28px !important;
+    margin: auto !important;
+}
+
+/* Nav Header */
+.permissions-primer-nav {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    padding-bottom: 20px !important;
+    width: 100% !important;
+}
+
+.permissions-primer-nav-badge {
+    font-size: 11px !important;
+    font-weight: 750 !important;
+    color: var(--color-accent) !important;
+    background-color: var(--color-accent-light) !important;
+    padding: 6px 14px !important;
+    border-radius: 9999px !important;
+    border: 1px solid rgba(0, 107, 63, 0.12) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+/* Grid Layout */
+.permissions-primer-grid {
+    display: grid !important;
+    grid-template-columns: 1.25fr 1fr !important;
+    gap: 28px !important;
+    width: 100% !important;
+    align-items: start !important;
+}
+
+/* Left Panel Style */
+.permissions-primer-main-panel {
+    background-color: var(--color-card) !important; /* #ffffff */
+    border: 1px solid var(--color-border) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--shadow-card) !important;
+    padding: 36px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 24px !important;
+}
+
+.permissions-primer-header-section {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+}
+
+.permissions-primer-shield-wrapper {
+    background-color: var(--color-accent-light) !important;
+    padding: 16px !important;
+    border-radius: 16px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid rgba(0, 107, 63, 0.08) !important;
+    color: var(--color-accent) !important;
+}
+
+.permissions-primer-main-title {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    color: var(--color-primary-text) !important;
+    margin: 0 !important;
+    line-height: 1.25 !important;
+}
+
+.permissions-primer-main-description {
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    color: var(--color-muted) !important;
+    margin: 0 !important;
+}
+
+/* PWA App Prompt Sub-card */
+.pwa-prompt-card {
+    background-color: var(--color-page) !important;
+    border: 1px dashed rgba(0, 107, 63, 0.25) !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+    text-align: left !important;
+    transition: all 0.2s ease !important;
+}
+
+.pwa-prompt-card:hover {
+    border-color: var(--color-accent) !important;
+    background-color: var(--color-accent-light) !important;
+}
+
+.pwa-prompt-icon-wrapper {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    border-radius: 10px !important;
+    background-color: var(--color-accent-light) !important;
+    color: var(--color-accent) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid rgba(0, 107, 63, 0.08) !important;
+}
+
+.pwa-prompt-details {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    flex: 1 !important;
+}
+
+.pwa-prompt-title {
+    font-size: 14px !important;
+    font-weight: 750 !important;
+    color: var(--color-primary-text) !important;
+    margin: 0 !important;
+}
+
+.pwa-prompt-desc {
+    font-size: 12.5px !important;
+    line-height: 1.5 !important;
+    color: var(--color-muted) !important;
+    margin: 0 !important;
+}
+
+/* Right Panel Style */
+.permissions-primer-side-panel {
+    background-color: var(--color-card) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--shadow-card) !important;
+    padding: 36px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 24px !important;
+}
+
+.permissions-list-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+}
+
+/* Permission Item Card */
+.permission-item-card {
+    background-color: var(--color-page) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 12px !important;
+    padding: 14px 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    transition: all 0.2s ease !important;
+}
+
+.permission-item-card:hover {
+    border-color: rgba(0, 107, 63, 0.25) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.03) !important;
+}
+
+.permission-item-card.is-active-requesting {
+    background-color: var(--color-accent-light) !important;
+    border-color: rgba(0, 107, 63, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(0, 107, 63, 0.08) !important;
+}
+
+.permission-item-icon-wrapper {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 8px !important;
+    background-color: rgba(0, 107, 63, 0.04) !important;
+    color: var(--color-accent) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+}
+
+.permission-item-icon-wrapper.is-active-requesting {
+    background-color: var(--color-accent) !important;
+    color: #ffffff !important;
+}
+
+.permission-item-info {
+    flex: 1 !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+}
+
+.permission-item-name {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: var(--color-primary-text) !important;
+    margin: 0 !important;
+}
+
+.permission-item-name.is-missing {
+    color: var(--color-primary-text) !important;
+}
+
+.permission-item-subtitle {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #b45309 !important;
+    margin-top: 2px !important;
+}
+
+.status-badge-active-request {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    color: var(--color-accent) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+    animation: pulse 1.5s infinite !important;
+}
+
+.status-badge-web-warning {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    padding: 3px 8px !important;
+    border-radius: 9999px !important;
+    color: #b45309 !important;
+    background-color: #fef3c7 !important;
+    border: 1px solid #fde68a !important;
+    text-transform: uppercase !important;
+}
+
+.status-icon-allowed {
+    color: var(--color-accent) !important;
+    flex-shrink: 0 !important;
+}
+
+.status-icon-missing {
+    color: #d97706 !important;
+    flex-shrink: 0 !important;
+}
+
+/* Actions Footer */
+.permissions-primer-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    margin-top: 4px !important;
+}
+
+.pp-settings-link-btn {
+    background: none !important;
+    border: 1px solid var(--color-border) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    color: var(--color-muted) !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    padding: 10px 16px !important;
+    border-radius: 8px !important;
+}
+
+.pp-settings-link-btn:hover {
+    color: var(--color-accent) !important;
+    border-color: var(--color-accent) !important;
+    background-color: var(--color-accent-light) !important;
+}
+
+/* Loading state spinner */
+.spinner-active-requesting {
+    position: absolute !important;
+    inset: 0 !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    border-top-color: #ffffff !important;
+    border-radius: 50% !important;
+    animation: spin 0.6s linear infinite !important;
+}
+
+/* System Footer */
+.permissions-primer-system-footer {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    font-size: 11px !important;
+    color: var(--color-muted) !important;
+    opacity: 0.65 !important;
+    padding-top: 16px !important;
+    border-top: 1px solid var(--color-border) !important;
+    margin-top: 12px !important;
+    width: 100% !important;
+}
+
+/* Pulse animation */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Responsive Overrides */
+@media (max-width: 991px) {
+    .permissions-primer-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px !important;
+    }
+    
+    .permissions-primer-main-panel,
+    .permissions-primer-side-panel {
+        padding: 24px !important;
+    }
+}
+
+@media (max-width: 575px) {
+    .permissions-primer-page {
+        padding: 24px 16px !important;
+    }
+
+    .permissions-primer-main-title {
+        font-size: 22px !important;
+    }
+    
+    .permissions-primer-actions {
+        flex-direction: column !important;
+    }
+
+    .permissions-primer-actions button,
+    .permissions-primer-actions .pp-settings-link-btn {
+        width: 100% !important;
+    }
+
+    .permissions-primer-system-footer {
+        flex-direction: column !important;
+        gap: 6px !important;
+        text-align: center !important;
+    }
+}

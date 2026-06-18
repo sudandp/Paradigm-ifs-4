@@ -157,7 +157,7 @@ export const reportGenerators = {
       tableHtml += `<th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">${String(d).padStart(2, '0')}</th>`;
     }
     tableHtml += `<th style="border: 1px solid #999; padding: 4px; text-align: center; background: #d1fae5; color: #065f46;">P</th>
-          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #dbeafe; color: #1e40af;">1/2P</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #dbeafe; color: #1e40af;">0.5P</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">OT (P)</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #cffafe; color: #0e7490;">C/O</th>
           <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #e0e7ff; color: #3730a3;">E/L</th>
@@ -262,7 +262,7 @@ export const reportGenerators = {
             if (durationHours > 14) overtimeCount++;
             dayWorked = true;
           } else if (durationHours > 1) {
-            workStatus = '1/2P';
+            workStatus = '0.5P';
             workColor = '#d97706';
             dayWorked = true;
           } else if (punchIn) {
@@ -322,7 +322,7 @@ export const reportGenerators = {
             status = workStatus;
             color = workColor;
             if (status === 'P' || status === 'WOP') presentCount++;
-            else if (status === '1/2P') halfDayCount++;
+            else if (status === '0.5P') halfDayCount++;
         } else if (dayLeave) {
             status = leaveStatus;
             color = leaveColor;
@@ -342,7 +342,7 @@ export const reportGenerators = {
             dayWorked = true;
         } else if (isSunday) {
             if (daysPresentInWeek >= 3) {
-                status = 'WO';
+                status = 'W/O';
                 color = '#6b7280';
                 weeklyOffCount++;
             } else {

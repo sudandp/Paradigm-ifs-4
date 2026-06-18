@@ -202,7 +202,7 @@ const reportGenerators = {
     }
     tableHtml += `
           <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0fdf4; color: #166534; width: 25px; font-weight: 700;">P</th>
-          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">1/2P</th>
+          <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">0.5P</th>
           <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0f9ff; color: #075985; width: 25px; font-weight: 700;">OT</th>
           <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fdf2f8; color: #9d174d; width: 25px; font-weight: 700;">C/O</th>
           <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f5f3ff; color: #5b21b6; width: 25px; font-weight: 700;">E/L</th>
@@ -250,7 +250,7 @@ const reportGenerators = {
           if (durationHours >= 5 || (!punchOut && punchIn)) {
             status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
           } else if (durationHours > 1) {
-            status = '1/2P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
+            status = '0.5P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
           } else {
             status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
           }
@@ -258,12 +258,12 @@ const reportGenerators = {
           const isHalfDay = dayLeave.day_option === 'half';
           const leaveType = dayLeave.leave_type?.toLowerCase() || '';
           if (leaveType === 'loss of pay' || leaveType === 'lop') {
-            status = isHalfDay ? '1/2A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
+            status = isHalfDay ? '0.5A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
           } else {
-            if (leaveType.includes('sick')) { status = isHalfDay ? '1/2SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
-            else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '1/2EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
-            else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '1/2CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
-            else { status = isHalfDay ? '1/2L' : 'L'; cellBg = '#eff6ff'; }
+            if (leaveType.includes('sick')) { status = isHalfDay ? '0.5SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
+            else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '0.5EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
+            else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '0.5CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
+            else { status = isHalfDay ? '0.5L' : 'L'; cellBg = '#eff6ff'; }
             color = '#2563eb'; userPaidLeave += isHalfDay ? 0.5 : 1;
           }
         } else if (isPublicHoliday) {
@@ -278,7 +278,7 @@ const reportGenerators = {
           status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
         }
 
-        if (['P', '1/2P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
+        if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
         tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: ${color}; background: ${cellBg}; font-weight: 700; font-size: 8px;">${status || '—'}</td>`;
       }
 

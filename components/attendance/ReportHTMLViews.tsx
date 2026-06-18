@@ -210,10 +210,10 @@ export const MonthlyStatusView: React.FC<{
         if (s === 'P') return 'text-[#059669]'; // Present Green
         if (s === 'A') return 'text-[#DC2626]'; // Absent Red
         if (s === 'W/O' || s === 'WOP') return 'text-[#6B7280]'; // WO Grey
-        if (s === 'H' || s === 'HP' || s === 'H/P') return 'text-[#EA580C]'; // Holiday Orange
+        if (s === 'H' || s === 'H/P') return 'text-[#EA580C]'; // Holiday Orange
         if (s.includes('F/H') || s.includes('BL')) return 'text-[#1D4ED8]'; // Blue Leave
         if (s.includes('PL') || s.includes('P/L')) return 'text-[#DB2777]'; // Pink Leave
-        if (s.includes('1/2')) return 'text-[#2563EB]'; // Half Day Blue
+        if (s.includes('0.5')) return 'text-[#2563EB]'; // Half Day Blue
         if (s.includes('SL') || s.includes('S/L')) return 'text-[#9333EA]'; // Sick Leave Purple
         if (s.includes('EL') || s.includes('E/L')) return 'text-[#4F46E5]'; // Earned Leave Indigo
         if (s.includes('CL') || s.includes('C/L')) return 'text-[#7C3AED]'; // Casual Leave Violet
@@ -261,7 +261,7 @@ export const MonthlyStatusView: React.FC<{
                                 <th key={d} className="px-0 py-1 border-b border-gray-200 font-semibold text-center text-gray-400 min-w-[17px]">{d}</th>
                             ))}
                             <th className="px-0 py-1 border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 min-w-[15px]">P</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 min-w-[16px]">1/2P</th>
+                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 min-w-[16px]">0.5P</th>
                             <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 min-w-[18px]">OT</th>
                             <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 min-w-[16px]">C/O</th>
                             <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 min-w-[16px]">E/L</th>
@@ -308,15 +308,15 @@ export const MonthlyStatusView: React.FC<{
                             <span className="text-gray-600">PRESENT — Full day attendance</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#2563EB] rounded px-0.5">1/2P</span>
+                            <span className="w-4 text-center text-[7px] font-black bg-[#DBEAFE] text-[#2563EB] rounded px-0.5">0.5P</span>
                             <span className="text-gray-600">HALF DAY — 50% attendance</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#D1FAE5] text-[#059669] rounded px-0.5">3/4P</span>
+                            <span className="w-4 text-center text-[7px] font-black bg-[#D1FAE5] text-[#059669] rounded px-0.5">0.75P</span>
                             <span className="text-gray-600">THREE-QUARTER DAY — 75% attendance</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
-                            <span className="w-4 text-center text-[7px] font-black bg-[#E0F2FE] text-[#0369A1] rounded px-0.5">1/4P</span>
+                            <span className="w-4 text-center text-[7px] font-black bg-[#E0F2FE] text-[#0369A1] rounded px-0.5">0.25P</span>
                             <span className="text-gray-600">QUARTER DAY — 25% attendance</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[7.5px] font-bold">
@@ -398,7 +398,7 @@ export const MonthlyStatusView: React.FC<{
                     </div>
 
                 </div>
-                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 1/2 indicates half-day variant (e.g., 1/2EL = Half Earned Leave). H/P and W/P attract 1.5x payable credit.</p>
+                <p className="text-[6.5px] text-gray-400 mt-2">* Prefix 0.5 indicates half-day variant (e.g., 0.5EL = Half Earned Leave). H/P and W/P attract 1.5x payable credit.</p>
             </div>
 
             <Footer label="PARADIGM SERVICES - MONTHLY STATUS REPORT" />

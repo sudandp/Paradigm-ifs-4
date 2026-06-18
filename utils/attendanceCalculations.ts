@@ -746,7 +746,7 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedPermission) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W.O/P';
+          if (isWeekend || isRecurringHoliday) return 'W/P';
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -756,7 +756,7 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedCorrection) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W.O/P';
+          if (isWeekend || isRecurringHoliday) return 'W/P';
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -788,7 +788,7 @@ export function evaluateAttendanceStatus(params: {
           if (code === 'P' || code === 'Present') {
               if (isWFH) status = 'WH';
               else if (isHoliday) status = 'H/P';
-              else if (isWeekend) status = 'W.O/P';
+              else if (isWeekend) status = 'W/P';
               else status = 'P';
           } else {
               status = code;
@@ -805,8 +805,8 @@ export function evaluateAttendanceStatus(params: {
               if (isWFH) status = 'WH';
               // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
               else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
-              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W.O/P for ANY work
-              else if (isWeekend || isRecurringHoliday) status = 'W.O/P';
+              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P for ANY work
+              else if (isWeekend || isRecurringHoliday) status = 'W/P';
               else status = workStatus;
           }
       }

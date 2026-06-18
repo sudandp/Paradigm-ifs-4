@@ -228,7 +228,7 @@ export const exportAttendanceToExcel = async (
             { l: 'Avg Hrs', v: `${(employee.averageWorkingHrs || 0).toFixed(2)} Hrs` },
             { l: 'P', v: employee.presentDays || 0 },
             { l: 'A', v: employee.absentDays || 0 },
-            { l: 'WO', v: employee.weekOffs || 0 },
+            { l: 'W/O', v: employee.weekOffs || 0 },
             { l: 'H', v: employee.holidays || 0 },
             { l: 'L', v: (employee.leaves || 0) },
             { l: 'Pay Days', v: employee.totalPayableDays }
@@ -303,7 +303,7 @@ export const exportAttendanceToExcel = async (
                 // Apply conditional colors for Status
                 if (m.label === 'Status') {
                     const statusVal = rowValues[i - 1];
-                    if (statusVal === 'P' || statusVal === 'Present' || statusVal === 'W/P' || statusVal === 'HP') {
+                    if (statusVal === 'P' || statusVal === 'Present' || statusVal === 'W/P' || statusVal === 'H/P') {
                         cell.font = { color: { argb: 'FF166534' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
                     } else if (statusVal === 'A' || statusVal === 'Absent' || statusVal.includes('LOP')) {
@@ -540,7 +540,7 @@ export const exportMonthlyMatrixToExcel = async (
         
         const headers = ['Employee'];
         for (let i = 1; i <= maxDays; i++) headers.push(i.toString());
-        headers.push('P', '1/2P', 'OT', 'C/O', 'E/L', 'S/L', 'A', 'W/O', 'H', 'Pay');
+        headers.push('P', '0.5P', 'OT', 'C/O', 'E/L', 'S/L', 'A', 'W/O', 'H', 'Pay');
         
         headerRow.values = headers;
         
@@ -554,7 +554,7 @@ export const exportMonthlyMatrixToExcel = async (
             
             const headerText = cell.value as string;
             if (headerText === 'P') { bgColor = 'FFD1FAE5'; cell.font.color = { argb: 'FF065F46' }; }
-            else if (headerText === '1/2P') { bgColor = 'FFDBEAFE'; cell.font.color = { argb: 'FF1E40AF' }; }
+            else if (headerText === '0.5P') { bgColor = 'FFDBEAFE'; cell.font.color = { argb: 'FF1E40AF' }; }
             else if (headerText === 'OT') { bgColor = 'FFCCFBF1'; cell.font.color = { argb: 'FF0F766E' }; }
             else if (headerText === 'C/O') { bgColor = 'FFCFFAFE'; cell.font.color = { argb: 'FF0E7490' }; }
             else if (headerText === 'E/L') { bgColor = 'FFE0E7FF'; cell.font.color = { argb: 'FF3730A3' }; }
@@ -608,7 +608,7 @@ export const exportMonthlyMatrixToExcel = async (
                     cell.font = { bold: true };
                     const headerText = headers[colNumber - 1];
                     if (headerText === 'P' || headerText === 'Pay') cell.font.color = { argb: 'FF059669' };
-                    else if (headerText === '1/2P') cell.font.color = { argb: 'FF2563EB' };
+                    else if (headerText === '0.5P') cell.font.color = { argb: 'FF2563EB' };
                     else if (headerText === 'OT') cell.font.color = { argb: 'FF0D9488' };
                     else if (headerText === 'C/O') cell.font.color = { argb: 'FF0891B2' };
                     else if (headerText === 'E/L') cell.font.color = { argb: 'FF4F46E5' };
@@ -620,7 +620,7 @@ export const exportMonthlyMatrixToExcel = async (
                 else if (colNumber > 1 && colNumber <= 1 + maxDays) {
                     const s = cell.value as string;
                     cell.font = { bold: true };
-                    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') cell.font.color = { argb: 'FF059669' };
+                    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP') cell.font.color = { argb: 'FF059669' };
                     else if (s === 'A' || s === 'Absent') cell.font.color = { argb: 'FFDC2626' };
                     else if (s === 'W/O' || s === 'Weekly Off') cell.font.color = { argb: 'FF64748B' };
                     else if (s === 'H' || s === 'Holiday') cell.font.color = { argb: 'FF4F46E5' };

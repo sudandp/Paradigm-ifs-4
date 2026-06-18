@@ -952,7 +952,7 @@ const AttendanceSettings: React.FC = () => {
                         <Settings className="mr-2 h-5 w-5 text-muted" />Calculation Rules
                     </h3>
                     <p className="text-sm text-muted mb-4">
-                        Configure how attendance status (P, 3/4P, 1/2P, 1/4P, A) is determined. These rules control the engine that calculates every employee's daily status.
+                        Configure how attendance status (P, 3/4P, 0.5P, 1/4P, A) is determined. These rules control the engine that calculates every employee's daily status.
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -972,7 +972,7 @@ const AttendanceSettings: React.FC = () => {
                             description={`Hours needed for 3/4 day status. Default: ${Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}h`}
                         />
                         <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
-                            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Half Day (1/2P)</label>
+                            <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Half Day (0.5P)</label>
                             <p className="text-xs text-muted mb-1">Uses "Min Hours for Half Day" above</p>
                             <div className="text-lg font-black text-blue-600">{currentRules.minimumHoursHalfDay || 4}h+</div>
                         </div>
@@ -1102,7 +1102,7 @@ const AttendanceSettings: React.FC = () => {
 
                     <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/15 rounded-lg">
                         <p className="text-xs text-amber-600 font-medium">
-                            <strong>How status is calculated:</strong> Employee worked hours are compared against these thresholds in order: Full Day → 3/4P → 1/2P → 1/4P → Absent. For field/site staff with GPS tracking, the site-time percentage is used first; if it returns Absent and fallback is ON, hours are used instead.
+                            <strong>How status is calculated:</strong> Employee worked hours are compared against these thresholds in order: Full Day → 3/4P → 0.5P → 1/4P → Absent. For field/site staff with GPS tracking, the site-time percentage is used first; if it returns Absent and fallback is ON, hours are used instead.
                         </p>
                     </div>
                 </section>

@@ -291,7 +291,51 @@ export async function registerDevice(
           message: 'Device registration is pending approval',
         };
       } else if (existingCheck.status === 'revoked') {
-        // Revoked devices require manual re-activation request
+        // Revoked devices require manual re-activation request, EXCEPT when the user is within their limits.
+        // If they are within limits, we automatically reactivate it.
+        const limits = await getDeviceLimits(roleId);
+        const currentCount = await getActiveDeviceCount(userId, deviceType);
+        const limit = limits[deviceType];
+        
+        if (currentCount < limit) {
+          const { data, error } = await supabase
+            .from('user_devices')
+            .update({
+              status: 'active',
+              approved_by_id: userId,
+              approved_at: new Date().toISOString(),
+              last_used_at: new Date().toISOString(),
+              device_info: deviceInfo
+            })
+            .eq('id', existingCheck.device.id)
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          await logDeviceActivity(userId, data.id, 'registration', deviceInfo);
+
+          return {
+            success: true,
+            device: {
+              ...data,
+              userId: data.user_id,
+              deviceType: data.device_type,
+              deviceIdentifier: data.device_identifier,
+              deviceName: data.device_name,
+              deviceInfo: data.device_info || {},
+              registeredAt: data.registered_at,
+              lastUsedAt: data.last_used_at,
+              approvedById: data.approved_by_id,
+              approvedAt: data.approved_at,
+              createdAt: data.created_at,
+              updatedAt: data.updated_at,
+            },
+            requiresApproval: false,
+            message: 'Device re-activated successfully',
+          };
+        }
+
         return {
           success: false,
           requiresApproval: true,
@@ -752,6 +796,73 @@ export async function revokeDevice(deviceId: string): Promise<{ success: boolean
   } catch (error) {
     console.error('Error revoking device:', error);
     throw error;
+  }
+}
+
+/**
+ * Replace the user's oldest active device of the specified type with a new one
+ */
+export async function replaceOldestDevice(
+  userId: string,
+  roleId: string,
+  deviceType: DeviceType,
+  deviceIdentifier: string,
+  deviceName: string,
+  deviceInfo: DeviceInfo
+): Promise<{
+  success: boolean;
+  device?: UserDevice;
+  message: string;
+}> {
+  try {
+    // 1. Retrieve active devices of the specified type for the user, ordered by registered_at ascending
+    const { data: activeDevices, error: selectError } = await supabase
+      .from('user_devices')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('device_type', deviceType)
+      .eq('status', 'active')
+      .order('registered_at', { ascending: true });
+
+    if (selectError) throw selectError;
+
+    // 2. If we have active devices, revoke the oldest one
+    if (activeDevices && activeDevices.length > 0) {
+      const oldestDevice = activeDevices[0];
+      const { success: revokeSuccess } = await revokeDevice(oldestDevice.id);
+      if (!revokeSuccess) {
+        throw new Error('Failed to revoke the oldest active device');
+      }
+      
+      // Log a logout activity log for the revoked device
+      try {
+        await logDeviceActivity(userId, oldestDevice.id, 'logout', oldestDevice.device_info);
+      } catch (logErr) {
+        console.warn('Failed to log auto-revocation activity:', logErr);
+      }
+    }
+
+    // 3. Register the new device (now that space has been freed up)
+    const registrationResult = await registerDevice(
+      userId,
+      roleId,
+      deviceIdentifier,
+      deviceType,
+      deviceName,
+      deviceInfo
+    );
+
+    return {
+      success: registrationResult.success,
+      device: registrationResult.device,
+      message: registrationResult.message,
+    };
+  } catch (error) {
+    console.error('Error replacing oldest device:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'An unknown error occurred during device replacement.',
+    };
   }
 }
 

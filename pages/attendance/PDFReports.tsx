@@ -935,7 +935,7 @@ export const MonthlyReportDocument: React.FC<{
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days }) => {
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'W/H' || s === 'WFH') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
@@ -947,7 +947,7 @@ export const MonthlyReportDocument: React.FC<{
 
   const getStatusBg = (s: string) => {
     if (s.includes('+')) return '#F0FDFA';
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'W/H' || s === 'WFH') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
@@ -1714,7 +1714,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   globalDateRange: { startDate: Date; endDate: Date };
 }> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange }) => {
   const getStatusColor = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
@@ -1724,7 +1724,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   };
 
   const getStatusBg = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'HP' || s === 'H/P' || s === 'W/P' || s === 'WOP') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
@@ -1786,7 +1786,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
                   <View key={i} style={[styles.matrixCell, { paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold' }}>{format(d, 'd')}</Text></View>
                 ))}
                 <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#059669' }}>P</Text></View>
-                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>1/2P</Text></View>
+                <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#2563EB' }}>0.5P</Text></View>
                 <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0D9488' }}>OT</Text></View>
                 <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#0891B2' }}>C/O</Text></View>
                 <View style={[styles.matrixCell, { width: 25, paddingVertical: 5 }]}><Text style={{ fontWeight: 'bold', color: '#4F46E5' }}>E/L</Text></View>

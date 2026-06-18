@@ -241,7 +241,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       '3. Month & Year should be in YYYY-MM format (e.g., 2026-04).',
       '4. Allowed Notations for Days 1-31:',
       '   - P: Present (Full Day)',
-      '   - 1/2P: Half Day Work (4.5 hours)',
+      '   - 0.5P: Half Day Work (4.5 hours)',
       '   - 1/4P: Quarter Day Work (2.25 hours)',
       '   - 3/4P: Three-Quarter Day Work (6.75 hours)',
       '   - EL / SL / CL: Approved Leaves (Full Day)',
@@ -266,13 +266,13 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
         header: (i + 1).toString(),
         required: false,
         type: 'enum' as const,
-        enumValues: ['P', 'A', '1/4P', '1/2P', '3/4P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O'],
+        enumValues: ['P', 'A', '1/4P', '0.5P', '3/4P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O'],
         width: 10,
         description: 'Select from allowed notations only'
       }))
     ],
     sampleData: [
-      { employee_id: 'EMP001', employee_name: 'John Doe', month_year: '2026-04', site_name: 'Prestige Lakeside', day_1: 'P', day_2: '1/2P', day_3: 'W/O', day_4: '0.5P+0.5 EL', day_5: 'A' },
+      { employee_id: 'EMP001', employee_name: 'John Doe', month_year: '2026-04', site_name: 'Prestige Lakeside', day_1: 'P', day_2: '0.5P', day_3: 'W/O', day_4: '0.5P+0.5 EL', day_5: 'A' },
     ],
   },
 ];

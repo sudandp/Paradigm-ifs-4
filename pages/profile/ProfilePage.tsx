@@ -143,13 +143,13 @@ const ProfilePage: React.FC = () => {
                 // deduplicates points within 5m, and sums the cumulative path distance.
                 const { distance, duration } = calculateDailyPathTravelKm(events, routePoints);
 
-                // Steps and sqft are captured on PUNCH-OUT events only (saved by stepCounterService on check-out)
+                // Steps and sqft are captured on check-out events only (saved by stepCounterService on check-out)
                 const totalSteps = events
-                    .filter(e => e.type === 'punch-out' && e.steps != null)
+                    .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.steps != null)
                     .reduce((sum, e) => sum + (e.steps || 0), 0);
 
                 const totalSqft = events
-                    .filter(e => e.type === 'punch-out' && e.sqft != null)
+                    .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.sqft != null)
                     .reduce((sum, e) => sum + (e.sqft || 0), 0);
 
                 setTodayMetrics({

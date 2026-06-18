@@ -4,7 +4,7 @@ import { useSecurityCheck } from '../hooks/useSecurityCheck';
 import SecurityWarningModal from '../components/ui/SecurityWarningModal';
 import { api } from '../services/api';
 import { isAdmin } from '../utils/auth';
-import { getCurrentDevice, registerDevice, getDeviceLimits, createDeviceChangeRequest } from '../services/deviceService';
+import { getCurrentDevice, registerDevice, getDeviceLimits, createDeviceChangeRequest, replaceOldestDevice } from '../services/deviceService';
 import DeviceWarningDialog from './devices/DeviceWarningDialog';
 import { DeviceType } from '../types';
 import LoadingScreen from './ui/LoadingScreen';
@@ -29,6 +29,7 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
     const [deviceMessage, setDeviceMessage] = useState('');
     const [limits, setLimits] = useState<{ web: number; android: number; ios: number }>({ web: 1, android: 1, ios: 1 });
     const [isRequestingAccess, setIsRequestingAccess] = useState(false);
+    const [isReplacingDevice, setIsReplacingDevice] = useState(false);
     const [checkTrigger, setCheckTrigger] = useState(0);
 
     // Track which user.id we've already checked to prevent re-running on profile updates
@@ -167,6 +168,34 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
         setCheckTrigger(prev => prev + 1);
     };
 
+    // Handler for "Auto-Replace Oldest & Login" button
+    const handleAutoReplaceDevice = async () => {
+        if (!user) return;
+        try {
+            setIsReplacingDevice(true);
+            const { deviceIdentifier, deviceType, deviceName, deviceInfo: dInfo } = await getCurrentDevice();
+            const result = await replaceOldestDevice(
+                user.id,
+                user.role,
+                deviceType as DeviceType,
+                deviceIdentifier,
+                deviceName,
+                dInfo
+            );
+            if (result.success) {
+                setDeviceStatus('authorized');
+                lastCheckedUserId.current = user.id;
+            } else {
+                setDeviceMessage(result.message || 'Failed to replace device. Please try again.');
+            }
+        } catch (error: any) {
+            console.error('Failed to auto-replace device:', error);
+            setDeviceMessage(`Replacement failed: ${error?.message || 'Unknown error'}`);
+        } finally {
+            setIsReplacingDevice(false);
+        }
+    };
+
     // 1. Check basic security (Dev mode / Location spoofing)
     if (user && !isExemptFromSecurityChecks && !securityCheck.isSecure) {
         return <SecurityWarningModal issues={securityCheck.issues} />;
@@ -186,9 +215,11 @@ const SecurityWrapper: React.FC<SecurityWrapperProps> = ({ children }) => {
                 limits={limits}
                 customMessage={deviceMessage}
                 isRequestingAccess={isRequestingAccess}
+                isReplacingDevice={isReplacingDevice}
                 onLogout={() => useAuthStore.getState().logout()}
                 onRequestAccess={handleRequestAccess}
                 onTryAgain={handleTryAgain}
+                onAutoReplace={handleAutoReplaceDevice}
             />
         );
     }

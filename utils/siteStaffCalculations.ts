@@ -135,17 +135,17 @@ export function generateMonthlyOutput(
   billingPeriodStart: string,
   billingPeriodEnd: string,
   config: SiteStaffConfig,
-  attendanceMarks: string[], // Array of daily marks 'P', '1/2P', 'WO', 'EL', 'HP', '1/2HP', etc.
+  attendanceMarks: string[], // Array of daily marks 'P', '0.5P', 'W/O', 'EL', 'H/P', '0.5H/P', etc.
   holidaysInPeriod: number,
   elOpeningBalance: number,
   woOpeningBalance: number,
   manualAdjustments: ManualAdjustment[] = []
 ) {
-  const daysPresent = attendanceMarks.filter(m => m === 'P').length + (attendanceMarks.filter(m => m === '1/2P').length * 0.5);
+  const daysPresent = attendanceMarks.filter(m => m === 'P').length + (attendanceMarks.filter(m => m === '0.5P').length * 0.5);
   const daysAbsent = attendanceMarks.filter(m => !m || m === 'A' || m === '0').length;
   const daysElAvailed = attendanceMarks.filter(m => m === 'EL').length;
-  const countHp = attendanceMarks.filter(m => m === 'HP').length;
-  const countHalfHp = attendanceMarks.filter(m => m === '1/2HP').length;
+  const countHp = attendanceMarks.filter(m => m === 'H/P').length;
+  const countHalfHp = attendanceMarks.filter(m => m === '0.5H/P').length;
 
   const woAccrual = accrueWOBalance(daysPresent, woOpeningBalance);
   const elAccrual = accrueELBalance(daysPresent, woAccrual.allotted, holidaysInPeriod, elOpeningBalance, daysElAvailed, config.earnedLeavesPerAnnum);
@@ -212,7 +212,7 @@ export function generateMonthlyOutput(
 
 /**
  * Evaluates the attendance status specifically for Site Staff.
- * Uses shift-based attendance but layers HP, 1/2HP, WO, and EL.
+ * Uses shift-based attendance but layers H/P, 0.5H/P, W/O, and EL.
  */
 export function evaluateSiteStaffStatus(params: any): string {
   const { 
@@ -329,17 +329,17 @@ export function evaluateSiteStaffStatus(params: any): string {
     return 'EL';
   }
 
-  // CRITICAL: If employee actually worked (baseWorkStatus is P or 1/2P / 0.5P), their physical
+  // CRITICAL: If employee actually worked (baseWorkStatus is P or 0.5P), their physical
   // presence takes priority over an approved full-day leave. The leave may have been
   // approved but the employee showed up and worked — credit their attendance.
-  if (baseWorkStatus === 'P' || baseWorkStatus === '1/2P' || baseWorkStatus === '0.5P') {
+  if (baseWorkStatus === 'P' || baseWorkStatus === '0.5P') {
     if (isHoliday) {
-      // Overtime Rule: Only one HP or 0.5HP per day. 
-      return baseWorkStatus === 'P' ? 'HP' : '0.5HP';
+      // Overtime Rule: Only one H/P or 0.5H/P per day. 
+      return baseWorkStatus === 'P' ? 'H/P' : '0.5H/P';
     }
     if (isWeeklyOffDay) {
-      // Worked on weekly off -> W.O/P or W.O/0.5P
-      return baseWorkStatus === 'P' ? 'W.O/P' : 'W.O/0.5P';
+      // Worked on weekly off -> W/P or W/0.5P
+      return baseWorkStatus === 'P' ? 'W/P' : 'W/0.5P';
     }
     return baseWorkStatus;
   }
@@ -384,7 +384,7 @@ export function evaluateSiteStaffStatus(params: any): string {
 
   // Weekly Off logic
   if (isWeeklyOffDay) {
-    return 'WO';
+    return 'W/O';
   }
 
   // Non-working Holiday logic (if it is a holiday but they didn't work)

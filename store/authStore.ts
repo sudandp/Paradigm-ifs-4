@@ -992,7 +992,7 @@ export const useAuthStore = create<AuthState>()(
                     let sqftValue: number | undefined = undefined;
                     let travelDistanceValue: number | undefined = undefined;
 
-                    if (newType === 'punch-out') {
+                    if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
                              try {
                               const { stepCounterService } = await import('../services/stepCounterService');
                               await stepCounterService.getStepCountFromNative();
@@ -1153,7 +1153,7 @@ export const useAuthStore = create<AuthState>()(
                         api.processFieldAttendance(user.id, today).catch(e => console.error('Violation check failed:', e));
                     }
 
-                    if (newType === 'punch-in') {
+                    if (newType === 'punch-in' || newType === 'site-ot-in' || newType === 'site-in') {
                         // Start step counter for all staff types (office, field, site)
                         // preflight() requests ACTIVITY_RECOGNITION permission BEFORE startCounting()
                         // so the dialog appears immediately at check-in, not silently later
@@ -1177,7 +1177,7 @@ export const useAuthStore = create<AuthState>()(
                         // Schedule Shift End Reminder (9 hours)
                         // If user has specific shift duration settings, we could use that. defaulting to 9h.
                         scheduleShiftEndReminder(new Date(), Math.max(9, get().totalWorkingDurationToday + 1 || 9));
-                    } else if (newType === 'punch-out') {
+                    } else if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
                         // Cancel shift end reminder
                         cancelNotification('SHIFT_END');
                         // Also ensure break reminder is cancelled just in case

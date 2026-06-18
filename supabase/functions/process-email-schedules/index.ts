@@ -666,7 +666,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
   }
   tableHtml += `
         <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0fdf4; color: #166534; width: 25px; font-weight: 700;">P</th>
-        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">1/2P</th>
+        <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fffbeb; color: #92400e; width: 35px; font-weight: 700;">0.5P</th>
         <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f0f9ff; color: #075985; width: 25px; font-weight: 700;">OT</th>
         <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #fdf2f8; color: #9d174d; width: 25px; font-weight: 700;">C/O</th>
         <th style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; background: #f5f3ff; color: #5b21b6; width: 25px; font-weight: 700;">E/L</th>
@@ -812,7 +812,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
       }
 
-      if (['P', '1/2P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) {
+      if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) {
         daysPresentInWeek++;
       }
       
@@ -844,7 +844,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a; display: inline-block;"></span> <strong style="color: #166534;">P:</strong> PRESENT</div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #dc2626; display: inline-block;"></span> <strong style="color: #991b1b;">A:</strong> ABSENT</div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #991b1b; display: inline-block;"></span> <strong style="color: #991b1b;">LOP:</strong> LOSS OF PAY</div>
-      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706; display: inline-block;"></span> <strong style="color: #92400e;">1/2P:</strong> HALF DAY</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706; display: inline-block;"></span> <strong style="color: #92400e;">0.5P:</strong> HALF DAY</div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0891b2; display: inline-block;"></span> <strong style="color: #155e75;">W/H:</strong> WFH</div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0369a1; display: inline-block;"></span> <strong style="color: #0c4a6e;">W/P:</strong> WEEK OFF WORK</div>
       <div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #64748b; display: inline-block;"></span> <strong style="color: #475569;">W/O:</strong> WEEKLY OFF</div>

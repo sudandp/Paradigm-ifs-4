@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "16.8.0",
+  "version": "16.9.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -102,7 +102,7 @@
     "@typescript-eslint/parser": "^7.7.0",
     "@vercel/node": "^4.0.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "dotenv": "^17.4.2",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",

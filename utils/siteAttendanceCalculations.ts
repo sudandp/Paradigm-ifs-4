@@ -17,7 +17,7 @@ export function calcNetDuties(dailyCodes: string[]): number {
       total += 1;
     }
     // Half-duty codes
-    else if (c === '0.5P' || c === '1/2P' || c === 'W/0.5P') {
+    else if (c === '0.5P' || c === 'W/0.5P') {
       total += 0.5;
     }
     // Three-quarter day
@@ -70,7 +70,7 @@ export function calcLeaveCount(dailyCodes: string[]): number {
     const c = code.toUpperCase();
     if (c === 'C/O' || c === 'E/L' || c === 'S/L' || c === 'C/L') {
       total += 1;
-    } else if (c.startsWith('1/2') && (c.includes('E/L') || c.includes('S/L') || c.includes('C/O'))) {
+    } else if (c.startsWith('0.5') && (c.includes('E/L') || c.includes('S/L') || c.includes('C/O'))) {
       total += 0.5;
     }
   }
@@ -102,9 +102,9 @@ export function calcOTDuties(dailyCodes: string[]): number {
 /**
  * Column AT — Holidays Payable
  * 
- * NA:      H (not worked) = 0, HP (worked full) = 1, 1/2HP (worked half) = 0.5  (duty only)
- * Actuals: H (not worked) = 1, HP (worked full) = 1+1 = 2, 1/2HP (worked half) = 1+0.5 = 1.5
- * Double:  H (not worked) = 1, HP (worked full) = 1+2*1 = 3, 1/2HP (worked half) = 1+2*0.5 = 2
+ * NA:      H (not worked) = 0, H/P (worked full) = 1, 0.5H/P (worked half) = 0.5  (duty only)
+ * Actuals: H (not worked) = 1, H/P (worked full) = 1+1 = 2, 0.5H/P (worked half) = 1+0.5 = 1.5
+ * Double:  H (not worked) = 1, H/P (worked full) = 1+2*1 = 3, 0.5H/P (worked half) = 1+2*0.5 = 2
  * 
  * Returns 0 if staff has exclusion remarks or site holiday toggle is OFF
  */
@@ -123,26 +123,26 @@ export function calcHolidaysPayable(
 
     if (nhBillingConfig === 'NA') {
       // NA: No base holiday pay. Only duty performed counts.
-      // H (not worked) = 0 (not counted), HP = 1, 1/2HP = 0.5
-      if (c === 'HP') total += 1.0;
-      else if (c === '1/2HP') total += 0.5;
+      // H (not worked) = 0 (not counted), H/P = 1, 0.5H/P = 0.5
+      if (c === 'H/P') total += 1.0;
+      else if (c === '0.5H/P') total += 0.5;
       // H, O/H etc. = 0 (not counted for NA)
     } 
     else if (nhBillingConfig === 'Actuals') {
       // Actuals: Base (1) for every holiday + actual work value
-      // H (not worked) = 1, HP = 1+1 = 2, 1/2HP = 1+0.5 = 1.5
+      // H (not worked) = 1, H/P = 1+1 = 2, 0.5H/P = 1+0.5 = 1.5
       if (c === 'H') total += 1.0;
-      else if (c === 'HP') total += 2.0;     // Base (1) + Actual (1)
-      else if (c === '1/2HP') total += 1.5;  // Base (1) + Actual (0.5)
+      else if (c === 'H/P') total += 2.0;     // Base (1) + Actual (1)
+      else if (c === '0.5H/P') total += 1.5;  // Base (1) + Actual (0.5)
       else if (c === 'O/H') total += 1.0;
       else if (c === 'O/H.5') total += 0.5;
     }
     else if (nhBillingConfig === 'Double') {
       // Double: Base (1) for every holiday + 2x actual work value
-      // H (not worked) = 1, HP = 1+2*1 = 3, 1/2HP = 1+2*0.5 = 2
+      // H (not worked) = 1, H/P = 1+2*1 = 3, 0.5H/P = 1+2*0.5 = 2
       if (c === 'H') total += 1.0;
-      else if (c === 'HP') total += 3.0;     // Base (1) + 2*Actual (1)
-      else if (c === '1/2HP') total += 2.0;  // Base (1) + 2*Actual (0.5)
+      else if (c === 'H/P') total += 3.0;     // Base (1) + 2*Actual (1)
+      else if (c === '0.5H/P') total += 2.0;  // Base (1) + 2*Actual (0.5)
       else if (c === 'O/H') total += 1.0;
       else if (c === 'O/H.5') total += 0.5;
     }

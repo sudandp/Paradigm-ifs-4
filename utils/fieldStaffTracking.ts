@@ -172,7 +172,7 @@ export function validateFieldStaffAttendance(
 ): {
   isValid: boolean;
   violations: string[];
-  status: 'P' | '3/4P' | '1/2P' | '1/4P' | 'A';
+  status: 'P' | '3/4P' | '0.5P' | '1/4P' | 'A';
 } {
   const violations: string[] = [];
   const target = rules.minimumSitePercentage;
@@ -196,11 +196,11 @@ export function validateFieldStaffAttendance(
   }
 
   // 2. Determine tiered status based on absolute site hours vs target site hours
-  // This ensures that short days (e.g. 4 hours) are correctly capped at 1/2P even with 100% site usage.
+  // This ensures that short days (e.g. 4 hours) are correctly capped at 0.5P even with 100% site usage.
   const fullDayTargetHours = rules.minimumHoursFullDay || 8;
   const targetSiteMinutes = fullDayTargetHours * 60 * (target / 100);
   
-  let status: 'P' | '3/4P' | '1/2P' | '1/4P' | 'A' = 'A';
+  let status: 'P' | '0.75P' | '0.5P' | '1/4P' | 'A' = 'A';
   
   if (targetSiteMinutes > 0) {
     const siteRatio = breakdown.siteMinutes / targetSiteMinutes;
@@ -208,9 +208,9 @@ export function validateFieldStaffAttendance(
     if (siteRatio >= 0.98) { // Small buffer for "P" (e.g. 5h 55m counts as 6h)
       status = 'P';
     } else if (siteRatio >= 0.75) {
-      status = '3/4P';
+      status = '0.75P';
     } else if (siteRatio >= 0.50) {
-      status = '1/2P';
+      status = '0.5P';
     } else if (siteRatio > 0) {
       status = '1/4P';
     }
@@ -218,16 +218,16 @@ export function validateFieldStaffAttendance(
     // Cap the status based on actual total hours worked to ensure a short day doesn't get 'P'
     const threeQuarterHrs = fullDayTargetHours * 0.75;
     if (status === 'P' && breakdown.totalHours < fullDayTargetHours - 0.25) {
-      status = breakdown.totalHours >= threeQuarterHrs ? '3/4P' : '1/2P';
-    } else if (status === '3/4P' && breakdown.totalHours < threeQuarterHrs) {
-      status = '1/2P';
+      status = breakdown.totalHours >= threeQuarterHrs ? '0.75P' : '0.5P';
+    } else if (status === '0.75P' && breakdown.totalHours < threeQuarterHrs) {
+      status = '0.5P';
     }
   } else {
     // Fallback to total hours if no site target is configured
     const threeQuarterHrs = fullDayTargetHours * 0.75;
     if (breakdown.totalHours >= fullDayTargetHours - 0.25) status = 'P';
-    else if (breakdown.totalHours >= threeQuarterHrs) status = '3/4P';
-    else if (breakdown.totalHours >= rules.minimumHoursHalfDay) status = '1/2P';
+    else if (breakdown.totalHours >= threeQuarterHrs) status = '0.75P';
+    else if (breakdown.totalHours >= rules.minimumHoursHalfDay) status = '0.5P';
   }
 
   return {
@@ -243,7 +243,7 @@ export function validateFieldStaffAttendance(
  * Uses site-time-percentage logic:
  *  - P  → site % >= minimumSitePercentage (default 75%)
  *  - P  → violation exists but manager acknowledged it (attendanceGranted = true)
- *  - 1/2P → worked but site % below threshold and no acknowledgment
+ *  - 0.5P → worked but site % below threshold and no acknowledgment
  *  - A  → no activity
  *
  * @param events All attendance events for the day
@@ -257,7 +257,7 @@ export function getFieldStaffStatus(
   userRole?: string,
   processingDate?: Date
 ): {
-  status: 'P' | '3/4P' | '1/2P' | '1/4P' | 'A';
+  status: 'P' | '3/4P' | '0.5P' | '1/4P' | 'A';
   breakdown: SiteTravelBreakdown;
   hasViolation: boolean;
   grantedByManager: boolean;

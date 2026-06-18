@@ -1323,7 +1323,7 @@ const AttendanceDashboard: React.FC = () => {
                 // 4. Calculate Final Stats based on displayLogs
                 const present = displayLogs.reduce((acc, l) => {
                     if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P' || l.status === '0.5P') return acc + 1;
-                    if (l.status.startsWith('1/2P')) return acc + 0.5;
+                    if (l.status.startsWith('0.5P')) return acc + 0.5;
                     return acc;
                 }, 0);
                 const absent = displayLogs.filter(l => (l.status === 'A' || l.status === '1/2A') && l.rawDate <= new Date()).length;
@@ -2780,7 +2780,7 @@ const AttendanceDashboard: React.FC = () => {
                         // Column Headers
                         const headerRow = [`"Employee Name"`];
                         daysInMonth.forEach(d => headerRow.push(`"${format(d, 'd')}"`));
-                        headerRow.push(`"P"`, `"1/2P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"F/H"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
+                        headerRow.push(`"P"`, `"0.5P"`, `"OT"`, `"C/O"`, `"E/L"`, `"S/L"`, `"F/H"`, `"A"`, `"W/O"`, `"H"`, `"Pay"`);
                         csvContent += headerRow.join(',') + '\n';
                         
                         // Data Rows
@@ -3604,7 +3604,7 @@ const AttendanceDashboard: React.FC = () => {
                                 <option value="ACTIVE_USERS">Active Users Only</option>
                                 <optgroup label="── Attendance ──">
                                     <option value="P">P — Present</option>
-                                    <option value="1/2P">1/2P — Half Day</option>
+                                    <option value="0.5P">0.5P — Half Day</option>
                                     <option value="3/4P">3/4P — Three-Quarter Day</option>
                                     <option value="1/4P">1/4P — Quarter Day</option>
                                     <option value="A">A — Absent</option>
