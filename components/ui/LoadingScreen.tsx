@@ -122,10 +122,6 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center text-center">
                 <div className={`${fullScreen ? 'mb-8' : 'mb-4'} relative flex flex-col justify-center items-center`}>
                     <div className="relative mb-6 ls-breathe-wrapper">
-                        {/* Counter-rotating subtle outline ring */}
-                        <div className={`absolute inset-0 rounded-full border border-dashed ${isNative ? 'border-emerald-500/20' : 'border-[#006b3f]/15'} ls-ring-spin`} />
-                        <div className={`absolute -inset-1.5 rounded-full border ${isNative ? 'border-emerald-500/5' : 'border-[#006b3f]/5'} animate-pulse`} />
-                        
                         <div className={`ls-logo-container ${fullScreen ? 'w-60 h-60' : 'w-44 h-44'} relative z-10`}>
                             {/* Inner slowly spinning logo */}
                             <div className="ls-logo-spin w-full h-full flex items-center justify-center">

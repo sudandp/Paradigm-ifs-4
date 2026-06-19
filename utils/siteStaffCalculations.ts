@@ -216,8 +216,10 @@ export function generateMonthlyOutput(
  */
 export function evaluateSiteStaffStatus(params: any): string {
   const { 
-    day, dayEvents, siteHolidays, leaves, userRules, workingHours, fieldStatus
+    day, userId, user_id, dayEvents, siteHolidays, leaves, userRules, workingHours, fieldStatus,
+    daysPresentInWeek, isActiveInPreviousWeek
   } = params;
+  const targetUserId = userId || user_id;
 
   // 1. Check if the day is a Holiday in the Duty Day Master (siteHolidays)
   const dateStr = format(day, 'yyyy-MM-dd');
@@ -236,6 +238,10 @@ export function evaluateSiteStaffStatus(params: any): string {
     const lStartDate = l.startDate || l.date || l.leave_date;
     const lEndDate = l.endDate || l.date || l.leave_date;
     if (!lStartDate || !lEndDate) return false;
+    
+    const lUserId = l.userId || l.user_id;
+    if (targetUserId && String(lUserId) !== String(targetUserId)) return false;
+
     const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
     if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
 
@@ -384,7 +390,9 @@ export function evaluateSiteStaffStatus(params: any): string {
 
   // Weekly Off logic
   if (isWeeklyOffDay) {
-    return 'W/O';
+    const threshold = userRules?.weekendPresentThreshold ?? 3;
+    const meetsThreshold = (daysPresentInWeek ?? 0) >= threshold;
+    return meetsThreshold ? 'W/O' : 'A';
   }
 
   // Non-working Holiday logic (if it is a holiday but they didn't work)

@@ -817,7 +817,7 @@ const AttendanceSettings: React.FC = () => {
                                 <div>
                                     <h4 className="text-sm font-bold text-blue-700">Shift-Based Attendance Enabled</h4>
                                     <p className="text-xs text-blue-600/80 leading-relaxed mt-1">
-                                        For Site Staff, the system automatically calculates attendance codes (P, 3/4P, etc.) by comparing worked time against the <strong>Shift Roster</strong> window. Manual work duration goals are not required.
+                                        For Site Staff, the system automatically calculates attendance codes (P, 0.75P, etc.) by comparing worked time against the <strong>Shift Roster</strong> window. Manual work duration goals are not required.
                                     </p>
                                 </div>
                             </div>
@@ -952,7 +952,7 @@ const AttendanceSettings: React.FC = () => {
                         <Settings className="mr-2 h-5 w-5 text-muted" />Calculation Rules
                     </h3>
                     <p className="text-sm text-muted mb-4">
-                        Configure how attendance status (P, 3/4P, 0.5P, 1/4P, A) is determined. These rules control the engine that calculates every employee's daily status.
+                        Configure how attendance status (P, 0.75P, 0.5P, 1/4P, A) is determined. These rules control the engine that calculates every employee's daily status.
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -962,14 +962,14 @@ const AttendanceSettings: React.FC = () => {
                             <div className="text-lg font-black text-emerald-600">{currentRules.minimumHoursFullDay || 8}h+</div>
                         </div>
                         <Input
-                            label="3/4 Day Hours (3/4P)"
+                            label="3/4 Day Hours (0.75P)"
                             id="threeQuarterDayHours"
                             type="number"
                             step="0.5"
                             min="0"
                             value={currentRules.threeQuarterDayHours ?? Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}
                             onChange={(e) => handleSettingChange('threeQuarterDayHours', parseFloat(e.target.value) || 0)}
-                            description={`Hours needed for 3/4 day status. Default: ${Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}h`}
+                            description={`Hours needed for 3/4 day status (0.75P). Default: ${Math.round((currentRules.minimumHoursFullDay || 8) * 0.75 * 10) / 10}h`}
                         />
                         <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
                             <label className="block text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Half Day (0.5P)</label>
@@ -977,14 +977,14 @@ const AttendanceSettings: React.FC = () => {
                             <div className="text-lg font-black text-blue-600">{currentRules.minimumHoursHalfDay || 4}h+</div>
                         </div>
                         <Input
-                            label="1/4 Day Hours (1/4P)"
+                            label="1/4 Day Hours (0.25P)"
                             id="quarterDayHours"
                             type="number"
                             step="0.5"
                             min="0"
                             value={currentRules.quarterDayHours ?? 2}
                             onChange={(e) => handleSettingChange('quarterDayHours', parseFloat(e.target.value) || 0)}
-                            description="Hours needed for 1/4 day status. Default: 2h"
+                            description="Hours needed for 1/4 day status (0.25P). Default: 2h"
                         />
                     </div>
 
@@ -1102,7 +1102,7 @@ const AttendanceSettings: React.FC = () => {
 
                     <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/15 rounded-lg">
                         <p className="text-xs text-amber-600 font-medium">
-                            <strong>How status is calculated:</strong> Employee worked hours are compared against these thresholds in order: Full Day → 3/4P → 0.5P → 1/4P → Absent. For field/site staff with GPS tracking, the site-time percentage is used first; if it returns Absent and fallback is ON, hours are used instead.
+                            <strong>How status is calculated:</strong> Employee worked hours are compared against these thresholds in order: Full Day → 0.75P → 0.5P → 0.25P → Absent. For field/site staff with GPS tracking, the site-time percentage is used first; if it returns Absent and fallback is ON, hours are used instead.
                         </p>
                     </div>
                 </section>

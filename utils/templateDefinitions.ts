@@ -243,7 +243,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       '   - P: Present (Full Day)',
       '   - 0.5P: Half Day Work (4.5 hours)',
       '   - 1/4P: Quarter Day Work (2.25 hours)',
-      '   - 3/4P: Three-Quarter Day Work (6.75 hours)',
+      '   - 0.75P / 3/4P: Three-Quarter Day Work (6.75 hours)',
       '   - EL / SL / CL: Approved Leaves (Full Day)',
       '   - 0.5P+0.5 EL / 0.5P+0.5 SL / 0.5P+0.5 CL: Half Day Work + Half Day Leave',
       '   - LOP / A: Loss of Pay / Absent',
@@ -266,7 +266,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
         header: (i + 1).toString(),
         required: false,
         type: 'enum' as const,
-        enumValues: ['P', 'A', '1/4P', '0.5P', '3/4P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O'],
+        enumValues: ['P', 'A', '1/4P', '0.25P', '0.5P', '1/2P', '2/4P', '3/4P', '0.75P', 'EL', 'SL', 'CL', 'LOP', 'S', 'H', 'W/O', 'W/H', '0.5P+0.5 EL', '0.5P+0.5 SL', '0.5P+0.5 CL', '0.5P+0.5 LOP', '0.5P EL', '0.5P SL', '0.5P CL', '0.5P LOP', 'C/D', 'W/P', 'H/P', 'C/O'],
         width: 10,
         description: 'Select from allowed notations only'
       }))

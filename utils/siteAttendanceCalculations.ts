@@ -17,15 +17,15 @@ export function calcNetDuties(dailyCodes: string[]): number {
       total += 1;
     }
     // Half-duty codes
-    else if (c === '0.5P' || c === 'W/0.5P') {
+    else if (c === '0.5P' || c === '1/2P' || c === '2/4P' || c === 'W/0.5P') {
       total += 0.5;
     }
     // Three-quarter day
-    else if (c === '3/4P') {
+    else if (c === '3/4P' || c === '0.75P') {
       total += 0.75;
     }
     // Quarter day
-    else if (c === '1/4P') {
+    else if (c === '1/4P' || c === '0.25P') {
       total += 0.25;
     }
     // Skip non-duty codes: A, W/O, H, W/P (counted separately), C/O, E/L, S/L, O/H, O/H.5

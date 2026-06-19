@@ -769,9 +769,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0 relative">
                             <span className={`inline-flex items-center justify-center w-full min-h-[18px] font-bold text-[9px] ${
                                 d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
-                                d.status === '0.75P' ? 'bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-600' :
-                                d.status === '0.5P' ? 'bg-gradient-to-r from-emerald-100 to-blue-100 text-blue-800' :
-                                d.status === '0.25P' ? 'bg-gradient-to-r from-blue-100 to-slate-100 text-blue-600' :
+                                (d.status === '0.75P' || d.status === '3/4P') ? 'bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-600' :
+                                (d.status === '0.5P' || d.status === '1/2P' || d.status === '2/4P') ? 'bg-gradient-to-r from-emerald-100 to-blue-100 text-blue-800' :
+                                (d.status === '0.25P' || d.status === '1/4P') ? 'bg-gradient-to-r from-blue-100 to-slate-100 text-blue-600' :
                                 d.status === 'A' ? 'bg-rose-50 text-rose-600' :
                                 d.status === 'W/O' || d.status === 'WOP' ? 'bg-slate-50 text-slate-600' :
                                 d.status === 'W/P' ? 'bg-blue-50 text-blue-700' :
@@ -881,9 +881,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                  <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {[
                         { code: 'P',    label: 'Present',              bg: 'bg-emerald-50',  text: 'text-emerald-700' },
-                        { code: '1/2P', label: 'Half Day',             bg: 'bg-blue-50',     text: 'text-blue-700'   },
-                        { code: '3/4P', label: 'Three-Quarter Day',    bg: 'bg-emerald-50',  text: 'text-emerald-600'},
-                        { code: '1/4P', label: 'Quarter Day',          bg: 'bg-sky-50',      text: 'text-sky-600'    },
+                        { code: '0.5P', label: 'Half Day',             bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: '0.75P', label: 'Three-Quarter Day',   bg: 'bg-emerald-50',  text: 'text-emerald-600'},
+                        { code: '0.25P', label: 'Quarter Day',          bg: 'bg-sky-50',      text: 'text-sky-600'    },
                         { code: 'A',    label: 'Absent',               bg: 'bg-rose-50',     text: 'text-rose-700'   },
                         { code: 'LOP',  label: 'Loss of Pay',          bg: 'bg-red-50',      text: 'text-red-700'    },
                         { code: 'W/O',  label: 'Weekly Off',           bg: 'bg-slate-100',   text: 'text-slate-600'  },

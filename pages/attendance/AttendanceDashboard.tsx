@@ -755,6 +755,7 @@ const AttendanceDashboard: React.FC = () => {
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
+    const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
     const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
     const [monthlyDataMap, setMonthlyDataMap] = useState<Record<string, EmployeeMonthlyData[]>>({});
@@ -1182,6 +1183,7 @@ const AttendanceDashboard: React.FC = () => {
             const userRules = resolveUserRules(user.id, userCategory);
             const weeklyOffDays = userRules.weeklyOffDays || [0];
 
+            const startTime = Date.now();
             setIsLoading(true);
             try {
                 // Fetch extra days before start date to handle weekend logic correctly across months
@@ -1348,7 +1350,13 @@ const AttendanceDashboard: React.FC = () => {
             } catch (error) {
                 console.error("Failed to fetch employee attendance", error);
             } finally {
-                setIsLoading(false);
+                const duration = Date.now() - startTime;
+                const minDelay = 800;
+                if (duration < minDelay) {
+                    setTimeout(() => setIsLoading(false), minDelay - duration);
+                } else {
+                    setIsLoading(false);
+                }
             }
         };
 
@@ -1357,6 +1365,7 @@ const AttendanceDashboard: React.FC = () => {
 
     const fetchDashboardData = useCallback((startDate: Date, endDate: Date) => {
         const loadData = async () => {
+            const startTime = Date.now();
             setIsLoading(true);
             try {
                 // Ensure we have users data
@@ -1389,10 +1398,11 @@ const AttendanceDashboard: React.FC = () => {
                 if (selectedSite !== 'all') activeStaff = activeStaff.filter(u => u.organizationId && u.organizationId.split(',').map(s => s.trim()).includes(selectedSite));
                 if (selectedLocation !== 'all') activeStaff = activeStaff.filter(u => resolveUserLocation(u, orgStructure).toLowerCase() === selectedLocation.toLowerCase());
                 if (selectedRole !== 'all') activeStaff = activeStaff.filter(u => u.role === selectedRole);
+                if (selectedUser !== 'all') activeStaff = activeStaff.filter(u => u.id === selectedUser);
                 
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
-                const queryStart = isBefore(subDays(startDate, 15), subDays(new Date(), 30)) ? subDays(startDate, 15) : subDays(new Date(), 30);
+                const queryStart = subDays(startDate, 3);
                 // Add 12-hour lookahead to capture night shift completions
                 const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
 
@@ -1637,6 +1647,71 @@ const AttendanceDashboard: React.FC = () => {
                         });
                 }
 
+                // Calculate today's metrics client-side to respect all filters (Company, Site, Location, Role, Employee)
+                
+                const todayLeavesAll = allLeaves.filter(l => {
+                    const dStart = startOfDay(new Date(l.startDate));
+                    const dEnd = endOfDay(new Date(l.endDate));
+                    return today >= dStart && today <= dEnd && activeStaffIds.has(l.userId);
+                });
+
+                const todayPunchesUserIds = new Set(todayEvents.filter(e => e.type === 'punch-in').map(e => e.userId));
+                const wfhTodayUserIds = new Set(
+                    todayLeavesAll
+                        .filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase()))
+                        .filter(l => {
+                            const lType = String(l.leaveType || '').toLowerCase();
+                            return lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
+                        })
+                        .map(l => l.userId)
+                );
+                const leaveTodayUserIds = new Set(
+                    todayLeavesAll
+                        .filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase()))
+                        .filter(l => {
+                            const lType = String(l.leaveType || '').toLowerCase();
+                            return !(lType.includes('work from home') || lType === 'wfh' || lType === 'w/h');
+                        })
+                        .map(l => l.userId)
+                );
+
+                const present_today = new Set([...todayPunchesUserIds, ...wfhTodayUserIds]).size;
+                const on_leave_today = leaveTodayUserIds.size;
+                const wfh_today = wfhTodayUserIds.size;
+                
+                // Count late arrivals (first punch after 09:30)
+                const userFirstPunch: Record<string, Date> = {};
+                todayEvents.filter(e => e.type === 'punch-in').forEach(e => {
+                    const ts = new Date(e.timestamp);
+                    if (!userFirstPunch[e.userId] || ts < userFirstPunch[e.userId]) {
+                        userFirstPunch[e.userId] = ts;
+                    }
+                });
+                let late_arrivals_today = 0;
+                Object.values(userFirstPunch).forEach(ts => {
+                    const hrs = ts.getHours();
+                    const mins = ts.getMinutes();
+                    if (hrs > 9 || (hrs === 9 && mins > 30)) {
+                        late_arrivals_today++;
+                    }
+                });
+
+                const pending_leaves = todayLeavesAll.filter(l => String(l.status).toLowerCase() === 'pending').length;
+                const approved_leaves = todayLeavesAll.filter(l => ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(String(l.status).toLowerCase())).length;
+
+                const absent_today = Math.max(0, activeStaff.length - present_today - on_leave_today);
+
+                setTodayMetrics({
+                    present_today,
+                    absent_today,
+                    wfh_today,
+                    on_leave_today,
+                    late_arrivals_today,
+                    pending_leaves,
+                    approved_leaves,
+                    total_active_staff: activeStaff.length
+                });
+
                 setDashboardData({
                     totalEmployees: activeStaff.length,
                     presentToday: isRangeLong ? avgPresent : presentToday,
@@ -1653,12 +1728,27 @@ const AttendanceDashboard: React.FC = () => {
                 });
             } catch (error) {
                 console.error("Failed to load dashboard data", error);
+                setDashboardData({
+                    totalEmployees: 0,
+                    presentToday: 0,
+                    absentToday: 0,
+                    onLeaveToday: 0,
+                    inactiveCount: 0,
+                    attendanceTrend: { labels: [], present: [], absent: [] },
+                    productivityTrend: { labels: [], hours: [] },
+                });
             } finally {
-                setIsLoading(false);
+                const duration = Date.now() - startTime;
+                const minDelay = 800;
+                if (duration < minDelay) {
+                    setTimeout(() => setIsLoading(false), minDelay - duration);
+                } else {
+                    setIsLoading(false);
+                }
             }
         };
         loadData();
-    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, users]);
+    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users]);
 
     
     // Phase 1 — KPI cards (loads in ~100ms)
@@ -1668,7 +1758,19 @@ const AttendanceDashboard: React.FC = () => {
             selectedSite    !== 'all' ? [selectedSite]  : undefined,
         )
         .then(setTodayMetrics)
-        .catch(console.error);
+        .catch(err => {
+            console.error(err);
+            setTodayMetrics({
+                present_today: 0,
+                absent_today: 0,
+                wfh_today: 0,
+                on_leave_today: 0,
+                late_arrivals_today: 0,
+                pending_leaves: 0,
+                approved_leaves: 0,
+                total_active_staff: 0
+            });
+        });
     }, [selectedCompany, selectedSite]);
 
     // Phase 2 — Chart trends (loads in ~200-400ms)
@@ -1685,8 +1787,26 @@ const AttendanceDashboard: React.FC = () => {
             selectedSite    !== 'all' ? [selectedSite]  : undefined,
         )
         .then(rows => setChartDatasets(buildChartDatasets(rows)))
-        .catch(console.error);
+        .catch(err => {
+            console.error(err);
+            setChartDatasets({
+                labels: [],
+                presentTrend: [],
+                absentTrend: [],
+                wfhTrend: [],
+                onLeaveTrend: [],
+                productivityTrend: [],
+                totalActiveStaff: 0
+            });
+        });
     }, [dateRange, selectedCompany, selectedSite]);
+
+    // Monitor initial queries to complete the splash screen loading phase
+    useEffect(() => {
+        if (todayMetrics && chartDatasets && dashboardData && !isInitialLoadComplete) {
+            setIsInitialLoadComplete(true);
+        }
+    }, [todayMetrics, chartDatasets, dashboardData, isInitialLoadComplete]);
 
     // Phase 3 — Top Performers (loads last)
     useEffect(() => {
@@ -1713,17 +1833,16 @@ const AttendanceDashboard: React.FC = () => {
         if (dateRange.startDate && dateRange.endDate) {
             fetchDashboardData(dateRange.startDate, dateRange.endDate);
         }
-    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedRole, users]);
+    }, [dateRange, fetchDashboardData, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users]);
 
     const availableRoles = useMemo(() => {
         const roles = new Set(users.map(u => u.role).filter(Boolean));
         return Array.from(roles).sort();
     }, [users]);
 
-
-
     const handleSetDateFilter = (filter: string) => {
         setPendingActiveDateFilter(filter);
+        setActiveDateFilter(filter);
         const today = new Date();
         let startDate = startOfDay(today);
         let endDate = endOfDay(today);
@@ -1768,6 +1887,7 @@ const AttendanceDashboard: React.FC = () => {
         }
 
         setPendingDateRange({ startDate, endDate, key: 'selection' });
+        setDateRange({ startDate, endDate, key: 'selection' });
     };
 
     const handleCustomDateChange = (item: RangeKeyDict) => {
@@ -1779,6 +1899,8 @@ const AttendanceDashboard: React.FC = () => {
         // If startDate and endDate are different, it indicates the second click of a range selection.
         if (selection.startDate && selection.endDate && selection.startDate.getTime() !== selection.endDate.getTime()) {
             setIsDatePickerOpen(false);
+            setDateRange(selection);
+            setActiveDateFilter('Custom');
         }
     };
 
@@ -3135,8 +3257,24 @@ const AttendanceDashboard: React.FC = () => {
         }
     };
 
-    if (isLoading && !dashboardData) {
+    if (!isInitialLoadComplete || !user) {
         return <LoadingScreen message="Fetching attendance data..." />;
+    }
+
+    if (isLoading) {
+        const getReportNameStr = () => {
+            if (isEmployeeView) return 'My Attendance';
+            switch (reportType) {
+                case 'basic': return 'Basic Report';
+                case 'monthly': return 'Monthly Summary';
+                case 'work_hours': return 'Work Hours Report';
+                case 'site_ot': return 'Site OT Report';
+                case 'log': return 'Attendance Logs';
+                case 'audit': return 'Audit Logs';
+                default: return 'Report';
+            }
+        };
+        return <LoadingScreen message={`Preparing ${getReportNameStr()}...`} />;
     }
 
     const ReportSummaryView = () => {
@@ -3273,6 +3411,15 @@ const AttendanceDashboard: React.FC = () => {
 
     return (
         <div className="min-h-screen p-4 space-y-6 md:bg-transparent bg-[#041b0f]">
+            <style>{`
+                @keyframes reportFadeIn {
+                    from { opacity: 0; transform: translateY(4px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .animate-report-fade-in {
+                    animation: reportFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+            `}</style>
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <h2 className="text-2xl font-bold text-primary-text md:text-gray-900">
                     {isEmployeeView ? 'My Attendance' : 'Attendance Dashboard'}
@@ -3313,24 +3460,24 @@ const AttendanceDashboard: React.FC = () => {
                         
                         {/* Desktop Action Buttons */}
                         <div className="hidden md:flex flex-row gap-3 w-auto">
-                            <Button 
+                            <button 
                                 onClick={() => setIsManualEntryModalOpen(true)}
-                                className="bg-[#22c55e] hover:bg-[#16a34a] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm flex items-center justify-center gap-2 py-2.5 px-5 rounded-xl font-semibold transition-all active:scale-[0.98]"
                             >
                                 <UserCheck className="w-5 h-5" />
                                 Add Manual Entry
-                            </Button>
-                            <Button 
+                            </button>
+                            <button 
                                 onClick={() => setIsAssignLeaveModalOpen(true)}
-                                className="bg-[#3b82f6] hover:bg-[#2563eb] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm flex items-center justify-center gap-2 py-2.5 px-5 rounded-xl font-semibold transition-all active:scale-[0.98]"
                             >
                                 <Calendar className="w-5 h-5" />
                                 Assign Leave
-                            </Button>
-                            <Button 
+                            </button>
+                            <button 
                                 onClick={handleExportLeaveBalances}
                                 disabled={isExportingLeaves}
-                                className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white shadow-lg flex items-center justify-center gap-2 py-3 rounded-xl font-semibold disabled:opacity-50"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm flex items-center justify-center gap-2 py-2.5 px-5 rounded-xl font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
                             >
                                 {isExportingLeaves ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -3338,7 +3485,7 @@ const AttendanceDashboard: React.FC = () => {
                                     <FileDown className="w-5 h-5" />
                                 )}
                                 Export Leave Balances
-                            </Button>
+                            </button>
                         </div>
                     </>
                 )}
@@ -3384,26 +3531,26 @@ const AttendanceDashboard: React.FC = () => {
                 <div className="relative" ref={datePickerRef}>
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none no-scrollbar">
                         {['Today', 'Yesterday', 'Last 3 Days', 'Last 7 Days', 'This Month', 'Last Month', 'Last 3 Months'].map(filter => (
-                            <Button
+                            <button
                                 key={filter}
                                 type="button"
                                 onClick={() => handleSetDateFilter(filter)}
-                                className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all ${
                                     pendingActiveDateFilter === filter
-                                        ? "bg-[#22c55e] text-white shadow-md border-none"
+                                        ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
                                         : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
                                 }`}
                             >
                                 {filter}
-                            </Button>
+                            </button>
                         ))}
                         <div className="flex-shrink-0">
-                             <Button
+                             <button
                                 type="button"
                                 onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                                className={`whitespace-nowrap flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                                className={`whitespace-nowrap flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
                                     pendingActiveDateFilter === 'Custom'
-                                        ? "bg-[#22c55e] text-white shadow-md border-none"
+                                        ? "bg-[#006b3f] text-white shadow-md border border-[#005632]"
                                         : "bg-[#0b291a] md:bg-white text-gray-300 md:text-gray-700 border border-[#1a3d2c] md:border-gray-300 hover:opacity-80"
                                 }`}
                             >
@@ -3411,7 +3558,7 @@ const AttendanceDashboard: React.FC = () => {
                                 {pendingActiveDateFilter === 'Custom'
                                     ? `${format(pendingDateRange.startDate!, 'dd MMM')} - ${format(pendingDateRange.endDate!, 'dd MMM')}`
                                     : 'Custom Range'}
-                            </Button>
+                            </button>
                         </div>
                     </div>
                     {isDatePickerOpen && (
@@ -3439,7 +3586,18 @@ const AttendanceDashboard: React.FC = () => {
                                 name="reportType"
                                 className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-[#22c55e] outline-none appearance-none transition-all"
                                 value={pendingReportType}
-                                onChange={(e) => setPendingReportType(e.target.value as any)}
+                                onChange={async (e) => {
+                                    const val = e.target.value as any;
+                                    setPendingReportType(val);
+                                    setReportType(val);
+                                    setIsLoading(true);
+                                    if (val === 'audit') {
+                                        await fetchAuditLogs();
+                                    }
+                                    setTimeout(() => {
+                                        setIsLoading(false);
+                                    }, 800);
+                                }}
                             >
                                 <option value="basic">Basic Report</option>
                                 <option value="monthly">Monthly Summary</option>
@@ -3605,8 +3763,8 @@ const AttendanceDashboard: React.FC = () => {
                                 <optgroup label="── Attendance ──">
                                     <option value="P">P — Present</option>
                                     <option value="0.5P">0.5P — Half Day</option>
-                                    <option value="3/4P">3/4P — Three-Quarter Day</option>
-                                    <option value="1/4P">1/4P — Quarter Day</option>
+                                    <option value="0.75P">0.75P — Three-Quarter Day</option>
+                                    <option value="0.25P">0.25P — Quarter Day</option>
                                     <option value="A">A — Absent</option>
                                     <option value="LOP">LOP — Loss of Pay</option>
                                 </optgroup>
@@ -3682,17 +3840,17 @@ const AttendanceDashboard: React.FC = () => {
                     </div>
 
                     <div className="col-span-2 md:col-span-1 xl:ml-auto">
-                        <Button
+                        <button
                             onClick={handleApplyFilters}
-                            className={`w-full text-white shadow-lg flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-300 ${
+                            className={`w-full md:w-auto md:min-w-[180px] shadow-sm flex items-center justify-center gap-2 py-3 px-8 rounded-xl font-semibold text-sm md:text-base transition-all duration-300 border ${
                                 isFiltersDirty 
-                                    ? "bg-rose-600 hover:bg-rose-700 animate-pulse" 
-                                    : "bg-emerald-600 hover:bg-emerald-700"
+                                    ? "bg-rose-600 hover:bg-rose-700 text-white border-none animate-pulse" 
+                                    : "bg-[#006b3f] hover:bg-[#005632] text-white border-[#005632]"
                             }`}
                         >
-                            <Filter className="w-4 h-4" />
+                            <Filter className="w-5 h-5" />
                             Apply Filters
-                        </Button>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -3837,64 +3995,58 @@ const AttendanceDashboard: React.FC = () => {
                         
                         {/* Desktop Flex View */}
                         <div className="hidden md:flex flex-row gap-2 w-auto">
-                            <Button
+                            <button
                                 type="button"
                                 onClick={handleDownloadPdf}
                                 disabled={isDownloading}
-                                className="bg-primary hover:bg-primary-hover text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-semibold whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50"
                             >
                                 {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                                 {isDownloading ? 'Generating...' : 'Download PDF'}
-                            </Button>
-                            <Button
+                            </button>
+                            <button
                                 type="button"
                                 onClick={handleDownloadExcel}
                                 disabled={isDownloading}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-semibold whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50"
                             >
                                 {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                                 {isDownloading ? 'Generating...' : 'Download Excel'}
-                            </Button>
+                            </button>
                             {isAdmin(user?.role) && (
-                                <Button
+                                <button
                                     type="button"
                                     onClick={() => setIsMailModalOpen(true)}
                                     disabled={isDownloading || isSendingEmail}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                    className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-semibold whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50"
                                 >
                                     {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                                     {isSendingEmail ? 'Sending...' : 'Mail Report'}
-                                </Button>
+                                </button>
                             )}
-                            <Button
+                            <button
                                 type="button"
                                 onClick={handleDownloadCsv}
                                 disabled={isDownloading}
-                                className="bg-gray-700 hover:bg-gray-800 text-white shadow-lg rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-medium whitespace-nowrap"
+                                className="bg-white hover:bg-[#006b3f] text-gray-700 hover:text-white border border-gray-300 hover:border-[#005632] shadow-sm rounded-xl flex items-center justify-center gap-2 py-2.5 px-6 font-semibold whitespace-nowrap transition-all active:scale-[0.98] disabled:opacity-50"
                             >
                                 {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                                 {isDownloading ? 'Generating...' : 'Download CSV'}
-                            </Button>
+                            </button>
                         </div>
                     </>
                     )}
                 </div>
 
                 {previewMode === 'summary' ? (
-                    <div className="md:hidden">
+                    <div className="md:hidden animate-report-fade-in">
                         <ReportSummaryView />
                     </div>
                 ) : null}
 
                 <div className={`border border-[#1a3d2c] md:border-gray-200 rounded-xl bg-[#041b0f] md:bg-gray-50 flex justify-center min-h-[300px] md:min-h-[400px] relative overflow-hidden ${previewMode === 'summary' ? 'hidden md:flex' : 'flex'}`}>
-                    {isLoading && (
-                        <div className="absolute inset-0 z-10 bg-[#041b0f]/50 md:bg-white/50 backdrop-blur-sm flex flex-col items-center justify-center">
-                            <Loader2 className="h-8 w-8 animate-spin text-[#22c55e] mb-2" />
-                            <p className="text-sm font-medium text-gray-300 md:text-gray-600">Updating report data...</p>
-                        </div>
-                    )}
                     <div className="w-full max-w-full overflow-x-auto p-2 md:p-4 custom-scrollbar">
-                        <div className="min-w-[850px] md:min-w-full w-full">
+                        <div className="min-w-[850px] md:min-w-full w-full animate-report-fade-in">
                             {previewContent}
                         </div>
                     </div>

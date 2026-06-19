@@ -241,24 +241,24 @@ export function processEmployeeMonth(
   const resolvePayableValue = (s: string): number => {
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'H/P'].includes(s)) return 1.5; 
-    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', '0.5P', 'Half Day', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', '0.5P', '1/2P', '2/4P', 'Half Day', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
     if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL')) {
         return s.startsWith('0.5') ? 0.5 : 1;
     }
-    if (['Half Day', '0.5P'].includes(s)) return 0.5;
+    if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
     if (s === '1/4P' || s === '0.25P') return 0.25;
     return 0;
   };
 
   const updateCounters = (s: string) => {
-    const isHalf = s.startsWith('0.5') || s === 'Half Day';
+    const isHalf = s.startsWith('0.5') || s === 'Half Day' || s === '1/2P' || s === '2/4P';
     const inc = isHalf ? 0.5 : 1;
 
     if (s === 'P') presentDays++;
     else if (s === 'W/P') { presentDays++; weekOffs++; weekendPresents++; }
     else if (s === '3/4P' || s === '0.75P') threeQuarterDays++;
-    else if (s === 'Half Day' || s === '0.5P') halfDays++;
+    else if (s === 'Half Day' || s === '0.5P' || s === '1/2P' || s === '2/4P') halfDays++;
     else if (s === '1/4P' || s === '0.25P') quarterDays++;
     else if (s === 'A') absentDays++;
     else if (s === 'W/O') weekOffs++;

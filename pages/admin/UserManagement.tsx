@@ -1014,17 +1014,17 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-2 md:col-span-1 xl:ml-auto">
-                        <Button
+                        <button
                             onClick={handleApplyFilters}
-                            className={`w-full text-white shadow-lg flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-300 ${
+                            className={`w-full md:w-auto md:min-w-[180px] text-white shadow-lg flex items-center justify-center gap-2 py-3 px-8 rounded-xl font-bold text-sm md:text-base transition-all duration-300 border border-transparent ${
                                 isFiltersDirty 
                                     ? "bg-rose-600 hover:bg-rose-700 animate-pulse" 
                                     : "bg-emerald-600 hover:bg-emerald-700"
                             }`}
                         >
-                            <Filter className="w-4 h-4" />
+                            <Filter className="w-5 h-5" />
                             Apply Filters
-                        </Button>
+                        </button>
                     </div>
                 </div>
             </div>

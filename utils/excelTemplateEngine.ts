@@ -77,7 +77,7 @@ export const downloadTemplate = async (
   }
 
   // Day status values stored here to bypass Excel's 255-char inline formula limit
-  const dayStatuses = ['P','A','0.5P','1/4P','3/4P','EL','SL','CL','LOP','H','W/O','W/H','C/O','C/D','W/P','H/P','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP'];
+  const dayStatuses = ['P','A','0.5P','1/2P','2/4P','1/4P','0.25P','3/4P','0.75P','EL','SL','CL','LOP','H','W/O','W/H','C/O','C/D','W/P','H/P','0.5P+0.5 EL','0.5P+0.5 SL','0.5P+0.5 CL','0.5P+0.5 LOP'];
 
   // Generate Month & Year list from current year + 1 down to 2018
   const monthYears: string[] = [];
