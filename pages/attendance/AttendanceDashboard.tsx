@@ -142,6 +142,75 @@ const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
 
 
 // --- Reusable Dashboard Components ---
+const BarChartSkeleton: React.FC = () => (
+    <div className="h-64 md:h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse mt-4">
+        <div className="flex-1 flex items-end justify-around px-4 pb-4 border-b border-slate-100 dark:border-[#1a3d2c]">
+            {[
+                { p: 70, a: 30 },
+                { p: 80, a: 20 },
+                { p: 75, a: 25 },
+                { p: 85, a: 15 }
+            ].map((group, i) => (
+                <div key={i} className="flex items-end gap-2.5 w-16 justify-center">
+                    {/* Present Column Skeleton */}
+                    <div className="w-6 bg-slate-200 dark:bg-emerald-900/35 rounded-t" style={{ height: `${group.p}%` }}></div>
+                    {/* Absent Column Skeleton */}
+                    <div className="w-6 bg-slate-100 dark:bg-emerald-950/15 rounded-t" style={{ height: `${group.a}%` }}></div>
+                </div>
+            ))}
+        </div>
+        <div className="flex justify-between items-center px-4 pt-3">
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+        </div>
+    </div>
+);
+
+const LineChartSkeleton: React.FC = () => (
+    <div className="h-64 md:h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse">
+        <div className="flex-1 relative border-b border-slate-100 dark:border-[#1a3d2c]">
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <path 
+                    d="M 0 60 Q 25 20, 50 35 T 100 10 L 100 100 L 0 100 Z" 
+                    className="fill-slate-100/70 dark:fill-emerald-950/20"
+                />
+                <path 
+                    d="M 0 60 Q 25 20, 50 35 T 100 10" 
+                    fill="none" 
+                    className="stroke-slate-200 dark:stroke-emerald-900/30"
+                    strokeWidth="2"
+                />
+            </svg>
+        </div>
+        <div className="flex justify-between items-center px-4 pt-3">
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+            <div className="h-3 w-12 bg-slate-100 dark:bg-[#123621] rounded"></div>
+        </div>
+    </div>
+);
+
+const ReportTableSkeleton: React.FC = () => (
+    <div className="w-full space-y-4 p-4 animate-pulse">
+        <div className="h-10 bg-slate-100 dark:bg-emerald-950/25 rounded-lg flex items-center px-4 justify-between">
+            <div className="h-4 w-32 bg-slate-200 dark:bg-emerald-900/30 rounded"></div>
+            <div className="h-4 w-20 bg-slate-200 dark:bg-emerald-900/30 rounded"></div>
+            <div className="h-4 w-24 bg-slate-200 dark:bg-emerald-900/30 rounded"></div>
+            <div className="h-4 w-16 bg-slate-200 dark:bg-emerald-900/30 rounded"></div>
+        </div>
+        {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-12 border-b border-slate-100 dark:border-[#1a3d2c] flex items-center px-4 justify-between">
+                <div className="h-4 w-40 bg-slate-100 dark:bg-[#123621]/40 rounded"></div>
+                <div className="h-4 w-16 bg-slate-100 dark:bg-[#123621]/40 rounded"></div>
+                <div className="h-4 w-20 bg-slate-100 dark:bg-[#123621]/40 rounded"></div>
+                <div className="h-4 w-12 bg-slate-100 dark:bg-[#123621]/40 rounded"></div>
+            </div>
+        ))}
+    </div>
+);
+
 const ChartContainer: React.FC<{ title: string, icon: React.ElementType, children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
     <div className="bg-card p-4 md:p-6 rounded-xl shadow-card col-span-1">
         <div className="flex items-center mb-4">
@@ -381,7 +450,7 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                                 },
                             },
                             x: {
-                                offset: true,
+                                offset: false,
                                 grid: { display: false },
                                 ticks: {
                                     maxRotation: 0,
@@ -704,7 +773,7 @@ const TodayMetricsRow = ({ data, loading }: { data: TodayMetrics | null, loading
 };
 
 const AttendanceCharts = ({ data, loading }: { data: ReturnType<typeof buildChartDatasets> | null, loading: boolean }) => {
-    if (loading || !data) return <div className="h-64 md:h-[320px] bg-[#0b291a] md:bg-gray-100 animate-pulse rounded-xl"></div>;
+    if (loading || !data) return <BarChartSkeleton />;
     return (
         <div className="h-64 md:h-[320px] relative mt-4">
             <AttendanceTrendChart data={{ labels: data.labels, present: data.presentTrend, absent: data.absentTrend }} />
@@ -755,6 +824,7 @@ const AttendanceDashboard: React.FC = () => {
     const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
     const [recentlyActiveUserIds, setRecentlyActiveUserIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
+    const [isReportLoading, setIsReportLoading] = useState(false);
     const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
     const [scopedSettings, setScopedSettings] = useState<any[]>([]);
     const [exportedMonthlyData, setExportedMonthlyData] = useState<EmployeeMonthlyData[]>([]);
@@ -3261,21 +3331,8 @@ const AttendanceDashboard: React.FC = () => {
         return <LoadingScreen message="Fetching attendance data..." />;
     }
 
-    if (isLoading) {
-        const getReportNameStr = () => {
-            if (isEmployeeView) return 'My Attendance';
-            switch (reportType) {
-                case 'basic': return 'Basic Report';
-                case 'monthly': return 'Monthly Summary';
-                case 'work_hours': return 'Work Hours Report';
-                case 'site_ot': return 'Site OT Report';
-                case 'log': return 'Attendance Logs';
-                case 'audit': return 'Audit Logs';
-                default: return 'Report';
-            }
-        };
-        return <LoadingScreen message={`Preparing ${getReportNameStr()}...`} />;
-    }
+    // Keep dashboard mounted during updates to prevent Chart.js remount flashing.
+    // Full screen loading spinner is only used on initial load.
 
     const ReportSummaryView = () => {
         let rows: any[] = [];
@@ -3590,12 +3647,12 @@ const AttendanceDashboard: React.FC = () => {
                                     const val = e.target.value as any;
                                     setPendingReportType(val);
                                     setReportType(val);
-                                    setIsLoading(true);
+                                    setIsReportLoading(true);
                                     if (val === 'audit') {
                                         await fetchAuditLogs();
                                     }
                                     setTimeout(() => {
-                                        setIsLoading(false);
+                                        setIsReportLoading(false);
                                     }, 800);
                                 }}
                             >
@@ -3892,11 +3949,11 @@ const AttendanceDashboard: React.FC = () => {
                                 <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-100"></div> Absent</div>
                             </div>
                         </div>
-                        <AttendanceCharts data={chartDatasets} loading={!chartDatasets} />
+                        <AttendanceCharts data={chartDatasets} loading={isLoading || !chartDatasets} />
                     </div>
                     <div className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm h-[260px]">
-                            <TopPerformersList data={topPerformers} loading={topPerformers.length === 0} />
+                            <TopPerformersList data={topPerformers} loading={isLoading || topPerformers.length === 0} />
                         </div>
                     </div>
                 </div>
@@ -3907,7 +3964,7 @@ const AttendanceDashboard: React.FC = () => {
                             <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                             <h3 className="font-semibold text-white md:text-primary-text">Attendance Trend</h3>
                         </div>
-                        <AttendanceCharts data={chartDatasets} loading={!chartDatasets} />
+                        <AttendanceCharts data={chartDatasets} loading={isLoading || !chartDatasets} />
                     </div>
                     <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
                         <div className="flex items-center mb-6">
@@ -3915,7 +3972,11 @@ const AttendanceDashboard: React.FC = () => {
                             <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
                         </div>
                         <div className="h-64 md:h-[320px] relative">
-                            {dashboardData?.productivityTrend ? <ProductivityChart data={dashboardData.productivityTrend} /> : <Loader2 className="h-6 w-6 animate-spin text-muted mx-auto mt-20" />}
+                            {isLoading || !dashboardData?.productivityTrend ? (
+                                <LineChartSkeleton />
+                            ) : (
+                                <ProductivityChart data={dashboardData.productivityTrend} />
+                            )}
                         </div>
                     </div>
                 </div>
@@ -4038,19 +4099,27 @@ const AttendanceDashboard: React.FC = () => {
                     )}
                 </div>
 
-                {previewMode === 'summary' ? (
-                    <div className="md:hidden animate-report-fade-in">
-                        <ReportSummaryView />
+                {isLoading || isReportLoading ? (
+                    <div className="w-full bg-[#041b0f] md:bg-gray-50 border border-[#1a3d2c] md:border-gray-200 rounded-xl min-h-[300px] md:min-h-[400px] flex items-center justify-center">
+                        <ReportTableSkeleton />
                     </div>
-                ) : null}
+                ) : (
+                    <>
+                        {previewMode === 'summary' ? (
+                            <div className="md:hidden animate-report-fade-in">
+                                <ReportSummaryView />
+                            </div>
+                        ) : null}
 
-                <div className={`border border-[#1a3d2c] md:border-gray-200 rounded-xl bg-[#041b0f] md:bg-gray-50 flex justify-center min-h-[300px] md:min-h-[400px] relative overflow-hidden ${previewMode === 'summary' ? 'hidden md:flex' : 'flex'}`}>
-                    <div className="w-full max-w-full overflow-x-auto p-2 md:p-4 custom-scrollbar">
-                        <div className="min-w-[850px] md:min-w-full w-full animate-report-fade-in">
-                            {previewContent}
+                        <div className={`border border-[#1a3d2c] md:border-gray-200 rounded-xl bg-[#041b0f] md:bg-gray-50 flex justify-center min-h-[300px] md:min-h-[400px] relative overflow-hidden ${previewMode === 'summary' ? 'hidden md:flex' : 'flex'}`}>
+                            <div className="w-full max-w-full overflow-x-auto p-2 md:p-4 custom-scrollbar">
+                                <div className="min-w-[850px] md:min-w-full w-full animate-report-fade-in">
+                                    {previewContent}
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
+                    </>
+                )}
             </div>
 
             {isMailModalOpen && (
