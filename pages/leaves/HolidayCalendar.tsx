@@ -59,7 +59,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
             case 'fixed': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Common
             case 'admin': return 'bg-amber-500 text-white border-amber-600 shadow-sm'; // Amber for Admin
             case 'user': return 'bg-violet-600 text-white border-violet-700 shadow-sm'; // Purple for User
-            default: return isMobile ? 'bg-white/[0.02] text-white/40 border-white/5' : 'bg-emerald-500/5 text-muted/40 border-emerald-500/10'; // Neutral
+            default: return isMobile ? 'bg-white/[0.02] text-white/40 border-white/5' : 'bg-transparent text-muted/40 border-transparent'; // Neutral
         }
     };
 
