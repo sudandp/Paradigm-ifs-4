@@ -539,8 +539,26 @@ const LeaveDashboard: React.FC = () => {
             }
         });
 
-        if (isPast && used === 0) {
-            used = 1;
+        // Auto-deduct if the 3rd Saturday has passed AND employee was ABSENT (did NOT punch in).
+        // Business Rule:
+        //   - Worked on 3rd Saturday  → Blue Leave NOT consumed → 1/1 (still available)
+        //   - Absent on 3rd Saturday  → Blue Leave consumed     → 0/1
+        //   - Before 3rd Saturday     → isPast=false, no change → 1/1 (entitlement pending)
+        //   - Approved leave filed    → handled by loop above (used already ≥ 1)
+        if (isPast && used === 0 && thirdSaturday) {
+            const thirdSatStr = format(thirdSaturday, 'yyyy-MM-dd');
+            const workedOn3rdSat = events.some(e => {
+                const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
+                return eDate === thirdSatStr && (
+                    e.type === 'punch-in' || e.type === 'check-in' ||
+                    e.type === 'punch_in' || e.type === 'checkin'
+                );
+            });
+            if (!workedOn3rdSat) {
+                // Employee was absent on 3rd Saturday — leave is consumed
+                used = 1;
+            }
+            // If they worked, blue leave remains available (1/1) — they may earn Comp Off instead
         }
 
         if (used > total) used = total;
