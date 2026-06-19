@@ -25,6 +25,7 @@ interface UploadDocumentProps {
   docType?: string;
   onVerification?: (base64: string, mimeType: string) => Promise<{ success: boolean; reason: string }>;
   variant?: 'default' | 'compact';
+  transparent?: boolean;
 }
 
 const UploadDocument: React.FC<UploadDocumentProps> = ({ 
@@ -42,6 +43,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
     docType,
     onVerification,
     variant = 'default',
+    transparent = false,
 }) => {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
@@ -239,8 +241,10 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             <div className="w-full text-center transition-all duration-300">
                 {file ? (
                      <div className={`
-                        w-full flex flex-col border-2 border-dashed rounded-lg bg-page/50 relative overflow-hidden
-                        border-accent/30 pro-dark-theme:bg-accent/5 pro-dark-theme:border-accent/40
+                        w-full flex flex-col rounded-lg relative overflow-hidden justify-center
+                        ${transparent 
+                            ? 'bg-transparent border-0' 
+                            : 'border-2 border-dashed border-accent/30 bg-page/50 pro-dark-theme:bg-accent/5 pro-dark-theme:border-accent/40'}
                         ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
                         <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none">
@@ -345,17 +349,18 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 ) : (
                     <label htmlFor={inputId} className={`
                         cursor-pointer flex flex-col items-center justify-center
-                        p-6 border-2 border-dashed rounded-lg transition-all duration-300
-                        bg-page/30 border-border hover:border-accent hover:bg-accent-light
-                        pro-dark-theme:border-accent/30 pro-dark-theme:hover:border-accent pro-dark-theme:bg-accent/5
+                        p-6 rounded-xl transition-all duration-300
+                        ${transparent 
+                            ? 'bg-transparent border-0 hover:bg-emerald-500/5' 
+                            : 'bg-slate-50/50 border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/20 pro-dark-theme:border-accent/30 pro-dark-theme:hover:border-accent pro-dark-theme:bg-accent/5'}
                         ${displayError ? '!border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : ''}
                         ${variant === 'compact' ? 'min-h-[100px] p-4' : 'min-h-[180px] p-6'}
                     `}>
-                        <div className={`${variant === 'compact' ? 'p-2' : 'p-4'} bg-accent/5 rounded-full text-accent pro-dark-theme:bg-accent/10`}>
+                        <div className={`${variant === 'compact' ? 'mb-1' : 'mb-3'} ${transparent ? 'text-emerald-400' : 'text-emerald-600'}`}>
                             <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
                         </div>
-                        <p className={`font-bold text-primary-text ${variant === 'compact' ? 'mt-2 text-sm' : 'mt-3'}`}>Click to upload</p>
-                        {variant !== 'compact' && <p className="text-xs text-muted mt-1 uppercase tracking-wider">or drag & drop</p>}
+                        <p className={`font-bold ${transparent ? 'text-emerald-400/90' : 'text-slate-800'} ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
+                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider ${transparent ? 'text-emerald-500/50' : 'text-slate-400'}`}>or drag & drop</p>}
                         
                         {allowCapture && (
                             <div className="w-full flex flex-col items-center mt-4">
@@ -378,9 +383,9 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                     </label>
                 )}
             </div>
-            
+
             <input id={inputId} type="file" className="sr-only" onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])} accept={allowedTypes.join(',')}/>
-            
+
             <div className="text-center mt-1 min-h-[16px]">
                 {displayError && <p className="text-xs text-red-500">{displayError}</p>}
             </div>

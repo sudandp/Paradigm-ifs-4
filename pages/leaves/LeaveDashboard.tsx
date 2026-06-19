@@ -41,9 +41,17 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 
 // --- Reusable Components ---
 
-const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean }> = ({ title, value, icon: Icon, isExpired, description, isLoading }) => (
-    <div className={`bg-card p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${isExpired ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'}`}>
-        <div className={`${isExpired ? 'bg-amber-100' : 'bg-accent-light'} p-2 md:p-3 rounded-full flex-shrink-0`}>
+const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean }> = ({ title, value, icon: Icon, isExpired, description, isLoading }) => {
+    const isMobileCard = useMediaQuery('(max-width: 767px)');
+    return (
+    <div className={`p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
+        isExpired
+            ? 'border-amber-500/50 bg-amber-500/5'
+            : isMobileCard
+                ? 'bg-transparent border-transparent'
+                : 'bg-card border-border'
+    }`}>
+        <div className={`${isExpired ? 'bg-amber-100' : isMobileCard ? 'bg-white/10' : 'bg-accent-light'} p-2 md:p-3 rounded-full flex-shrink-0`}>
             {isLoading ? (
                 <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-gray-200 rounded-full" />
             ) : (
@@ -64,7 +72,9 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
             {isLoading && <div className="h-3 w-32 bg-gray-50 animate-pulse rounded mt-2 mx-auto lg:mx-0" />}
         </div>
     </div>
-);
+    );
+};
+
 
 const LeaveStatusChip: React.FC<{ status: LeaveRequestStatus }> = ({ status }) => {
     const statusClasses: Record<LeaveRequestStatus, string> = {

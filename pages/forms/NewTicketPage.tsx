@@ -12,7 +12,7 @@ import Select from '../../components/ui/Select';
 import Toast from '../../components/ui/Toast';
 import UploadDocument from '../../components/UploadDocument';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { MessageSquarePlus } from 'lucide-react';
+import { MessageSquarePlus, LifeBuoy } from 'lucide-react';
 import { isAdmin } from '../../utils/auth';
 
 
@@ -153,6 +153,7 @@ const NewTicketPage: React.FC = () => {
                                                 onFileChange={field.onChange}
                                                 allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
                                                 error={fieldState.error?.message}
+                                                transparent={true}
                                             />
                                         </div>
                                     )}
@@ -186,67 +187,123 @@ const NewTicketPage: React.FC = () => {
     }
 
     return (
-        <div className="p-4 md:p-6">
-            <div className="bg-card p-8 rounded-xl shadow-card w-full">
-                <div className="flex items-center mb-6">
-                    <div className="bg-accent-light p-3 rounded-full mr-4">
-                        <MessageSquarePlus className="h-8 w-8 text-accent-dark" />
+        <div className="w-full p-4 lg:p-8 space-y-8 animate-fade-in min-w-0 overflow-x-hidden min-h-screen">
+            {/* Header */}
+            <div className="flex justify-between items-start sm:items-center flex-col sm:flex-row gap-6">
+                <div className="w-full sm:w-auto">
+                    <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary-text">Help & Support Desk</h1>
+                    <p className="mt-1 text-xs md:text-sm leading-relaxed text-muted">Create a new support ticket or report an issue</p>
+                </div>
+            </div>
+
+            {/* Form Container Card */}
+            <div className="bg-white rounded-3xl border border-border p-6 md:p-8 shadow-sm">
+                {/* Need Assistance Banner */}
+                <div className="flex items-center space-x-3 bg-[#f0fdf4] p-4 rounded-2xl border border-emerald-500/20 mb-8">
+                    <div className="p-2 rounded-full bg-emerald-500/10">
+                        <LifeBuoy className="h-5 w-5 text-emerald-600" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-bold text-primary-text">Create New Ticket</h2>
-                        <p className="text-muted">Submit a support request or report an issue.</p>
+                        <h4 className="font-bold leading-tight text-slate-900 text-sm">Need Assistance?</h4>
+                        <p className="text-xs mt-0.5 text-slate-500">Raise a concern below. Software issues are automatically routed to our developers.</p>
                     </div>
                 </div>
 
                 <form id={formId} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                    <Input label="Title / Subject" {...register('title')} error={errors.title?.message} />
-                    <div>
-                        <label className="block text-sm font-medium text-muted mb-1">Description</label>
-                        <textarea {...register('description')} rows={5} className={`form-input ${errors.description ? 'form-input--error' : ''}`} />
-                        {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description.message}</p>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <Controller name="category" control={control} render={({ field }) => (
-                            <Select label="Category" {...field} error={errors.category?.message}>
-                                <option>Software Developer</option>
-                                <option>Admin</option>
-                                <option>Operational</option>
-                                <option>HR Query</option>
-                                <option>Other</option>
-                            </Select>
-                        )} />
-                        <Controller name="priority" control={control} render={({ field }) => (
-                            <Select label="Priority" {...field} error={errors.priority?.message}>
-                                <option>Low</option>
-                                <option>Medium</option>
-                                <option>High</option>
-                                <option>Urgent</option>
-                            </Select>
-                        )} />
-                    </div>
-                    <Controller name="assignedToId" control={control} render={({ field }) => (
-                        <Select label="Assigned To (Optional)" {...field} value={field.value ?? ''} error={errors.assignedToId?.message}>
-                            <option value="">Unassigned</option>
-                            {assignableUsers.map(u => (
-                                <option key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ')})</option>
-                            ))}
-                        </Select>
-                    )} />
-                    <Controller
-                        name="attachment"
-                        control={control}
-                        render={({ field, fieldState }) => (
-                            <UploadDocument
-                                label="Attach Screenshot or Document (Image only)"
-                                file={field.value}
-                                onFileChange={field.onChange}
-                                allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
-                                error={fieldState.error?.message}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Left Column - Core Fields */}
+                        <div className="space-y-6">
+                            <Input 
+                                label="Title / Subject" 
+                                placeholder="Brief summary of the issue..."
+                                autoCapitalizeCustom={false}
+                                {...register('title')} 
+                                error={errors.title?.message} 
+                                labelClassName="block text-sm font-semibold text-slate-700 mb-1.5"
+                                className="bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 w-full"
                             />
-                        )}
-                    />
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description</label>
+                                <textarea 
+                                    {...register('description')} 
+                                    placeholder="Describe the issue or request in detail..."
+                                    rows={8} 
+                                    className={`form-input w-full rounded-xl border border-gray-200 text-slate-800 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 ${errors.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`} 
+                                />
+                                {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description.message}</p>}
+                            </div>
+                        </div>
 
-                    <div className="mt-8 pt-6 border-t flex justify-end gap-3">
+                        {/* Right Column - Classification, Assignment & Attachment */}
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Controller name="category" control={control} render={({ field }) => (
+                                    <Select 
+                                        label="Category" 
+                                        {...field} 
+                                        error={errors.category?.message}
+                                        labelClassName="block text-sm font-semibold text-slate-700 mb-1.5"
+                                        className="bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                    >
+                                        <option>Software Developer</option>
+                                        <option>Admin</option>
+                                        <option>Operational</option>
+                                        <option>HR Query</option>
+                                        <option>Other</option>
+                                    </Select>
+                                )} />
+                                <Controller name="priority" control={control} render={({ field }) => (
+                                    <Select 
+                                        label="Priority" 
+                                        {...field} 
+                                        error={errors.priority?.message}
+                                        labelClassName="block text-sm font-semibold text-slate-700 mb-1.5"
+                                        className="bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                    >
+                                        <option>Low</option>
+                                        <option>Medium</option>
+                                        <option>High</option>
+                                        <option>Urgent</option>
+                                    </Select>
+                                )} />
+                            </div>
+
+                            <Controller name="assignedToId" control={control} render={({ field }) => (
+                                <Select 
+                                    label="Assigned To (Optional)" 
+                                    {...field} 
+                                    value={field.value ?? ''} 
+                                    error={errors.assignedToId?.message}
+                                    labelClassName="block text-sm font-semibold text-slate-700 mb-1.5"
+                                    className="bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                >
+                                    <option value="">Unassigned</option>
+                                    {assignableUsers.map(u => (
+                                        <option key={u.id} value={u.id}>{u.name} ({u.role.replace(/_/g, ' ')})</option>
+                                    ))}
+                                </Select>
+                            )} />
+
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Attachment (Screenshot/Document)</label>
+                                <Controller
+                                    name="attachment"
+                                    control={control}
+                                    render={({ field, fieldState }) => (
+                                        <UploadDocument
+                                            label=""
+                                            file={field.value}
+                                            onFileChange={field.onChange}
+                                            allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
+                                            error={fieldState.error?.message}
+                                        />
+                                    )}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t flex justify-end gap-3 border-gray-100">
                         <Button
                             type="button"
                             onClick={() => navigate('/support')}
@@ -256,7 +313,7 @@ const NewTicketPage: React.FC = () => {
                             Cancel
                         </Button>
                         <Button type="submit" isLoading={isSubmitting}>
-                            Create Ticket
+                            Submit Ticket
                         </Button>
                     </div>
                 </form>

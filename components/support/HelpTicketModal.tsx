@@ -125,19 +125,19 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                 title="Help & Support Desk"
                 hideFooter={true}
                 maxWidth="md:max-w-lg"
-                containerClassName={isMobile ? 'bg-[#041b0f] text-white border-t border-[#1d422f]' : 'bg-card text-primary-text'}
-                headerClassName={isMobile ? 'border-b border-[#1d422f]/40 p-4 pt-6' : 'border-b border-border p-6'}
-                titleClassName={isMobile ? 'text-white font-bold text-sm uppercase tracking-tight' : 'text-primary-text'}
-                contentClassName={isMobile ? 'text-white p-4' : 'text-muted p-6'}
+                containerClassName={isMobile ? 'bg-[#041b0f] text-white border-t border-[#1d422f]' : 'bg-white text-slate-800 rounded-[24px] shadow-card'}
+                headerClassName={isMobile ? 'border-b border-[#1d422f]/40 p-4 pt-6' : 'border-b border-gray-100 p-6 pb-4'}
+                titleClassName={isMobile ? 'text-white font-bold text-sm uppercase tracking-tight' : 'text-slate-900 font-bold text-xl font-sans'}
+                contentClassName={isMobile ? 'text-white p-4' : 'text-slate-700 p-6'}
             >
                 <div className="space-y-6">
-                    <div className={isMobile ? 'flex items-center space-x-3 bg-[#0a1c13] p-4 rounded-xl border border-[#1d422f]' : 'flex items-center space-x-3 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/10'}>
-                        <div className="bg-emerald-500/10 p-2 rounded-lg">
-                            <LifeBuoy className="h-6 w-6 text-emerald-500" />
+                    <div className={isMobile ? 'flex items-center space-x-3 bg-[#0a1c13] p-4 rounded-xl border border-[#1d422f]' : 'flex items-center space-x-3 bg-[#f0fdf4] p-4 rounded-2xl border border-emerald-500/20'}>
+                        <div className={`p-2 rounded-full ${isMobile ? 'bg-[#1d422f]/40' : 'bg-emerald-500/10'}`}>
+                            <LifeBuoy className={`h-5 w-5 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
                         </div>
                         <div>
-                            <h4 className={`font-semibold leading-tight ${isMobile ? 'text-white' : 'text-gray-900'}`}>Need Assistance?</h4>
-                            <p className={`text-xs mt-1 ${isMobile ? 'text-gray-400' : 'text-gray-500'}`}>Raise a concern below. Software issues are automatically routed to our developers.</p>
+                            <h4 className={`font-bold leading-tight ${isMobile ? 'text-white' : 'text-slate-900 text-sm'}`}>Need Assistance?</h4>
+                            <p className={`text-xs mt-0.5 ${isMobile ? 'text-gray-400' : 'text-slate-500'}`}>Raise a concern below. Software issues are automatically routed to our developers.</p>
                         </div>
                     </div>
 
@@ -146,20 +146,21 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                             label="Title / Subject"
                             id="help-title"
                             placeholder="Brief summary of the issue..."
+                            autoCapitalizeCustom={false}
                             {...register('title')}
                             error={errors.title?.message}
-                            labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest' : 'block text-sm font-medium text-gray-700 mb-1'}
-                            className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
+                            labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest' : 'block text-sm font-semibold text-slate-700 mb-1.5'}
+                            className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
                         />
 
                         <div>
-                            <label htmlFor="help-desc" className={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest' : 'block text-sm font-medium text-gray-700 mb-1'}>Description</label>
+                            <label htmlFor="help-desc" className={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest' : 'block text-sm font-semibold text-slate-700 mb-1.5'}>Description</label>
                             <textarea
                                 id="help-desc"
                                 {...register('description')}
                                 placeholder="Describe the issue or request in detail..."
                                 rows={4}
-                                className={isMobile ? 'form-input w-full bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : `form-input w-full rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 ${errors.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                className={isMobile ? 'form-input w-full bg-[#041b0f] border-[#1d422f] text-white placeholder-emerald-500/40 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : `form-input w-full rounded-xl border border-gray-200 text-slate-800 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 ${errors.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
                             />
                             {errors.description && (
                                 <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
@@ -178,8 +179,8 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                                         id="help-category"
                                         {...field}
                                         error={errors.category?.message}
-                                        labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest font-mono' : 'block text-sm font-medium text-gray-700 mb-1'}
-                                        className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
+                                        labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest font-mono' : 'block text-sm font-semibold text-slate-700 mb-1.5'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
                                     >
                                         <option value="Software Developer">Software/App Issue</option>
                                         <option value="Admin">Admin Request</option>
@@ -198,8 +199,8 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                                         id="help-priority"
                                         {...field}
                                         error={errors.priority?.message}
-                                        labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest font-mono' : 'block text-sm font-medium text-gray-700 mb-1'}
-                                        className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
+                                        labelClassName={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-1.5 uppercase tracking-widest font-mono' : 'block text-sm font-semibold text-slate-700 mb-1.5'}
+                                        className={isMobile ? 'bg-[#041b0f] border-[#1d422f] text-white rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500' : 'bg-white border-gray-200 text-slate-800 rounded-xl focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'}
                                     >
                                         <option value="Low">Low</option>
                                         <option value="Medium">Medium</option>
@@ -211,20 +212,21 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                         </div>
 
                         <div className="pt-2">
-                            <label className={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-2 uppercase tracking-widest' : 'block text-sm font-medium text-gray-700 mb-2'}>
+                            <label className={isMobile ? 'block text-xs font-bold text-emerald-500/80 mb-2 uppercase tracking-widest' : 'block text-sm font-semibold text-slate-700 mb-2'}>
                                 Attachment (Screenshot/Document)
                             </label>
                             <Controller
                                 name="attachment"
                                 control={control}
                                 render={({ field, fieldState }) => (
-                                    <div className={isMobile ? 'border border-dashed border-[#1d422f] rounded-xl p-3 bg-[#041b0f] [&_label]:text-emerald-500/60 [&_label]:font-bold [&_label]:text-[10px] [&_label]:uppercase [&_label]:tracking-widest' : 'border border-dashed border-gray-200 rounded-xl p-3 bg-gray-50/50'}>
+                                    <div className={isMobile ? 'border border-dashed border-[#1d422f] rounded-xl p-3 bg-[#041b0f] [&_label]:text-emerald-500/60 [&_label]:font-bold [&_label]:text-[10px] [&_label]:uppercase [&_label]:tracking-widest' : ''}>
                                         <UploadDocument
                                             label=""
                                             file={field.value}
                                             onFileChange={field.onChange}
                                             allowedTypes={['image/jpeg', 'image/png', 'image/webp']}
                                             error={fieldState.error?.message}
+                                            transparent={isMobile}
                                         />
                                     </div>
                                 )}

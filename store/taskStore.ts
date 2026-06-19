@@ -61,7 +61,9 @@ export const useTaskStore = create<TaskState>((set) => ({
   },
   runAutomaticEscalations: async () => {
     try {
-        const { updatedTasks, newNotifications } = await api.runAutomaticEscalations();
+        const result = await api.runAutomaticEscalations();
+        const updatedTasks: Task[] = result?.updatedTasks ?? [];
+        const newNotifications: any[] = result?.newNotifications ?? [];
         
         if (updatedTasks.length > 0) {
             set((state) => ({

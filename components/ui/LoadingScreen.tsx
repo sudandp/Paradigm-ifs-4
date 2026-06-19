@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Capacitor } from '@capacitor/core';
 import { useLoadingScreenStore } from '../../store/loadingScreenStore';
+import { useThemeStore } from '../../store/themeStore';
 
 interface LoadingScreenProps {
     message?: string;
@@ -10,6 +10,16 @@ interface LoadingScreenProps {
 
 const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', fullScreen = true }) => {
     const setFullScreenLoading = useLoadingScreenStore((s) => s.setFullScreenLoading);
+    const { theme } = useThemeStore();
+
+    // Detect mobile breakpoint reactively
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 767);
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 767px)');
+        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+    }, []);
 
     // Signal MobileLayout to hide header/footer during fullscreen loading
     useEffect(() => {
@@ -19,26 +29,32 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
         }
     }, [fullScreen, setFullScreenLoading]);
 
-    const isNative = Capacitor.isNativePlatform();
+    const isDark = theme === 'dark';
 
-    // Web: white/light radial gradient. Native: dark brand radial gradient.
-    const bgGradient = isNative
-        ? 'radial-gradient(circle at center, #0a331c 0%, #03130a 100%)'
-        : 'radial-gradient(circle at center, #ffffff 0%, #f3f8f5 100%)';
-    const textPrimary = isNative ? 'text-white' : 'text-[#1A4331]';
-    const textSub = isNative ? 'text-gray-400' : 'text-[#2f6a42]';
-    const statusText = isNative ? 'text-[#22c55e]' : 'text-[#006b3f]';
-    const barBg = isNative ? 'bg-[#1f3d2b]' : 'bg-[#e2ede7]';
-    const barFill = isNative
-        ? 'bg-gradient-to-r from-[#22c55e] via-[#4ade80] to-[#22c55e]'
-        : 'bg-gradient-to-r from-[#006b3f] via-[#22c55e] to-[#006b3f]';
+    // Mobile → no background (floating). Desktop → themed gradient.
+    const bgStyle: React.CSSProperties = isMobile && fullScreen
+        ? { background: 'transparent' }
+        : {
+            background: isDark
+                ? 'radial-gradient(circle at center, #0a331c 0%, #03130a 100%)'
+                : 'radial-gradient(circle at center, #ffffff 0%, #f3f8f5 100%)',
+          };
+
+    // On mobile the text needs to be readable over whatever page is behind it.
+    // Dark theme mobile → white. Light theme mobile → dark green (page bg is dark green anyway).
+    const textPrimary = (isMobile || isDark) ? 'text-white' : 'text-[#1A4331]';
+    const textSub    = (isMobile || isDark) ? 'text-gray-300' : 'text-[#2f6a42]';
+    const statusText = (isMobile || isDark) ? 'text-[#22c55e]' : 'text-[#006b3f]';
+    const barBg      = (isMobile || isDark) ? 'bg-[#1f3d2b]'  : 'bg-[#e2ede7]';
+    const barFill    = 'bg-gradient-to-r from-[#22c55e] via-[#4ade80] to-[#22c55e]';
+    const dotColor   = (isMobile || isDark) ? 'bg-[#22c55e]'  : 'bg-[#006b3f]';
 
     const containerClass = fullScreen
         ? `fixed inset-0 overflow-hidden flex items-center justify-center font-['Inter',_sans-serif] desktop-scaled ls-container-animate`
         : `relative overflow-hidden flex flex-col items-center justify-center min-h-[400px] w-full font-['Inter',_sans-serif] rounded-xl shadow-2xl transition-all duration-300 desktop-scaled ls-container-animate`;
 
     const content = (
-        <div className={containerClass} style={{ background: bgGradient, zIndex: 999999 }}>
+        <div className={containerClass} style={{ ...bgStyle, zIndex: 999999 }}>
             <style>{`
                 @keyframes ls-fade-in-container {
                     from { opacity: 0; transform: scale(0.99); }
@@ -49,8 +65,8 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                 }
 
                 @keyframes ls-breathe {
-                    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 20px ${isNative ? 'rgba(34, 197, 94, 0.03)' : 'rgba(0, 107, 63, 0.03)'}); }
-                    50% { transform: scale(1.025); filter: drop-shadow(0 12px 28px ${isNative ? 'rgba(34, 197, 94, 0.1)' : 'rgba(0, 107, 63, 0.08)'}); }
+                    0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 20px rgba(34, 197, 94, 0.06)); }
+                    50%       { transform: scale(1.025); filter: drop-shadow(0 12px 28px rgba(34, 197, 94, 0.18)); }
                 }
                 .ls-breathe-wrapper {
                     animation: ls-breathe 4s ease-in-out infinite;
@@ -58,22 +74,15 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 
                 @keyframes ls-spin-clockwise {
                     from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-                @keyframes ls-spin-counter {
-                    from { transform: rotate(360deg); }
-                    to { transform: rotate(0deg); }
+                    to   { transform: rotate(360deg); }
                 }
                 .ls-logo-spin {
                     animation: ls-spin-clockwise 18s linear infinite;
                 }
-                .ls-ring-spin {
-                    animation: ls-spin-counter 10s linear infinite;
-                }
 
                 @keyframes ls-fade-up {
-                    0% { opacity: 0; transform: translateY(12px); filter: blur(2px); }
-                    100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+                    0%   { opacity: 0; transform: translateY(12px); filter: blur(2px); }
+                    100% { opacity: 1; transform: translateY(0);    filter: blur(0); }
                 }
                 .ls-animate-fade-up {
                     opacity: 0;
@@ -83,16 +92,16 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                 .ls-delay-2 { animation-delay: 0.35s; }
 
                 @keyframes ls-fill-bar {
-                    0% { width: 0%; }
-                    10% { width: 15%; }
-                    25% { width: 45%; }
-                    45% { width: 68%; }
-                    70% { width: 85%; }
-                    92% { width: 96%; }
+                    0%   { width: 0%; }
+                    10%  { width: 15%; }
+                    25%  { width: 45%; }
+                    45%  { width: 68%; }
+                    70%  { width: 85%; }
+                    92%  { width: 96%; }
                     100% { width: 100%; }
                 }
                 @keyframes ls-shimmer {
-                    0% { background-position: 200% 0; }
+                    0%   { background-position: 200% 0; }
                     100% { background-position: -200% 0; }
                 }
                 .ls-progress-bar-fill {
@@ -102,9 +111,9 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 
                 @keyframes ls-dot {
                     0%, 80%, 100% { transform: scale(0.6); opacity: 0.35; }
-                    40% { transform: scale(1.15); opacity: 1; }
+                    40%           { transform: scale(1.15); opacity: 1; }
                 }
-                .ls-dot-1 { animation: ls-dot 1.4s 0s infinite ease-in-out; }
+                .ls-dot-1 { animation: ls-dot 1.4s 0s    infinite ease-in-out; }
                 .ls-dot-2 { animation: ls-dot 1.4s 0.16s infinite ease-in-out; }
                 .ls-dot-3 { animation: ls-dot 1.4s 0.32s infinite ease-in-out; }
 
@@ -123,7 +132,6 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                 <div className={`${fullScreen ? 'mb-8' : 'mb-4'} relative flex flex-col justify-center items-center`}>
                     <div className="relative mb-6 ls-breathe-wrapper">
                         <div className={`ls-logo-container ${fullScreen ? 'w-60 h-60' : 'w-44 h-44'} relative z-10`}>
-                            {/* Inner slowly spinning logo */}
                             <div className="ls-logo-spin w-full h-full flex items-center justify-center">
                                 <img
                                     src="/paradigm-correct-logo.png"
@@ -148,15 +156,15 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
                     {/* Dot loader + status text */}
                     <div className="flex items-center justify-center gap-2 mb-4">
                         <div className="flex gap-1.5">
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-1 ${isNative ? 'bg-[#22c55e]' : 'bg-[#006b3f]'}`} />
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-2 ${isNative ? 'bg-[#22c55e]' : 'bg-[#006b3f]'}`} />
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-3 ${isNative ? 'bg-[#22c55e]' : 'bg-[#006b3f]'}`} />
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-1 ${dotColor}`} />
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-2 ${dotColor}`} />
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ls-dot-3 ${dotColor}`} />
                         </div>
                         <p className={`${statusText} text-xs font-mono tracking-widest font-semibold`}>
                             {message === 'Loading...' ? 'Initializing System...' : message}
                         </p>
                     </div>
-                    <div className={`${fullScreen ? 'w-72' : 'w-48'} h-1.5 ${barBg} rounded-full overflow-hidden ${!isNative ? 'border border-gray-100/50' : ''}`}>
+                    <div className={`${fullScreen ? 'w-72' : 'w-48'} h-1.5 ${barBg} rounded-full overflow-hidden`}>
                         <div className={`h-full ${barFill} rounded-full ls-progress-bar-fill bg-[length:200%_100%]`}></div>
                     </div>
                 </div>
@@ -172,4 +180,3 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...', f
 };
 
 export default LoadingScreen;
-

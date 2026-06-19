@@ -332,7 +332,7 @@ const TaskManagement: React.FC = () => {
                     <tbody className={`divide-y md:divide-y-0 ${isMobile ? 'divide-white/10 space-y-4 block' : (isDark ? 'divide-white/10 bg-[#041b0f]' : 'divide-border md:bg-card')}`}>
                         {isLoading ? (
                             isMobile ? (
-                                <div className="p-4"><TableSkeleton rows={5} cols={3} isMobile={true} /></div>
+                                <tr><td colSpan={7}><div className="p-4"><TableSkeleton rows={5} cols={3} isMobile={true} /></div></td></tr>
                             ) : (
                                 <TableSkeleton rows={5} cols={7} />
                             )

@@ -71,62 +71,6 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                 <div className={`flex items-center w-full ${isMobile ? 'relative' : 'h-14 justify-between'}`}>
                     {isMobile ? (
                         <div className="w-full flex items-center justify-center relative py-1.5">
-                            {/* Mobile User Menu Trigger (Left) */}
-                            {user && (
-                                <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1" ref={mobileUserMenuRef}>
-                                    <button
-                                        onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                                        className="h-8 w-8 rounded-full overflow-hidden shadow-sm flex items-center justify-center bg-gray-50 border border-white/20 active:scale-95 transition-all"
-                                        aria-expanded={isUserMenuOpen}
-                                        aria-haspopup="true"
-                                        aria-label="User Menu"
-                                    >
-                                        <ProfilePlaceholder photoUrl={user.photoUrl} seed={user.id} />
-                                    </button>
-
-                                    {isUserMenuOpen && (
-                                        <div className="absolute left-0 mt-2 w-48 bg-card rounded-xl shadow-card border border-border py-1 z-40 animate-fade-in-down" role="menu">
-                                            <Link
-                                                to="/profile"
-                                                onClick={() => setIsUserMenuOpen(false)}
-                                                className="flex items-center px-4 py-2 text-sm text-primary-text hover:bg-page"
-                                                role="menuitem"
-                                            >
-                                                <User className="mr-2 h-4 w-4" />
-                                                Profile
-                                            </Link>
-                                            {user && (isAdmin(user.role) || permissions[user.role]?.includes('apply_for_leave')) && (
-                                                <Link
-                                                    to="/leaves/dashboard"
-                                                    onClick={() => setIsUserMenuOpen(false)}
-                                                    className="flex items-center px-4 py-2 text-sm text-primary-text hover:bg-page"
-                                                    role="menuitem"
-                                                >
-                                                    <Crosshair className="mr-2 h-4 w-4" />
-                                                    Tracker
-                                                </Link>
-                                            )}
-                                            <button
-                                                onClick={() => { setIsHelpModalOpen(true); setIsUserMenuOpen(false); }}
-                                                className="flex items-center w-full text-left px-4 py-2 text-sm text-primary-text hover:bg-page"
-                                                role="menuitem"
-                                            >
-                                                <HelpCircle className="mr-2 h-4 w-4" />
-                                                Help
-                                            </button>
-                                            <button
-                                                onClick={handleLogoutClick}
-                                                className="flex items-center w-full text-left px-4 py-2 text-sm text-primary-text hover:bg-page"
-                                                role="menuitem"
-                                            >
-                                                <LogOut className="mr-2 h-4 w-4" />
-                                                Log Out
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
                             {/* Unified mobile header bar */}
                             <div className="bg-white/95 backdrop-blur-md py-2 px-4 rounded-2xl shadow-lg shadow-black/10 border border-white/20 flex items-center gap-2 transition-all duration-300">
                                 <Logo className="border-0 h-[30px]" variant="original" />

@@ -20,6 +20,7 @@ interface ModalProps {
     headerClassName?: string;
     titleClassName?: string;
     contentClassName?: string;
+    backdropClassName?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({ 
@@ -39,7 +40,8 @@ const Modal: React.FC<ModalProps> = ({
     containerClassName,
     headerClassName,
     titleClassName,
-    contentClassName
+    contentClassName,
+    backdropClassName
 }) => {
     if (!isOpen) return null;
 
@@ -47,7 +49,7 @@ const Modal: React.FC<ModalProps> = ({
     const loading = isLoading !== undefined ? isLoading : isConfirming;
 
     return createPortal(
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black bg-opacity-50" aria-modal="true" role="dialog">
+        <div className={`fixed inset-0 z-[999] flex items-center justify-center ${backdropClassName || 'bg-black bg-opacity-50'}`} aria-modal="true" role="dialog">
             {/* Full screen on mobile, centered modal on desktop */}
             <div className={`shadow-card flex flex-col overflow-hidden w-full h-full ${maxWidth} md:w-auto md:h-auto md:max-h-[90vh] md:rounded-xl md:animate-fade-in-scale ${containerClassName || 'bg-card'}`}>
                 {/* Header */}
