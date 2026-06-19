@@ -55,6 +55,7 @@ import MainLayout from './components/layouts/MainLayout';
 import MobileLayout from './components/layouts/MobileLayout';
 import AuthLayout from './components/layouts/AuthLayout';
 import SecurityWrapper from './components/SecurityWrapper';
+import LoadingScreen from './components/ui/LoadingScreen';
 
 // Pages
 import Splash from './pages/Splash';
@@ -1286,7 +1287,7 @@ const App: React.FC = () => {
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
       {isUpdateRequired && <UpdatePromptModal updateInfo={updateInfo} />}
-      <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>}>
+      <Suspense fallback={<LoadingScreen message="Loading..." fullScreen={true} />}>
       <Routes>
         {/* 1. Public Authentication & Form Routes */}
         <Route path="/auth" element={<AuthLayout />}>

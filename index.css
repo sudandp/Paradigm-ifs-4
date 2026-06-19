@@ -453,7 +453,7 @@ body {
     body {
         min-height: 100vh;
         padding-bottom: env(safe-area-inset-bottom);
-        background-color: #041b0f;
+        /* background-color is controlled by pro-dark-theme for native mobile */
     }
     .auth-card-container {
         width: 100% !important;

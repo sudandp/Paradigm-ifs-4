@@ -549,9 +549,10 @@ const LeaveDashboard: React.FC = () => {
             const thirdSatStr = format(thirdSaturday, 'yyyy-MM-dd');
             const workedOn3rdSat = events.some(e => {
                 const eDate = format(new Date(e.timestamp), 'yyyy-MM-dd');
+                const eventType = e.type as string;
                 return eDate === thirdSatStr && (
-                    e.type === 'punch-in' || e.type === 'check-in' ||
-                    e.type === 'punch_in' || e.type === 'checkin'
+                    eventType === 'punch-in' || eventType === 'check-in' ||
+                    eventType === 'punch_in' || eventType === 'checkin'
                 );
             });
             if (!workedOn3rdSat) {

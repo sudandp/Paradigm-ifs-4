@@ -146,24 +146,21 @@ BEGIN
       MIN(ae.timestamp AT TIME ZONE 'Asia/Kolkata')
         FILTER (WHERE ae.type = 'punch-in')                            AS first_in,
       MAX(ae.timestamp AT TIME ZONE 'Asia/Kolkata')
-        FILTER (WHERE ae.type = 'punch-out')                           AS last_out
+        FILTER (WHERE ae.type = 'punch-out')                           AS last_out,
+      CASE
+        WHEN MIN(ae.timestamp AT TIME ZONE 'Asia/Kolkata') FILTER (WHERE ae.type = 'punch-in') IS NOT NULL
+             AND MAX(ae.timestamp AT TIME ZONE 'Asia/Kolkata') FILTER (WHERE ae.type = 'punch-out') IS NOT NULL
+        THEN GREATEST(
+          EXTRACT(EPOCH FROM (MAX(ae.timestamp AT TIME ZONE 'Asia/Kolkata') FILTER (WHERE ae.type = 'punch-out') - MIN(ae.timestamp AT TIME ZONE 'Asia/Kolkata') FILTER (WHERE ae.type = 'punch-in'))) / 3600.0, 0
+        )
+        ELSE NULL
+      END AS net_hours
     FROM   attendance_events ae
     JOIN   active_staff s ON s.staff_id = ae.user_id
     WHERE  ae.timestamp >= p_start::TIMESTAMPTZ
       AND  ae.timestamp <  (p_end + 1)::TIMESTAMPTZ
       AND  ae.type IN ('punch-in','punch-out')
     GROUP BY ae.user_id, DATE(ae.timestamp AT TIME ZONE 'Asia/Kolkata')
-  ),
-  daily_hours AS (
-    SELECT
-      dw_uid,
-      work_day,
-      first_in,
-      GREATEST(
-        EXTRACT(EPOCH FROM (last_out - first_in)) / 3600.0, 0
-      ) AS net_hours
-    FROM daily_work
-    WHERE first_in IS NOT NULL AND last_out IS NOT NULL
   ),
   daily_leave AS (
     SELECT
@@ -185,22 +182,22 @@ BEGIN
   )
   SELECT
     ds.ds_day,
-    COUNT(DISTINCT dh.dw_uid)::INT,
+    COUNT(DISTINCT dw.dw_uid) FILTER (WHERE dw.first_in IS NOT NULL)::INT,
     COUNT(DISTINCT dl_wfh.dl_uid)::INT,
     COUNT(DISTINCT dl_leave.dl_uid)::INT,
     GREATEST(
       v_active_staff_count
-        - COUNT(DISTINCT dh.dw_uid)
+        - COUNT(DISTINCT dw.dw_uid) FILTER (WHERE dw.first_in IS NOT NULL)
         - COUNT(DISTINCT dl_leave.dl_uid),
       0
     )::INT,
-    ROUND(COALESCE(AVG(dh.net_hours), 0)::NUMERIC, 1),
-    COUNT(DISTINCT dh.dw_uid)
-      FILTER (WHERE dh.first_in::TIME > v_shift_start)::INT,
+    ROUND(COALESCE(AVG(dw.net_hours), 0)::NUMERIC, 1),
+    COUNT(DISTINCT dw.dw_uid)
+      FILTER (WHERE dw.first_in IS NOT NULL AND dw.first_in::TIME > v_shift_start)::INT,
     v_active_staff_count::INT
   FROM      day_series                                    ds
-  LEFT JOIN daily_hours                                   dh
-            ON  dh.work_day        = ds.ds_day
+  LEFT JOIN daily_work                                    dw
+            ON  dw.work_day        = ds.ds_day
   LEFT JOIN daily_leave                                   dl_wfh
             ON  dl_wfh.dl_day      = ds.ds_day
             AND dl_wfh.leave_category  = 'wfh'

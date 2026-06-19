@@ -54,6 +54,7 @@ export async function fetchAttendanceSummary(
   societyId?: string,
   siteIds?: string[]
 ): Promise<DaySummary[]> {
+  let rows: DaySummary[];
   const { data, error } = await supabase.rpc('get_attendance_summary', {
     p_start:      format(startDate, 'yyyy-MM-dd'),
     p_end:        format(endDate,   'yyyy-MM-dd'),
@@ -64,9 +65,34 @@ export async function fetchAttendanceSummary(
   if (error) {
     // RPC broken — fall back to direct query so charts still render
     console.warn('[attendanceDashboard] get_attendance_summary RPC failed, using fallback:', error.message);
-    return fetchAttendanceSummaryFallback(startDate, endDate, societyId, siteIds);
+    rows = await fetchAttendanceSummaryFallback(startDate, endDate, societyId, siteIds);
+  } else {
+    rows = data as DaySummary[];
   }
-  return data as DaySummary[];
+
+  // Patch today's data to ensure real-time update in the graph
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayRowIndex = (rows || []).findIndex(r => r.day === todayStr);
+  if (todayRowIndex !== -1) {
+    try {
+      const todayMetrics = await fetchTodayMetrics(societyId, siteIds);
+      if (todayMetrics) {
+        rows[todayRowIndex] = {
+          ...rows[todayRowIndex],
+          present_count: todayMetrics.present_today,
+          absent_count: todayMetrics.absent_today,
+          wfh_count: todayMetrics.wfh_today,
+          on_leave_count: todayMetrics.on_leave_today,
+          late_arrivals: todayMetrics.late_arrivals_today,
+          total_active_staff: todayMetrics.total_active_staff,
+        };
+      }
+    } catch (err) {
+      console.warn('[attendanceDashboard] failed to patch today\'s summary in RPC data:', err);
+    }
+  }
+
+  return rows;
 }
 
 /** Direct-query fallback — used when the RPC is unavailable or broken */
