@@ -2267,7 +2267,8 @@ export const api = {
   },
 
   deleteUser: async (id: string) => {
-    const { error } = await supabase.from('users').delete().eq('id', id);
+    // Call the security-definer RPC which deletes from both public.users and auth.users atomically
+    const { error } = await supabase.rpc('delete_user', { target_user_id: id });
     if (error) throw error;
   },
 

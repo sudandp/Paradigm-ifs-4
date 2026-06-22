@@ -524,7 +524,7 @@ const UserManagement: React.FC = () => {
             setIsSaving(true);
             try {
                 await api.deleteUser(userIdToDelete);
-                setToast({ message: 'User deleted. Remember to also remove them from Supabase Auth.', type: 'success' });
+                setToast({ message: `User "${currentUser.name}" has been permanently deleted.`, type: 'success' });
                 setIsDeleteModalOpen(false);
                 
                 // Instant UI Update: Remove from local state
@@ -786,7 +786,7 @@ const UserManagement: React.FC = () => {
                 title="Confirm Deletion"
                 isConfirming={isSaving}
             >
-                Are you sure you want to delete the user "{currentUser?.name}"? This action cannot be undone.
+                Are you sure you want to permanently delete <strong>{currentUser?.name}</strong>? This will remove their profile <em>and</em> revoke their login access. This action cannot be undone.
             </Modal>
 
             <Modal
