@@ -1,7 +1,8 @@
 import * as ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { type EmployeeMonthlyData } from '../components/attendance/MonthlyHoursReport';
+import { calculateStatsForDateRange } from './attendanceCalculations';
 
 export interface MonthlyReportRow {
     userName: string;
@@ -303,7 +304,7 @@ export const exportAttendanceToExcel = async (
                 // Apply conditional colors for Status
                 if (m.label === 'Status') {
                     const statusVal = rowValues[i - 1];
-                    if (statusVal === 'P' || statusVal === 'Present' || statusVal === 'W/P' || statusVal === 'H/P') {
+                    if (statusVal === 'P' || statusVal === 'Present' || statusVal === 'W/P' || statusVal === 'H/P' || statusVal === 'BL/P' || statusVal === 'PL/P') {
                         cell.font = { color: { argb: 'FF166534' }, bold: true };
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
                     } else if (statusVal === 'A' || statusVal === 'Absent' || statusVal.includes('LOP')) {
@@ -489,8 +490,19 @@ export const exportMonthlyMatrixToExcel = async (
         companyCell.font = { bold: true, size: 9, color: { argb: 'FF9CA3AF' } };
         companyCell.alignment = { horizontal: 'left', vertical: 'middle' };
 
-        // Get the maximum number of days to determine the last column
-        const maxDays = data.length > 0 ? (data[0].statuses?.length || 31) : 31;
+        // Calculate days for this month within the global range
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+        const displayStart = monthStart > dateRange.startDate ? monthStart : dateRange.startDate;
+        const displayEnd = monthEnd < dateRange.endDate ? monthEnd : dateRange.endDate;
+        const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
+        const maxDays = monthDays.length;
+
+        const recalculatedData = data.map(employee => ({
+            ...employee,
+            ...calculateStatsForDateRange(employee.statuses || [], monthDays)
+        }));
+
         const endColIndex = 1 + maxDays + 10; // Employee + Days + 10 stats columns
         
         // Helper to get column letter
@@ -539,7 +551,7 @@ export const exportMonthlyMatrixToExcel = async (
         headerRow.height = 25;
         
         const headers = ['Employee'];
-        for (let i = 1; i <= maxDays; i++) headers.push(i.toString());
+        monthDays.forEach(d => headers.push(format(d, 'd')));
         headers.push('P', '0.5P', 'OT', 'C/O', 'E/L', 'S/L', 'A', 'W/O', 'H', 'Pay');
         
         headerRow.values = headers;
@@ -569,16 +581,16 @@ export const exportMonthlyMatrixToExcel = async (
         currentRow++;
 
         // 4. Render Employee Rows
-        data.forEach((employee) => {
+        recalculatedData.forEach((employee) => {
             const row = worksheet.getRow(currentRow);
             row.height = 20;
             
             const rowData = [employee.userName || employee.employeeName];
             const statuses = employee.statuses || [];
             
-            for (let i = 0; i < maxDays; i++) {
-                rowData.push(statuses[i] || '-');
-            }
+            monthDays.forEach((d) => {
+                rowData.push(statuses[d.getDate() - 1] || '-');
+            });
             
             rowData.push(
                 employee.presentDays || 0,
@@ -620,7 +632,7 @@ export const exportMonthlyMatrixToExcel = async (
                 else if (colNumber > 1 && colNumber <= 1 + maxDays) {
                     const s = cell.value as string;
                     cell.font = { bold: true };
-                    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP') cell.font.color = { argb: 'FF059669' };
+                    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'WOP' || s === 'BL/P' || s === 'PL/P') cell.font.color = { argb: 'FF059669' };
                     else if (s === 'A' || s === 'Absent') cell.font.color = { argb: 'FFDC2626' };
                     else if (s === 'W/O' || s === 'Weekly Off') cell.font.color = { argb: 'FF64748B' };
                     else if (s === 'H' || s === 'Holiday') cell.font.color = { argb: 'FF4F46E5' };

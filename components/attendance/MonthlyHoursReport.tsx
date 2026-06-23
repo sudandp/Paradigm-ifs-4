@@ -890,6 +890,8 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         { code: 'H',    label: 'Public Holiday',       bg: 'bg-indigo-50',   text: 'text-indigo-700' },
                         { code: 'H/P',  label: 'Holiday Present',      bg: 'bg-amber-50',    text: 'text-amber-700'  },
                         { code: 'W/P',  label: 'Weekend Present',      bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: 'BL/P', label: 'Blue Leave Present',   bg: 'bg-blue-50',     text: 'text-blue-700'   },
+                        { code: 'PL/P', label: 'Pink Leave Present',   bg: 'bg-pink-50',     text: 'text-pink-700'   },
                         { code: 'W/H',  label: 'Work From Home',       bg: 'bg-teal-50',     text: 'text-teal-700'   },
                         { code: 'SL',   label: 'Sick Leave',           bg: 'bg-purple-50',   text: 'text-purple-700' },
                         { code: 'EL',   label: 'Earned Leave',         bg: 'bg-indigo-50',   text: 'text-indigo-700' },

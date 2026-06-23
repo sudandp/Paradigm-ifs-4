@@ -106,6 +106,12 @@ export interface RecurringHolidayRule {
   n: number; // 1 for 1st, 2 for 2nd, 3 for 3rd, 4 for 4th, 5 for 5th
   roleType?: string; // For database compatibility
   occurrence?: number; // For database compatibility
+  name?: string; // Optional display name for the rule (e.g. 'Blue Leave')
+  /** Optional whitelist of role IDs that are eligible for this recurring holiday.
+   * If empty or undefined, ALL roles in the category are eligible (default behaviour).
+   * If populated, only users whose role_id is in this list will receive BL/PL instead of A/W/O.
+   */
+  eligibleRoles?: string[];
 }
 
 export interface StaffAttendanceRules {

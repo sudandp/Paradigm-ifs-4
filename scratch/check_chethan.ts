@@ -8,15 +8,28 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 async function check() {
-  const { data, error } = await supabase
-    .from('users')
+  const { data: org, error: err1 } = await supabase
+    .from('organizations')
     .select('*')
-    .ilike('name', '%Chethan%');
+    .eq('id', 'group_1774003567612')
+    .single();
     
-  if (error) {
-    console.error('Error:', error.message);
+  if (err1) {
+    console.error('Org Error:', err1.message);
   } else {
-    console.log('Chethan V User Data:', JSON.stringify(data, null, 2));
+    console.log('Organization:', JSON.stringify(org, null, 2));
+  }
+
+  const { data: loc, error: err2 } = await supabase
+    .from('locations')
+    .select('*')
+    .eq('id', 'group_1774003567612')
+    .single();
+
+  if (err2) {
+    console.error('Loc Error:', err2.message);
+  } else {
+    console.log('Location:', JSON.stringify(loc, null, 2));
   }
 }
 

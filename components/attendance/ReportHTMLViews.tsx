@@ -2,6 +2,7 @@ import React from 'react';
 import { format } from 'date-fns';
 import { ClipboardList } from 'lucide-react';
 import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyReportRow, WorkHoursReportDataRow } from '../../pages/attendance/PDFReports';
+import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
 
 // --- SHARED ---
 interface ReportHeaderProps {
@@ -199,11 +200,54 @@ export const MonthlyStatusView: React.FC<{
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
 
-    const dayHeaders = data.length > 0
-        ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1)
-        : [];
+    const dayHeaders = days && days.length > 0
+        ? days.map(d => d.getDate())
+        : (data.length > 0 ? Array.from({ length: data[0].statuses.length }, (_, i) => i + 1) : []);
 
     if (!data.length) return <EmptyState message="No monthly status records found." />;
+
+    const numDays = dayHeaders.length;
+
+    // Dynamic layout styles based on number of columns/days
+    const layout = React.useMemo(() => {
+        if (numDays <= 7) {
+            return {
+                tableText: 'text-[11px]',
+                employeeWidth: 'w-[150px] min-w-[150px] max-w-[150px]',
+                dayColWidth: 'min-w-[32px]',
+                statColWidth: 'min-w-[30px]',
+                payWidth: 'w-[40px] min-w-[40px] max-w-[40px]',
+                paddingY: 'py-2 px-1',
+            };
+        } else if (numDays <= 15) {
+            return {
+                tableText: 'text-[9.5px]',
+                employeeWidth: 'w-[110px] min-w-[110px] max-w-[110px]',
+                dayColWidth: 'min-w-[24px]',
+                statColWidth: 'min-w-[22px]',
+                payWidth: 'w-[32px] min-w-[32px] max-w-[32px]',
+                paddingY: 'py-1.5 px-1',
+            };
+        } else if (numDays <= 22) {
+            return {
+                tableText: 'text-[8px]',
+                employeeWidth: 'w-[80px] min-w-[80px] max-w-[80px]',
+                dayColWidth: 'min-w-[20px]',
+                statColWidth: 'min-w-[18px]',
+                payWidth: 'w-[28px] min-w-[28px] max-w-[28px]',
+                paddingY: 'py-1 px-0.5',
+            };
+        } else {
+            return {
+                tableText: 'text-[6.5px]',
+                employeeWidth: 'w-[60px] min-w-[60px] max-w-[60px]',
+                dayColWidth: 'min-w-[17px]',
+                statColWidth: '',
+                payWidth: 'w-[24px] min-w-[24px] max-w-[24px]',
+                paddingY: 'py-1 px-0',
+            };
+        }
+    }, [numDays]);
 
     const getStatusColor = (s: string) => {
         if (s.includes('+')) return 'text-[#0D9488] font-black'; // Combined Status Teal
@@ -228,6 +272,14 @@ export const MonthlyStatusView: React.FC<{
         return 'text-gray-700';
     };
 
+    const recalculatedRows = React.useMemo(() => {
+        if (!days || days.length === 0) return data;
+        return data.map(row => ({
+            ...row,
+            ...calculateStatsForDateRange(row.statuses, days)
+        }));
+    }, [data, days]);
+
     return (
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
             <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
@@ -237,60 +289,65 @@ export const MonthlyStatusView: React.FC<{
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Monthly Presence</span>
                     <div className="text-2xl font-black text-green-600">
-                        {Math.round((data.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0) / (data.length * (days?.length || 30) || 1)) * 100)}%
+                        {Math.round((recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0) + (curr.halfDays || 0) * 0.5, 0) / (recalculatedRows.length * (days?.length || 30) || 1)) * 100)}%
                     </div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Total Punches</span>
                     <div className="text-2xl font-black text-blue-600">
-                        {data.reduce((acc, curr) => acc + (curr.presentDays || 0), 0)}
+                        {recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0), 0)}
                     </div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Active Staff</span>
-                    <div className="text-2xl font-black text-gray-900">{data.length}</div>
+                    <div className="text-2xl font-black text-gray-900">{recalculatedRows.length}</div>
                 </div>
             </div>
 
             <div className="overflow-x-auto custom-scrollbar relative">
-                <table className="w-full text-[6.5px] border-collapse">
+                <table className={`w-full ${layout.tableText} border-collapse`}>
                     <thead>
                         <tr className="bg-gray-50/50">
-                            <th className="px-1 py-1 font-bold text-gray-700 sticky left-0 bg-[#F9FAFB] z-20 w-[60px] min-w-[60px] max-w-[60px] text-left border-b border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Employee</th>
+                            <th className={`px-1 ${layout.paddingY} font-bold text-gray-700 sticky left-0 bg-[#F9FAFB] z-20 ${layout.employeeWidth} text-left border-b border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>Employee</th>
                             {dayHeaders.map(d => (
-                                <th key={d} className="px-0 py-1 border-b border-gray-200 font-semibold text-center text-gray-400 min-w-[17px]">{d}</th>
+                                <th key={d} className={`px-0 ${layout.paddingY} border-b border-gray-200 font-semibold text-center text-gray-400 ${layout.dayColWidth}`}>{d}</th>
                             ))}
-                            <th className="px-0 py-1 border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 min-w-[15px]">P</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 min-w-[16px]">0.5P</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 min-w-[18px]">OT</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 min-w-[16px]">C/O</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 min-w-[16px]">E/L</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 min-w-[16px]">S/L</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 min-w-[14px]">A</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 min-w-[16px]">W/O</th>
-                            <th className="px-0 py-1 border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 min-w-[14px]">H</th>
-                            <th className="px-0 py-1 border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-emerald-100 z-20 sticky right-0 w-[24px] min-w-[24px] max-w-[24px] shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Pay</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-green-50/30 ${layout.statColWidth || 'min-w-[15px]'}`}>P</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#2563EB] bg-blue-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>0.5P</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0D9488] bg-teal-50/30 ${layout.statColWidth || 'min-w-[18px]'}`}>OT</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#0891B2] bg-cyan-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>C/O</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#4F46E5] bg-indigo-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>E/L</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#9333EA] bg-purple-50/30 ${layout.statColWidth || 'min-w-[16px]'}`}>S/L</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#DC2626] bg-red-50/30 ${layout.statColWidth || 'min-w-[14px]'}`}>A</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#6B7280] bg-gray-50/50 ${layout.statColWidth || 'min-w-[16px]'}`}>W/O</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-gray-200 font-bold text-center text-[#EA580C] bg-orange-50/30 ${layout.statColWidth || 'min-w-[14px]'}`}>H</th>
+                            <th className={`px-0 ${layout.paddingY} border-b border-l border-gray-200 font-bold text-center text-[#059669] bg-emerald-100 z-20 sticky right-0 ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>Pay</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {data.map((row, idx) => (
+                        {recalculatedRows.map((row, idx) => (
                             <tr key={idx} className="group hover:bg-gray-50/30 transition-colors">
-                                <td className="px-1 py-1 font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 w-[60px] min-w-[60px] max-w-[60px] overflow-hidden text-ellipsis capitalize">{row.userName}</td>
-                                {row.statuses.map((status, sIdx) => (
-                                    <td key={sIdx} className="px-0 py-1 border-b border-gray-50 text-center font-bold leading-tight">
-                                        <span className={getStatusColor(status)}>{status}</span>
-                                    </td>
-                                ))}
-                                <td className="px-0 py-1 border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10">{row.presentDays}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10">{row.halfDays}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10">{row.overtimeDays || 0}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10">{row.compOffs || 0}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10">{row.earnedLeaves || 0}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10">{row.sickLeaves || 0}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10">{row.absentDays}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center text-[#6B7280] font-medium">{row.weekOffs}</td>
-                                <td className="px-0 py-1 border-b border-gray-100 text-center text-[#EA580C] font-medium">{row.holidays}</td>
-                                <td className="px-0 py-1 border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-emerald-100 sticky right-0 z-10 w-[24px] min-w-[24px] max-w-[24px] shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">{row.totalPayableDays}</td>
+                                <td className={`px-1 ${layout.paddingY} font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/30 z-10 whitespace-nowrap border-b border-gray-100 ${layout.employeeWidth} overflow-hidden text-ellipsis capitalize`}>{row.userName}</td>
+                                {(days && days.length > 0 ? days : row.statuses).map((day, sIdx) => {
+                                    const status = days && days.length > 0
+                                        ? (row.statuses[(day as Date).getDate() - 1] || '-')
+                                        : (day as string || '-');
+                                    return (
+                                        <td key={sIdx} className={`px-0 ${layout.paddingY} border-b border-gray-50 text-center font-bold leading-tight`}>
+                                            <span className={getStatusColor(status)}>{status}</span>
+                                        </td>
+                                    );
+                                })}
+                                <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-green-50/10`}>{row.presentDays}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#2563EB] bg-blue-50/10`}>{row.halfDays}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0D9488] bg-teal-50/10`}>{row.overtimeDays || 0}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#0891B2] bg-cyan-50/10`}>{row.compOffs || 0}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#4F46E5] bg-indigo-50/10`}>{row.earnedLeaves || 0}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#9333EA] bg-purple-50/10`}>{row.sickLeaves || 0}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center font-bold text-[#DC2626] bg-red-50/10`}>{row.absentDays}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#6B7280] font-medium`}>{row.weekOffs}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-gray-100 text-center text-[#EA580C] font-medium`}>{row.holidays}</td>
+                                <td className={`px-0 ${layout.paddingY} border-b border-l border-gray-100 text-center font-bold text-[#059669] bg-emerald-100 sticky right-0 z-10 ${layout.payWidth} shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>{row.totalPayableDays}</td>
                             </tr>
                         ))}
                     </tbody>

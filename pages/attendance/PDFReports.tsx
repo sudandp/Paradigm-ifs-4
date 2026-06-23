@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, View, Text, StyleSheet, Image, Font } from '@react-pdf/renderer';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
 
 // Register a standard font if needed, or use defaults
 // Font.register({ family: 'Inter', src: '...' });
@@ -935,7 +936,7 @@ export const MonthlyReportDocument: React.FC<{
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days }) => {
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
@@ -947,7 +948,7 @@ export const MonthlyReportDocument: React.FC<{
 
   const getStatusBg = (s: string) => {
     if (s.includes('+')) return '#F0FDFA';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
@@ -1714,7 +1715,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   globalDateRange: { startDate: Date; endDate: Date };
 }> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange }) => {
   const getStatusColor = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
@@ -1724,7 +1725,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
   };
 
   const getStatusBg = (s: string) => {
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
@@ -1748,9 +1749,14 @@ export const MonthlyMatrixReportDocument: React.FC<{
         const displayEnd = monthEnd < globalDateRange.endDate ? monthEnd : globalDateRange.endDate;
         const monthDays = eachDayOfInterval({ start: displayStart, end: displayEnd });
 
+        const recalculatedMonthData = monthData.map((emp: any) => ({
+          ...emp,
+          ...calculateStatsForDateRange(emp.statuses || [], monthDays)
+        }));
+
         const pages: any[][] = [];
-        for (let i = 0; i < monthData.length; i += rowsPerPage) {
-          pages.push(monthData.slice(i, i + rowsPerPage));
+        for (let i = 0; i < recalculatedMonthData.length; i += rowsPerPage) {
+          pages.push(recalculatedMonthData.slice(i, i + rowsPerPage));
         }
         if (pages.length === 0) pages.push([]);
 
@@ -1805,7 +1811,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
                       <Text style={{ fontSize: 8, fontWeight: 'bold' }}>{emp.userName || emp.employeeName}</Text>
                     </View>
                     {monthDays.map((d, i) => {
-                      const status = statuses[i] || '-';
+                      const status = statuses[d.getDate() - 1] || '-';
                       return (
                         <View key={i} style={[styles.matrixCell, { backgroundColor: getStatusBg(status) }]}>
                           <Text style={{ color: getStatusColor(status), fontWeight: 'bold', fontSize: 7 }}>{status}</Text>

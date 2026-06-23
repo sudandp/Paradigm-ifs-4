@@ -26,7 +26,7 @@ import { useAuthStore } from '../store/authStore';
 const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null, removeCache: async (key?: string) => {} };
 import { Network } from '@capacitor/network';
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
-import { isTechnicalRole, calculateWorkingHours } from '../utils/attendanceCalculations';
+import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory } from '../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
 import { FIXED_HOLIDAYS } from '../utils/constants';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
@@ -1777,7 +1777,7 @@ export const api = {
       while (hasMore) {
         const { data, error } = await supabase
           .from('users')
-          .select('*, role:roles(display_name)')
+          .select('*, role:roles(display_name), companies!users_society_id_fkey(location)')
           .range((page - 1) * pageSize, page * pageSize - 1)
           .order(filter?.sortBy || 'created_at', { ascending: filter?.sortAscending ?? false });
 
@@ -1798,11 +1798,18 @@ export const api = {
         const roleData = u.role;
         const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id;
         const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
-        return toCamelCase({ ...u, role: roleName });
+        const camelUser = toCamelCase({ ...u, role: roleName });
+        if (u.companies) {
+          const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
+          if (compLocation) {
+            camelUser.location = compLocation;
+          }
+        }
+        return camelUser;
       });
     }
 
-    let query = supabase.from('users').select('*, role:roles(display_name)', { count: 'exact' });
+    let query = supabase.from('users').select('*, role:roles(display_name), companies!users_society_id_fkey(location)', { count: 'exact' });
     
     if (filter?.search) {
       query = query.or(`name.ilike.%${filter.search}%,email.ilike.%${filter.search}%`);
@@ -1827,7 +1834,14 @@ export const api = {
       const roleData = u.role;
       const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || u.role_id;
       const roleName = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
-      return toCamelCase({ ...u, role: roleName });
+      const camelUser = toCamelCase({ ...u, role: roleName });
+      if (u.companies) {
+        const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
+        if (compLocation) {
+          camelUser.location = compLocation;
+        }
+      }
+      return camelUser;
     });
     
     if (isPaginated) {
@@ -1892,21 +1906,39 @@ export const api = {
   getUserById: async (id: string): Promise<User | null> => {
     const { data, error } = await supabase
       .from('users')
-      .select('*, role_id')
+      .select('*, role_id, companies!users_society_id_fkey(location)')
       .eq('id', id)
       .single();
     if (error) return null;
-    return processUrlsForDisplay(toCamelCase({ ...data, role: data.role_id }));
+    const camelUser = toCamelCase({ ...data, role: data.role_id });
+    if (data.companies) {
+      const compLocation = Array.isArray(data.companies) ? data.companies[0]?.location : data.companies?.location;
+      if (compLocation) {
+        camelUser.location = compLocation;
+      }
+    }
+    return processUrlsForDisplay(camelUser);
   },
   getUsersWithManagers: async (): Promise<(User & { managerName?: string, manager2Name?: string, manager3Name?: string })[]> => {
-    const { data: users, error } = await supabase.from('users').select('*');
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('*, companies!users_society_id_fkey(location)');
     if (error) throw error;
-    const camelUsers = (users || []).map(u => ({
-      ...toCamelCase({ ...u, role: u.role_id }),
-      reportingManagerId: u.reporting_manager_id,
-      reportingManager2Id: u.reporting_manager_2_id,
-      reportingManager3Id: u.reporting_manager_3_id
-    }));
+    const camelUsers = (users || []).map(u => {
+      const camelUser = toCamelCase({ ...u, role: u.role_id });
+      if (u.companies) {
+        const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
+        if (compLocation) {
+          camelUser.location = compLocation;
+        }
+      }
+      return {
+        ...camelUser,
+        reportingManagerId: u.reporting_manager_id,
+        reportingManager2Id: u.reporting_manager_2_id,
+        reportingManager3Id: u.reporting_manager_3_id
+      };
+    });
     const userMap = new Map(camelUsers.map(u => [u.id, u.name]));
     return camelUsers.map(u => ({
       ...u,
@@ -1918,10 +1950,19 @@ export const api = {
   getTeamMembers: async (managerId: string): Promise<User[]> => {
     const { data, error } = await supabase
       .from('users')
-      .select('*, role_id')
+      .select('*, role_id, companies!users_society_id_fkey(location)')
       .or(`reporting_manager_id.eq.${managerId},reporting_manager_2_id.eq.${managerId},reporting_manager_3_id.eq.${managerId}`);
     if (error) throw error;
-    return (data || []).map(u => toCamelCase({ ...u, role: u.role_id }));
+    return (data || []).map(u => {
+      const camelUser = toCamelCase({ ...u, role: u.role_id });
+      if (u.companies) {
+        const compLocation = Array.isArray(u.companies) ? u.companies[0]?.location : u.companies?.location;
+        if (compLocation) {
+          camelUser.location = compLocation;
+        }
+      }
+      return camelUser;
+    });
   },
   getLatestLocations: async (userIds: string[]): Promise<Record<string, { latitude: number; longitude: number; timestamp: string; locationName?: string }>> => {
     if (userIds.length === 0) return {};
@@ -3897,23 +3938,31 @@ export const api = {
       id: row.id,
       type: row.role_type,
       day: row.day,
-      n: row.occurrence
+      n: row.occurrence,
+      name: row.name || undefined,
+      eligibleRoles: Array.isArray(row.eligible_roles) ? row.eligible_roles : (row.eligible_roles ? JSON.parse(row.eligible_roles) : [])
     }));
   },
 
   addRecurringHoliday: async (rule: RecurringHolidayRule): Promise<RecurringHolidayRule> => {
-    const dbRule = {
+    const dbRule: any = {
       role_type: rule.type || 'office',
       day: rule.day,
-      occurrence: rule.n
+      occurrence: rule.n,
     };
+    if (rule.name) dbRule.name = rule.name;
+    if (rule.eligibleRoles && rule.eligibleRoles.length > 0) {
+      dbRule.eligible_roles = rule.eligibleRoles;
+    }
     const { data, error } = await supabase.from('recurring_holidays').insert(dbRule).select().single();
     if (error) throw error;
     return {
       id: data.id,
       type: data.role_type,
       day: data.day,
-      n: data.occurrence
+      n: data.occurrence,
+      name: data.name || undefined,
+      eligibleRoles: Array.isArray(data.eligible_roles) ? data.eligible_roles : []
     };
   },
 
@@ -3941,21 +3990,6 @@ export const api = {
     if (error && error.code !== '23505') throw error; // Ignore duplicates
   },
   getLeaveBalancesForUser: async (userId: string, asOfDate?: string): Promise<LeaveBalance> => {
-    const getStaffType = (role: string): 'office' | 'field' | 'site' => {
-      const r = (role || '').toLowerCase();
-      // Office Roles
-      if ([
-        'hr', 'admin', 'finance', 'developer', 'management', 'office_staff', 
-        'back_office_staff', 'bd', 'finance_manager', 'hr_ops', 'business developer', 'unverified',
-        'finance manager', 'hr ops'
-      ].includes(r)) return 'office';
-      
-      // Site Roles
-      if (['site_manager', 'site manager', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'security_guard'].includes(r)) return 'site';
-      
-      // Default to field (includes 'field_staff', 'field staff', etc.)
-      return 'field';
-    };
     const status = await Network.getStatus();
     let settingsData: any;
     let userData: any;
@@ -3977,7 +4011,12 @@ export const api = {
                 child_care_leave_opening_date,
                 joining_date,
                 gender,
-                created_at
+                created_at,
+                organization_name,
+                society_name,
+                society_id,
+                location_id,
+                companies!users_society_id_fkey(location)
               `)
               .eq('id', userId)
               .single()
@@ -3989,6 +4028,12 @@ export const api = {
         if (!settingsRes.error && !userRes.error) {
           settingsData = settingsRes.data;
           userData = userRes.data;
+          if (userData.companies) {
+            const compLocation = Array.isArray(userData.companies) ? userData.companies[0]?.location : userData.companies?.location;
+            if (compLocation) {
+              userData.location = compLocation;
+            }
+          }
           await offlineDb.setCache(`user_profile_leave_${userId}`, userData);
         }
       } catch (err) {
@@ -4022,8 +4067,9 @@ export const api = {
     // Get role name from join or fallback to role_id string
     const roleData = userData.role;
     const roleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || userData.role_id;
-    const staffType = getStaffType(roleName);
-    const rules = (toCamelCase(settingsData.attendance_settings) as AttendanceSettings)[staffType];
+    const camelSettings = toCamelCase(settingsData.attendance_settings) as AttendanceSettings;
+    const staffType = getStaffCategory(roleName, userData.society_id, camelSettings);
+    const rules = camelSettings[staffType];
     const isFemaleUser = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
     console.log('[LeaveDebug] userId:', userId, 'roleName:', roleName, 'staffType:', staffType, 'enableSickLeaveAccrual:', rules?.enableSickLeaveAccrual, 'annualSickLeaves:', rules?.annualSickLeaves);
 
@@ -4223,6 +4269,9 @@ export const api = {
     // 3rd Saturday rule applies to gents/male employees (defaulting empty/null gender to gents/male as well)
     const isFemale = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
     const isMale = !isFemale;
+    const userLocationStr = userData.location || userData.location_name || userData.organization_name || userData.society_name || '';
+    const isBangaloreStaff = isBangaloreLocation(userLocationStr) && (staffType === 'office' || staffType === 'field');
+
     const intervalDays = eachDayOfInterval({ start: new Date(yearStart.replace(/-/g, '/')), end: endOfMonth(referenceDate) });
     intervalDays.forEach(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
@@ -4236,9 +4285,10 @@ export const api = {
              if (rhType && rhType !== staffType) return false;
              if (rh.day !== dayName) return false;
              
-             // If this rule matches a Saturday, only apply to male employees
+             // If this rule matches a Saturday, only apply to Bangalore male employees
              // AND ONLY if the policy has not expired (Monthly Floating Holidays expiry applies)
-             if (rh.day === 'Saturday') {
+             if (rh.day === 'Saturday' && rhN === 3) {
+                 if (!isBangaloreStaff) return false;
                  if (!isMale) return false;
                  if (!isFloatingHolidayValid(dateStr)) return false;
              }
@@ -4246,7 +4296,7 @@ export const api = {
              if (rhN === 0) return true; 
              const nth = Math.ceil(day.getDate() / 7);
              return rhN === nth;
-        }) || (isMale && dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3 && isFloatingHolidayValid(dateStr));
+        }) || (isBangaloreStaff && isMale && dayName === 'Saturday' && Math.ceil(day.getDate() / 7) === 3 && isFloatingHolidayValid(dateStr));
 
         if (isRecurringHoliday) {
             holidayDates.add(dateStr);
@@ -4377,10 +4427,11 @@ export const api = {
 
     const monthEnd = endOfMonth(referenceDate);
     
-    // Total Comp Off = (Attendance on Holidays/Sundays) + manual grants (only 'earned' status)
-    // 'used' logs represent consumed comp offs and should NOT inflate the total.
-    const manualCompOffGranted = (compOffData || []).filter((log: any) => log.status === 'earned').length;
-    const manualCompOffUsed = (compOffData || []).filter((log: any) => log.status === 'used').length;
+    // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants (both 'earned' and 'used')
+    // We include 'used' in the total so that used comp offs don't decrement the total earned.
+    const manualCompOffGranted = (compOffData || []).filter((log: any) => log.status === 'earned' || log.status === 'used').length;
+    // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting
+    const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId).length;
     const compOffTotal = dynamicCompOffTotal + manualCompOffGranted;
 
     const finalCompOffTotal = compOffTotal;
@@ -4396,9 +4447,9 @@ export const api = {
     };
 
     // 1. Floating Holiday Logic (Check validity)
-    // Blue Leave (Floating Holiday/3rd Saturday) is ONLY available for MALE employees.
+    // Blue Leave (Floating Holiday/3rd Saturday) is ONLY available for MALE Bangalore office/field staff.
     let floatingTotalValue = 0;
-    if (isFloatingHolidayValid(todayStr) && !isFemaleUser) {
+    if (isBangaloreStaff && isFloatingHolidayValid(todayStr) && !isFemaleUser) {
         floatingTotalValue = rules.monthlyFloatingLeaves || 0;
     }
 
@@ -4414,7 +4465,7 @@ export const api = {
       floatingUsed: 0,
       floatingPending: 0,
       compOffTotal: (isNotValid(rules.compOffLeavesValidFrom, rules.compOffLeavesExpiryDate)) ? 0 : finalCompOffTotal, 
-      compOffUsed: manualCompOffUsed, // Start with manual 'used' logs
+      compOffUsed: manualCompOffUsedNotLinked, // Start with manual 'used' logs not linked to requests
       compOffPending: 0,
       maternityTotal: 0,
       maternityUsed: 0,

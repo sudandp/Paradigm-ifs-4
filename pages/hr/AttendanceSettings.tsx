@@ -25,6 +25,14 @@ import StaffBillingConfig from '../billing/StaffBillingConfig';
 import SiteHolidayAllocator from '../../components/billing/SiteHolidayAllocator';
 
 
+/** Normalize role display names to Title Case regardless of DB storage format */
+const toTitleCase = (str: string): string =>
+    str
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase())
+        .trim();
+
 const AttendanceSettings: React.FC = () => {
     const { attendance, officeHolidays, fieldHolidays, siteHolidays, recurringHolidays, addHoliday, removeHoliday, addRecurringHoliday, removeRecurringHoliday, updateAttendanceSettings: updateStore } = useSettingsStore();
     const [orgStructure, setOrgStructure] = useState<any[]>([]);
@@ -56,6 +64,7 @@ const AttendanceSettings: React.FC = () => {
     const [newHolidayDate, setNewHolidayDate] = useState('');
     const [newRecurringN, setNewRecurringN] = useState(3);
     const [newRecurringDay, setNewRecurringDay] = useState('Saturday');
+    const [newRecurringEligibleRoles, setNewRecurringEligibleRoles] = useState<string[]>([]);
     const [isTriggering, setIsTriggering] = useState(false);
     const [allRoles, setAllRoles] = useState<Role[]>([]);
     const [isLoadingRoles, setIsLoadingRoles] = useState(false);
@@ -102,9 +111,14 @@ const AttendanceSettings: React.FC = () => {
                     if (!mergedRoles.some(r => r.id === slug)) {
                         mergedRoles.push({
                             id: slug,
-                            displayName: desig.designation
+                            displayName: toTitleCase(desig.designation)
                         });
                     }
+                });
+
+                // Normalize all displayNames to Title Case for visual consistency
+                mergedRoles.forEach(r => {
+                    if (r.displayName) r.displayName = toTitleCase(r.displayName);
                 });
                 
                 // Sort roles alphabetically by displayName
@@ -2022,9 +2036,9 @@ const AttendanceSettings: React.FC = () => {
 
                 <section className="pt-6 border-t border-border" style={{ display: subTab === 'holidays' ? undefined : 'none' }}>
                     <h3 className="text-lg font-semibold text-primary-text mb-4 flex items-center"><Calendar className="mr-2 h-5 w-5 text-muted" />Recurring Holidays</h3>
-                    <div className="p-4 bg-page rounded-lg">
-                        <h4 className="font-semibold mb-2">Add Recurring Holiday</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+                    <div className="p-4 bg-page rounded-lg border border-border/50">
+                        <h4 className="font-semibold mb-3">Add Recurring Holiday</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                             <Select label="Occurrence" value={newRecurringN} onChange={e => setNewRecurringN(parseInt(e.target.value))}>
                                 <option value={1}>1st</option>
                                 <option value={2}>2nd</option>
@@ -2041,25 +2055,72 @@ const AttendanceSettings: React.FC = () => {
                                 <option value="Saturday">Saturday</option>
                                 <option value="Sunday">Sunday</option>
                             </Select>
-                            <Button 
-                                type="button" 
-                                onClick={async () => {
-                                    try {
-                                        await addRecurringHoliday({
-                                            day: newRecurringDay as any,
-                                            n: newRecurringN,
-                                            type: activeTab as 'office' | 'field' | 'site' | 'admin' | 'management'
-                                        });
-                                        setToast({ message: 'Recurring holiday added successfully.', type: 'success' });
-                                    } catch (error) {
-                                        setToast({ message: 'Failed to add recurring holiday.', type: 'error' });
-                                    }
-                                }} 
-                                className="w-full sm:w-auto py-2 px-6"
-                            >
-                                <Plus className="mr-2 h-4 w-4" /> Add Rule
-                            </Button>
                         </div>
+
+                        {/* Role Eligibility Picker */}
+                        <div className="mb-4">
+                            <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+                                Eligible Roles
+                                <span className="ml-1 text-[10px] font-normal normal-case text-muted/70">(leave empty = all roles in this category)</span>
+                            </label>
+                            <div className="flex flex-wrap gap-2 p-3 bg-white/5 rounded-lg border border-border/50 max-h-36 overflow-y-auto">
+                                {allRoles
+                                    .filter(r => {
+                                        const mapping = localAttendance.missedCheckoutConfig?.roleMapping;
+                                        if (!mapping) return true;
+                                        const catRoles = (mapping as any)[activeTab] as string[] | undefined;
+                                        return !catRoles || catRoles.length === 0 || catRoles.includes(r.id);
+                                    })
+                                    .map(role => {
+                                        const isSelected = (newRecurringEligibleRoles || []).includes(role.id);
+                                        return (
+                                            <button
+                                                key={role.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    const cur = newRecurringEligibleRoles || [];
+                                                    setNewRecurringEligibleRoles(isSelected ? cur.filter(x => x !== role.id) : [...cur, role.id]);
+                                                }}
+                                                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                                                    isSelected
+                                                        ? 'bg-accent/20 border-accent text-accent-dark'
+                                                        : 'bg-page border-border/50 text-muted hover:border-accent/50'
+                                                }`}
+                                            >
+                                                {toTitleCase(role.displayName || role.id)}
+                                            </button>
+                                        );
+                                    })
+                                }
+                                {allRoles.length === 0 && <p className="text-xs text-muted italic">No roles found. Roles load after opening the page.</p>}
+                            </div>
+                            {(newRecurringEligibleRoles || []).length > 0 && (
+                                <p className="text-xs text-amber-500 mt-1.5">
+                                    ⚠ Restricted to {(newRecurringEligibleRoles || []).length} selected role(s). Other roles will get W/O or A on this day.
+                                </p>
+                            )}
+                        </div>
+
+                        <Button
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    await addRecurringHoliday({
+                                        day: newRecurringDay as any,
+                                        n: newRecurringN,
+                                        type: activeTab as 'office' | 'field' | 'site' | 'admin' | 'management',
+                                        eligibleRoles: (newRecurringEligibleRoles || []).length > 0 ? newRecurringEligibleRoles! : []
+                                    });
+                                    setNewRecurringEligibleRoles([]);
+                                    setToast({ message: 'Recurring holiday added successfully.', type: 'success' });
+                                } catch (error) {
+                                    setToast({ message: 'Failed to add recurring holiday.', type: 'error' });
+                                }
+                            }}
+                            className="w-full sm:w-auto py-2 px-6"
+                        >
+                            <Plus className="mr-2 h-4 w-4" /> Add Rule
+                        </Button>
                     </div>
                     <div className="mt-4 space-y-2">
                         {recurringHolidays
@@ -2068,7 +2129,25 @@ const AttendanceSettings: React.FC = () => {
                                 <div key={rule.id || index} className="flex justify-between items-start p-4 pr-6 border border-white/10 rounded-lg bg-white/5 mb-2">
                                     <div className="flex-1 min-w-0">
                                         <p className="font-medium text-primary-text truncate">{rule.n === 1 ? '1st' : rule.n === 2 ? '2nd' : rule.n === 3 ? '3rd' : rule.n + 'th'} {rule.day}</p>
-                                        <p className="text-sm text-muted">Repeats every month</p>
+                                        <p className="text-sm text-muted mb-1.5">Repeats every month</p>
+                                        {/* Eligible role pills */}
+                                        {(rule.eligibleRoles && rule.eligibleRoles.length > 0) ? (
+                                            <div className="flex flex-wrap gap-1.5 mt-1">
+                                                <span className="text-[10px] font-bold text-amber-500 self-center">Only:</span>
+                                                {rule.eligibleRoles.map(roleId => {
+                                                    const roleMeta = allRoles.find(r => r.id === roleId);
+                                                    return (
+                                                        <span key={roleId} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent/10 text-accent-dark border border-accent/20">
+                                                            {toTitleCase(roleMeta?.displayName || roleId)}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                                                All roles eligible
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="ml-4 shrink-0">
                                         <Button variant="icon" onClick={async () => {
@@ -2407,7 +2486,7 @@ const AttendanceSettings: React.FC = () => {
                                                         const role = allRoles.find(r => r.id === roleId);
                                                         return (
                                                             <div key={roleId} className="flex items-center justify-between p-2 bg-white/5 rounded border border-border/10 group">
-                                                                <span className="text-xs truncate" title={roleId}>{role?.displayName || roleId}</span>
+                                                                <span className="text-xs truncate" title={roleId}>{toTitleCase(role?.displayName || roleId)}</span>
                                                                 <button 
                                                                     onClick={() => {
                                                                         const mapping = localAttendance.missedCheckoutConfig?.roleMapping || { office: ['admin', 'hr', 'finance', 'developer'], field: ['field_staff', 'field_officer', 'technical_reliever'], site: ['site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter', 'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'] };
@@ -2458,7 +2537,7 @@ const AttendanceSettings: React.FC = () => {
                                                                 return !existingNames.has((r.displayName || r.id).toLowerCase());
                                                             })
                                                             .map(role => (
-                                                                <option key={role.id} value={role.id} className="bg-page">{role.displayName || role.id}</option>
+                                                                <option key={role.id} value={role.id} className="bg-page">{toTitleCase(role.displayName || role.id)}</option>
                                                             ))}
                                                     </select>
                                                 </div>

@@ -281,6 +281,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
         { code: 'H',     label: 'Holiday',         dot: 'bg-sky-400'       },
         { code: 'H/P',   label: 'Holiday Present', dot: 'bg-gradient-to-br from-sky-400 to-emerald-500' },
         { code: 'W/P',   label: 'W/O Present',     dot: 'bg-gradient-to-br from-rose-300 to-emerald-500' },
+        { code: 'BL/P',  label: 'BL Present',      dot: 'bg-gradient-to-br from-blue-700 to-emerald-500' },
+        { code: 'PL/P',  label: 'PL Present',      dot: 'bg-gradient-to-br from-pink-500 to-emerald-500' },
         { code: 'WH',    label: 'WH',              dot: 'bg-blue-600'      },
         { code: 'FH',    label: 'Float',           dot: 'bg-amber-500'     },
         { code: 'BL',    label: 'Blue Leave',      dot: 'bg-blue-700'      },
@@ -501,7 +503,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     borderColor: 'transparent'
                                 };
                             } else if (workingHours >= shiftThreshold) {
-                                overlayText = status === 'holiday-present' ? 'H/P' : status === 'weekend-present' ? 'W/P' : 'P';
+                                if (status === 'holiday-present') {
+                                    overlayText = 'H/P';
+                                } else if (status === 'weekend-present') {
+                                    overlayText = holidayName === 'Blue Leave' ? 'BL/P' : (holidayName === 'Pink Leave' ? 'PL/P' : 'W/P');
+                                } else {
+                                    overlayText = 'P';
+                                }
                                 if (status === 'holiday-present' || status === 'weekend-present') {
                                     const leftColor = status === 'holiday-present' ? '#38bdf8' : '#fda4af'; // sky-400 or rose-300
                                     customStyle = {
@@ -528,7 +536,8 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     greenPercentage = 25;
                                 }
 
-                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `W/${fractionText}` : fractionText;
+                                const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
+                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
                                 const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
                                 customStyle = {
                                     background: `linear-gradient(135deg, ${leftColor} ${greenPercentage}%, #ef4444 ${greenPercentage}%)`,
@@ -655,9 +664,12 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 return;
                             }
                             if (workingHours >= shiftThreshold) {
-                                 if (s === 'holiday-present') usedCodes.add('H/P');
-                                 else if (s === 'weekend-present') usedCodes.add('W/P');
-                                 else usedCodes.add('P');
+                                  if (s === 'holiday-present') usedCodes.add('H/P');
+                                  else if (s === 'weekend-present') {
+                                      const code = info.holidayName === 'Blue Leave' ? 'BL/P' : (info.holidayName === 'Pink Leave' ? 'PL/P' : 'W/P');
+                                      usedCodes.add(code);
+                                  }
+                                  else usedCodes.add('P');
                             } else {
                                 const threeQtr = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? shiftThreshold * 0.75;
                                 const halfHrs  = (settings as any)?.[staffCategory]?.minimumHoursHalfDay  ?? shiftThreshold * 0.5;

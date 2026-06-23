@@ -99,6 +99,9 @@ const AddUserPage: React.FC = () => {
   const [selectedSociety, setSelectedSociety] = useState<string>('');
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
+  // Auto-sync: when saving a user with an unmapped role, intercept and prompt for category
+  const [pendingSubmitData, setPendingSubmitData] = useState<any>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   const schema = isEditing ? editUserSchema : createUserSchema;
   const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<Partial<User> & { password?: string; noSiteAssignment?: boolean }>({
@@ -433,7 +436,53 @@ const AddUserPage: React.FC = () => {
       </div>
     );
   };
+  /** Save the user AND update the roleMapping in one action */
+  const saveUserWithCategory = async (data: any, chosenCategory: 'site' | 'field' | 'office') => {
+    setShowCategoryModal(false);
+    setIsSubmitting(true);
+    try {
+      // 1. Add this role to the chosen category in attendance settings
+      if (data.role && attendanceSettings) {
+        const currentMapping = (attendanceSettings as any).missedCheckoutConfig?.roleMapping || {
+          office: [], field: [], site: []
+        };
+        const updatedMapping = {
+          ...currentMapping,
+          [chosenCategory]: [...(currentMapping[chosenCategory] || []), data.role]
+        };
+        const updatedSettings: AttendanceSettings = {
+          ...attendanceSettings,
+          missedCheckoutConfig: {
+            ...(attendanceSettings as any).missedCheckoutConfig,
+            roleMapping: updatedMapping
+          }
+        };
+        await api.updateAttendanceSettings(updatedSettings);
+        setAttendanceSettings(updatedSettings);
+        console.log(`✅ Role '${data.role}' auto-synced to '${chosenCategory}' staff category`);
+      }
+      // 2. Now save the user normally
+      await onSubmit(data);
+    } catch (err: any) {
+      setToast({ message: err.message || 'Failed to save.', type: 'error' });
+      setIsSubmitting(false);
+    }
+  };
+
   const onSubmit: SubmitHandler<Partial<User> & { password?: string; noSiteAssignment?: boolean }> = async (data) => {
+    // Auto-sync check: if role is not mapped to any category, pause and ask admin
+    const rm = (attendanceSettings as any)?.missedCheckoutConfig?.roleMapping || {};
+    const isExplicitlyMapped = [
+      ...(rm.office || []), ...(rm.field || []), ...(rm.site || [])
+    ].some((r: string) => r.toLowerCase() === (data.role || '').toLowerCase());
+
+    if (data.role && !isExplicitlyMapped) {
+      setPendingSubmitData(data);
+      setShowCategoryModal(true);
+      setIsSubmitting(false);
+      return; // Stop here — modal will call saveUserWithCategory
+    }
+
     setIsSubmitting(true);
     
     // Final surgical cleanup: converting empty strings and undefined to null for database compatibility.
@@ -589,20 +638,50 @@ const AddUserPage: React.FC = () => {
 
               {renderSiteMultiSelect()}
               
-              {role && (
-                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2 flex items-start gap-2">
-                  <span className="text-xl leading-none">ℹ️</span>
-                  <div>
-                    <h4 className="text-sm font-semibold text-indigo-900">Staff Category Status</h4>
-                    <p className="text-xs text-indigo-800/80 mt-1 flex flex-col gap-0.5">
-                      <span>Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong>, this user is categorized as:</span>
-                      <strong className="text-indigo-700 capitalize text-[13px] bg-indigo-100/50 py-0.5 px-2 rounded-md self-start mt-1 border border-indigo-200/50 shadow-sm">
-                        {getStaffCategory(role, watch('organizationId'), attendanceSettings)} Staff
-                      </strong>
-                    </p>
+              {role && (() => {
+                const category = getStaffCategory(role, watch('organizationId'), attendanceSettings);
+                const rm = (attendanceSettings as any)?.missedCheckoutConfig?.roleMapping || {};
+                const isExplicitlyMapped = [
+                  ...(rm.office || []),
+                  ...(rm.field || []),
+                  ...(rm.site || [])
+                ].some((r: string) => r.toLowerCase() === role.toLowerCase());
+
+                if (!isExplicitlyMapped) {
+                  return (
+                    <div className="bg-orange-50/80 p-3 rounded-lg border border-orange-200 flex items-start gap-2 mt-2">
+                      <span className="text-xl leading-none">⚠️</span>
+                      <div>
+                        <h4 className="text-sm font-semibold text-orange-900">Role Not Categorized!</h4>
+                        <p className="text-xs text-orange-800/80 mt-0.5">
+                          The role <strong>{role}</strong> is not mapped to any staff category.
+                          Go to <a href="#/hr/attendance-settings" className="underline font-bold text-orange-700">Attendance Settings → Staff Selections</a> and add this role to <strong>Site Staff</strong>, <strong>Office</strong>, or <strong>Field</strong> before saving.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2 flex items-start gap-2">
+                    <span className="text-xl leading-none">ℹ️</span>
+                    <div>
+                      <h4 className="text-sm font-semibold text-indigo-900">Staff Category Status</h4>
+                      <p className="text-xs text-indigo-800/80 mt-1 flex flex-col gap-0.5">
+                        <span>Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong>, this user is categorized as:</span>
+                        <strong className={`capitalize text-[13px] py-0.5 px-2 rounded-md self-start mt-1 border shadow-sm ${
+                          category === 'site' ? 'text-emerald-700 bg-emerald-100/50 border-emerald-200/50' :
+                          category === 'field' ? 'text-amber-700 bg-amber-100/50 border-amber-200/50' :
+                          'text-indigo-700 bg-indigo-100/50 border-indigo-200/50'
+                        }`}>
+                          {category === 'site' ? '🏗️' : category === 'field' ? '🏃' : '🏢'} {category} Staff
+                          {category === 'site' ? ' — No BL/PL on holidays' : ''}
+                        </strong>
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {!watch('organizationId') && (
                 <div className="flex items-center gap-2 mt-2 px-1">
@@ -746,6 +825,48 @@ const AddUserPage: React.FC = () => {
           </button>
         </footer>
         {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+        {showCategoryModal && pendingSubmitData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+              <div className="text-center">
+                <div className="text-4xl mb-2">🔔</div>
+                <h3 className="text-lg font-bold text-gray-900">New Role Detected</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  The role <span className="font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{pendingSubmitData.role}</span> isn't categorized yet.
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Which staff group does this role belong to?</p>
+              </div>
+              <div className="space-y-2">
+                <button onClick={() => saveUserWithCategory(pendingSubmitData, 'site')}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors text-left">
+                  <span className="text-2xl">🏗️</span>
+                  <div>
+                    <div className="font-semibold text-emerald-800 text-sm">Site Staff</div>
+                    <div className="text-xs text-emerald-600">No BL/PL — gets P on 3rd Saturday & holidays</div>
+                  </div>
+                </button>
+                <button onClick={() => saveUserWithCategory(pendingSubmitData, 'field')}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors text-left">
+                  <span className="text-2xl">🏃</span>
+                  <div>
+                    <div className="font-semibold text-amber-800 text-sm">Field Staff</div>
+                    <div className="text-xs text-amber-600">PL/P eligible — follows field holiday rules</div>
+                  </div>
+                </button>
+                <button onClick={() => saveUserWithCategory(pendingSubmitData, 'office')}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors text-left">
+                  <span className="text-2xl">🏢</span>
+                  <div>
+                    <div className="font-semibold text-indigo-800 text-sm">Office Staff</div>
+                    <div className="text-xs text-indigo-600">BL/PL eligible — follows office holiday rules</div>
+                  </div>
+                </button>
+              </div>
+              <button onClick={() => { setShowCategoryModal(false); setPendingSubmitData(null); }}
+                className="w-full text-xs text-gray-400 hover:text-gray-600 py-1">Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -803,22 +924,58 @@ const AddUserPage: React.FC = () => {
 
           {renderSiteMultiSelect()}
 
-          {role && (
-            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-start gap-3 shadow-sm">
-              <span className="text-2xl leading-none mt-0.5">ℹ️</span>
-              <div>
-                <h4 className="text-sm font-semibold text-indigo-900">Staff Category Assignment</h4>
-                <p className="text-sm text-indigo-800/80 mt-1">
-                  Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong> configuration, this user will automatically follow the rules of:
-                </p>
-                <div className="mt-2 inline-block">
-                  <span className="text-indigo-700 font-bold capitalize text-sm bg-indigo-100 py-1 px-3 rounded-lg border border-indigo-200 shadow-sm">
-                    {getStaffCategory(role, watch('organizationId'), attendanceSettings)} Staff
-                  </span>
+          {role && (() => {
+            const category = getStaffCategory(role, watch('organizationId'), attendanceSettings);
+            const rm = (attendanceSettings as any)?.missedCheckoutConfig?.roleMapping || {};
+            const isExplicitlyMapped = [
+              ...(rm.office || []),
+              ...(rm.field || []),
+              ...(rm.site || [])
+            ].some((r: string) => r.toLowerCase() === role.toLowerCase());
+
+            if (!isExplicitlyMapped) {
+              return (
+                <div className="bg-orange-50/80 p-4 rounded-xl border border-orange-300 flex items-start gap-3 shadow-sm">
+                  <span className="text-2xl leading-none mt-0.5">⚠️</span>
+                  <div>
+                    <h4 className="text-sm font-semibold text-orange-900">Role Not Categorized!</h4>
+                    <p className="text-sm text-orange-800/80 mt-1">
+                      The role <strong>{role}</strong> is not mapped to any staff category.
+                      This means attendance rules (BL, PL, 3rd Saturday) may be applied incorrectly.
+                    </p>
+                    <a
+                      href="#/hr/attendance-settings"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-orange-700 underline"
+                    >
+                      → Go to Attendance Settings → Staff Selections to fix this
+                    </a>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-start gap-3 shadow-sm">
+                <span className="text-2xl leading-none mt-0.5">ℹ️</span>
+                <div>
+                  <h4 className="text-sm font-semibold text-indigo-900">Staff Category Assignment</h4>
+                  <p className="text-sm text-indigo-800/80 mt-1">
+                    Based on the selected <strong>Role</strong> and <strong>Assigned Site</strong> configuration, this user will automatically follow the rules of:
+                  </p>
+                  <div className="mt-2 inline-block">
+                    <span className={`font-bold capitalize text-sm py-1 px-3 rounded-lg border shadow-sm ${
+                      category === 'site' ? 'text-emerald-700 bg-emerald-100 border-emerald-200' :
+                      category === 'field' ? 'text-amber-700 bg-amber-100 border-amber-200' :
+                      'text-indigo-700 bg-indigo-100 border-indigo-200'
+                    }`}>
+                      {category === 'site' ? '🏗️' : category === 'field' ? '🏃' : '🏢'} {category} Staff
+                      {category === 'site' ? ' — No BL/PL on holidays' : ''}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {!watch('organizationId') && (
             <div className="flex items-center gap-2 mt-2 px-1 bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">
@@ -1014,6 +1171,51 @@ const AddUserPage: React.FC = () => {
         </form>
       </div>
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+      {showCategoryModal && pendingSubmitData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 space-y-6">
+            <div className="text-center">
+              <div className="text-5xl mb-3">🔔</div>
+              <h3 className="text-xl font-bold text-gray-900">New Role Detected!</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                The role <span className="font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md">{pendingSubmitData.role}</span> isn't in any staff category yet.
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Select a category to auto-add it to Attendance Settings and save the user in one step.</p>
+            </div>
+            <div className="space-y-3">
+              <button onClick={() => saveUserWithCategory(pendingSubmitData, 'site')}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 active:scale-[0.98] transition-all text-left group">
+                <span className="text-3xl">🏗️</span>
+                <div className="flex-1">
+                  <div className="font-bold text-emerald-800">Site Staff</div>
+                  <div className="text-xs text-emerald-600 mt-0.5">No BL/PL — gets <strong>P</strong> on 3rd Saturdays &amp; BL/PL days</div>
+                </div>
+                <span className="text-emerald-400 group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+              <button onClick={() => saveUserWithCategory(pendingSubmitData, 'field')}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] transition-all text-left group">
+                <span className="text-3xl">🏃</span>
+                <div className="flex-1">
+                  <div className="font-bold text-amber-800">Field Staff</div>
+                  <div className="text-xs text-amber-600 mt-0.5">PL/P eligible — follows field holiday rules</div>
+                </div>
+                <span className="text-amber-400 group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+              <button onClick={() => saveUserWithCategory(pendingSubmitData, 'office')}
+                className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 active:scale-[0.98] transition-all text-left group">
+                <span className="text-3xl">🏢</span>
+                <div className="flex-1">
+                  <div className="font-bold text-indigo-800">Office Staff</div>
+                  <div className="text-xs text-indigo-600 mt-0.5">BL/PL eligible — follows office holiday rules</div>
+                </div>
+                <span className="text-indigo-400 group-hover:translate-x-1 transition-transform">→</span>
+              </button>
+            </div>
+            <button onClick={() => { setShowCategoryModal(false); setPendingSubmitData(null); }}
+              className="w-full text-sm text-gray-400 hover:text-gray-600 py-1 transition-colors">Cancel — categorize later</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

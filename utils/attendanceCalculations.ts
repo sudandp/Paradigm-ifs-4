@@ -466,7 +466,12 @@ export function getStaffCategory(
 export function isBangaloreLocation(location?: string): boolean {
   if (!location) return false;
   const loc = location.trim().toLowerCase();
-  return loc === 'bangalore' || loc === 'bengaluru' || loc === 'blr' || loc.includes('bangalore') || loc.includes('bengaluru');
+  return loc === 'bangalore' || 
+         loc === 'bengaluru' || 
+         loc === 'blr' || 
+         loc === 'bgl' || 
+         loc.includes('bangalore') || 
+         loc.includes('bengaluru');
 }
 
 export function evaluateAttendanceStatus(params: {
@@ -544,6 +549,7 @@ export function evaluateAttendanceStatus(params: {
 
       // 3rd Saturday Blue Leave applies to gents/male employees (defaulting empty/null gender to gents/male as well)
       if (ruleDay === 'saturday' && ruleOccurrence === 3) {
+          if (!isBangaloreStaff) return false;
           if ((userRole || '').toLowerCase() !== 'admin') {
               const gender = (params as any).userGender || '';
               const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
@@ -571,9 +577,20 @@ export function evaluateAttendanceStatus(params: {
           }
       }
 
-      const matches = ruleOccurrence === occurrence && ruleType === userCategory;
-      if (matches) matchedRecurringRule = rule;
-      return matches;
+      const categoryMatches = ruleOccurrence === occurrence && ruleType === userCategory;
+      if (!categoryMatches) return false;
+
+      // ROLE WHITELIST: If the rule specifies eligibleRoles, only those roles qualify.
+      // An empty or absent eligibleRoles means all roles in the category are eligible.
+      const eligibleRoles: string[] = rule.eligibleRoles || [];
+      if (eligibleRoles.length > 0) {
+          const userRoleLower = (userRole || '').toLowerCase();
+          const isRoleEligible = eligibleRoles.some(r => r.toLowerCase() === userRoleLower);
+          if (!isRoleEligible) return false;
+      }
+
+      matchedRecurringRule = rule;
+      return true;
   });
 
   // Determine whether this is a Blue Leave (BL - male 3rd Saturday) or Pink Leave (PL - female)
@@ -774,7 +791,12 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedPermission) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W/P';
+          if (isWeekend || isRecurringHoliday) {
+              if (isRecurringHoliday) {
+                  return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
+              }
+              return 'W/P';
+          }
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -784,7 +806,12 @@ export function evaluateAttendanceStatus(params: {
   if (isApprovedCorrection) {
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
-          if (isWeekend || isRecurringHoliday) return 'W/P';
+          if (isWeekend || isRecurringHoliday) {
+              if (isRecurringHoliday) {
+                  return recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P');
+              }
+              return 'W/P';
+          }
           return 'P';
       } else {
           return getLeaveCode(approvedLeave);
@@ -815,8 +842,10 @@ export function evaluateAttendanceStatus(params: {
           const code = getLeaveCode(approvedLeave);
           if (code === 'P' || code === 'Present') {
               if (isWFH) status = 'WH';
-              else if (isHoliday) status = 'H/P';
-              else if (isWeekend) status = 'W/P';
+              else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
+              else if (isWeekend || isRecurringHoliday) {
+                  status = isRecurringHoliday ? (recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P')) : 'W/P';
+              }
               else status = 'P';
           } else {
               status = code;
@@ -833,8 +862,10 @@ export function evaluateAttendanceStatus(params: {
               if (isWFH) status = 'WH';
               // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
               else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
-              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P for ANY work
-              else if (isWeekend || isRecurringHoliday) status = 'W/P';
+              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P or BL/P/PL/P for ANY work
+              else if (isWeekend || isRecurringHoliday) {
+                  status = isRecurringHoliday ? (recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P')) : 'W/P';
+              }
               else status = workStatus;
           }
       }
@@ -1007,5 +1038,112 @@ export function calculateDailyPathTravelKm(
   };
 }
 
+export interface RangeStats {
+  presentDays: number;
+  halfDays: number;
+  overtimeDays: number;
+  compOffs: number;
+  earnedLeaves: number;
+  sickLeaves: number;
+  absentDays: number;
+  weekOffs: number;
+  holidays: number;
+  floatingHolidays: number;
+  totalPayableDays: number;
+}
+
+export function calculateStatsForDateRange(statuses: string[], days: Date[]): RangeStats {
+  let presentDays = 0;
+  let halfDays = 0;
+  let overtimeDays = 0;
+  let compOffs = 0;
+  let earnedLeaves = 0;
+  let sickLeaves = 0;
+  let absentDays = 0;
+  let weekOffs = 0;
+  let holidays = 0;
+  let floatingHolidays = 0;
+  let totalPayableDays = 0;
+
+  const resolvePayableValue = (s: string): number => {
+    if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
+    if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 1.5; 
+    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', '0.5P', '1/2P', '2/4P', 'Half Day', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL')) {
+        return s.startsWith('0.5') ? 0.5 : 1;
+    }
+    if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
+    if (s === '3/4P' || s === '0.75P') return 0.75;
+    if (s === '1/4P' || s === '0.25P') return 0.25;
+    return 0;
+  };
+
+  days.forEach((day) => {
+    const s = statuses[day.getDate() - 1] || '-';
+    
+    // Split complex statuses to evaluate parts
+    const parts = s.includes('+') ? s.split('+').map(p => p.trim()) : [s];
+    
+    parts.forEach(part => {
+      const isHalf = part.startsWith('0.5') || part === 'Half Day' || part === '1/2P' || part === '2/4P';
+      const inc = isHalf ? 0.5 : 1;
+
+      if (part === 'P') presentDays++;
+      else if (part === 'W/P' || part === 'BL/P' || part === 'PL/P') {
+          presentDays++;
+          weekOffs++;
+          if (part === 'BL/P' || part === 'PL/P') {
+              floatingHolidays += inc;
+          }
+      }
+      else if (part === '3/4P' || part === '0.75P') presentDays += 0.75;
+      else if (part === 'Half Day' || part === '0.5P' || part === '1/2P' || part === '2/4P') halfDays++;
+      else if (part === '1/4P' || part === '0.25P') presentDays += 0.25;
+      else if (part === 'A') absentDays++;
+      else if (part === 'W/O') weekOffs++;
+      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH') { floatingHolidays += inc; weekOffs += inc; }
+      else if (part === 'PL' || part === '0.5PL') { floatingHolidays += inc; weekOffs += inc; }
+      else if (part === 'WOP') { weekOffs++; }
+      else if (part === 'H') holidays++;
+      else if (part === 'H/P') { holidays++; presentDays++; }
+      else if (part.includes('SL') || part.includes('S/L')) { sickLeaves += inc; }
+      else if (part.includes('EL') || part.includes('E/L')) { earnedLeaves += inc; }
+      else if (part.includes('CL') || part.includes('C/L')) { compOffs += inc; }
+      else if (part.includes('C/O') || part.includes('CO')) { compOffs += inc; }
+      else if (part.includes('BL') || part.includes('F/H') || part.includes('FH')) floatingHolidays += inc;
+      else if (part.includes('PL') || part.includes('P/L')) { floatingHolidays += inc; }
+      else if (part.includes('LOP')) absentDays += inc;
+      else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) presentDays += inc;
+    });
+
+    // Payable Days
+    totalPayableDays += resolvePayableValue(s);
+  });
+
+  // Calculate Overtime Days
+  days.forEach((day) => {
+    const s = statuses[day.getDate() - 1] || '-';
+    if (s.includes('OT')) {
+      overtimeDays++;
+    }
+  });
+
+  return {
+    presentDays,
+    halfDays,
+    overtimeDays,
+    compOffs,
+    earnedLeaves,
+    sickLeaves,
+    absentDays,
+    weekOffs,
+    holidays,
+    floatingHolidays,
+    totalPayableDays
+  };
+}
+
 // Force Vite HMR
+
+
 

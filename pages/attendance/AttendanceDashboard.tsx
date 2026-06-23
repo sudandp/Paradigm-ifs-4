@@ -36,6 +36,7 @@ import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
 import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
 import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView } from '../../components/attendance/ReportHTMLViews';
+import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
 import {
     format,
     getDaysInMonth,
@@ -1344,7 +1345,7 @@ const AttendanceDashboard: React.FC = () => {
                         workingHours,
                         fieldStatus: fStatus,
                         // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
-                        userLocation: user.location || user.locationName || user.societyName
+                        userLocation: user.location || user.locationName || user.organizationName || user.societyName
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
@@ -1396,7 +1397,7 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 4. Calculate Final Stats based on displayLogs
                 const present = displayLogs.reduce((acc, l) => {
-                    if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P' || l.status === '0.5P') return acc + 1;
+                    if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P' || l.status === '0.5P' || l.status === 'BL/P' || l.status === 'PL/P') return acc + 1;
                     if (l.status.startsWith('0.5P')) return acc + 0.5;
                     return acc;
                 }, 0);
@@ -2188,7 +2189,7 @@ const AttendanceDashboard: React.FC = () => {
                     workingHours,
                     fieldStatus: fStatus,
                     // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
-                    userLocation: user.location || user.locationName || user.societyName
+                    userLocation: user.location || user.locationName || user.organizationName || user.societyName
                 });
 
                 const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
@@ -2981,23 +2982,27 @@ const AttendanceDashboard: React.FC = () => {
                         
                         // Data Rows
                         monthData.forEach(emp => {
-                            const rowData = [`"${String(emp.employeeName || emp.userName || 'Unknown').replace(/"/g, '""')}"`];
-                            const statuses = emp.statuses || [];
-                            daysInMonth.forEach((_, i) => {
-                                rowData.push(`"${String(statuses[i] || '-').replace(/"/g, '""')}"`);
+                            const recalculatedEmp = {
+                                ...emp,
+                                ...calculateStatsForDateRange(emp.statuses || [], daysInMonth)
+                            };
+                            const rowData = [`"${String(recalculatedEmp.employeeName || recalculatedEmp.userName || 'Unknown').replace(/"/g, '""')}"`];
+                            const statuses = recalculatedEmp.statuses || [];
+                            daysInMonth.forEach((d) => {
+                                rowData.push(`"${String(statuses[d.getDate() - 1] || '-').replace(/"/g, '""')}"`);
                             });
                             rowData.push(
-                                `"${emp.presentDays || 0}"`,
-                                `"${emp.halfDays || 0}"`,
-                                `"${emp.overtimeDays || 0}"`,
-                                `"${emp.compOffs || 0}"`,
-                                `"${emp.earnedLeaves || 0}"`,
-                                `"${emp.sickLeaves || 0}"`,
-                                `"${emp.floatingHolidays || 0}"`,
-                                `"${emp.absentDays || 0}"`,
-                                `"${emp.weekOffs || 0}"`,
-                                `"${emp.holidays || 0}"`,
-                                `"${emp.totalPayableDays || 0}"`
+                                `"${recalculatedEmp.presentDays || 0}"`,
+                                `"${recalculatedEmp.halfDays || 0}"`,
+                                `"${recalculatedEmp.overtimeDays || 0}"`,
+                                `"${recalculatedEmp.compOffs || 0}"`,
+                                `"${recalculatedEmp.earnedLeaves || 0}"`,
+                                `"${recalculatedEmp.sickLeaves || 0}"`,
+                                `"${recalculatedEmp.floatingHolidays || 0}"`,
+                                `"${recalculatedEmp.absentDays || 0}"`,
+                                `"${recalculatedEmp.weekOffs || 0}"`,
+                                `"${recalculatedEmp.holidays || 0}"`,
+                                `"${recalculatedEmp.totalPayableDays || 0}"`
                             );
                             csvContent += rowData.join(',') + '\n';
                         });
@@ -3358,7 +3363,7 @@ const AttendanceDashboard: React.FC = () => {
                                  row.status === 'P' || row.type === 'punch-in' ? 'bg-emerald-500/20 text-emerald-400' : 
                                  row.status === 'A' || row.type === 'punch-out' ? 'bg-rose-500/20 text-rose-400' : 
                                  row.status === 'W/H' ? 'bg-teal-500/20 text-teal-400' :
-                                 row.status === 'W/P' ? 'bg-blue-500/20 text-blue-400' :
+                                 row.status === 'W/P' || row.status === 'BL/P' || row.status === 'PL/P' ? 'bg-blue-500/20 text-blue-400' :
                                  'bg-blue-500/20 text-blue-400'
                              }`}>
                                  {row.status || row.displayType || (row.type === 'punch-in' ? 'In' : row.type === 'punch-out' ? 'Out' : 'Log')}
