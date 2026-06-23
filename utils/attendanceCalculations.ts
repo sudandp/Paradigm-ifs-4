@@ -458,6 +458,17 @@ export function getStaffCategory(
  * Evaluate attendance status for a specific day based on rules and events.
  * Uniformly applies the 3-day presence threshold to all holiday types (H, F/H, W/O).
  */
+/**
+ * Checks if a user's location is Bangalore (handles common spellings/aliases).
+ * BL (Blue Leave) and PL (Pink Leave) are Bangalore-specific benefits for
+ * office and field staff only.
+ */
+export function isBangaloreLocation(location?: string): boolean {
+  if (!location) return false;
+  const loc = location.trim().toLowerCase();
+  return loc === 'bangalore' || loc === 'bengaluru' || loc === 'blr' || loc.includes('bangalore') || loc.includes('bengaluru');
+}
+
 export function evaluateAttendanceStatus(params: {
   day: Date;
   userId: string;
@@ -477,6 +488,8 @@ export function evaluateAttendanceStatus(params: {
   fieldStatus?: string;
   floatingHolidayMonths?: number[];
   userGender?: string;
+  /** User's work location (city/branch). BL and PL apply only to Bangalore field/office staff. */
+  userLocation?: string;
 }) {
   const { 
     day, userId, userCategory, userRole, userRules, dayEvents, 
@@ -487,8 +500,16 @@ export function evaluateAttendanceStatus(params: {
     workingHours,
     fieldStatus,
     floatingHolidayMonths,
-    userGender
+    userGender,
+    userLocation
   } = params;
+
+  // ── LOCATION-BASED RULE ENGINE ─────────────────────────────────────────────
+  // BL (Blue Leave) and PL (Pink Leave) are Bangalore-specific recurring holidays
+  // applicable only to office and field category staff.
+  // Site staff and all non-Bangalore locations: recurring holidays resolve to W/O / A / P only.
+  const isBangaloreStaff = isBangaloreLocation(userLocation) && (userCategory === 'office' || userCategory === 'field');
+  // ──────────────────────────────────────────────────────────────────────────
 
   if (userCategory === 'site') {
     return evaluateSiteStaffStatus(params);
@@ -556,14 +577,21 @@ export function evaluateAttendanceStatus(params: {
   });
 
   // Determine whether this is a Blue Leave (BL - male 3rd Saturday) or Pink Leave (PL - female)
+  // LOCATION RULE: BL/PL are Bangalore-only benefits for office & field staff.
+  // For non-Bangalore or site staff, recurring holidays fall back to plain W/O.
   if (isRecurringHoliday && matchedRecurringRule) {
-      const gender = (params as any).userGender || '';
-      const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
-      const ruleLabel = String(matchedRecurringRule.name || matchedRecurringRule.label || '').toLowerCase();
-      if (ruleLabel.includes('pink') || isFemale) {
-          recurringHolidayType = 'PL';
+      if (isBangaloreStaff) {
+          const gender = (params as any).userGender || '';
+          const isFemale = ['female', 'ladies'].includes(gender.toLowerCase());
+          const ruleLabel = String(matchedRecurringRule.name || matchedRecurringRule.label || '').toLowerCase();
+          if (ruleLabel.includes('pink') || isFemale) {
+              recurringHolidayType = 'PL';
+          } else {
+              recurringHolidayType = 'BL'; // Blue Leave for Bangalore male/gents office+field staff
+          }
       } else {
-          recurringHolidayType = 'BL'; // Default for 3rd Saturday / Blue Leave for males
+          // Non-Bangalore staff: recurring holiday is just a standard weekly-off day
+          recurringHolidayType = 'W/O';
       }
   }
 

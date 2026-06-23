@@ -1342,7 +1342,9 @@ const AttendanceDashboard: React.FC = () => {
                         daysPresentInWeek,
                         isActiveInPreviousWeek,
                         workingHours,
-                        fieldStatus: fStatus
+                        fieldStatus: fStatus,
+                        // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
+                        userLocation: user.location || user.locationName || user.societyName
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
@@ -2184,7 +2186,9 @@ const AttendanceDashboard: React.FC = () => {
                     daysPresentInWeek,
                     isActiveInPreviousWeek,
                     workingHours,
-                    fieldStatus: fStatus
+                    fieldStatus: fStatus,
+                    // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
+                    userLocation: user.location || user.locationName || user.societyName
                 });
 
                 const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';

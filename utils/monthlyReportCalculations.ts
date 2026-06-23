@@ -378,7 +378,9 @@ export function processEmployeeMonth(
         workingHours: netHours,
         fieldStatus: fieldResultStatus,
         floatingHolidayMonths: rules?.floatingHolidayMonths,
-        userGender: user.gender
+        userGender: user.gender,
+        // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
+        userLocation: user.location || user.locationName || user.societyName
     });
 
     const hasPunchInOnDay = dayEvents.some(e => e.type === 'punch-in' || e.type === 'site-ot-in');
