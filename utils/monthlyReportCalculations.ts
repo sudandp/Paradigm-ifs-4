@@ -141,7 +141,7 @@ export function processEmployeeMonth(
   let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
   
   const rules = resolveUserRules(user, resolvedRole, versionedUserRules || attendance, scopedSettings);
-  const category = getStaffCategory(resolvedRole || user.role, user.organizationId || user.societyId, { attendance: versionedUserRules || attendance });
+  const category = getStaffCategory(resolvedRole || user.role, user.organizationId || user.societyId, versionedUserRules || attendance);
   const threshold = (rules as any)?.weekendPresentThreshold ?? 3;
 
   // Ensure we use the best available holiday lists
