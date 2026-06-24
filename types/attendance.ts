@@ -139,6 +139,7 @@ export interface StaffAttendanceRules {
   enableFieldReport?: boolean;
   maxViolationsPerMonth?: number;
   ctcPerMonth?: number;
+  gracePeriodMinutes?: number;
   weeklyOffsPerWeek?: number;
   earnedLeavesPerAnnum?: number;
   nfhPerAnnum?: number;
@@ -217,6 +218,7 @@ export interface StaffAttendanceRules {
   maxCorrectionsPerMonth?: number;
   // --- Shift Management (Site Staff) ---
   enableShiftManagement?: boolean;     // When true, shifts are auto-detected by punch-in time
+  shiftGraceMinutes?: number;          // Shortage minutes allowed for full present (P) status
   siteShifts?: SiteShiftDefinition[];  // Configured shift windows
   // --- Site Attendance: Department-Level Overrides ---
   siteDepartments?: {                  // Dynamic list of departments admin adds per site

@@ -653,6 +653,16 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                             <p className="text-2xl font-black text-emerald-900 relative z-10 drop-shadow-sm">{employee.totalOT.toFixed(2)}<span className="text-[11px] font-semibold text-emerald-700 ml-1">Hrs</span></p>
                         </div>
 
+                        {/* OT Duties card — site staff only */}
+                        {getStaffCategory(employee.role, null, attendance) === 'site' && (
+                            <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-3.5 min-w-[124px] border border-purple-100/60 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+                                <div className="absolute -right-4 -top-4 w-16 h-16 bg-purple-100/50 rounded-full group-hover:scale-125 transition-transform"></div>
+                                <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-1 relative z-10">OT Duties</p>
+                                <p className="text-2xl font-black text-purple-900 relative z-10 drop-shadow-sm">{employee.overtimeDays ?? 0}<span className="text-[11px] font-semibold text-purple-700 ml-1">Duties</span></p>
+                                <p className="text-[8px] text-purple-400 relative z-10 mt-0.5">Counted in Payable</p>
+                            </div>
+                        )}
+
                         <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3.5 min-w-[124px] border border-orange-100/60 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                             <div className="absolute -right-4 -top-4 w-16 h-16 bg-orange-100/50 rounded-full group-hover:scale-125 transition-transform"></div>
                             <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1 relative z-10">Avg Hrs/Day</p>
@@ -734,15 +744,21 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                         </div>
                         
                         {Object.keys(employee.shiftCounts).length > 0 && (
-                            <div className="mt-3 text-[11px] flex items-center gap-2">
+                            <div className="mt-3 text-[11px] flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-slate-400 uppercase tracking-wider">Shifts:</span>
                                 <div className="flex gap-1.5 flex-wrap">
-                                    {Object.entries(employee.shiftCounts).map(([s, c], i) => (
+                                    {Object.entries(employee.shiftCounts).map(([s, c]) => (
                                         <span key={s} className="bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200 text-slate-600 font-medium">
                                             {s} <span className="text-slate-400 font-light ml-0.5">({c})</span>
                                         </span>
                                     ))}
                                 </div>
+                                {/* OT Duties badge — site staff only */}
+                                {getStaffCategory(employee.role, null, attendance) === 'site' && (employee.overtimeDays ?? 0) > 0 && (
+                                    <span className="ml-2 px-2.5 py-1 bg-purple-100 text-purple-800 rounded-md text-[11px] font-bold shadow-sm border border-purple-200 flex items-center gap-1">
+                                        OT Duties <span className="bg-purple-200 text-purple-900 px-1.5 rounded-sm text-[10px] ml-0.5">{employee.overtimeDays}</span>
+                                    </span>
+                                )}
                             </div>
                         )}
                     </div>
@@ -859,7 +875,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                       {employee.dailyData.map(d => (
                          <td key={d.date} className="p-0.5 text-center text-[7.5px] border-r border-slate-100 last:border-r-0 overflow-hidden text-ellipsis">
                             {d.shift !== '-' ? (
-                                d.shift.replace('Shift ', '').substring(0, 4)
+                                d.shift.replace(/Shift /g, '')
                             ) : '-'}
                          </td>
                       ))}
@@ -873,7 +889,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-medium text-gray-500 uppercase tracking-widest mb-2">
                  <span>Avg Working Hours: <b className="text-gray-900">{employee.averageWorkingHrs.toFixed(1)}h</b></span>
                  <span>Site Presence Score: <b className="text-green-600">{((employee.presentDays / employee.dailyData.length) * 100).toFixed(0)}%</b></span>
-                 <span>Shift Distribution: <b className="text-gray-900">{Object.entries(employee.shiftCounts).map(([s, c]) => `${s}(${c})`).join(' ')}</b></span>
+                 <span>Shift Distribution: <b className="text-gray-900">{Object.entries(employee.shiftCounts).map(([s, c]) => `${s.replace(/Shift /g, '')}(${c})`).join(' ')}</b></span>
               </div>
               {/* Notation Legend */}
               <div className="border-t border-gray-100 pt-2">

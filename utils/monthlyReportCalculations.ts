@@ -23,6 +23,8 @@ import {
 import { getFieldStaffStatus } from './fieldStaffTracking';
 import { FIXED_HOLIDAYS } from './constants';
 import { buildAttendanceDayKeyByEventId } from './attendanceDayGrouping';
+import { detectShift, detectAllShiftsWorked } from './shiftDetection';
+import { resolveShift } from './siteRuleResolver';
 import type {
   AttendanceEvent,
   User,
@@ -313,6 +315,7 @@ export function processEmployeeMonth(
     let currentDayTravelDuration = 0;
     let netHours = 0, grossHours = 0, breakHours = 0;
     let fieldResultStatus = '';
+    let resolvedShift: any = null;
     const dateStr = format(currentDate, 'yyyy-MM-dd');
     const dayEvents = eventsByGroup[dateStr] || [];
     const dayRoutePoints = routePoints.filter(p => isSameDay(new Date(p.timestamp), currentDate));
@@ -328,14 +331,39 @@ export function processEmployeeMonth(
       currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
       currentDayBreakOut = breakOut ? format(new Date(breakOut), 'HH:mm') : '-';
       
-      const firstPunchTime = new Date(dayEvents[0].timestamp);
-      const timeVal = firstPunchTime.getHours() + firstPunchTime.getMinutes() / 60;
-      currentDayShift = timeVal >= 4 && timeVal < 11.5 ? 'Shift GS' : timeVal >= 11.5 && timeVal < 20 ? 'Shift B' : 'Shift C';
-      shiftCounts[currentDayShift] = (shiftCounts[currentDayShift] || 0) + 1;
+      const siteShifts = (rules as any)?.siteShifts || [];
+      const firstPunchIn = dayEvents.find((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
+      
+      let matchedShifts: any[] = [];
+      if (category === 'site' && checkIn) {
+        matchedShifts = detectAllShiftsWorked(checkIn, checkOut, siteShifts, netHours);
+      }
+
+      if (category === 'site' && matchedShifts.length > 0) {
+        currentDayShift = matchedShifts.map(s => s.name).join(', ');
+        matchedShifts.forEach(s => {
+          shiftCounts[s.name] = (shiftCounts[s.name] || 0) + 1;
+        });
+        resolvedShift = matchedShifts[0];
+      } else {
+        let detectedShift = firstPunchIn ? detectShift(firstPunchIn.timestamp, siteShifts) : null;
+        if (!detectedShift && siteShifts.length > 0) {
+          detectedShift = resolveShift(rules, user.department || '', (user as any).shiftId) || null;
+        }
+        const firstPunchTime = new Date(dayEvents[0].timestamp);
+        const timeVal = firstPunchTime.getHours() + firstPunchTime.getMinutes() / 60;
+        currentDayShift = detectedShift?.name || (timeVal >= 4 && timeVal < 11.5 ? 'Shift GS' : timeVal >= 11.5 && timeVal < 20 ? 'Shift B' : 'Shift C');
+        shiftCounts[currentDayShift] = (shiftCounts[currentDayShift] || 0) + 1;
+        resolvedShift = detectedShift;
+      }
 
       const uCat = category as string;
       if ((uCat === 'field' || uCat === 'site') && rules?.enableSiteTimeTracking) {
-          const fRes = getFieldStaffStatus(dayEvents, rules, undefined, user.role, currentDate);
+          const effectiveRules = {
+            ...rules,
+            ...(user.weeklyOffDays && user.weeklyOffDays.length > 0 ? { weeklyOffDays: user.weeklyOffDays } : {})
+          };
+          const fRes = getFieldStaffStatus(dayEvents, effectiveRules, undefined, user.role, currentDate);
           fieldResultStatus = fRes.status;
       }
 
@@ -367,14 +395,35 @@ export function processEmployeeMonth(
           totalOT += ot; 
           totalTravelDistance += currentDayTravelKm;
           totalTravelDuration += currentDayTravelDuration;
-          if (category === 'site' && netHours > 14) overtimeDays++;
+          // OT duty count = extra shifts worked beyond first (smarter than binary +1 per day)
+          // e.g. Day with [Shift C, Shift A, Shift B] = 3 shifts = +2 OT duties
+          if (category === 'site') {
+            if (matchedShifts.length > 1) {
+              overtimeDays += matchedShifts.length - 1;
+            } else if (netHours >= 12) {
+              // Fallback when shift config absent: estimate from hours
+              const stdShift = (rules as any).dailyWorkingHours?.max || 8;
+              overtimeDays += Math.max(1, Math.floor(netHours / stdShift) - 1);
+            }
+          }
+
+      }
+    } else {
+      const siteShifts = (rules as any)?.siteShifts || [];
+      if (siteShifts.length > 0) {
+        resolvedShift = resolveShift(rules, user.department || '', (user as any).shiftId) || null;
       }
     }
 
     const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
 
+    const effectiveRules = {
+      ...rules,
+      ...(user.weeklyOffDays && user.weeklyOffDays.length > 0 ? { weeklyOffDays: user.weeklyOffDays } : {})
+    };
+
     let status = evaluateAttendanceStatus({
-        day: currentDate, userId: user.id, userCategory: category, userRole: resolvedRole || user.role, userRules: rules,
+        day: currentDate, userId: user.id, userCategory: category, userRole: resolvedRole || user.role, userRules: effectiveRules,
         dayEvents, 
         officeHolidays: activeOfficeHolidays, 
         fieldHolidays: activeFieldHolidays, 
@@ -387,7 +436,8 @@ export function processEmployeeMonth(
         floatingHolidayMonths: rules?.floatingHolidayMonths,
         userGender: user.gender,
         // BL/PL location rule: only Bangalore office/field staff get Blue/Pink Leave codes
-        userLocation: user.location || user.locationName || user.organizationName || user.societyName
+        userLocation: user.location || user.locationName || user.organizationName || user.societyName,
+        resolvedShift
     });
 
     const hasPunchInOnDay = dayEvents.some(e => e.type === 'punch-in' || e.type === 'site-ot-in');

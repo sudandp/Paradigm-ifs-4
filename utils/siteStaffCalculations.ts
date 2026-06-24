@@ -1,5 +1,6 @@
 import { isSameDay, isAfter, isBefore, differenceInDays, format, parseISO } from 'date-fns';
 import { AttendanceEvent } from '../types';
+import { getShiftDurationHours } from './shiftDetection';
 
 export interface SiteStaffConfig {
   userId: string;
@@ -217,7 +218,7 @@ export function generateMonthlyOutput(
 export function evaluateSiteStaffStatus(params: any): string {
   const { 
     day, userId, user_id, dayEvents, siteHolidays, leaves, userRules, workingHours, fieldStatus,
-    daysPresentInWeek, isActiveInPreviousWeek
+    daysPresentInWeek, isActiveInPreviousWeek, resolvedShift
   } = params;
   const targetUserId = userId || user_id;
 
@@ -251,10 +252,22 @@ export function evaluateSiteStaffStatus(params: any): string {
 
   // 3. Determine Base Work Status (Shift-based or Hours-based)
   // Site staff inherently use Shift-Based calculation, which we simulate via hours if shift isn't explicitly resolved here
-  const full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
-  const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
-  const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
-  const quarterDayHrs = userRules?.quarterDayHours ?? 2;
+  let full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+  let threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
+  let halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
+  let quarterDayHrs = userRules?.quarterDayHours ?? 2;
+
+  const graceHours = (userRules?.gracePeriodMinutes ?? 15) / 60;
+
+  if (resolvedShift && userRules?.enableShiftManagement === true) {
+    const shiftHours = getShiftDurationHours(resolvedShift);
+    full = Math.max(0, shiftHours - graceHours);
+    threeQuarterHrs = shiftHours * 0.75;
+    halfDayHrs = shiftHours * 0.5;
+    quarterDayHrs = shiftHours * 0.25;
+  } else if (userRules?.enableShiftManagement === true) {
+    full = Math.max(0, full - graceHours);
+  }
 
   // Credit Permission/Correction hours if correctionDetails are present
   const isApprovedPermission = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('permission');
@@ -335,10 +348,10 @@ export function evaluateSiteStaffStatus(params: any): string {
     return 'EL';
   }
 
-  // CRITICAL: If employee actually worked (baseWorkStatus is P or 0.5P), their physical
+  // CRITICAL: If employee actually worked (baseWorkStatus !== 'A'), their physical
   // presence takes priority over an approved full-day leave. The leave may have been
   // approved but the employee showed up and worked — credit their attendance.
-  if (baseWorkStatus === 'P' || baseWorkStatus === '0.5P') {
+  if (baseWorkStatus && baseWorkStatus !== 'A') {
     if (isHoliday) {
       // Overtime Rule: Only one H/P or 0.5H/P per day. 
       return baseWorkStatus === 'P' ? 'H/P' : '0.5H/P';

@@ -131,6 +131,7 @@ export interface User {
   locationId?: string;
   passcode?: string;
   department?: string;
+  weeklyOffDays?: number[];
 }
 
 export interface UserChild {

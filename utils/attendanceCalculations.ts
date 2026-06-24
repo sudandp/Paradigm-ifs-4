@@ -383,8 +383,8 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   
   const relevantEvents = cutoffIndex >= 0 ? sortedEvents.slice(cutoffIndex + 1) : sortedEvents;
 
-  const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
-  const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-ot-out');
+  const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
+  const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
   
   const result = calculateWorkingHours(relevantEvents, processingDate);
   
@@ -495,6 +495,7 @@ export function evaluateAttendanceStatus(params: {
   userGender?: string;
   /** User's work location (city/branch). BL and PL apply only to Bangalore field/office staff. */
   userLocation?: string;
+  resolvedShift?: any;
 }) {
   const { 
     day, userId, userCategory, userRole, userRules, dayEvents, 
@@ -506,7 +507,8 @@ export function evaluateAttendanceStatus(params: {
     fieldStatus,
     floatingHolidayMonths,
     userGender,
-    userLocation
+    userLocation,
+    resolvedShift
   } = params;
 
   // ── LOCATION-BASED RULE ENGINE ─────────────────────────────────────────────
@@ -756,8 +758,10 @@ export function evaluateAttendanceStatus(params: {
 
   // A. Determine Base Work Status based on Hours/Field Logic
   // All thresholds are now configurable from Admin UI → Attendance Rules → Calculation Rules
-  const full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+  const graceHours = (userRules?.gracePeriodMinutes ?? 15) / 60;
+  let full = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
   const threeQuarterHrs = userRules?.threeQuarterDayHours ?? (full * 0.75);
+  full = Math.max(0, full - graceHours);
   const halfDayHrs = userRules?.minimumHoursHalfDay ?? 4;
   const quarterDayHrs = userRules?.quarterDayHours ?? 2;
   const hoursBasedFallback = userRules?.enableHoursBasedFallback !== false; // default true

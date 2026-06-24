@@ -48,6 +48,7 @@ const createUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
 }).defined();
 
 const editUserSchema = yup.object({
@@ -80,6 +81,7 @@ const editUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
 }).defined();
 
 const AddUserPage: React.FC = () => {
@@ -683,6 +685,36 @@ const AddUserPage: React.FC = () => {
                 );
               })()}
 
+              <div className="space-y-1.5 mt-4">
+                <label className="block text-sm font-medium text-slate-700">Custom Weekly Off Days</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                    const currentDays = watch('weeklyOffDays') || [];
+                    const isSelected = currentDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          const newDays = isSelected 
+                            ? currentDays.filter(d => d !== idx)
+                            : [...currentDays, idx].sort();
+                          setValue('weeklyOffDays', newDays, { shouldValidate: true, shouldDirty: true });
+                        }}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                          isSelected 
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted">Leave empty to use the company/site default weekly off.</p>
+              </div>
+
               {!watch('organizationId') && (
                 <div className="flex items-center gap-2 mt-2 px-1">
                   <input
@@ -976,6 +1008,36 @@ const AddUserPage: React.FC = () => {
               </div>
             );
           })()}
+
+          <div className="space-y-1.5 mt-4">
+            <label className="block text-sm font-medium text-slate-700">Custom Weekly Off Days</label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                const currentDays = watch('weeklyOffDays') || [];
+                const isSelected = currentDays.includes(idx);
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      const newDays = isSelected 
+                        ? currentDays.filter(d => d !== idx)
+                        : [...currentDays, idx].sort();
+                      setValue('weeklyOffDays', newDays, { shouldValidate: true, shouldDirty: true });
+                    }}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                      isSelected 
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted">Leave empty to use the company/site default weekly off.</p>
+          </div>
 
           {!watch('organizationId') && (
             <div className="flex items-center gap-2 mt-2 px-1 bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">

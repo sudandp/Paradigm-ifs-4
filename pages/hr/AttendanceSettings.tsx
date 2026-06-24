@@ -838,6 +838,19 @@ const AttendanceSettings: React.FC = () => {
                         </div>
                     )}
 
+                    <div className="mt-6">
+                        <Input
+                            label="Check-in Grace Period (Minutes)"
+                            id="gracePeriodMinutes"
+                            type="number"
+                            value={currentRules.gracePeriodMinutes || 0}
+                            onChange={(e) => handleSettingChange('gracePeriodMinutes', parseFloat(e.target.value) || 0)}
+                            placeholder="e.g. 15"
+                            className="max-w-xs"
+                        />
+                        <p className="text-xs text-muted mt-1">Allow up to this many minutes of delay before a shortfall or half-day is triggered.</p>
+                    </div>
+
                     <div className="mt-6 p-4 bg-accent/5 border border-accent/20 rounded-xl space-y-4">
                         <Checkbox
                             id="enableOtToCompOffConversion"
@@ -1279,7 +1292,7 @@ const AttendanceSettings: React.FC = () => {
                             </div>
                         )}
 
-                        <div className="mb-4">
+                        <div className="mb-4 flex flex-col md:flex-row gap-4 items-start md:items-center">
                             <Checkbox
                                 id="enableShiftManagement"
                                 label="Enable Shift Management"
@@ -1287,6 +1300,24 @@ const AttendanceSettings: React.FC = () => {
                                 checked={currentRules.enableShiftManagement || false}
                                 onChange={(e) => handleSettingChange('enableShiftManagement', e.target.checked)}
                             />
+
+                            {currentRules.enableShiftManagement && (
+                                <div className="w-full md:w-auto min-w-[200px] mt-2 md:mt-0">
+                                    <label className="block text-xs font-semibold text-primary-text mb-1">
+                                        Shift Grace Period (minutes)
+                                    </label>
+                                    <Input
+                                        id="shiftGraceMinutes"
+                                        type="number"
+                                        min="0"
+                                        max="60"
+                                        placeholder="e.g. 15"
+                                        value={currentRules.shiftGraceMinutes ?? 15}
+                                        onChange={(e) => handleSettingChange('shiftGraceMinutes', parseInt(e.target.value) || 0)}
+                                    />
+                                    <p className="text-[10px] text-muted mt-1">Shortage minutes allowed for full present (P) status.</p>
+                                </div>
+                            )}
                         </div>
 
                         {currentRules.enableShiftManagement && (

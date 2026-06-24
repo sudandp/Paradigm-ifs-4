@@ -286,7 +286,16 @@ export const exportAttendanceToExcel = async (
 
         metricsData.forEach((m) => {
             currentRow++;
-            const rowValues = [m.label, ...employee.dailyData.map(d => (d as any)[m.key] || '-')];
+            const rowValues = [
+                m.label,
+                ...employee.dailyData.map(d => {
+                    const val = (d as any)[m.key];
+                    if (m.key === 'shift' && typeof val === 'string') {
+                        return val.replace(/Shift /g, '');
+                    }
+                    return val || '-';
+                })
+            ];
             const matrixRow = worksheet.getRow(currentRow);
             matrixRow.values = rowValues;
             matrixRow.height = 20;

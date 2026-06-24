@@ -172,6 +172,7 @@ const initialAttendance: AttendanceSettings = {
     maxCorrectionsPerMonth: 3,
     // Shift Management defaults (disabled until admin enables)
     enableShiftManagement: false,
+    shiftGraceMinutes: 15,
     siteShifts: [
       { id: 'shift_a', name: 'Shift A (Morning)', startTime: '07:00', endTime: '15:00', crossesMidnight: false, autoCheckoutBufferMinutes: 30 },
       { id: 'shift_b', name: 'Shift B (Afternoon)', startTime: '14:00', endTime: '21:00', crossesMidnight: false, autoCheckoutBufferMinutes: 30 },

@@ -198,7 +198,7 @@ export const reportGenerators = {
         let check = new Date(startOfFirstWeek);
         while (check < firstDay) {
           const cStr = getISTDateString(check);
-          const isSun = check.getDay() === 0;
+          const isSun = (user.weeklyOffDays && user.weeklyOffDays.length > 0) ? user.weeklyOffDays.includes(check.getDay()) : check.getDay() === 0;
           if (isSun) {
             daysPresentInWeek = 0;
           } else {
@@ -224,7 +224,7 @@ export const reportGenerators = {
 
       for (let d = 1; d <= daysInMonth; d++) {
         const currentDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), d);
-        const isSunday = currentDate.getDay() === 0;
+        const isSunday = (user.weeklyOffDays && user.weeklyOffDays.length > 0) ? user.weeklyOffDays.includes(currentDate.getDay()) : currentDate.getDay() === 0;
         const isMonday = currentDate.getDay() === 1;
         
         if (isMonday) daysPresentInWeek = 0;

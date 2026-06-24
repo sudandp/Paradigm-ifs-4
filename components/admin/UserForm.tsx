@@ -42,6 +42,7 @@ const createUserSchema = yup.object({
   organizationName: yup.string().optional(),
   reportingManagerId: yup.string().optional(),
   photoUrl: yup.string().optional().nullable(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
 }).defined();
 
 const editUserSchema = yup.object({
@@ -58,6 +59,7 @@ const editUserSchema = yup.object({
   organizationName: yup.string().optional(),
   reportingManagerId: yup.string().optional(),
   photoUrl: yup.string().optional().nullable(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
 }).defined();
 
 
@@ -138,6 +140,36 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, onSave, initialDat
                   {organizations.map(org => <option key={org.id} value={org.id}>{org.shortName}</option>)}
               </Select>
             )}
+            
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-slate-700">Custom Weekly Off Days</label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => {
+                  const currentDays = watch('weeklyOffDays') || [];
+                  const isSelected = currentDays.includes(idx);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        const newDays = isSelected 
+                          ? currentDays.filter(d => d !== idx)
+                          : [...currentDays, idx].sort();
+                        setValue('weeklyOffDays', newDays, { shouldValidate: true, shouldDirty: true });
+                      }}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                        isSelected 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-muted">Leave empty to use the company/site default weekly off.</p>
+            </div>
           </div>
           <div className="mt-6 flex justify-end space-x-3">
             <Button type="button" onClick={onClose} variant="secondary">Cancel</Button>

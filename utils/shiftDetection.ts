@@ -13,28 +13,32 @@ export function timeToMinutes(time: string): number {
   return h * 60 + (m || 0);
 }
 
-/**
- * Check if a time-of-day (in minutes) falls within a shift window.
- */
-export function isWithinShiftWindow(timeMinutes: number, shift: SiteShiftDefinition): boolean {
+export function isWithinShiftWindow(
+  timeMinutes: number,
+  shift: SiteShiftDefinition,
+  earlyBufferMins: number = 30
+): boolean {
   const start = timeToMinutes(shift.startTime);
+  const bufferedStart = (start - earlyBufferMins + 1440) % 1440;
   const end = timeToMinutes(shift.endTime);
 
-  if (shift.crossesMidnight || end < start) {
-    // Night shift: 21:00 → 07:00 means valid if time >= 21:00 OR time < 07:00
-    return timeMinutes >= start || timeMinutes < end;
+  const crosses = shift.crossesMidnight || end < start || end < bufferedStart || bufferedStart > start;
+
+  if (crosses) {
+    // night shift or wraps around midnight
+    return timeMinutes >= bufferedStart || timeMinutes < end;
   }
-  // Day shift: 07:00 → 15:00 means valid if 07:00 <= time < 15:00
-  return timeMinutes >= start && timeMinutes < end;
+  // normal day shift
+  return timeMinutes >= bufferedStart && timeMinutes < end;
 }
 
 /**
  * Auto-detect which shift a punch-in belongs to.
  *
  * Algorithm:
- * 1. Find all shifts whose window contains the punch-in time
- * 2. If multiple matches (overlap zone, e.g. Shift A ends 15:00, Shift B starts 14:00),
- *    pick the shift whose start time is closest to (and before/at) the punch-in time
+ * 1. Find all shifts whose window (with 30-minute early buffer) contains the punch-in time
+ * 2. If multiple matches (overlap zone, e.g. Shift A ends 15:00, Shift B starts 13:00/14:00),
+ *    pick the shift whose start time is closest to the punch-in time in absolute circular minutes.
  * 3. Returns null if no shift matches
  */
 export function detectShift(
@@ -52,17 +56,17 @@ export function detectShift(
   if (matches.length === 0) return null;
   if (matches.length === 1) return matches[0];
 
-  // Multiple matches (overlap zone): pick the one whose start is closest to punch-in
-  // "Closest" means the smallest positive (or zero) distance from start to punch-in
+  // Multiple matches (overlap zone): pick the one whose start is closest to punch-in (absolute circular distance)
   return matches.reduce((best, current) => {
     const bestStart = timeToMinutes(best.startTime);
     const currentStart = timeToMinutes(current.startTime);
 
-    // Calculate distance from shift start to punch-in, handling wrap-around
-    const distBest = ((punchInMinutes - bestStart) + 1440) % 1440;
-    const distCurrent = ((punchInMinutes - currentStart) + 1440) % 1440;
+    const diffBest = Math.abs(punchInMinutes - bestStart);
+    const distBest = Math.min(diffBest, 1440 - diffBest);
 
-    // Smaller distance = more recently started shift = winner
+    const diffCurrent = Math.abs(punchInMinutes - currentStart);
+    const distCurrent = Math.min(diffCurrent, 1440 - diffCurrent);
+
     return distCurrent < distBest ? current : best;
   });
 }
@@ -125,4 +129,66 @@ export function getShiftDurationHours(shift: SiteShiftDefinition): number {
     durationMinutes = end - start;
   }
   return durationMinutes / 60;
+}
+
+/**
+ * Detect all shifts worked by an employee during their day's check-in/check-out span.
+ */
+export function detectAllShiftsWorked(
+  checkIn: Date | string,
+  checkOut: Date | string | null,
+  shifts: SiteShiftDefinition[],
+  workingHours?: number
+): SiteShiftDefinition[] {
+  if (!shifts || shifts.length === 0) return [];
+
+  const inDate = new Date(checkIn);
+  const outDate = checkOut 
+    ? new Date(checkOut) 
+    : new Date(inDate.getTime() + (workingHours || 0) * 60 * 60 * 1000);
+
+  const matchedShifts: { shift: SiteShiftDefinition; startMs: number }[] = [];
+
+  // Check shifts starting on candidate days: the day of check-in, and the following day
+  const candidateDays = [0, 1];
+
+  for (const dayOffset of candidateDays) {
+    const baseDate = new Date(inDate);
+    baseDate.setDate(baseDate.getDate() + dayOffset);
+
+    for (const shift of shifts) {
+      // Parse shift start and end times
+      const [startH, startM] = shift.startTime.split(':').map(Number);
+      const [endH, endM] = shift.endTime.split(':').map(Number);
+
+      const shiftStart = new Date(baseDate);
+      shiftStart.setHours(startH, startM || 0, 0, 0);
+
+      const shiftEnd = new Date(baseDate);
+      shiftEnd.setHours(endH, endM || 0, 0, 0);
+
+      if (shift.crossesMidnight || (endH * 60 + endM) < (startH * 60 + startM)) {
+        shiftEnd.setDate(shiftEnd.getDate() + 1);
+      }
+
+      // Calculate overlap
+      const overlapStart = inDate.getTime() > shiftStart.getTime() ? inDate : shiftStart;
+      const overlapEnd = outDate.getTime() < shiftEnd.getTime() ? outDate : shiftEnd;
+
+      if (overlapEnd.getTime() > overlapStart.getTime()) {
+        const overlapMinutes = (overlapEnd.getTime() - overlapStart.getTime()) / (60 * 1000);
+        // If they worked at least 2 hours (120 minutes) of this shift, consider it worked
+        if (overlapMinutes >= 120) {
+          if (!matchedShifts.some(item => item.shift.id === shift.id)) {
+            matchedShifts.push({ shift, startMs: shiftStart.getTime() });
+          }
+        }
+      }
+    }
+  }
+
+  // Sort matched shifts by their actual occurrence start time
+  return matchedShifts
+    .sort((a, b) => a.startMs - b.startMs)
+    .map(item => item.shift);
 }
