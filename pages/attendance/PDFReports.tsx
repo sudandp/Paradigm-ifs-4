@@ -24,10 +24,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   headerLeft: {
-    width: '50%',
+    width: '35%',
   },
   headerRight: {
-    width: '50%',
+    width: '35%',
     textAlign: 'right',
   },
   logo: {
@@ -337,7 +337,77 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  headerCenter: {
+    width: '30%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 6,
+  },
+  filterBadgeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  filterBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    borderWidth: 0.5,
+  },
+  filterLabel: {
+    fontSize: 6,
+    fontWeight: 'bold',
+    color: '#4B5563',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
 });
+
+export interface AppliedFilters {
+  company?: string;
+  location?: string;
+  site?: string;
+  role?: string;
+}
+
+const renderPDFHeaderCenter = (filters?: AppliedFilters) => {
+  if (!filters || !(filters.company || filters.location || filters.site || filters.role)) {
+    return <View style={{ width: '30%' }} />;
+  }
+
+  return (
+    <View style={{ width: '30%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+      <View style={{ gap: 2 }}>
+        {filters.company && (
+          <Text style={{ fontSize: 8, color: '#1F2937', fontWeight: 'bold', textTransform: 'uppercase' }}>
+            {filters.company}
+          </Text>
+        )}
+        {filters.location && (
+          <Text style={{ fontSize: 8, color: '#4B5563', fontWeight: 'bold' }}>
+            {filters.location}
+          </Text>
+        )}
+        {filters.site && (
+          <Text style={{ fontSize: 8, color: '#6B7280' }}>
+            {filters.site}
+          </Text>
+        )}
+        {filters.role && (
+          <Text style={{ fontSize: 8, color: '#6B7280' }}>
+            {filters.role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+};
 
 export const GMCFormReceiptDocument: React.FC<{ data: any; logoUrl?: string }> = ({ data, logoUrl }) => {
   return (
@@ -824,7 +894,8 @@ export const BasicReportDocument: React.FC<{
   targetUserName?: string;
   targetUserRole?: string;
   logoUrl?: string;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
   const rowsPerPage = 18; 
   const pages: BasicReportDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
@@ -847,6 +918,7 @@ export const BasicReportDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={styles.title}>Basic Attendance Report</Text>
               <Text style={styles.subtitle}>
@@ -933,7 +1005,8 @@ export const MonthlyReportDocument: React.FC<{
   targetUserRole?: string;
   logoUrl?: string;
   days: Date[];
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days, filters }) => {
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#059669';
@@ -973,6 +1046,7 @@ export const MonthlyReportDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A', textAlign: 'right' }}>ATTENDANCE REPORT</Text>
               <Text style={{ fontSize: 10, color: '#64748B', textAlign: 'right' }}>
@@ -1364,7 +1438,8 @@ export const SiteOtReportDocument: React.FC<{
   targetUserName?: string;
   targetUserRole?: string;
   logoUrl?: string;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
   const rowsPerPage = 18;
   const pages: SiteOtDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
@@ -1388,6 +1463,7 @@ export const SiteOtReportDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={styles.title}>Site OT Attendance Report</Text>
               <Text style={styles.subtitle}>
@@ -1460,7 +1536,8 @@ export const AttendanceLogDocument: React.FC<{
   targetUserName?: string;
   targetUserRole?: string;
   logoUrl?: string;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
   const rowsPerPage = 22;
   const pages: AttendanceLogDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
@@ -1483,6 +1560,7 @@ export const AttendanceLogDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={styles.title}>Detailed Attendance Log</Text>
               <Text style={styles.subtitle}>
@@ -1548,7 +1626,8 @@ export const WorkHoursReportDocument: React.FC<{
   targetUserName?: string;
   targetUserRole?: string;
   logoUrl?: string;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
   const rowsPerPage = 20;
   const pages: WorkHoursReportDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
@@ -1571,6 +1650,7 @@ export const WorkHoursReportDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={styles.title}>Monthly Work Hours Report</Text>
               <Text style={styles.subtitle}>
@@ -1634,7 +1714,8 @@ export const AuditLogDocument: React.FC<{
   targetUserName?: string;
   targetUserRole?: string;
   logoUrl?: string;
-}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl }) => {
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
   const rowsPerPage = 15;
   const pages: AuditLogDataRow[][] = [];
   for (let i = 0; i < data.length; i += rowsPerPage) {
@@ -1657,6 +1738,7 @@ export const AuditLogDocument: React.FC<{
                 </View>
               )}
             </View>
+            {renderPDFHeaderCenter(filters)}
             <View style={styles.headerRight}>
               <Text style={styles.title}>Audit Log Report</Text>
               <Text style={styles.subtitle}>
@@ -1713,7 +1795,8 @@ export const MonthlyMatrixReportDocument: React.FC<{
   targetUserRole?: string;
   logoUrl?: string;
   globalDateRange: { startDate: Date; endDate: Date };
-}> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange }) => {
+  filters?: AppliedFilters;
+}> = ({ monthlyData, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, globalDateRange, filters }) => {
   const getStatusColor = (s: string) => {
     if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
@@ -1774,6 +1857,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
                   </View>
                 )}
               </View>
+              {renderPDFHeaderCenter(filters)}
               <View style={styles.headerRight}>
                 <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>MONTHLY ATTENDANCE REPORT</Text>
                 <Text style={{ fontSize: 10, color: '#64748B' }}>

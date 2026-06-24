@@ -4,6 +4,7 @@ import { ShieldAlert, FileText, Calendar } from 'lucide-react';
 
 import Logo from '../ui/Logo';
 import { pdfLogoLocalPath } from '../ui/logoData';
+import type { AppliedFilters } from './ReportHTMLViews';
 
 interface AuditLog {
     id: string;
@@ -24,9 +25,10 @@ interface AttendanceAuditReportProps {
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
+    filters?: AppliedFilters;
 }
 
-const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
+const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
     
     if (logs.length === 0) {
         return (
@@ -39,8 +41,8 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden p-8">
-            <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8">
-                <div className="flex flex-col">
+            <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8 gap-4">
+                <div className="flex flex-col min-w-[200px]">
                     <Logo className="h-12 mb-2" localPath={pdfLogoLocalPath} />
                     {targetUserName && (
                         <div className="mt-2 flex flex-col">
@@ -51,7 +53,35 @@ const AttendanceAuditReport: React.FC<AttendanceAuditReportProps> = ({ logs, gen
                         </div>
                     )}
                 </div>
-                <div className="text-right">
+                {filters && (filters.company || filters.location || filters.site || filters.role) ? (
+                    <div className="flex-grow flex flex-col items-center justify-center text-center px-4 py-2 mx-4 max-w-xl self-center">
+                        <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
+                            {filters.company && (
+                                <p className="font-bold text-gray-800 uppercase tracking-wide">
+                                    {filters.company}
+                                </p>
+                            )}
+                            {filters.location && (
+                                <p className="text-gray-600 font-semibold">
+                                    {filters.location}
+                                </p>
+                            )}
+                            {filters.site && (
+                                <p className="text-gray-500">
+                                    {filters.site}
+                                </p>
+                            )}
+                            {filters.role && (
+                                <p className="text-gray-500 capitalize">
+                                    {filters.role.replace(/_/g, ' ')}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex-1"></div>
+                )}
+                <div className="text-right min-w-[200px]">
                     <h1 className="text-[24px] font-black tracking-tight text-gray-900 mb-1 leading-none">Audit Log Report</h1>
                     <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
                         <p>Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}</p>

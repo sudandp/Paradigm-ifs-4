@@ -5,6 +5,13 @@ import type { BasicReportDataRow, AttendanceLogDataRow, SiteOtDataRow, MonthlyRe
 import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
 
 // --- SHARED ---
+export interface AppliedFilters {
+    company?: string;
+    location?: string;
+    site?: string;
+    role?: string;
+}
+
 interface ReportHeaderProps {
     title: string;
     subtitle: string;
@@ -13,12 +20,13 @@ interface ReportHeaderProps {
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
+    filters?: AppliedFilters;
 }
 
-const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => (
-    <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8">
-        <div className="flex flex-col">
-            {logoUrl && <img src={logoUrl} alt="Logo" className="h-14 w-auto mb-2 object-contain" />}
+const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => (
+    <div className="flex justify-between items-start border-b-[3px] border-gray-950 pb-6 mb-8 gap-4">
+        <div className="flex flex-col min-w-[200px]">
+            {logoUrl && <img src={logoUrl} alt="Logo" className="h-14 w-auto mb-2 object-contain self-start" />}
             {targetUserName && (
                 <div className="mt-2 flex flex-col">
                     <span className="text-[12px] text-gray-900 font-bold leading-none">{targetUserName}</span>
@@ -28,7 +36,35 @@ const ReportHeader: React.FC<ReportHeaderProps> = ({ title, subtitle, logoUrl, g
                 </div>
             )}
         </div>
-        <div className="text-right">
+        {filters && (filters.company || filters.location || filters.site || filters.role) ? (
+            <div className="flex-grow flex flex-col items-center justify-center text-center px-4 py-2 mx-4 max-w-xl self-center">
+                <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
+                    {filters.company && (
+                        <p className="font-bold text-gray-800 uppercase tracking-wide">
+                            {filters.company}
+                        </p>
+                    )}
+                    {filters.location && (
+                        <p className="text-gray-600 font-semibold">
+                            {filters.location}
+                        </p>
+                    )}
+                    {filters.site && (
+                        <p className="text-gray-500">
+                            {filters.site}
+                        </p>
+                    )}
+                    {filters.role && (
+                        <p className="text-gray-500 capitalize">
+                            {filters.role.replace(/_/g, ' ')}
+                        </p>
+                    )}
+                </div>
+            </div>
+        ) : (
+            <div className="flex-1"></div>
+        )}
+        <div className="text-right min-w-[200px]">
             <h1 className="text-[28px] font-black tracking-tight text-gray-900 mb-1 leading-none">{title}</h1>
             <p className="text-[16px] text-gray-800 font-bold mb-2">{subtitle}</p>
             <div className="text-[12px] text-gray-400 space-y-0.5 font-medium">
@@ -61,7 +97,8 @@ export const BasicReportView: React.FC<{
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -70,7 +107,7 @@ export const BasicReportView: React.FC<{
 
     return (
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
-            <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
+            <ReportHeader title="Basic Attendance Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
@@ -128,7 +165,8 @@ export const AttendanceLogView: React.FC<{
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -137,7 +175,7 @@ export const AttendanceLogView: React.FC<{
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Detailed Attendance Log" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
+            <ReportHeader title="Detailed Attendance Log" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
@@ -195,7 +233,8 @@ export const MonthlyStatusView: React.FC<{
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole }) => {
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, days, generatedByRole, targetUserName, targetUserRole, filters }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -282,7 +321,7 @@ export const MonthlyStatusView: React.FC<{
 
     return (
         <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
-            <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
+            <ReportHeader title="MONTHLY ATTENDANCE REPORT" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -472,7 +511,8 @@ export const SiteOtReportView: React.FC<{
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -481,7 +521,7 @@ export const SiteOtReportView: React.FC<{
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Site Overtime Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
+            <ReportHeader title="Site Overtime Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
@@ -522,7 +562,8 @@ export const WorkHoursReportView: React.FC<{
     generatedByRole?: string;
     targetUserName?: string;
     targetUserRole?: string;
-}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole }) => {
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
     const subtitle = (dateRange?.startDate && dateRange?.endDate)
         ? `Billing Cycle: ${format(dateRange.startDate, 'dd MMM yyyy')} - ${format(dateRange.endDate, 'dd MMM yyyy')}`
         : 'Billing Cycle: Not Specified';
@@ -531,7 +572,7 @@ export const WorkHoursReportView: React.FC<{
 
     return (
         <div className="bg-white p-6 shadow-sm rounded-xl">
-            <ReportHeader title="Monthly Work Hours Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} />
+            <ReportHeader title="Monthly Work Hours Report" subtitle={subtitle} logoUrl={logoUrl} generatedBy={generatedBy} generatedByRole={generatedByRole} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={filters} />
             <div className="overflow-x-auto">
                 <table className="w-full text-sm border-collapse border border-gray-300">
                     <thead>
