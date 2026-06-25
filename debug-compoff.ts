@@ -15,11 +15,11 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function main() {
-    // 1. Get the user "Madhushree B M"
+    // 1. Get the user "Shilpa"
     const { data: users, error: userError } = await supabase
         .from('users')
         .select('id, name, gender, role:roles(display_name)')
-        .ilike('name', '%Madhushree%');
+        .eq('email', 'shilpa.ops@paradigmfms.in');
         
     if (userError) {
         console.error("User error:", userError);
@@ -27,7 +27,7 @@ async function main() {
     }
     
     if (!users || users.length === 0) {
-        console.log("User Madhushree not found.");
+        console.log("User Shilpa not found.");
         return;
     }
     

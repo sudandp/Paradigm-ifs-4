@@ -606,8 +606,8 @@ const LeaveDashboard: React.FC = () => {
         ...(isFemale ? [
             { 
                 title: 'Pink Leave', 
-                value: `${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(0))} / ${balanceDataState.pinkTotal}`,
-                description: `1 day per month (mandatory, non-carry forward). Available: ${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(0))}d.${(balanceDataState.pinkPending || 0) > 0 ? ` (Pending: ${balanceDataState.pinkPending}d)` : ''}`,
+                value: `${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(1))} / ${balanceDataState.pinkTotal}`,
+                description: `1 day per month (mandatory, non-carry forward). Available: ${parseFloat((balanceDataState.pinkTotal - balanceDataState.pinkUsed - (balanceDataState.pinkPending || 0)).toFixed(1))}d.${(balanceDataState.pinkPending || 0) > 0 ? ` (Pending: ${balanceDataState.pinkPending}d)` : ''}`,
                 icon: Heart,
                 isExpired: false
             },
