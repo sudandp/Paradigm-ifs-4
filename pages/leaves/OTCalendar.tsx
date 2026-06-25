@@ -25,7 +25,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
         if (!settings || !user) return;
         
         // Calculate threshold using new unified config-based logic
-        const staffCategory = getStaffCategory(user.roleId || user.role, user.organizationId, settings);
+        const staffCategory = getStaffCategory(user.roleId || user.role, user.societyId, settings);
 
         const rules = settings[staffCategory];
         const shiftMax = rules?.dailyWorkingHours?.max || 8;

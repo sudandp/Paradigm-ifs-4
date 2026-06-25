@@ -324,7 +324,7 @@ const LeaveDashboard: React.FC = () => {
             // This ensures we have the most up-to-date role and balance information
             const freshUser = await supabase
                 .from('users')
-                .select('*, role:roles(display_name)')
+                .select('*, role:roles(display_name), companies!users_society_id_fkey(location)')
                 .eq('id', user.id)
                 .single();
 
@@ -335,10 +335,15 @@ const LeaveDashboard: React.FC = () => {
                 const rawRoleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || data.role_id;
                 const normalizedRole = typeof rawRoleName === 'string' ? rawRoleName.toLowerCase().replace(/\s+/g, '_') : rawRoleName;
                 
+                let resolvedLocation = '';
+                if (data.companies) {
+                    resolvedLocation = Array.isArray(data.companies) ? data.companies[0]?.location : (data.companies as any)?.location;
+                }
                 currentUserData = {
                     ...api.toCamelCase(data),
                     role: normalizedRole,
-                    roleId: data.role_id
+                    roleId: data.role_id,
+                    location: resolvedLocation || data.location
                 };
                 
                 // Update store asynchronously to avoid interrupting current calculation
@@ -348,7 +353,7 @@ const LeaveDashboard: React.FC = () => {
             }
 
             // Map User Role to Staff Category (office, field, site)
-            const staffCategory = getStaffCategory(currentUserData.roleId || currentUserData.role || '', currentUserData.organizationId, settings);
+            const staffCategory = getStaffCategory(currentUserData.roleId || currentUserData.role || '', currentUserData.societyId, settings);
 
             const userRules = settings[staffCategory];
             const shiftThreshold = userRules?.dailyWorkingHours?.max || 8;
@@ -477,7 +482,7 @@ const LeaveDashboard: React.FC = () => {
 
     const isFloatingHolidayValidForViewingDate = () => {
         if (!attendanceSettings || !user) return false;
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings);
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, attendanceSettings);
         const categorySettings = (attendanceSettings as any)?.[staffCategory];
         if (!categorySettings) return false;
 
@@ -502,7 +507,7 @@ const LeaveDashboard: React.FC = () => {
         
         let total = 1;
         if (attendanceSettings && user) {
-             const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings);
+             const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, attendanceSettings);
              const categorySettings = (attendanceSettings as any)?.[staffCategory];
              if (categorySettings && categorySettings.monthlyFloatingLeaves !== undefined) {
                  total = categorySettings.monthlyFloatingLeaves;
@@ -577,7 +582,7 @@ const LeaveDashboard: React.FC = () => {
         return { total, used, pending };
     };
 
-    const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.organizationId, attendanceSettings) : 'office';
+    const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
     const blueLeaveStatus = getBlueLeaveStatusForViewingDate();
 
     const balanceCards = balanceDataState ? [

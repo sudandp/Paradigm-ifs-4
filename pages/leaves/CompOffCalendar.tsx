@@ -5,7 +5,7 @@ import type { CompOffLog, LeaveRequest, AttendanceEvent, UserHoliday } from '../
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory, calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours, isBangaloreLocation } from '../../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
@@ -66,7 +66,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
 
     const getDayStatus = (date: Date) => {
         const currentYear = date.getFullYear();
-        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, { missedCheckoutConfig: attendance?.missedCheckoutConfig });
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, { missedCheckoutConfig: attendance?.missedCheckoutConfig });
         const userRules = (attendance as any)?.[staffCategory];
         const halfThreshold = userRules?.minimumHoursHalfDay || 4;
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -121,8 +121,44 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 return isSameDay(new Date(y, m - 1, d), date);
             });
 
+            // Check for recurring holidays (like 3rd Saturday for male Bangalore employees)
+            const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+            const isMale = !isFemale;
+            const userLocationStr = user?.location || user?.locationName || user?.organizationName || user?.societyName || '';
+            const isBangaloreStaff = isBangaloreLocation(userLocationStr) && (staffCategory === 'office' || staffCategory === 'field');
+
+            const isFloatingHolidayValid = (dateToCheck: string) => {
+                if (!userRules) return false;
+                if (userRules.floatingHolidayMonths && userRules.floatingHolidayMonths.length > 0) {
+                    const monthIdx = new Date(dateToCheck.replace(/-/g, '/')).getMonth();
+                    return userRules.floatingHolidayMonths.includes(monthIdx);
+                }
+                if (userRules.floatingLeavesValidFrom && dateToCheck < userRules.floatingLeavesValidFrom) return false;
+                if (userRules.floatingLeavesExpiryDate && dateToCheck > userRules.floatingLeavesExpiryDate) return false;
+                return true;
+            };
+
+            const dayName = format(date, 'EEEE');
+            const isRecurringHoliday = (recurringHolidays || []).some(rh => {
+                 const rhType = rh.type || rh.roleType;
+                 const rhN = typeof rh.n !== 'undefined' ? rh.n : rh.occurrence;
+                 
+                 if (rhType && rhType !== staffCategory) return false;
+                 if (rh.day !== dayName) return false;
+                 
+                 if (rh.day === 'Saturday' && rhN === 3) {
+                     if (!isBangaloreStaff) return false;
+                     if (!isMale) return false;
+                     if (!isFloatingHolidayValid(dateStr)) return false;
+                 }
+                 
+                 if (rhN === 0) return true; 
+                 const nth = Math.ceil(date.getDate() / 7);
+                 return rhN === nth;
+            }) || (isBangaloreStaff && isMale && dayName === 'Saturday' && Math.ceil(date.getDate() / 7) === 3 && isFloatingHolidayValid(dateStr));
+
             // If worked on any type of holiday/Sunday, it's earned comp-off
-            if (isSunday || isFixedHoliday || isPoolHoliday || isConfiguredHoliday) {
+            if (isSunday || isFixedHoliday || isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
                 // Check if there is an approved attendance correction request for that day
                 const hasCorrection = leaveRequests.some(l => {
                     const lType = String(l.leaveType || (l as any).type || '').toLowerCase();

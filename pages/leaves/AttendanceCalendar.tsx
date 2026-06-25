@@ -53,17 +53,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
     onSiteOtDaysChange
 }) => {
     const { user } = useAuthStore();
+    const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+    const isMale = !isFemale;
 
     // Determine which holidays to use based on user role
     const holidays = useMemo(() => {
         const { officeHolidays, fieldHolidays } = useSettingsStore.getState();
-        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+        const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
         if (staffCategory === 'field') return fieldHolidays;
         return officeHolidays;
     }, [user, settings]);
 
     const recurringRules = useMemo(() => {
-        const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+        const roleType = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
         const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
         const isMale = !isFemale;
         return recurringHolidays.filter(rule => {
@@ -84,7 +86,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const isFloatingHolidayValid = (dateStr: string) => {
         if (!settings || !user) return false;
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, settings);
         const categorySettings = (settings as any)?.[staffCategory];
         if (!categorySettings) return false;
 
@@ -143,10 +145,10 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     // PRE-CALCULATE STATUS MAP FOR THE MONTH (WITH BUFFER)
     const dayStatusMap = useMemo(() => {
-        const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number; isSiteOtPresent: boolean }>();
+        const statusMap = new Map<string, { status: string; holidayName: string; presenceVal: number; isSiteOtPresent: boolean; isPoolHoliday: boolean }>();
         if (!settings || !user) return statusMap;
 
-        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.organizationId, settings);
+        const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId, settings);
         const threshold = (settings as any)?.[staffCategory]?.weekendPresentThreshold ?? 2;
         
         // Start buffer to seed counters
@@ -263,7 +265,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 }
             }
 
-            statusMap.set(dateStr, { status: finalStatus, holidayName, presenceVal, isSiteOtPresent });
+            statusMap.set(dateStr, { 
+                status: finalStatus, 
+                holidayName, 
+                presenceVal, 
+                isSiteOtPresent,
+                isPoolHoliday: !!foundPool
+            });
         });
 
         return statusMap;
@@ -300,7 +308,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
     const getDayStatus = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '', presenceVal: 0, isSiteOtPresent: false };
+        return dayStatusMap.get(dateStr) || { status: 'neutral', holidayName: '', presenceVal: 0, isSiteOtPresent: false, isPoolHoliday: false };
     };
 
     const getStatusColor = (status: string) => {
@@ -341,7 +349,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             if (['present', 'holiday-present', 'weekend-present', 'floating-holiday', 'company-holiday', 'sunday'].includes(status)) {
                 if (status === 'present') {
                     const { workingHours } = calculateWorkingHours(dayEvents, date);
-                    const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                    const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
                     const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
 
                     const relevantLeave = leaveRequests?.find(req => {
@@ -442,6 +450,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         const status = typeof holidayInfo === 'string' ? holidayInfo : holidayInfo.status;
                         const holidayName = typeof holidayInfo === 'string' ? '' : holidayInfo.holidayName;
                         const isSiteOtPresent = typeof holidayInfo === 'string' ? false : holidayInfo.isSiteOtPresent;
+                        const isPoolHoliday = typeof holidayInfo === 'string' ? false : holidayInfo.isPoolHoliday;
                         const colorClass = getStatusColor(status);
                         
                         const isToday = isSameDay(date, startOfDay(new Date()));
@@ -468,7 +477,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
                             const dayEvents = events.filter(e => dayKeyMap[e.id] === dateKey);
                             const { workingHours } = calculateWorkingHours(dayEvents, date);
-                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             
                             const relevantLeave = leaveRequests?.find(req => {
@@ -504,14 +513,19 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 };
                             } else if (workingHours >= shiftThreshold) {
                                 if (status === 'holiday-present') {
-                                    overlayText = 'H/P';
+                                    overlayText = (isPoolHoliday && !isFemale) ? 'BL/P' : 'H/P';
                                 } else if (status === 'weekend-present') {
                                     overlayText = holidayName === 'Blue Leave' ? 'BL/P' : (holidayName === 'Pink Leave' ? 'PL/P' : 'W/P');
                                 } else {
                                     overlayText = 'P';
                                 }
                                 if (status === 'holiday-present' || status === 'weekend-present') {
-                                    const leftColor = status === 'holiday-present' ? '#38bdf8' : '#fda4af'; // sky-400 or rose-300
+                                    let leftColor = '#38bdf8'; // sky-400
+                                    if (status === 'holiday-present') {
+                                        leftColor = (isPoolHoliday && !isFemale) ? '#1d4ed8' : '#38bdf8';
+                                    } else if (status === 'weekend-present') {
+                                        leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
+                                    }
                                     customStyle = {
                                         background: `linear-gradient(135deg, ${leftColor} 50%, #10b981 50%)`, // Split with green
                                         borderColor: 'transparent'
@@ -537,8 +551,13 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 }
 
                                 const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
-                                overlayText = status === 'holiday-present' ? `H/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
-                                const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
+                                overlayText = status === 'holiday-present' ? `${(isPoolHoliday && !isFemale) ? 'BL' : 'H'}/${fractionText}` : status === 'weekend-present' ? `${prefix}/${fractionText}` : fractionText;
+                                let leftColor = '#10b981';
+                                if (status === 'holiday-present') {
+                                    leftColor = (isPoolHoliday && !isFemale) ? '#1d4ed8' : '#38bdf8';
+                                } else if (status === 'weekend-present') {
+                                    leftColor = holidayName === 'Blue Leave' ? '#1d4ed8' : (holidayName === 'Pink Leave' ? '#ec4899' : '#fda4af');
+                                }
                                 customStyle = {
                                     background: `linear-gradient(135deg, ${leftColor} ${greenPercentage}%, #ef4444 ${greenPercentage}%)`,
                                     borderColor: 'transparent'
@@ -646,7 +665,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             const dayKeyMap = buildAttendanceDayKeyByEventId(events);
                             const dayEvts = events.filter(e => dayKeyMap[e.id] === dateKey);
                             const { workingHours } = calculateWorkingHours(dayEvts, date);
-                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, settings);
+                            const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, settings);
                             const shiftThreshold = (settings as any)?.[staffCategory]?.dailyWorkingHours?.max || 8;
                             const relevantLeave = leaveRequests?.find(req => {
                                 const lStatus = String(req.status || '').toLowerCase();
