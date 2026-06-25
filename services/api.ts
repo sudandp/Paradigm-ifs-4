@@ -2211,7 +2211,7 @@ export const api = {
         return { ...updates, id };
     }
 
-    const { role, biometricId, organizationId, organizationName, societyId, societyName, locationId, companies, roles, organizations, entities, organizationGroups, ...rest } = updates as any;
+    const { role, biometricId, organizationId, organizationName, societyId, societyName, locationId, companies, roles, organizations, entities, organizationGroups, location, isAvailable, isNearby, isTeamMember, companyLogoUrl, ...rest } = updates as any;
     const dbUpdates: any = toSnakeCase(rest);
     if (role) dbUpdates.role_id = role;
     if (biometricId !== undefined) dbUpdates.biometric_id = biometricId;
