@@ -4009,6 +4009,10 @@ export const api = {
                 sick_leave_opening_date,
                 child_care_leave_opening_balance,
                 child_care_leave_opening_date,
+                comp_off_opening_balance,
+                comp_off_opening_date,
+                floating_leave_opening_balance,
+                floating_leave_opening_date,
                 joining_date,
                 gender,
                 created_at,
@@ -4067,8 +4071,9 @@ export const api = {
     // Get role name from join or fallback to role_id string
     const roleData = userData.role;
     const roleName = (Array.isArray(roleData) ? roleData[0]?.display_name : (roleData as any)?.display_name) || userData.role_id;
+    const roleId = userData.role_id || (typeof roleName === 'string' ? roleName.toLowerCase().replace(/\s+/g, '_') : roleName);
     const camelSettings = toCamelCase(settingsData.attendance_settings) as AttendanceSettings;
-    const staffType = getStaffCategory(roleName, userData.society_id, camelSettings);
+    const staffType = getStaffCategory(roleId, userData.society_id, camelSettings);
     const rules = camelSettings[staffType];
     const isFemaleUser = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
     console.log('[LeaveDebug] userId:', userId, 'roleName:', roleName, 'staffType:', staffType, 'enableSickLeaveAccrual:', rules?.enableSickLeaveAccrual, 'annualSickLeaves:', rules?.annualSickLeaves);
@@ -4083,6 +4088,8 @@ export const api = {
         userData?.earned_leave_opening_date,
         userData?.sick_leave_opening_date,
         userData?.child_care_leave_opening_date,
+        userData?.comp_off_opening_date,
+        userData?.floating_leave_opening_date,
         userData?.joining_date,
         userData?.created_at,
         yearStart
@@ -4371,8 +4378,8 @@ export const api = {
     });
 
     let sickTotal = 0;
+    const sickOpeningBalance = Number(userData.sick_leave_opening_balance || userData.sickLeaveOpeningBalance || 0);
     if (rules.enableSickLeaveAccrual) {
-      const openingBalance = userData.sick_leave_opening_balance || 0;
       const openingDate = userData.sick_leave_opening_date || `${currentYear}-01-01`;
       const openingDateObj = new Date(openingDate);
       
@@ -4382,11 +4389,11 @@ export const api = {
       const effectiveOpeningDateSL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
       
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, effectiveOpeningDateSL);
-      sickTotal = monthsElapsed + 1; 
+      sickTotal = sickOpeningBalance + monthsElapsed + 1; 
     } else {
       // Even if Sick Leave accrual is disabled globally, we ensure it's at least capped to 5 for Jan-May if viewing May
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, accrualYearStart);
-      sickTotal = Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
+      sickTotal = sickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
       console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'sickTotal:', sickTotal);
     }
     console.log('[LeaveDebug] FINAL sickTotal:', sickTotal, 'isMonthlyAccrual:', isMonthlyAccrual);
@@ -4432,7 +4439,9 @@ export const api = {
     const manualCompOffGranted = (compOffData || []).filter((log: any) => log.status === 'earned' || log.status === 'used').length;
     // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting
     const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId).length;
-    const compOffTotal = dynamicCompOffTotal + manualCompOffGranted;
+    
+    const compOffOpeningBalance = Number(userData.comp_off_opening_balance || userData.compOffOpeningBalance || 0);
+    const compOffTotal = dynamicCompOffTotal + manualCompOffGranted + compOffOpeningBalance;
 
     const finalCompOffTotal = compOffTotal;
 
@@ -4449,8 +4458,9 @@ export const api = {
     // 1. Floating Holiday Logic (Check validity)
     // Blue Leave (Floating Holiday/3rd Saturday) is ONLY available for MALE Bangalore office/field staff.
     let floatingTotalValue = 0;
+    const floatingOpeningBalance = Number(userData.floating_leave_opening_balance || userData.floatingLeaveOpeningBalance || 0);
     if (isBangaloreStaff && isFloatingHolidayValid(todayStr) && !isFemaleUser) {
-        floatingTotalValue = rules.monthlyFloatingLeaves || 0;
+        floatingTotalValue = (rules.monthlyFloatingLeaves || 0) + floatingOpeningBalance;
     }
 
     const balance: LeaveBalance = {

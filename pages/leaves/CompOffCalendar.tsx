@@ -5,7 +5,8 @@ import type { CompOffLog, LeaveRequest, AttendanceEvent, UserHoliday } from '../
 import { FIXED_HOLIDAYS, HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { getStaffCategory } from '../../utils/attendanceCalculations';
+import { getStaffCategory, calculateWorkingHours } from '../../utils/attendanceCalculations';
+import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { api } from '../../services/api';
 import Button from '../../components/ui/Button';
 import LoadingScreen from '../../components/ui/LoadingScreen';
@@ -33,6 +34,20 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
     const { user } = useAuthStore();
     const { officeHolidays, fieldHolidays, recurringHolidays, attendance } = useSettingsStore();
 
+    // Group events by day key for accurate work hour calculations
+    const eventsByDay = useMemo(() => {
+        const dayKeyMap = buildAttendanceDayKeyByEventId(events || []);
+        const grouped: Record<string, AttendanceEvent[]> = {};
+        (events || []).forEach(e => {
+            const key = dayKeyMap[e.id];
+            if (key) {
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(e);
+            }
+        });
+        return grouped;
+    }, [events]);
+
     // Determine which holidays to use based on user role
     const holidays = useMemo(() => {
         if (user?.role === 'field_staff') return fieldHolidays;
@@ -52,7 +67,9 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
     const getDayStatus = (date: Date) => {
         const currentYear = date.getFullYear();
         const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.organizationId, { missedCheckoutConfig: attendance?.missedCheckoutConfig });
-        const activePool = (attendance as any)?.[staffCategory]?.holidayPool || HOLIDAY_SELECTION_POOL;
+        const userRules = (attendance as any)?.[staffCategory];
+        const halfThreshold = userRules?.minimumHoursHalfDay || 4;
+        const dateStr = format(date, 'yyyy-MM-dd');
 
         // 1. Check for taken comp-offs from leave requests
         const isTaken = leaveRequests.some(request => {
@@ -73,9 +90,9 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
         if (hasCompOffLog) return 'earned';
 
         // 3. Check for earned comp-offs from attendance (worked on holiday/Sunday)
-        const hasCheckIn = events.some(e => 
-            isSameDay(new Date(e.timestamp), date) && 
-            (e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'))
+        const dayEvents = eventsByDay[dateStr] || [];
+        const hasCheckIn = dayEvents.some(e => 
+            e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in')
         );
 
         if (hasCheckIn) {
@@ -106,7 +123,19 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
 
             // If worked on any type of holiday/Sunday, it's earned comp-off
             if (isSunday || isFixedHoliday || isPoolHoliday || isConfiguredHoliday) {
-                return 'earned';
+                // Check if there is an approved attendance correction request for that day
+                const hasCorrection = leaveRequests.some(l => {
+                    const lType = String(l.leaveType || (l as any).type || '').toLowerCase();
+                    const lStatus = String(l.status || '').toLowerCase();
+                    return lType.includes('correction') && 
+                           (lStatus === 'approved' || lStatus === 'correction_made') && 
+                           l.startDate === dateStr;
+                });
+
+                const { workingHours } = calculateWorkingHours(dayEvents, date);
+                if (hasCorrection || workingHours >= halfThreshold) {
+                    return 'earned';
+                }
             }
         }
 

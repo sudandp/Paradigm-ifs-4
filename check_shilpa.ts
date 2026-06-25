@@ -1,84 +1,51 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
-import { format, isSameMonth } from 'date-fns';
+import { format } from 'date-fns';
+import { calculateWorkingHours, getStaffCategory } from './utils/attendanceCalculations';
 
 dotenv.config({ path: '.env.local' });
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials");
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl!, supabaseKey!);
 
 async function main() {
     const userId = '94a4f34e-f4d0-42d5-b2c5-7b43419a3325';
     
-    // Fetch Comp Off leave requests
-    const { data: leaves } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('leave_type', 'Comp Off');
-        
-    // Fetch manual comp off logs
-    const { data: manualLogs } = await supabase
-        .from('comp_off_logs')
-        .select('*')
-        .eq('user_id', userId);
-        
-    // Fetch Attendance Events to find worked holidays/sundays
+    // Fetch user
+    const { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+    console.log("User:", user.name, "Gender:", user.gender, "Role ID:", user.role_id);
+    
+    // Fetch settings
+    const { data: settings } = await supabase.from('settings').select('attendance_settings').eq('id', 'singleton').single();
+    const camelSettings = settings ? settings.attendance_settings : {};
+    
+    // Fetch events
     const { data: events } = await supabase
         .from('attendance_events')
-        .select('timestamp, type')
+        .select('*')
         .eq('user_id', userId)
-        .gte('timestamp', '2026-01-01');
-
-    console.log("--- COMP OFF LEAVES (Taken/Pending) ---");
-    const leavesByMonth = {};
-    (leaves || []).forEach(l => {
-        const m = l.start_date.substring(0, 7);
-        if(!leavesByMonth[m]) leavesByMonth[m] = { taken: 0, pending: 0, details: [] };
-        let days = 0;
-        // Simple day calculation (assuming full days for simplicity in debugging)
-        const d1 = new Date(l.start_date);
-        const d2 = new Date(l.end_date);
-        days = (d2.getTime() - d1.getTime()) / (1000 * 3600 * 24) + 1;
-        if(l.status === 'approved') leavesByMonth[m].taken += days;
-        if(l.status === 'pending') leavesByMonth[m].pending += days;
-        leavesByMonth[m].details.push(`${l.start_date} to ${l.end_date} (${days}d) - ${l.status}`);
-    });
-    console.log(leavesByMonth);
+        .gte('timestamp', '2026-01-01T00:00:00')
+        .lte('timestamp', '2026-01-31T23:59:59')
+        .order('timestamp', { ascending: true });
+        
+    console.log("Total events fetched:", events?.length);
     
-    console.log("\n--- MANUAL COMP OFF GRANTED ---");
-    const manualByMonth = {};
-    (manualLogs || []).forEach(l => {
-        const m = l.date_earned.substring(0, 7);
-        if(!manualByMonth[m]) manualByMonth[m] = { days: 0, details: [] };
-        manualByMonth[m].days += l.days_earned;
-        manualByMonth[m].details.push(`${l.date_earned} (${l.days_earned}d) - ${l.reason}`);
+    // Group events by date
+    const eventsByDay: Record<string, any[]> = {};
+    (events || []).forEach(e => {
+        // Just extract YYYY-MM-DD from timestamp
+        const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
+        if (!eventsByDay[dateStr]) eventsByDay[dateStr] = [];
+        eventsByDay[dateStr].push(e);
     });
-    console.log(manualByMonth);
-
-    // Dynamic Comp Off calculation (simplified)
-    console.log("\n--- DYNAMIC COMP OFF (Worked on Sunday/Holiday) ---");
-    const attendedDates = new Set((events || []).map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
-    const dynamicByMonth = {};
     
-    // Check Sundays
-    attendedDates.forEach(d => {
-        const dateObj = new Date(d);
-        if (dateObj.getDay() === 0) { // Sunday
-            const m = d.substring(0, 7);
-            if(!dynamicByMonth[m]) dynamicByMonth[m] = { days: 0, details: [] };
-            dynamicByMonth[m].days += 1;
-            dynamicByMonth[m].details.push(`${d} (Sunday)`);
-        }
-    });
-    console.log(dynamicByMonth);
+    console.log("--- Daily working hours in Jan 2026 ---");
+    for (const [dateStr, dayEvents] of Object.entries(eventsByDay)) {
+        const { workingHours } = calculateWorkingHours(dayEvents, new Date(dateStr));
+        console.log(`${dateStr}: eventsCount=${dayEvents.length}, workingHours=${workingHours}`);
+    }
 }
 
 main();
