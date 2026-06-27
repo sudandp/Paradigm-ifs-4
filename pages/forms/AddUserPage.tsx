@@ -110,6 +110,15 @@ const AddUserPage: React.FC = () => {
     resolver: yupResolver(schema) as unknown as Resolver<Partial<User> & { password?: string; noSiteAssignment?: boolean }>,
   });
 
+  const { minJoiningDate, maxJoiningDate } = React.useMemo(() => {
+    const today = new Date();
+    const maxDate = today.toISOString().split('T')[0];
+    const minD = new Date();
+    minD.setDate(today.getDate() - 20);
+    const minDate = minD.toISOString().split('T')[0];
+    return { minJoiningDate: minDate, maxJoiningDate: maxDate };
+  }, []);
+
   const role = watch('role');
   const organizationId = watch('organizationId');
   const locationId = watch('locationId');
@@ -282,14 +291,14 @@ const AddUserPage: React.FC = () => {
             }
           }
         } else {
-          reset({ name: '', email: '', role: 'field_staff' });
+          reset({ name: '', email: '', role: 'field_staff', joiningDate: maxJoiningDate });
         }
       } catch (error) {
         setToast({ message: 'Failed to load form data.', type: 'error' });
       }
     };
     fetchData();
-  }, [id, isEditing, reset]);
+  }, [id, isEditing, reset, maxJoiningDate]);
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const locId = e.target.value;
@@ -1097,6 +1106,8 @@ const AddUserPage: React.FC = () => {
                   <Input 
                     label="Joining Date" 
                     type="date" 
+                    min={minJoiningDate}
+                    max={maxJoiningDate}
                     registration={register('joiningDate')} 
                     error={errors.joiningDate?.message}
                     description="Company joining date."
