@@ -219,14 +219,23 @@ export async function autoLockPreviousMonth(
         const qualifyingDays = emp.presentDays + emp.halfDays + emp.weekOffs + emp.holidays;
         const elEarned = qualifyingDays * 0.05;
         const elAvailed = emp.earnedLeaves;
+
+        // Apply year-end carry-forward and expiry logic
+        // 1. Earned leaves: cap carry-forward at 30 days if entering January
+        const rawElOpening = prev ? prev.el_closing : 0;
+        const elOpening = month === 1 ? Math.min(30.0, rawElOpening) : rawElOpening;
+
+        // 2. Weekly off: resets to 0 at the end of the year (does not carry forward to January)
+        const woOpening = month === 1 ? 0.0 : (prev ? prev.wo_closing : 0);
+
         return {
           employee_id: emp.employeeId,
           year,
           month,
-          el_opening: prev ? prev.el_closing : 0,
+          el_opening: elOpening,
           el_earned_this_month: elEarned,
           el_availed_this_month: elAvailed,
-          wo_opening: prev ? prev.wo_closing : 0,
+          wo_opening: woOpening,
           wo_earned_this_month: woEarned,
           wo_allotted_this_month: woAllotted,
         };

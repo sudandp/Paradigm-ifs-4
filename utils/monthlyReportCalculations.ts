@@ -260,9 +260,10 @@ export function processEmployeeMonth(
     if (s === 'P') presentDays++;
     else if (s === 'W/P' || s === 'BL/P' || s === 'PL/P') {
         presentDays++;
-        weekOffs++;
-        weekendPresents++;
-        if (s === 'BL/P' || s === 'PL/P') {
+        if (s === 'W/P') {
+            weekOffs++;
+            weekendPresents++;
+        } else {
             floatingHolidays += inc;
         }
     }
@@ -271,8 +272,8 @@ export function processEmployeeMonth(
     else if (s === '1/4P' || s === '0.25P') quarterDays++;
     else if (s === 'A') absentDays++;
     else if (s === 'W/O') weekOffs++;
-    else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { floatingHolidays += inc; weekOffs += inc; }
-    else if (s === 'PL' || s === '0.5PL') { floatingHolidays += inc; weekOffs += inc; }
+    else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { floatingHolidays += inc; }
+    else if (s === 'PL' || s === '0.5PL') { floatingHolidays += inc; }
     else if (s === 'WOP') { weekOffs++; if (statusToCounterActivity) weekendPresents++; }
     else if (s === 'H') holidaysCount++;
     else if (s === 'H/P') { holidaysCount++; presentDays++; holidayPresents++; }

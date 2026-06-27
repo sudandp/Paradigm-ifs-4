@@ -226,7 +226,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             // Remove future assumptions - strictly follow activity threshold
             const visuallyActivePrev = (daysPresentInPreviousWeek >= threshold);
-            const visuallyActiveCurr = (daysActiveInWeek >= threshold);
+            const visuallyActiveCurr = (daysPresentInWeek >= threshold);
 
             if (isCompanyHoliday) {
                 finalStatus = isDetailedPresent ? 'holiday-present' : 'company-holiday';
@@ -244,7 +244,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             } else if (foundLeave) {
                 finalStatus = 'leave';
             } else if (isSunday) {
-                finalStatus = visuallyActiveCurr ? 'sunday' : 'neutral';
+                finalStatus = visuallyActiveCurr ? 'sunday' : (isPast ? 'absent' : 'neutral');
             } else if (isPast) {
                 finalStatus = 'absent';
             }

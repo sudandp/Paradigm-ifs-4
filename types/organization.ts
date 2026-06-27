@@ -134,6 +134,7 @@ export interface EntityAgreement {
 export interface Entity {
   id: string;
   status?: 'draft' | 'completed';
+  configMode?: 'manual' | 'auto';
   name: string;
   logoUrl?: string;
   organizationId?: string;

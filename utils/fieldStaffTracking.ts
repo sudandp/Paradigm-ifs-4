@@ -283,6 +283,29 @@ export function getFieldStaffStatus(
     return { status: 'P', breakdown, hasViolation: false, grantedByManager: false };
   }
 
+  // Check if hours-based fallback is enabled and we have active hours
+  if (!validation.isValid && rules.enableHoursBasedFallback === true && breakdown.totalHours > 0) {
+    const fullDayTargetHours = rules.minimumHoursFullDay || 8;
+    const threeQuarterHrs = rules.threeQuarterDayHours || (fullDayTargetHours * 0.75);
+    const halfDayHrs = rules.minimumHoursHalfDay || 4;
+    const quarterDayHrs = rules.quarterDayHours || 2;
+
+    let fallbackStatus: 'P' | '0.75P' | '0.5P' | '0.25P' | 'A' = 'A';
+    if (breakdown.totalHours >= fullDayTargetHours - 0.25) {
+      fallbackStatus = 'P';
+    } else if (breakdown.totalHours >= threeQuarterHrs) {
+      fallbackStatus = '0.75P';
+    } else if (breakdown.totalHours >= halfDayHrs) {
+      fallbackStatus = '0.5P';
+    } else if (breakdown.totalHours >= quarterDayHrs) {
+      fallbackStatus = '0.25P';
+    }
+
+    if (fallbackStatus !== 'A') {
+      return { status: fallbackStatus, breakdown, hasViolation: true, grantedByManager: false };
+    }
+  }
+
   // Below threshold — check if manager acknowledged the violation
   const grantedByManager = !!(violation && violation.attendanceGranted === true);
   if (grantedByManager) {

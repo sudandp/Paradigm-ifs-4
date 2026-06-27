@@ -1095,8 +1095,9 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       if (part === 'P') presentDays++;
       else if (part === 'W/P' || part === 'BL/P' || part === 'PL/P') {
           presentDays++;
-          weekOffs++;
-          if (part === 'BL/P' || part === 'PL/P') {
+          if (part === 'W/P') {
+              weekOffs++;
+          } else {
               floatingHolidays += inc;
           }
       }
@@ -1105,8 +1106,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part === '1/4P' || part === '0.25P') presentDays += 0.25;
       else if (part === 'A') absentDays++;
       else if (part === 'W/O') weekOffs++;
-      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH') { floatingHolidays += inc; weekOffs += inc; }
-      else if (part === 'PL' || part === '0.5PL') { floatingHolidays += inc; weekOffs += inc; }
+      else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH') { floatingHolidays += inc; }
+      else if (part === 'PL' || part === '0.5PL') { floatingHolidays += inc; }
       else if (part === 'WOP') { weekOffs++; }
       else if (part === 'H') holidays++;
       else if (part === 'H/P') { holidays++; presentDays++; }

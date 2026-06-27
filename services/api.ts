@@ -18,7 +18,7 @@ import type {
 } from '../types';
 import { getObjectDiff } from '../utils/diff';
 import { 
-  differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, format, startOfMonth, endOfMonth, 
+  differenceInCalendarDays, differenceInCalendarMonths, differenceInMonths, differenceInYears, format, startOfMonth, endOfMonth, 
   startOfDay, endOfDay, eachDayOfInterval, isSameDay, getDay, getDate, getDaysInMonth, addMonths, addDays,
   subDays, subMonths, eachMonthOfInterval, isSameMonth, startOfWeek
 } from 'date-fns';
@@ -4524,6 +4524,22 @@ export const api = {
           .eq('verification_status', 'approved');
         
         if (childrenData && childrenData.length > 0) {
+          // Calculate ages of approved children as of referenceDate
+          let hasChildUnder5 = false;
+          let hasChild5to15 = false;
+          
+          childrenData.forEach((child: any) => {
+            if (child.date_of_birth) {
+              const dob = new Date(child.date_of_birth);
+              const age = differenceInYears(referenceDate, dob);
+              if (age < 5) {
+                hasChildUnder5 = true;
+              } else if (age >= 5 && age <= 15) {
+                hasChild5to15 = true;
+              }
+            }
+          });
+
           // 1. Check Validity (Expiry)
           // Rule: If validity is not present or has passed, balance is 0.
           const isNotValidCCL = isNotValid(rules.childCareLeavesValidFrom, rules.childCareLeavesExpiryDate);
@@ -4531,6 +4547,14 @@ export const api = {
           if (isNotValidCCL) {
             balance.childCareTotal = 0;
           } else {
+            // Determine limit based on age bands
+            let limit = 0;
+            if (hasChildUnder5) {
+              limit = rules.childCareLeaveUnder5 ?? 6;
+            } else if (hasChild5to15) {
+              limit = rules.childCareLeave5to15 ?? 3;
+            }
+            
             // 2. Monthly Accrual: 0.5 per month with attendance
             const openingBalance = userData.child_care_leave_opening_balance || 0;
             const openingDate = userData.child_care_leave_opening_date || userData.joining_date || userData.created_at || `${currentYear}-01-01`;
@@ -4553,7 +4577,8 @@ export const api = {
                 if (hasAttendanceThisMonth) earnedCCL += 0.5;
             });
             
-            balance.childCareTotal = effectiveOpeningBalanceCCL + earnedCCL;
+            // Cap at the computed limit
+            balance.childCareTotal = Math.min(limit, effectiveOpeningBalanceCCL + earnedCCL);
           }
         }
       } catch (e) {
@@ -4789,9 +4814,94 @@ export const api = {
         return offlineRequest;
     }
 
-    const { data: userProfile, error: userError } = await supabase.from('users').select('reporting_manager_id').eq('id', data.userId).single();
-    if (userError) throw userError;
+    // --- Server-side validation of leave balance, eligibility, and rules ---
+    const balances = await api.getLeaveBalancesForUser(data.userId);
     
+    // Resolve rules for this user
+    const { data: userProfile, error: userError } = await supabase
+      .from('users')
+      .select('reporting_manager_id, role_id, society_id')
+      .eq('id', data.userId)
+      .single();
+    if (userError) throw userError;
+
+    const { data: settingsData } = await supabase
+      .from('settings')
+      .select('attendance_settings')
+      .eq('id', 'singleton')
+      .single();
+
+    let rules: StaffAttendanceRules | undefined;
+    if (settingsData?.attendance_settings) {
+      const camelSettings = toCamelCase(settingsData.attendance_settings) as AttendanceSettings;
+      const staffType = getStaffCategory(userProfile.role_id, userProfile.society_id, camelSettings);
+      rules = camelSettings[staffType];
+    }
+
+    const startD = new Date(data.startDate.replace(/-/g, '/'));
+    const endD = new Date(data.endDate.replace(/-/g, '/'));
+    const requestedDays = data.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endD, startD) + 1;
+
+    const leaveTypeLower = data.leaveType.toLowerCase();
+
+    // 1. Maternity Leave validation
+    if (leaveTypeLower.includes('maternity')) {
+      if (balances.maternityTotal === 0) {
+        throw new Error(`Maternity leave is only available to female employees with at least ${rules?.maternityMinTenureMonths ?? 6} months of tenure.`);
+      }
+      if (balances.maternityUsed + balances.maternityPending + requestedDays > balances.maternityTotal) {
+        throw new Error(`Insufficient maternity leave balance. Requested: ${requestedDays} days, Available: ${balances.maternityTotal - balances.maternityUsed - balances.maternityPending} days.`);
+      }
+    }
+
+    // 2. Child Care Leave validation
+    else if (leaveTypeLower.includes('child care') || leaveTypeLower.includes('childcare') || leaveTypeLower.includes('child')) {
+      if (balances.childCareTotal === 0) {
+        throw new Error('Child Care Leave is only available to female employees with verified children under 15 years of age.');
+      }
+      if (balances.childCareUsed + balances.childCarePending + requestedDays > balances.childCareTotal) {
+        throw new Error(`Insufficient child care leave balance. Requested: ${requestedDays} days, Available: ${balances.childCareTotal - balances.childCareUsed - balances.childCarePending} days.`);
+      }
+    }
+
+    // 3. Pink Leave validation
+    else if (leaveTypeLower.includes('pink')) {
+      if (balances.pinkTotal === 0) {
+        throw new Error('Pink leave is only available to female employees.');
+      }
+      if (balances.pinkUsed + balances.pinkPending + requestedDays > balances.pinkTotal) {
+        throw new Error(`Insufficient pink leave balance. Requested: ${requestedDays} days, Available: ${balances.pinkTotal - balances.pinkUsed - balances.pinkPending} days.`);
+      }
+    }
+
+    // 4. Sick Leave prescription gate validation
+    else if (leaveTypeLower.includes('sick') || leaveTypeLower === 'sl' || leaveTypeLower === 's/l') {
+      const threshold = rules?.sickLeaveCertificateThreshold ?? 3;
+      if (requestedDays >= threshold && !data.doctorCertificate) {
+        throw new Error(`A medical certificate is mandatory for sick leave of ${threshold} or more days.`);
+      }
+      if (balances.sickUsed + balances.sickPending + requestedDays > balances.sickTotal) {
+        throw new Error(`Insufficient sick leave balance. Requested: ${requestedDays} days, Available: ${balances.sickTotal - balances.sickUsed - balances.sickPending} days.`);
+      }
+    }
+
+    // 5. Standard leave balance validations
+    else if (leaveTypeLower.includes('earned') || leaveTypeLower === 'el') {
+      if (balances.earnedUsed + balances.earnedPending + requestedDays > balances.earnedTotal) {
+        throw new Error(`Insufficient earned leave balance. Requested: ${requestedDays} days, Available: ${balances.earnedTotal - balances.earnedUsed - balances.earnedPending} days.`);
+      }
+    }
+    else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh') {
+      if (balances.floatingUsed + balances.floatingPending + requestedDays > balances.floatingTotal) {
+        throw new Error(`Insufficient floating holiday balance. Requested: ${requestedDays} days, Available: ${balances.floatingTotal - balances.floatingUsed - balances.floatingPending} days.`);
+      }
+    }
+    else if (leaveTypeLower.includes('comp') || leaveTypeLower === 'co') {
+      if (balances.compOffUsed + balances.compOffPending + requestedDays > balances.compOffTotal) {
+        throw new Error(`Insufficient comp off balance. Requested: ${requestedDays} days, Available: ${balances.compOffTotal - balances.compOffUsed - balances.compOffPending} days.`);
+      }
+    }
+
     const dataWithPaths = await processFilesForUpload(data, data.userId, '');
     const dbData = toSnakeCase(dataWithPaths);
     
@@ -5719,11 +5829,19 @@ export const api = {
       const balance = await api.getLeaveBalancesForUser(request.user_id);
       const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
       
-      const typeKeyStr = `${request.leave_type.toLowerCase()}Total`.replace('earnedtotal', 'earnedTotal').replace('sicktotal', 'sickTotal').replace('floatingtotal', 'floatingTotal').replace('compofftotal', 'compOffTotal');
+      const typeKeyStr = `${request.leave_type.toLowerCase()}Total`
+        .replace('earnedtotal', 'earnedTotal')
+        .replace('sicktotal', 'sickTotal')
+        .replace('floatingtotal', 'floatingTotal')
+        .replace('compofftotal', 'compOffTotal')
+        .replace('maternitytotal', 'maternityTotal')
+        .replace('childcaretotal', 'childCareTotal')
+        .replace('pinktotal', 'pinkTotal');
       const typeKey = typeKeyStr as keyof LeaveBalance;
       const usedKey = typeKeyStr.replace('Total', 'Used') as keyof LeaveBalance;
+      const pendingKey = typeKeyStr.replace('Total', 'Pending') as keyof LeaveBalance;
       
-      const available = (balance[typeKey] as number) - (balance[usedKey] as number);
+      const available = (balance[typeKey] as number) - (balance[usedKey] as number) - (balance[pendingKey] as number);
       
       if (available < leaveDays) {
         // Auto-decline if insufficient leaves

@@ -142,11 +142,51 @@ export function generateMonthlyOutput(
   woOpeningBalance: number,
   manualAdjustments: ManualAdjustment[] = []
 ) {
-  const daysPresent = attendanceMarks.filter(m => m === 'P').length + (attendanceMarks.filter(m => m === '0.5P').length * 0.5);
+  let daysPresent = 0;
+  let countHp = 0;
+  let countHalfHp = 0;
+  let weekendPresent = 0;
+
+  for (const m of attendanceMarks) {
+    if (!m) continue;
+    if (m === 'P') {
+      daysPresent += 1.0;
+    } else if (m === '0.5P' || m === '1/2P') {
+      daysPresent += 0.5;
+    } else if (m === '0.75P' || m === '3/4P') {
+      daysPresent += 0.75;
+    } else if (m === '0.25P' || m === '1/4P') {
+      daysPresent += 0.25;
+    } else if (m === 'H/P') {
+      daysPresent += 1.0;
+      countHp += 1.0;
+    } else if (m === '0.5H/P' || m === '0.5 H/P') {
+      daysPresent += 0.5;
+      countHalfHp += 1.0;
+    } else if (m === 'W/P') {
+      daysPresent += 1.0;
+      weekendPresent += 1.0;
+    } else if (m === 'W/0.5P' || m === 'W/0.5 P') {
+      daysPresent += 0.5;
+      weekendPresent += 0.5;
+    } else {
+      const match = m.match(/^(\d+(\.\d+)?)\s*(P|H\/P|W\/P)$/);
+      if (match) {
+        const val = parseFloat(match[1]);
+        const type = match[3];
+        daysPresent += val;
+        if (type === 'H/P') {
+          if (val === 0.5) countHalfHp += 1.0;
+          else if (val >= 1.0) countHp += val;
+        } else if (type === 'W/P') {
+          weekendPresent += val;
+        }
+      }
+    }
+  }
+
   const daysAbsent = attendanceMarks.filter(m => !m || m === 'A' || m === '0').length;
   const daysElAvailed = attendanceMarks.filter(m => m === 'EL').length;
-  const countHp = attendanceMarks.filter(m => m === 'H/P').length;
-  const countHalfHp = attendanceMarks.filter(m => m === '0.5H/P').length;
 
   const woAccrual = accrueWOBalance(daysPresent, woOpeningBalance);
   const elAccrual = accrueELBalance(daysPresent, woAccrual.allotted, holidaysInPeriod, elOpeningBalance, daysElAvailed, config.earnedLeavesPerAnnum);

@@ -5,7 +5,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { api } from '../../services/api';
 import type { OrganizationGroup, Entity, Company, RegistrationType, Organization, SiteConfiguration, UploadedFile } from '../../types';
-import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock } from 'lucide-react';
+import { Plus, Save, Edit, Trash2, Building, ChevronRight, Eye, CheckCircle, AlertCircle, Search, ClipboardList, Settings, Calculator, Users, Badge, HeartPulse, Archive, Wrench, Shirt, FileText, CalendarDays, BarChart, Mail, Sun, UserX, IndianRupee, ChevronLeft, HelpCircle, Loader2, Clock, Zap, SlidersHorizontal } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import EntityForm from '../../components/hr/EntityForm';
@@ -35,6 +35,7 @@ import SalaryTemplateConfig from '../../components/hr/SalaryTemplateConfig';
 import SalaryLineItemConfig from '../../components/hr/SalaryLineItemConfig';
 import CompanyHolidaySelectionConfig from '../../components/hr/CompanyHolidaySelectionConfig';
 import TemplatesHub from '../../components/hr/TemplatesHub';
+import AutoSiteConfig from '../../components/hr/AutoSiteConfig';
 
 
 const NameInputModal: React.FC<{
@@ -113,6 +114,27 @@ const EntityManagement: React.FC = () => {
     const [viewingClients, setViewingClients] = useState<{ companyName: string; clients: Entity[] } | null>(null);
     const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
     const isMobile = useMediaQuery('(max-width: 767px)');
+
+    // ── Manual / Auto config mode state ─────────────────────────────────────
+    // Tracks 'manual' | 'auto' per site ID. Seeded from entity.configMode, defaults to 'manual'.
+    const [siteConfigModes, setSiteConfigModes] = useState<Record<string, 'manual' | 'auto'>>({});
+    // State to open the AutoSiteConfig full-page panel
+    const [autoSiteConfigState, setAutoSiteConfigState] = useState<{
+        isOpen: boolean;
+        siteId: string;
+        siteName: string;
+        siteLocation?: string;
+    }>({ isOpen: false, siteId: '', siteName: '' });
+
+    // Helper — get the current mode for a site (fallback: entity.configMode ?? 'manual')
+    const getSiteMode = useCallback((entity: Entity): 'manual' | 'auto' => {
+        return siteConfigModes[entity.id] ?? entity.configMode ?? 'manual';
+    }, [siteConfigModes]);
+
+    // Helper — toggle mode for a site
+    const setSiteMode = useCallback((siteId: string, mode: 'manual' | 'auto') => {
+        setSiteConfigModes(prev => ({ ...prev, [siteId]: mode }));
+    }, []);
 
     // Modals state
     const [entityFormState, setEntityFormState] = useState<{ isOpen: boolean; initialData: Entity | null; companyName: string; companyId?: string }>({ isOpen: false, initialData: null, companyName: '', companyId: '' });
@@ -812,6 +834,19 @@ const EntityManagement: React.FC = () => {
                                                             <div className="flex flex-col">
                                                                 <span>{entity.name}</span>
                                                                 <span className="text-xs font-normal text-muted mt-0.5">{entity.location || 'Default Region'}</span>
+                                                                {/* Mode badge */}
+                                                                {getSiteMode(entity) === 'auto' ? (
+                                                                    <span
+                                                                        className="mt-1 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full text-white"
+                                                                        style={{ background: 'linear-gradient(135deg,#0ea5e9,#6366f1)' }}
+                                                                    >
+                                                                        <Zap className="h-2.5 w-2.5" /> Auto Config
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="mt-1 self-start inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#006B3F]/10 text-[#006B3F] border border-[#006B3F]/20">
+                                                                        <SlidersHorizontal className="h-2.5 w-2.5" /> Manual Config
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </td>
@@ -826,11 +861,54 @@ const EntityManagement: React.FC = () => {
                                                     </td>
                                                     <td className="px-6 py-5">
                                                         <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                                                            <Button size="sm" variant="outline" className="h-9 font-bold px-4 border-accent/20 hover:bg-accent/5" onClick={() => {
-                                                                setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '', companyId: entity.companyId });
-                                                            }}>
-                                                                <Eye className="mr-2 h-4 w-4" /> Configure
-                                                            </Button>
+
+                                                            {/* ── Manual / Auto toggle pill ────────────────────────────── */}
+                                                            <div className="flex items-center rounded-xl border border-border bg-page shadow-sm overflow-hidden">
+                                                                {/* Manual segment */}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSiteMode(entity.id, 'manual');
+                                                                        setEntityFormState({ isOpen: true, initialData: entity, companyName: entity.companyName || '', companyId: entity.companyId });
+                                                                    }}
+                                                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all duration-200 ${
+                                                                        getSiteMode(entity) === 'manual'
+                                                                            ? 'bg-[#006B3F] text-white shadow-inner'
+                                                                            : 'text-muted hover:text-primary-text hover:bg-page/80'
+                                                                    }`}
+                                                                    title="Manual configuration — uses fed data from Costing, GMC, Holiday etc."
+                                                                >
+                                                                    <SlidersHorizontal className="h-3 w-3" />
+                                                                    Manual
+                                                                </button>
+
+                                                                {/* Divider */}
+                                                                <span className="w-px h-5 bg-border" />
+
+                                                                {/* Auto segment */}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSiteMode(entity.id, 'auto');
+                                                                        setAutoSiteConfigState({
+                                                                            isOpen: true,
+                                                                            siteId: entity.id,
+                                                                            siteName: entity.name,
+                                                                            siteLocation: entity.location,
+                                                                        });
+                                                                    }}
+                                                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all duration-200 ${
+                                                                        getSiteMode(entity) === 'auto'
+                                                                            ? 'text-white shadow-inner'
+                                                                            : 'text-muted hover:text-primary-text hover:bg-page/80'
+                                                                    }`}
+                                                                    style={getSiteMode(entity) === 'auto' ? { background: 'linear-gradient(135deg,#0ea5e9,#6366f1)' } : {}}
+                                                                    title="Auto configuration — role-based EL, CL, week-off & salary calculation"
+                                                                >
+                                                                    <Zap className="h-3 w-3" />
+                                                                    Auto
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Delete */}
                                                             <Button size="sm" variant="outline" onClick={() => handleDeleteClick('site', entity.id, entity.name)} className="h-9 w-9 p-0 text-red-500 border-red-200 hover:bg-red-50 hover:border-red-400">
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
@@ -891,6 +969,21 @@ const EntityManagement: React.FC = () => {
         );
     }
 
+    if (autoSiteConfigState.isOpen) {
+        return (
+            <div className="p-0">
+                {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+                <AutoSiteConfig
+                    siteId={autoSiteConfigState.siteId}
+                    siteName={autoSiteConfigState.siteName}
+                    siteLocation={autoSiteConfigState.siteLocation}
+                    onClose={() => setAutoSiteConfigState(p => ({ ...p, isOpen: false }))}
+                    onSaved={() => setToast({ message: `Auto config saved for ${autoSiteConfigState.siteName}.`, type: 'success' })}
+                />
+            </div>
+        );
+    }
+
     if (entityFormState.isOpen) {
         return (
             <div className="p-0">
@@ -904,6 +997,7 @@ const EntityManagement: React.FC = () => {
             </div>
         );
     }
+
 
     return (
         <div className={`p-4 space-y-6 ${isMobile ? 'bg-[#041b0f] min-h-screen text-white' : ''}`}>
