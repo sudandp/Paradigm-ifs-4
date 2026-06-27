@@ -1492,7 +1492,13 @@ const { fields: agreementFields, append: appendAgreement, remove: removeAgreemen
                                 <option value="custom_10">Custom Client 10 Holiday</option>
                                 <option value="custom_12">Custom Client 12 Holiday</option>
                             </Select>
-                            <Input label="Logic Variation (e.g. 1+1, 1.5)" id="logicVariation" registration={register('holidayConfig.logicVariation')} placeholder="Overrides default rules" />
+                            <Select label="Logic Variation (Overrides default)" id="logicVariation" registration={register('holidayConfig.logicVariation')}>
+                                <option value="">Default / None</option>
+                                <option value="1">1 (Actuals)</option>
+                                <option value="1.5">1.5x (Time and a half)</option>
+                                <option value="1+1">1+1 (Double Pay/Extra Day)</option>
+                                <option value="2">2 (Double Pay)</option>
+                            </Select>
                         </div>
                         
                         <div className="space-y-4">
