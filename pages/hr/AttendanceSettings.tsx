@@ -23,6 +23,7 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 import { supabase } from '../../services/supabase';
 import StaffBillingConfig from '../billing/StaffBillingConfig';
 import SiteHolidayAllocator from '../../components/billing/SiteHolidayAllocator';
+import { TravelRulesConfigPanel } from '../../components/hr/TravelRulesConfigPanel';
 
 
 /** Normalize role display names to Title Case regardless of DB storage format */
@@ -47,7 +48,7 @@ const AttendanceSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const [activeTab, setActiveTab] = useState<'office' | 'field' | 'site' | 'admin' | 'management' | 'selections'>('office');
-    const [subTab, setSubTab] = useState<'general' | 'policies' | 'calc_rules' | 'shifts' | 'departments' | 'lumpsum' | 'holidays' | 'leaves' | 'notifications' | 'fixed_hours' | 'summary' | 'billing_config'>('general');
+    const [subTab, setSubTab] = useState<'general' | 'policies' | 'calc_rules' | 'shifts' | 'departments' | 'lumpsum' | 'holidays' | 'leaves' | 'notifications' | 'fixed_hours' | 'summary' | 'billing_config' | 'travel'>('general');
     const [lumpsumItems, setLumpsumItems] = useState<{ id?: string, itemName: string, ratePerMonth: number, isActive: boolean }[]>([]);
 
 
@@ -768,9 +769,13 @@ const AttendanceSettings: React.FC = () => {
                                 { key: 'billing_config', label: 'Staff Billing Config', icon: IndianRupee },
                                 { key: 'summary', label: 'Summary Sheet', icon: FileText }
                               ]
-                            : [
-                                { key: 'fixed_hours', label: 'Fixed Hours', icon: Clock }
-                              ]),
+                            : (activeTab === 'field'
+                               ? [
+                                   { key: 'travel', label: 'Travel & Fuel', icon: IndianRupee }
+                                 ]
+                               : [
+                                   { key: 'fixed_hours', label: 'Fixed Hours', icon: Clock }
+                                 ])),
                         { key: 'policies', label: 'Policies & Limits', icon: Shield },
                         { key: 'holidays', label: 'Holidays', icon: Palmtree },
                         { key: 'leaves', label: 'Leave Allocation', icon: LifeBuoy },
@@ -2638,6 +2643,15 @@ const AttendanceSettings: React.FC = () => {
                         </div>
                     </section>
                     )}
+
+                {/* Travel & Fuel Rules Section */}
+                <section className="pt-6 border-t border-border" style={{ display: subTab === 'travel' ? undefined : 'none' }}>
+                    <TravelRulesConfigPanel 
+                        scopeType={selectedEntityId ? 'entity' : (selectedCompanyId ? 'company' : (selectedLocation !== 'global' ? 'location' : 'global'))}
+                        scopeId={selectedEntityId || selectedCompanyId || (selectedLocation !== 'global' ? selectedLocation : null)}
+                        changedBy={currentUser?.name || 'Admin'}
+                    />
+                </section>
             </div>
         </div>
     );
