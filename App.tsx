@@ -1298,14 +1298,6 @@ const App: React.FC = () => {
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
       {isUpdateRequired && <UpdatePromptModal updateInfo={updateInfo} />}
-      {showWhatsNew && (
-        <WhatsNewModal 
-          onClose={() => {
-            localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
-            setShowWhatsNew(false);
-          }}
-        />
-      )}
       <Suspense fallback={<LoadingScreen message="Loading..." fullScreen={true} />}>
       <Routes>
         {/* 1. Public Authentication & Form Routes */}
@@ -1611,6 +1603,15 @@ const App: React.FC = () => {
         onConfirm={() => { setShowExitWarning(false); CapacitorApp.minimizeApp(); }}
         onCancel={() => setShowExitWarning(false)}
       />
+      {/* ── What's New Modal: shown once per version, only when no update is pending ── */}
+      {showWhatsNew && !isUpdateRequired && !isAppOutdated && (
+        <WhatsNewModal
+          onClose={() => {
+            localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
+            setShowWhatsNew(false);
+          }}
+        />
+      )}
     </>
   );
 };
