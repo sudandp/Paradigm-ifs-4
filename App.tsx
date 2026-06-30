@@ -46,6 +46,7 @@ import { useAppUpdate } from './hooks/useAppUpdate';
 import { UpdatePromptModal } from './components/UpdatePromptModal';
 import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequiredBanner';
 import { APP_VERSION } from './src/config/appVersion';
+import { WhatsNewModal } from './components/WhatsNewModal';
 import { Network } from '@capacitor/network';
 
 
@@ -391,6 +392,16 @@ const App: React.FC = () => {
   const [isAppOutdated, setIsAppOutdated] = useState(false);
   const [showExitWarning, setShowExitWarning] = useState(false);
   const { triggerAlert: triggerBreakAlert } = useBreakAlertStore();
+
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+
+  useEffect(() => {
+    // Show WhatsNewModal if the version running is newer than the last seen version
+    const lastSeenReleaseNotesVersion = localStorage.getItem('last_seen_release_notes_version');
+    if (lastSeenReleaseNotesVersion !== APP_VERSION) {
+      setShowWhatsNew(true);
+    }
+  }, []);
 
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
@@ -1287,6 +1298,14 @@ const App: React.FC = () => {
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
       {isUpdateRequired && <UpdatePromptModal updateInfo={updateInfo} />}
+      {showWhatsNew && (
+        <WhatsNewModal 
+          onClose={() => {
+            localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
+            setShowWhatsNew(false);
+          }}
+        />
+      )}
       <Suspense fallback={<LoadingScreen message="Loading..." fullScreen={true} />}>
       <Routes>
         {/* 1. Public Authentication & Form Routes */}
