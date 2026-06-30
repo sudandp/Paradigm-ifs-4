@@ -25,231 +25,8 @@ CREATE EXTENSION IF NOT EXISTS "supabase_vault";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =============================================
--- TABLES - AUTH SCHEMA
+-- TABLES - AUTH SCHEMA (Managed by Supabase auth engine - omitted to avoid permission denied error)
 -- =============================================
-
-CREATE TABLE IF NOT EXISTS auth.audit_log_entries (  instance_id UUID,
-  id UUID NOT NULL,
-  ip_address CHARACTER VARYING(64) DEFAULT ''::character varying NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE,
-  payload JSON
-);
-
-CREATE TABLE IF NOT EXISTS auth.flow_state (  updated_at TIMESTAMP WITH TIME ZONE,
-  authentication_method TEXT NOT NULL,
-  provider_refresh_token TEXT,
-  auth_code_issued_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE,
-  code_challenge TEXT NOT NULL,
-  user_id UUID,
-  id UUID NOT NULL,
-  auth_code TEXT NOT NULL,
-  code_challenge_method code_challenge_method NOT NULL,
-  provider_access_token TEXT,
-  provider_type TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.identities (  provider TEXT NOT NULL,
-  identity_data JSONB NOT NULL,
-  user_id UUID NOT NULL,
-  last_sign_in_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
-  provider_id TEXT NOT NULL,
-  email TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth.instances (  created_at TIMESTAMP WITH TIME ZONE,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  raw_base_config TEXT,
-  id UUID NOT NULL,
-  uuid UUID
-);
-
-CREATE TABLE IF NOT EXISTS auth.mfa_amr_claims (  updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  session_id UUID NOT NULL,
-  authentication_method TEXT NOT NULL,
-  id UUID NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.mfa_challenges (  factor_id UUID NOT NULL,
-  id UUID NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  verified_at TIMESTAMP WITH TIME ZONE,
-  ip_address INET NOT NULL,
-  web_authn_session_data JSONB,
-  otp_code TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth.mfa_factors (  phone TEXT,
-  secret TEXT,
-  friendly_name TEXT,
-  id UUID NOT NULL,
-  status factor_status NOT NULL,
-  factor_type factor_type NOT NULL,
-  last_webauthn_challenge_data JSONB,
-  web_authn_aaguid UUID,
-  web_authn_credential JSONB,
-  last_challenged_at TIMESTAMP WITH TIME ZONE,
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  user_id UUID NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.oauth_authorizations (  id UUID NOT NULL,
-  client_id UUID NOT NULL,
-  user_id UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  expires_at TIMESTAMP WITH TIME ZONE DEFAULT (now() + '00:03:00'::interval) NOT NULL,
-  approved_at TIMESTAMP WITH TIME ZONE,
-  nonce TEXT,
-  authorization_code TEXT,
-  code_challenge TEXT,
-  resource TEXT,
-  state TEXT,
-  scope TEXT NOT NULL,
-  redirect_uri TEXT NOT NULL,
-  authorization_id TEXT NOT NULL,
-  response_type oauth_response_type DEFAULT 'code'::auth.oauth_response_type NOT NULL,
-  code_challenge_method code_challenge_method,
-  status oauth_authorization_status DEFAULT 'pending'::auth.oauth_authorization_status NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.oauth_clients (  logo_uri TEXT,
-  client_name TEXT,
-  grant_types TEXT NOT NULL,
-  redirect_uris TEXT NOT NULL,
-  client_secret_hash TEXT,
-  deleted_at TIMESTAMP WITH TIME ZONE,
-  client_type oauth_client_type DEFAULT 'confidential'::auth.oauth_client_type NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  registration_type oauth_registration_type NOT NULL,
-  id UUID NOT NULL,
-  client_uri TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth.oauth_consents (  user_id UUID NOT NULL,
-  client_id UUID NOT NULL,
-  granted_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  revoked_at TIMESTAMP WITH TIME ZONE,
-  id UUID NOT NULL,
-  scopes TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.one_time_tokens (  id UUID NOT NULL,
-  token_hash TEXT NOT NULL,
-  token_type one_time_token_type NOT NULL,
-  user_id UUID NOT NULL,
-  updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
-  relates_to TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.refresh_tokens (  user_id CHARACTER VARYING(255),
-  instance_id UUID,
-  id BIGINT DEFAULT nextval('auth.refresh_tokens_id_seq'::regclass) NOT NULL,
-  revoked BOOLEAN,
-  created_at TIMESTAMP WITH TIME ZONE,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  session_id UUID,
-  parent CHARACTER VARYING(255),
-  token CHARACTER VARYING(255)
-);
-
-CREATE TABLE IF NOT EXISTS auth.saml_providers (  sso_provider_id UUID NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE,
-  attribute_mapping JSONB,
-  id UUID NOT NULL,
-  entity_id TEXT NOT NULL,
-  metadata_xml TEXT NOT NULL,
-  metadata_url TEXT,
-  name_id_format TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth.saml_relay_states (  flow_state_id UUID,
-  sso_provider_id UUID NOT NULL,
-  id UUID NOT NULL,
-  redirect_to TEXT,
-  for_email TEXT,
-  request_id TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE,
-  updated_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE TABLE IF NOT EXISTS auth.schema_migrations (  version CHARACTER VARYING(255) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.sessions (  aal aal_level,
-  user_agent TEXT,
-  refresh_token_counter BIGINT,
-  oauth_client_id UUID,
-  ip INET,
-  refreshed_at TIMESTAMP WITHOUT TIME ZONE,
-  not_after TIMESTAMP WITH TIME ZONE,
-  factor_id UUID,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE,
-  user_id UUID NOT NULL,
-  scopes TEXT,
-  id UUID NOT NULL,
-  tag TEXT,
-  refresh_token_hmac_key TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth.sso_domains (  id UUID NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE,
-  sso_provider_id UUID NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE,
-  domain TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth.sso_providers (  updated_at TIMESTAMP WITH TIME ZONE,
-  id UUID NOT NULL,
-  resource_id TEXT,
-  disabled BOOLEAN,
-  created_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE TABLE IF NOT EXISTS auth.users (  phone_confirmed_at TIMESTAMP WITH TIME ZONE,
-  phone_change_sent_at TIMESTAMP WITH TIME ZONE,
-  email_change_token_new CHARACTER VARYING(255),
-  deleted_at TIMESTAMP WITH TIME ZONE,
-  is_sso_user BOOLEAN DEFAULT false NOT NULL,
-  reauthentication_sent_at TIMESTAMP WITH TIME ZONE,
-  phone_change TEXT DEFAULT ''::character varying,
-  phone TEXT DEFAULT NULL::character varying,
-  confirmed_at TIMESTAMP WITH TIME ZONE,
-  email_change_confirm_status SMALLINT DEFAULT 0,
-  banned_until TIMESTAMP WITH TIME ZONE,
-  raw_app_meta_data JSONB,
-  email_change CHARACTER VARYING(255),
-  aud CHARACTER VARYING(255),
-  role CHARACTER VARYING(255),
-  recovery_token CHARACTER VARYING(255),
-  confirmation_token CHARACTER VARYING(255),
-  raw_user_meta_data JSONB,
-  is_super_admin BOOLEAN,
-  last_sign_in_at TIMESTAMP WITH TIME ZONE,
-  phone_change_token CHARACTER VARYING(255) DEFAULT ''::character varying,
-  email_change_sent_at TIMESTAMP WITH TIME ZONE,
-  email CHARACTER VARYING(255),
-  recovery_sent_at TIMESTAMP WITH TIME ZONE,
-  confirmation_sent_at TIMESTAMP WITH TIME ZONE,
-  encrypted_password CHARACTER VARYING(255),
-  invited_at TIMESTAMP WITH TIME ZONE,
-  email_confirmed_at TIMESTAMP WITH TIME ZONE,
-  id UUID NOT NULL,
-  instance_id UUID,
-  email_change_token_current CHARACTER VARYING(255) DEFAULT ''::character varying,
-  created_at TIMESTAMP WITH TIME ZONE,
-  reauthentication_token CHARACTER VARYING(255) DEFAULT ''::character varying,
-  is_anonymous BOOLEAN DEFAULT false NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE
-);
 
 -- =============================================
 -- TABLES - PUBLIC SCHEMA
@@ -579,196 +356,264 @@ CREATE TABLE IF NOT EXISTS public.users (  reporting_manager_id UUID,
   organization_id TEXT,
   organization_name TEXT,
   photo_url TEXT,
+  home_latitude NUMERIC(10,7),
+  home_longitude NUMERIC(10,7),
+  home_address TEXT,
   id UUID NOT NULL
 );
 
 -- =============================================
--- TABLES - STORAGE SCHEMA
+-- TABLES - STORAGE SCHEMA (Managed by Supabase storage engine - omitted to avoid permission denied error)
 -- =============================================
 
-CREATE TABLE IF NOT EXISTS storage.buckets (  owner UUID,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  type buckettype DEFAULT 'STANDARD'::storage.buckettype NOT NULL,
-  owner_id TEXT,
-  allowed_mime_types _text,
-  file_size_limit BIGINT,
-  avif_autodetection BOOLEAN DEFAULT false,
-  public BOOLEAN DEFAULT false,
-  name TEXT NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  id TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.buckets_analytics (  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  name TEXT NOT NULL,
-  format TEXT DEFAULT 'ICEBERG'::text NOT NULL,
-  type buckettype DEFAULT 'ANALYTICS'::storage.buckettype NOT NULL,
-  deleted_at TIMESTAMP WITH TIME ZONE,
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.buckets_vectors (  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  type buckettype DEFAULT 'VECTOR'::storage.buckettype NOT NULL,
-  id TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.migrations (  executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  hash CHARACTER VARYING(40) NOT NULL,
-  id INTEGER NOT NULL,
-  name CHARACTER VARYING(100) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.objects (  name TEXT,
-  user_metadata JSONB,
-  metadata JSONB,
-  last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  owner UUID,
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
-  owner_id TEXT,
-  level INTEGER,
-  version TEXT,
-  path_tokens _text,
-  bucket_id TEXT
-);
-
-CREATE TABLE IF NOT EXISTS storage.prefixes (  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  bucket_id TEXT NOT NULL,
-  level INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS storage.s3_multipart_uploads (  owner_id TEXT,
-  key TEXT NOT NULL,
-  bucket_id TEXT NOT NULL,
-  version TEXT NOT NULL,
-  user_metadata JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  in_progress_size BIGINT DEFAULT 0 NOT NULL,
-  upload_signature TEXT NOT NULL,
-  id TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.s3_multipart_uploads_parts (  upload_id TEXT NOT NULL,
-  owner_id TEXT,
-  id UUID DEFAULT gen_random_uuid() NOT NULL,
-  size BIGINT DEFAULT 0 NOT NULL,
-  part_number INTEGER NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  bucket_id TEXT NOT NULL,
-  etag TEXT NOT NULL,
-  key TEXT NOT NULL,
-  version TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS storage.vector_indexes (  data_type TEXT NOT NULL,
-  bucket_id TEXT NOT NULL,
-  id TEXT DEFAULT gen_random_uuid() NOT NULL,
-  metadata_configuration JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  distance_metric TEXT NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-  dimension INTEGER NOT NULL,
-  name TEXT NOT NULL
-);
-
 -- =============================================
--- PRIMARY KEYS
+-- PRIMARY KEYS & FOREIGN KEYS (Idempotent execution to prevent dependency/exist conflicts)
 -- ============================================= 
 
-ALTER TABLE auth.audit_log_entries ADD CONSTRAINT audit_log_entries_pkey PRIMARY KEY (id);
-ALTER TABLE auth.flow_state ADD CONSTRAINT flow_state_pkey PRIMARY KEY (id);
-ALTER TABLE auth.identities ADD CONSTRAINT identities_pkey PRIMARY KEY (id);
-ALTER TABLE auth.instances ADD CONSTRAINT instances_pkey PRIMARY KEY (id);
-ALTER TABLE auth.mfa_amr_claims ADD CONSTRAINT amr_id_pk PRIMARY KEY (id);
-ALTER TABLE auth.mfa_challenges ADD CONSTRAINT mfa_challenges_pkey PRIMARY KEY (id);
-ALTER TABLE auth.mfa_factors ADD CONSTRAINT mfa_factors_pkey PRIMARY KEY (id);
-ALTER TABLE auth.oauth_authorizations ADD CONSTRAINT oauth_authorizations_pkey PRIMARY KEY (id);
-ALTER TABLE auth.oauth_clients ADD CONSTRAINT oauth_clients_pkey PRIMARY KEY (id);
-ALTER TABLE auth.oauth_consents ADD CONSTRAINT oauth_consents_pkey PRIMARY KEY (id);
-ALTER TABLE auth.one_time_tokens ADD CONSTRAINT one_time_tokens_pkey PRIMARY KEY (id);
-ALTER TABLE auth.refresh_tokens ADD CONSTRAINT refresh_tokens_pkey PRIMARY KEY (id);
-ALTER TABLE auth.saml_providers ADD CONSTRAINT saml_providers_pkey PRIMARY KEY (id);
-ALTER TABLE auth.saml_relay_states ADD CONSTRAINT saml_relay_states_pkey PRIMARY KEY (id);
-ALTER TABLE auth.sessions ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
-ALTER TABLE auth.sso_domains ADD CONSTRAINT sso_domains_pkey PRIMARY KEY (id);
-ALTER TABLE auth.sso_providers ADD CONSTRAINT sso_providers_pkey PRIMARY KEY (id);
-ALTER TABLE auth.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-ALTER TABLE public.app_modules ADD CONSTRAINT app_modules_pkey PRIMARY KEY (id);
-ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_pkey PRIMARY KEY (id);
-ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_pkey PRIMARY KEY (id);
-ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_pkey PRIMARY KEY (id);
-ALTER TABLE public.companies ADD CONSTRAINT companies_pkey PRIMARY KEY (id);
-ALTER TABLE public.entities ADD CONSTRAINT entities_pkey PRIMARY KEY (id);
-ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_pkey PRIMARY KEY (id);
-ALTER TABLE public.holidays ADD CONSTRAINT holidays_pkey PRIMARY KEY (id);
-ALTER TABLE public.insurances ADD CONSTRAINT insurances_pkey PRIMARY KEY (id);
-ALTER TABLE public.leave_requests ADD CONSTRAINT leave_requests_pkey PRIMARY KEY (id);
-ALTER TABLE public.location_cache ADD CONSTRAINT location_cache_pkey PRIMARY KEY (latitude, longitude);
-ALTER TABLE public.locations ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
-ALTER TABLE public.notifications ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
-ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_pkey PRIMARY KEY (id);
-ALTER TABLE public.organization_groups ADD CONSTRAINT organization_groups_pkey PRIMARY KEY (id);
-ALTER TABLE public.organizations ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
-ALTER TABLE public.policies ADD CONSTRAINT policies_pkey PRIMARY KEY (id);
-ALTER TABLE public.recurring_holidays ADD CONSTRAINT recurring_holidays_pkey PRIMARY KEY (id);
-ALTER TABLE public.roles ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
-ALTER TABLE public.settings ADD CONSTRAINT settings_pkey PRIMARY KEY (id);
-ALTER TABLE public.site_configurations ADD CONSTRAINT site_configurations_pkey PRIMARY KEY (id);
-ALTER TABLE public.site_gents_uniform_configs ADD CONSTRAINT site_gents_uniform_configs_pkey PRIMARY KEY (id);
-ALTER TABLE public.site_ladies_uniform_configs ADD CONSTRAINT site_ladies_uniform_configs_pkey PRIMARY KEY (id);
-ALTER TABLE public.site_staff_designations ADD CONSTRAINT site_staff_designations_pkey PRIMARY KEY (id);
-ALTER TABLE public.site_uniform_details_configs ADD CONSTRAINT site_uniform_details_configs_pkey PRIMARY KEY (id);
-ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_pkey PRIMARY KEY (id);
-ALTER TABLE public.tasks ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
-ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_pkey PRIMARY KEY (id);
-ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_pkey PRIMARY KEY (id);
-ALTER TABLE public.uniform_requests ADD CONSTRAINT uniform_requests_pkey PRIMARY KEY (id);
-ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_pkey PRIMARY KEY (id);
-ALTER TABLE public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
-ALTER TABLE storage.buckets ADD CONSTRAINT buckets_pkey PRIMARY KEY (id);
-ALTER TABLE storage.buckets_analytics ADD CONSTRAINT buckets_analytics_pkey PRIMARY KEY (id);
-ALTER TABLE storage.objects ADD CONSTRAINT objects_pkey PRIMARY KEY (id);
-ALTER TABLE storage.prefixes ADD CONSTRAINT prefixes_pkey PRIMARY KEY (name, bucket_id, level);
-ALTER TABLE storage.s3_multipart_uploads ADD CONSTRAINT s3_multipart_uploads_pkey PRIMARY KEY (id);
-ALTER TABLE storage.s3_multipart_uploads_parts ADD CONSTRAINT s3_multipart_uploads_parts_pkey PRIMARY KEY (id);
+DO $$
+BEGIN
+  -- PRIMARY KEYS
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'app_modules_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.app_modules ADD CONSTRAINT app_modules_pkey PRIMARY KEY (id);
+  END IF;
 
--- =============================================
--- FOREIGN KEYS
--- =============================================
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_approvals_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_pkey PRIMARY KEY (id);
+  END IF;
 
-ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
-ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
-ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_granted_by_id_fkey FOREIGN KEY (granted_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_leave_request_id_fkey FOREIGN KEY (leave_request_id) REFERENCES public.leave_requests(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.companies ADD CONSTRAINT companies_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.organization_groups(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.entities ADD CONSTRAINT entities_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_approver_id_fkey FOREIGN KEY (approver_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.leave_requests ADD CONSTRAINT leave_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.locations ADD CONSTRAINT locations_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.notifications ADD CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_created_user_id_fkey FOREIGN KEY (created_user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_assigned_to_id_fkey FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
-ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_raised_by_id_fkey FOREIGN KEY (raised_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
-ALTER TABLE public.tasks ADD CONSTRAINT tasks_assigned_to_id_fkey FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.tasks ADD CONSTRAINT tasks_created_by_id_fkey FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.ticket_posts(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES public.support_tickets(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
-ALTER TABLE public.users ADD CONSTRAINT users_reporting_manager_id_fkey FOREIGN KEY (reporting_manager_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
-ALTER TABLE public.users ADD CONSTRAINT users_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_events_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'comp_off_logs_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'companies_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.companies ADD CONSTRAINT companies_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'entities_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.entities ADD CONSTRAINT entities_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'extra_work_logs_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'holidays_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.holidays ADD CONSTRAINT holidays_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'insurances_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.insurances ADD CONSTRAINT insurances_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'leave_requests_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.leave_requests ADD CONSTRAINT leave_requests_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'location_cache_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.location_cache ADD CONSTRAINT location_cache_pkey PRIMARY KEY (latitude, longitude);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'locations_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.locations ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'notifications_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.notifications ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'onboarding_submissions_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'organization_groups_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.organization_groups ADD CONSTRAINT organization_groups_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'organizations_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.organizations ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'policies_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.policies ADD CONSTRAINT policies_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'recurring_holidays_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.recurring_holidays ADD CONSTRAINT recurring_holidays_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'roles_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.roles ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'settings_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.settings ADD CONSTRAINT settings_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'site_configurations_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.site_configurations ADD CONSTRAINT site_configurations_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'site_gents_uniform_configs_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.site_gents_uniform_configs ADD CONSTRAINT site_gents_uniform_configs_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'site_ladies_uniform_configs_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.site_ladies_uniform_configs ADD CONSTRAINT site_ladies_uniform_configs_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'site_staff_designations_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.site_staff_designations ADD CONSTRAINT site_staff_designations_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'site_uniform_details_configs_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.site_uniform_details_configs ADD CONSTRAINT site_uniform_details_configs_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'support_tickets_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'tasks_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.tasks ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_comments_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_posts_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'uniform_requests_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.uniform_requests ADD CONSTRAINT uniform_requests_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'user_locations_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_pkey PRIMARY KEY (id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'users_pkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+  END IF;
+
+  -- FOREIGN KEYS
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_approvals_manager_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_approvals_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_approvals ADD CONSTRAINT attendance_approvals_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_events_location_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'attendance_events_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.attendance_events ADD CONSTRAINT attendance_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'comp_off_logs_granted_by_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_granted_by_id_fkey FOREIGN KEY (granted_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'comp_off_logs_leave_request_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_leave_request_id_fkey FOREIGN KEY (leave_request_id) REFERENCES public.leave_requests(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'comp_off_logs_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.comp_off_logs ADD CONSTRAINT comp_off_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'companies_group_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.companies ADD CONSTRAINT companies_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.organization_groups(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'entities_company_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.entities ADD CONSTRAINT entities_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'extra_work_logs_approver_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_approver_id_fkey FOREIGN KEY (approver_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'extra_work_logs_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.extra_work_logs ADD CONSTRAINT extra_work_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'leave_requests_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.leave_requests ADD CONSTRAINT leave_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'locations_created_by_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.locations ADD CONSTRAINT locations_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'notifications_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.notifications ADD CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'onboarding_submissions_created_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_created_user_id_fkey FOREIGN KEY (created_user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'onboarding_submissions_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.onboarding_submissions ADD CONSTRAINT onboarding_submissions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'support_tickets_assigned_to_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_assigned_to_id_fkey FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'support_tickets_raised_by_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.support_tickets ADD CONSTRAINT support_tickets_raised_by_id_fkey FOREIGN KEY (raised_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'tasks_assigned_to_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.tasks ADD CONSTRAINT tasks_assigned_to_id_fkey FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'tasks_created_by_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.tasks ADD CONSTRAINT tasks_created_by_id_fkey FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_comments_author_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_comments_post_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_comments ADD CONSTRAINT ticket_comments_post_id_fkey FOREIGN KEY (post_id) REFERENCES public.ticket_posts(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_posts_author_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'ticket_posts_ticket_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.ticket_posts ADD CONSTRAINT ticket_posts_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES public.support_tickets(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'user_locations_location_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'user_locations_user_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.user_locations ADD CONSTRAINT user_locations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'users_reporting_manager_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.users ADD CONSTRAINT users_reporting_manager_id_fkey FOREIGN KEY (reporting_manager_id) REFERENCES public.users(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'users_role_id_fkey' AND table_schema = 'public') THEN
+    ALTER TABLE public.users ADD CONSTRAINT users_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON UPDATE NO ACTION ON DELETE NO ACTION;
+  END IF;
+END $$;
 
 -- =============================================
 -- END OF SCHEMA EXPORT

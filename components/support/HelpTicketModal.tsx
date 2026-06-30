@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Controller, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { LifeBuoy, AlertCircle } from 'lucide-react';
+import { LifeBuoy, AlertCircle, ArrowLeft } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import type { SupportTicket, User, UploadedFile } from '../../types';
@@ -126,11 +126,40 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                 hideFooter={true}
                 maxWidth="md:max-w-lg"
                 containerClassName={isMobile ? 'bg-[#041b0f] text-white border-t border-[#1d422f]' : 'bg-white text-slate-800 rounded-[24px] shadow-card'}
-                headerClassName={isMobile ? 'border-b border-[#1d422f]/40 p-4 pt-6' : 'border-b border-gray-100 p-6 pb-4'}
+                headerClassName={isMobile ? 'hidden' : 'border-b border-gray-100 p-6 pb-4'}
                 titleClassName={isMobile ? 'text-white font-bold text-sm uppercase tracking-tight' : 'text-slate-900 font-bold text-xl font-sans'}
-                contentClassName={isMobile ? 'text-white p-4' : 'text-slate-700 p-6'}
+                contentClassName={isMobile ? 'text-white p-4 !pt-0' : 'text-slate-700 p-6'}
             >
                 <div className="space-y-6">
+                    {/* Premium Help Header */}
+                    {isMobile && (
+                        <div className="relative overflow-hidden pt-8 pb-6 px-6 bg-gradient-to-br from-[#1c160c] to-[#041b0f] rounded-b-[40px] shadow-2xl mb-4 -mx-4">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
+                            <div className="relative z-10 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-400 shadow-inner border border-amber-500/20">
+                                        <LifeBuoy className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5 opacity-60 mb-0.5">
+                                            <LifeBuoy className="w-3 h-3 text-amber-400" />
+                                            <span className="text-[10px] uppercase font-black tracking-[0.2em] text-white">Support Desk</span>
+                                        </div>
+                                        <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
+                                            Help<span className="text-amber-400">.</span>
+                                        </h2>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-95 transition-all"
+                                >
+                                    <ArrowLeft className="w-5 h-5 text-white" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className={isMobile ? 'flex items-center space-x-3 bg-[#0a1c13] p-4 rounded-xl border border-[#1d422f]' : 'flex items-center space-x-3 bg-[#f0fdf4] p-4 rounded-2xl border border-emerald-500/20'}>
                         <div className={`p-2 rounded-full ${isMobile ? 'bg-[#1d422f]/40' : 'bg-emerald-500/10'}`}>
                             <LifeBuoy className={`h-5 w-5 ${isMobile ? 'text-emerald-400' : 'text-emerald-600'}`} />
@@ -233,24 +262,25 @@ const HelpTicketModal: React.FC<HelpTicketModalProps> = ({ isOpen, onClose }) =>
                             />
                         </div>
 
-                        <div className={isMobile ? 'flex justify-between items-center pt-6 mt-4 border-t border-[#1d422f]/40 relative z-10' : 'flex justify-end space-x-3 pt-4 border-t border-gray-100'}>
+                        <div className={isMobile ? 'flex gap-3 pt-6 mt-4 border-t border-[#1d422f]/40 relative z-10 w-full' : 'flex justify-end space-x-3 pt-4 border-t border-gray-100'}>
                             {isMobile ? (
                                 <>
-                                    <button
+                                    <Button
                                         type="button"
+                                        variant="outline"
                                         onClick={onClose}
                                         disabled={isSubmitting}
-                                        className="text-white text-sm font-bold bg-transparent px-2 active:scale-95 transition-transform"
+                                        className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !border-white/10 !text-white hover:!bg-white/5 !rounded-2xl"
                                     >
                                         Cancel
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                         type="submit"
-                                        disabled={isSubmitting}
-                                        className="text-white text-sm font-bold bg-transparent px-2 active:scale-95 transition-transform"
+                                        isLoading={isSubmitting}
+                                        className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !bg-amber-600 hover:!bg-amber-700 text-white !rounded-2xl"
                                     >
-                                        {isSubmitting ? 'Submitting...' : 'Submit Ticket'}
-                                    </button>
+                                        Submit Ticket
+                                    </Button>
                                 </>
                             ) : (
                                 <>

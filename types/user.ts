@@ -132,6 +132,9 @@ export interface User {
   passcode?: string;
   department?: string;
   weeklyOffDays?: number[];
+  homeLatitude?: number | null;
+  homeLongitude?: number | null;
+  homeAddress?: string | null;
 }
 
 export interface UserChild {

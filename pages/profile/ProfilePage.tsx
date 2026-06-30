@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '../../services/supabase';
 import { useForm, SubmitHandler, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -15,7 +16,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -25,6 +26,7 @@ import HelpTicketModal from '../../components/support/HelpTicketModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
@@ -169,12 +171,28 @@ const ProfilePage: React.FC = () => {
         return () => { cancelled = true; };
     }, [user?.id, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, isOnBreak]);
 
+    const locationParams = useLocation();
+    const queryParams = new URLSearchParams(locationParams.search);
+    const approveLocationChange = queryParams.get('approveLocationChange');
+    const reqUserId = queryParams.get('reqUserId');
+    const newLat = queryParams.get('lat');
+    const newLon = queryParams.get('lon');
+    const newAddr = queryParams.get('address');
+    const changeReasonParam = queryParams.get('reason');
+
     const [gateUser, setGateUser] = useState<GateUser | null>(null);
     const [isGateUserLoading, setIsGateUserLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+    const [isHomeLocationOpen, setIsHomeLocationOpen] = useState(false);
     const [isEnrolling, setIsEnrolling] = useState(false);
     const [isRegistering, setIsRegistering] = useState(false);
+
+    // Home Location Change Request States
+    const [changeReason, setChangeReason] = useState('');
+    const [updateCount, setUpdateCount] = useState(0);
+    const [requestingUser, setRequestingUser] = useState<User | null>(null);
+    const isFirstTime = !user?.homeAddress;
 
     useEffect(() => {
         const fetchGateData = async () => {
@@ -215,6 +233,218 @@ const ProfilePage: React.FC = () => {
     const [children, setChildren] = useState<UserChild[]>([]);
     const [newChildName, setNewChildName] = useState('');
     const [isChildrenLoading, setIsChildrenLoading] = useState(false);
+
+    // Home Location State
+    const [homeLocationName, setHomeLocationName] = useState('');
+    const [homeLatitude, setHomeLatitude] = useState('');
+    const [homeLongitude, setHomeLongitude] = useState('');
+    const [homeAddress, setHomeAddress] = useState('');
+    const [isSyncingLocation, setIsSyncingLocation] = useState(false);
+    const [isSavingLocation, setIsSavingLocation] = useState(false);
+
+    useEffect(() => {
+        if (user) {
+            setHomeLocationName(user.name ? `${user.name} Home` : 'My Home');
+            setHomeLatitude(user.homeLatitude != null ? String(user.homeLatitude) : '');
+            setHomeLongitude(user.homeLongitude != null ? String(user.homeLongitude) : '');
+            setHomeAddress(user.homeAddress || '');
+        }
+    }, [user]);
+
+    // Fetch approved home location update count for this calendar year
+    useEffect(() => {
+        if (isHomeLocationOpen && user?.id) {
+            const fetchUpdateCount = async () => {
+                try {
+                    const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+                    const { data } = await supabase
+                        .from('notifications')
+                        .select('id')
+                        .eq('user_id', user.id)
+                        .ilike('message', '%home location%')
+                        .ilike('message', '%approved%')
+                        .gte('created_at', startOfYear);
+                    setUpdateCount(data ? data.length : 0);
+                } catch (e) {
+                    console.error('Failed to fetch location update count:', e);
+                }
+            };
+            fetchUpdateCount();
+        }
+    }, [isHomeLocationOpen, user?.id]);
+
+    // Check for location change approval query params on load (Manager/Admin view)
+    useEffect(() => {
+        if (approveLocationChange && reqUserId) {
+            api.getUsers().then(users => {
+                const found = users.find(u => u.id === reqUserId);
+                if (found) setRequestingUser(found);
+            });
+        }
+    }, [approveLocationChange, reqUserId]);
+
+    const syncHomeLocationToDashboard = async (userId: string, userName: string, lat: number, lon: number, address: string) => {
+        try {
+            const userLocs = await api.getUserLocations(userId);
+            const locationNameKey = `${userName} Home`;
+            const existingHomeLoc = userLocs.find(loc => 
+                loc.name?.toLowerCase().includes('home')
+            );
+            
+            if (existingHomeLoc) {
+                await api.updateLocation(existingHomeLoc.id, {
+                    name: existingHomeLoc.name || locationNameKey,
+                    latitude: lat,
+                    longitude: lon,
+                    radius: 100,
+                    address: address || null
+                });
+            } else {
+                const newLoc = await api.createLocation({
+                    name: locationNameKey,
+                    latitude: lat,
+                    longitude: lon,
+                    radius: 100,
+                    address: address || null,
+                    createdBy: userId
+                });
+                await api.assignLocationToUser(userId, newLoc.id);
+            }
+        } catch (err) {
+            console.error('Failed to sync location to dashboard:', err);
+        }
+    };
+
+    const handleRequestLocationChange = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        if (updateCount >= 3) {
+            setToast({ message: 'Maximum 3 updates per calendar year allowed.', type: 'error' });
+            return;
+        }
+        if (!changeReason.trim()) {
+            setToast({ message: 'Please provide a reason for updating your address.', type: 'error' });
+            return;
+        }
+        
+        setIsSavingLocation(true);
+        try {
+            // Find admin users
+            const { data: admins } = await supabase
+                .from('users')
+                .select('id')
+                .in('role_id', ['admin', 'super_admin', 'developer']);
+                
+            const notifyTargets = new Set<string>();
+            if (user.reportingManagerId) {
+                notifyTargets.add(user.reportingManagerId);
+            }
+            if (admins) {
+                admins.forEach(admin => notifyTargets.add(admin.id));
+            }
+            
+            const notificationMsg = `[Location Change Request] ${user.name} requested to change home location. Reason: "${changeReason}"`;
+            const reqLink = `/profile?approveLocationChange=true&reqUserId=${user.id}&lat=${homeLatitude}&lon=${homeLongitude}&address=${encodeURIComponent(homeAddress)}&reason=${encodeURIComponent(changeReason)}`;
+            
+            const promises = Array.from(notifyTargets).map(targetId => {
+                return api.createNotification({
+                    userId: targetId,
+                    message: notificationMsg,
+                    type: 'approval_request',
+                    linkTo: reqLink
+                });
+            });
+            
+            await Promise.all(promises);
+            
+            setToast({ message: 'Home location change request submitted for approval!', type: 'success' });
+            setIsHomeLocationOpen(false);
+            setChangeReason('');
+        } catch (err: any) {
+            console.error(err);
+            setToast({ message: err.message || 'Failed to submit request.', type: 'error' });
+        } finally {
+            setIsSavingLocation(false);
+        }
+    };
+
+    const handleSyncHomeLocation = async () => {
+        setIsSyncingLocation(true);
+        setToast({ message: 'Acquiring your precise position, please wait...', type: 'info' });
+        try {
+            const pos = await getPrecisePosition();
+            const { latitude: lat, longitude: lon } = pos.coords;
+            const latStr = lat.toFixed(7);
+            const lonStr = lon.toFixed(7);
+            
+            let fetchedAddress = '';
+            try {
+                fetchedAddress = await reverseGeocode(lat, lon);
+            } catch (err) {
+                console.warn('Reverse geocode failed:', err);
+            }
+            
+            const confirmMsg = `Acquired Coordinates:\nLatitude: ${latStr}\nLongitude: ${lonStr}\n\nAddress:\n${fetchedAddress || 'Could not resolve address'}\n\nUpdate your home location?`;
+            if (window.confirm(confirmMsg)) {
+                setHomeLatitude(latStr);
+                setHomeLongitude(lonStr);
+                if (fetchedAddress) setHomeAddress(fetchedAddress);
+                
+                setIsSavingLocation(true);
+                const updatedUser = await api.updateUser(user.id, {
+                    homeLatitude: lat,
+                    homeLongitude: lon,
+                    homeAddress: fetchedAddress || homeAddress
+                });
+                await syncHomeLocationToDashboard(user.id, user.name || '', lat, lon, fetchedAddress || homeAddress);
+                updateUserProfile(updatedUser);
+                setToast({ message: 'Home location synced and saved successfully!', type: 'success' });
+                triggerHaptic(ImpactStyle.Medium);
+            } else {
+                setToast({ message: 'Location sync cancelled.', type: 'info' });
+            }
+        } catch (err: any) {
+            console.error(err);
+            const msg = err.message?.toLowerCase().includes('permission') 
+                ? 'Location permission denied. Please check settings.' 
+                : 'Failed to acquire location. Please try again.';
+            setToast({ message: msg, type: 'error' });
+        } finally {
+            setIsSyncingLocation(false);
+            setIsSavingLocation(false);
+        }
+    };
+
+    const handleSaveHomeLocation = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+        
+        const lat = parseFloat(homeLatitude);
+        const lon = parseFloat(homeLongitude);
+        
+        if (isNaN(lat) || isNaN(lon)) {
+            setToast({ message: 'Please enter valid numeric coordinates or click Sync.', type: 'error' });
+            return;
+        }
+        
+        setIsSavingLocation(true);
+        try {
+            const updatedUser = await api.updateUser(user.id, {
+                homeLatitude: lat,
+                homeLongitude: lon,
+                homeAddress: homeAddress.trim() || null
+            });
+            await syncHomeLocationToDashboard(user.id, user.name || '', lat, lon, homeAddress.trim());
+            updateUserProfile(updatedUser);
+            setToast({ message: 'Home location updated successfully!', type: 'success' });
+            triggerHaptic(ImpactStyle.Medium);
+        } catch (err: any) {
+            console.error(err);
+            setToast({ message: err.message || 'Failed to save home location.', type: 'error' });
+        } finally {
+            setIsSavingLocation(false);
+        }
+    };
 
     const handleResetGateAccess = async () => {
         if (!user?.id || !gateUser?.id) return;
@@ -727,7 +957,7 @@ const ProfilePage: React.FC = () => {
                     >
                         <div className="space-y-1">
                             <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic">
-                                {user.name.split(' ')[0]}<span className="text-emerald-500">.</span>
+                                {user.name}<span className="text-emerald-500">.</span>
                             </h2>
                             <div className="flex items-center justify-center gap-2">
                                  <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase tracking-[0.2em] border border-emerald-500/20 shadow-lg shadow-black/20">
@@ -776,6 +1006,15 @@ const ProfilePage: React.FC = () => {
                                 <HelpCircle className="w-3 h-3 text-amber-400" />
                                 Help
                             </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); setIsHomeLocationOpen(true); }}
+                                className="px-2 py-1.5 bg-transparent border-none text-sky-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
+                            >
+                                <Home className="w-3 h-3 text-sky-400" />
+                                Home
+                            </button>
+
                         </div>
                     </motion.div>
                 </div>
@@ -1297,6 +1536,8 @@ const ProfilePage: React.FC = () => {
                         </section>
                     )}
 
+                    {/* Home Location Modal trigger placeholder — rendered as modal below */}
+
                     {/* Floating Logout Button */}
                     <div className="flex justify-center mt-4 mb-2 w-full px-8">
                         <motion.button 
@@ -1346,7 +1587,155 @@ const ProfilePage: React.FC = () => {
                         )}
                     </div>
 
+                    {/* ═══ HOME LOCATION MODAL (MOBILE) ═══ */}
+                        <AnimatePresence>
+                            {isHomeLocationOpen && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 100 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 100 }}
+                                    className="fixed inset-0 z-[110] bg-[#041b0f] flex flex-col overflow-hidden"
+                                >
+                                    {/* Header */}
+                                    <div className="relative overflow-hidden pt-8 pb-6 px-6 bg-gradient-to-br from-[#0a2133] to-[#041b0f] rounded-b-[40px] shadow-2xl mb-4">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
+                                        <div className="relative z-10 flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-3 bg-sky-500/10 rounded-2xl text-sky-400 shadow-inner border border-sky-500/20">
+                                                    <Home className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-1.5 opacity-60 mb-0.5">
+                                                        <MapPin className="w-3 h-3 text-sky-400" />
+                                                        <span className="text-[10px] uppercase font-black tracking-[0.2em] text-white">Location Config</span>
+                                                    </div>
+                                                    <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
+                                                        Home<span className="text-sky-400">.</span>
+                                                    </h2>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => { triggerHaptic(); setIsHomeLocationOpen(false); }}
+                                                className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-95 transition-all"
+                                            >
+                                                <ArrowLeft className="w-5 h-5 text-white" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Form Content */}
+                                    <div className="flex-1 overflow-y-auto px-6 py-4">
+                                        <form 
+                                            onSubmit={async (e) => {
+                                                if (isFirstTime) {
+                                                    await handleSaveHomeLocation(e);
+                                                    setIsHomeLocationOpen(false);
+                                                } else {
+                                                    await handleRequestLocationChange(e);
+                                                }
+                                            }} 
+                                            className="space-y-5"
+                                        >
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Location Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={homeLocationName}
+                                                    disabled
+                                                    className="form-input bg-white/5 border-white/10 text-sm h-[48px] rounded-2xl w-full text-gray-400 cursor-not-allowed px-4"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Latitude</label>
+                                                    <input
+                                                        type="text"
+                                                        value={homeLatitude}
+                                                        onChange={e => setHomeLatitude(e.target.value)}
+                                                        className="form-input bg-black/20 border-white/10 text-white text-sm h-[48px] rounded-2xl w-full focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 px-4"
+                                                        placeholder="Latitude"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Longitude</label>
+                                                    <input
+                                                        type="text"
+                                                        value={homeLongitude}
+                                                        onChange={e => setHomeLongitude(e.target.value)}
+                                                        className="form-input bg-black/20 border-white/10 text-white text-sm h-[48px] rounded-2xl w-full focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 px-4"
+                                                        placeholder="Longitude"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Home Address</label>
+                                                <textarea
+                                                    value={homeAddress}
+                                                    onChange={e => setHomeAddress(e.target.value)}
+                                                    rows={3}
+                                                    className="form-input bg-black/20 border-white/10 text-white text-sm py-3 px-4 rounded-2xl w-full resize-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50"
+                                                    placeholder="Enter your home address"
+                                                />
+                                            </div>
+
+                                            {/* Subsequent Change Requests Flow */}
+                                            {!isFirstTime && (
+                                                <div className="space-y-4 pt-2">
+                                                    <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-2xl text-[11px] text-amber-300 space-y-1">
+                                                        <p className="font-bold flex items-center gap-1.5">⚠️ Calendar Year Update Limit</p>
+                                                        <p>You can update your home location only 3 times per calendar year.</p>
+                                                        <p>Approved updates this year: <strong className="text-white">{updateCount} / 3</strong></p>
+                                                    </div>
+                                                    {updateCount >= 3 ? (
+                                                        <div className="text-rose-400 font-bold text-xs p-3 text-center bg-rose-500/10 rounded-2xl border border-rose-500/20">
+                                                            You have reached the maximum limit of 3 home location updates for this calendar year.
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-1.5">Reason for Updating Address</label>
+                                                            <textarea
+                                                                value={changeReason}
+                                                                onChange={e => setChangeReason(e.target.value)}
+                                                                rows={2}
+                                                                required
+                                                                className="form-input bg-black/20 border-white/10 text-white text-sm py-3 px-4 rounded-2xl w-full resize-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50"
+                                                                placeholder="Please explain why you are updating your home address..."
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-3 pt-4 border-t border-white/5">
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleSyncHomeLocation}
+                                                    isLoading={isSyncingLocation}
+                                                    variant="outline"
+                                                    className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !border-white/10 !text-white hover:!bg-white/5 !rounded-2xl"
+                                                >
+                                                    <Navigation className="w-3.5 h-3.5 mr-1.5" />
+                                                    Sync Location
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    isLoading={isSavingLocation}
+                                                    disabled={!isFirstTime && (updateCount >= 3 || !changeReason.trim())}
+                                                    className={`flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !rounded-2xl ${
+                                                        !isFirstTime ? '!bg-amber-600 hover:!bg-amber-700' : '!bg-sky-600 hover:!bg-sky-700'
+                                                    } text-white`}
+                                                >
+                                                    {isFirstTime ? 'Save' : 'Request Update'}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                     {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
+
                         <AnimatePresence>
                             {isSettingsOpen && (
                                 <motion.div 
@@ -2194,6 +2583,80 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </div>
                     )}
+
+                    {/* Home Location Card */}
+                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="p-2 bg-emerald-50 rounded-lg">
+                                    <MapPin className="h-5 w-5 text-emerald-600" />
+                                </div>
+                                <h3 className="text-sm font-bold text-gray-900">Home Location</h3>
+                            </div>
+                            <form onSubmit={handleSaveHomeLocation} className="space-y-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Location Name</label>
+                                    <input
+                                        type="text"
+                                        value={homeLocationName}
+                                        disabled
+                                        className="form-input bg-gray-50 border-gray-200 text-sm h-[40px] rounded-lg w-full text-gray-500 cursor-not-allowed"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Latitude</label>
+                                        <input
+                                            type="text"
+                                            value={homeLatitude}
+                                            onChange={e => setHomeLatitude(e.target.value)}
+                                            className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
+                                            placeholder="Latitude"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-500 mb-1">Longitude</label>
+                                        <input
+                                            type="text"
+                                            value={homeLongitude}
+                                            onChange={e => setHomeLongitude(e.target.value)}
+                                            className="form-input bg-white border-gray-200 text-sm h-[40px] rounded-lg w-full"
+                                            placeholder="Longitude"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Home Address</label>
+                                    <textarea
+                                        value={homeAddress}
+                                        onChange={e => setHomeAddress(e.target.value)}
+                                        rows={2}
+                                        className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none"
+                                        placeholder="Enter your home address"
+                                    />
+                                </div>
+                                <div className="flex gap-2 justify-end pt-3 mt-3 border-t border-gray-100">
+                                    <Button 
+                                        type="button" 
+                                        onClick={handleSyncHomeLocation} 
+                                        isLoading={isSyncingLocation}
+                                        variant="outline"
+                                        className="!h-[38px] text-xs font-semibold"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                                        Sync Location
+                                    </Button>
+                                    <Button 
+                                        type="submit" 
+                                        isLoading={isSavingLocation}
+                                        className="!h-[38px] text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                                    >
+                                        Save
+                                    </Button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                     </div> {/* End Horizontal Grid Row */}
                 </div> {/* End col-span-12 container */}
 
@@ -2343,6 +2806,89 @@ const ProfilePage: React.FC = () => {
                     captureGuidance="profile"
                     isLoading={isRegistering}
                 />
+            )}
+
+            {approveLocationChange === 'true' && requestingUser && (
+                <Modal
+                    isOpen={true}
+                    onClose={() => {
+                        navigate('/profile', { replace: true });
+                    }}
+                    title="Home Location Change Approval"
+                    hideFooter={true}
+                    containerClassName="bg-[#041b0f] text-white border border-[#1d422f] rounded-[24px] shadow-card max-w-md mx-auto"
+                >
+                    <div className="space-y-4 p-4">
+                        <div className="flex items-center gap-3 bg-[#0a1c13] p-4 rounded-xl border border-[#1d422f]">
+                            <MapPin className="h-6 w-6 text-sky-400" />
+                            <div>
+                                <h4 className="font-bold text-white text-sm">Request Details</h4>
+                                <p className="text-xs text-gray-400">Request from {requestingUser.name}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                            <p><strong className="text-gray-400">Current Address:</strong> {requestingUser.homeAddress || 'Not Set'}</p>
+                            <p><strong className="text-sky-400">New Address:</strong> {newAddr}</p>
+                            <p><strong className="text-amber-400">Reason for Change:</strong> {changeReasonParam}</p>
+                            <p><strong className="text-gray-400">New Coordinates:</strong> {newLat}, {newLon}</p>
+                        </div>
+                        <div className="flex gap-3 pt-4 border-t border-white/10">
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await api.updateUser(reqUserId!, {
+                                            homeLatitude: parseFloat(newLat || '0'),
+                                            homeLongitude: parseFloat(newLon || '0'),
+                                            homeAddress: newAddr
+                                        });
+                                        
+                                        await syncHomeLocationToDashboard(
+                                            reqUserId!,
+                                            requestingUser.name || '',
+                                            parseFloat(newLat || '0'),
+                                            parseFloat(newLon || '0'),
+                                            newAddr || ''
+                                        );
+                                        
+                                        await api.createNotification({
+                                            userId: reqUserId!,
+                                            message: `Your home location update request to "${newAddr}" has been approved by ${user?.name}.`,
+                                            type: 'info'
+                                        });
+
+                                        setToast({ message: 'Home location change approved successfully!', type: 'success' });
+                                    } catch (err) {
+                                        setToast({ message: 'Failed to approve request.', type: 'error' });
+                                    } finally {
+                                        navigate('/profile', { replace: true });
+                                    }
+                                }}
+                                className="flex-1 !bg-emerald-600 hover:!bg-emerald-700 text-white !rounded-2xl"
+                            >
+                                Approve
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await api.createNotification({
+                                            userId: reqUserId!,
+                                            message: `Your home location update request to "${newAddr}" has been rejected.`,
+                                            type: 'warning'
+                                        });
+                                        setToast({ message: 'Request rejected.', type: 'info' });
+                                    } catch (err) {
+                                        setToast({ message: 'Failed to reject request.', type: 'error' });
+                                    } finally {
+                                        navigate('/profile', { replace: true });
+                                    }
+                                }}
+                                className="flex-1 !bg-rose-600 hover:!bg-rose-700 text-white !rounded-2xl"
+                            >
+                                Reject
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
             )}
 
             <HelpTicketModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />

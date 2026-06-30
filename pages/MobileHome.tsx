@@ -339,7 +339,7 @@ const MobileHome: React.FC = () => {
                             <span className="text-[9px] uppercase font-black tracking-[0.22em] text-white">Security Uplink Active</span>
                         </div>
                         <h1 className="text-[19px] font-black text-white tracking-tight leading-none">
-                            Hi, {user.name.split(' ')[0]}
+                            Hi, {user.name}
                         </h1>
                         <p className="text-[9px] text-emerald-100/35 font-bold uppercase tracking-[0.2em] mt-0.5">
                             {user.role.replace(/_/g, ' ')}
