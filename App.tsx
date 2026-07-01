@@ -398,8 +398,11 @@ const App: React.FC = () => {
   useEffect(() => {
     // Show WhatsNewModal if the version running is newer than the last seen version
     const lastSeenReleaseNotesVersion = localStorage.getItem('last_seen_release_notes_version');
-    if (lastSeenReleaseNotesVersion !== APP_VERSION) {
+    if (lastSeenReleaseNotesVersion && lastSeenReleaseNotesVersion !== APP_VERSION) {
       setShowWhatsNew(true);
+    } else if (!lastSeenReleaseNotesVersion) {
+      // First time launch - don't show what's new, just set the version
+      localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
     }
   }, []);
 
