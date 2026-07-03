@@ -4379,22 +4379,30 @@ export const api = {
 
     let sickTotal = 0;
     const sickOpeningBalance = Number(userData.sick_leave_opening_balance || userData.sickLeaveOpeningBalance || 0);
+    // Sick leave policy: NO carry-forward across years (annual reset).
+    // Opening balance only applies if sick_leave_opening_date is within the current year
+    // (e.g. a mid-year joinee who had a partial balance from onboarding).
+    // Users whose opening date predates the current year get a fresh 0 starting balance.
+    const sickOpeningDateStr = userData.sick_leave_opening_date || `${currentYear}-01-01`;
+    const sickOpeningYear = new Date(sickOpeningDateStr.replace(/-/g, '/')).getFullYear();
+    const effectiveSickOpeningBalance = sickOpeningYear === currentYear ? sickOpeningBalance : 0;
+
     if (rules.enableSickLeaveAccrual) {
       const openingDate = userData.sick_leave_opening_date || `${currentYear}-01-01`;
       const openingDateObj = new Date(openingDate);
       
       // Sick Leave Policy: STRICTLY CURRENT YEAR (No Carry Forward).
       // ALL users (Office, Field, Site) share the exact same calculation: 1 per calendar month.
-      // Floor the opening date to Jan 1st 2026.
+      // Floor the opening date to Jan 1st of current year.
       const effectiveOpeningDateSL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
       
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, effectiveOpeningDateSL);
-      sickTotal = sickOpeningBalance + monthsElapsed + 1; 
+      sickTotal = effectiveSickOpeningBalance + monthsElapsed + 1; 
     } else {
-      // Even if Sick Leave accrual is disabled globally, we ensure it's at least capped to 5 for Jan-May if viewing May
+      // Even if Sick Leave accrual is disabled globally, cap to annualSickLeaves for the elapsed months
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, accrualYearStart);
-      sickTotal = sickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
-      console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'sickTotal:', sickTotal);
+      sickTotal = effectiveSickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
+      console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'effectiveSickOpeningBalance:', effectiveSickOpeningBalance, 'sickTotal:', sickTotal);
     }
     console.log('[LeaveDebug] FINAL sickTotal:', sickTotal, 'isMonthlyAccrual:', isMonthlyAccrual);
 
