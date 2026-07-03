@@ -4380,29 +4380,32 @@ export const api = {
     let sickTotal = 0;
     const sickOpeningBalance = Number(userData.sick_leave_opening_balance || userData.sickLeaveOpeningBalance || 0);
     // Sick leave policy: NO carry-forward across years (annual reset).
-    // Opening balance only applies if sick_leave_opening_date is within the current year
-    // (e.g. a mid-year joinee who had a partial balance from onboarding).
-    // Users whose opening date predates the current year get a fresh 0 starting balance.
-    const sickOpeningDateStr = userData.sick_leave_opening_date || `${currentYear}-01-01`;
-    const sickOpeningYear = new Date(sickOpeningDateStr.replace(/-/g, '/')).getFullYear();
-    const effectiveSickOpeningBalance = sickOpeningYear === currentYear ? sickOpeningBalance : 0;
+    // Opening balance ONLY applies for genuine mid-year joiners:
+    //   - sick_leave_opening_date must be explicitly set in the DB (not null)
+    //   - AND it must be strictly AFTER Jan 1 of the current year
+    // A null date or Jan-1 date = annual reset → opening balance is 0.
+    const explicitSickOpeningDate = userData.sick_leave_opening_date;
+    const yearStartStr = `${currentYear}-01-01`;
+    const isMidYearJoiner = !!explicitSickOpeningDate &&
+      explicitSickOpeningDate > yearStartStr &&
+      new Date(explicitSickOpeningDate.replace(/-/g, '/')).getFullYear() === currentYear;
+    const effectiveSickOpeningBalance = isMidYearJoiner ? sickOpeningBalance : 0;
 
     if (rules.enableSickLeaveAccrual) {
-      const openingDate = userData.sick_leave_opening_date || `${currentYear}-01-01`;
-      const openingDateObj = new Date(openingDate);
-      
-      // Sick Leave Policy: STRICTLY CURRENT YEAR (No Carry Forward).
-      // ALL users (Office, Field, Site) share the exact same calculation: 1 per calendar month.
-      // Floor the opening date to Jan 1st of current year.
+      // Floor the opening date to Jan 1 of the current year for non-mid-year users.
+      const openingDate = (isMidYearJoiner ? explicitSickOpeningDate : yearStartStr)!;
+      const openingDateObj = new Date(openingDate.replace(/-/g, '/'));
       const effectiveOpeningDateSL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
-      
+
+      // Sick Leave Policy: STRICTLY CURRENT YEAR (No Carry Forward).
+      // ALL users (Office, Field, Site): 1 per calendar month.
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, effectiveOpeningDateSL);
-      sickTotal = effectiveSickOpeningBalance + monthsElapsed + 1; 
+      sickTotal = effectiveSickOpeningBalance + monthsElapsed + 1;
     } else {
-      // Even if Sick Leave accrual is disabled globally, cap to annualSickLeaves for the elapsed months
+      // Accrual disabled: cap to annualSickLeaves for months elapsed since year start.
       const monthsElapsed = differenceInCalendarMonths(accrualEndDate, accrualYearStart);
       sickTotal = effectiveSickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
-      console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'effectiveSickOpeningBalance:', effectiveSickOpeningBalance, 'sickTotal:', sickTotal);
+      console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'effectiveSickOpeningBalance:', effectiveSickOpeningBalance, 'isMidYearJoiner:', isMidYearJoiner, 'sickTotal:', sickTotal);
     }
     console.log('[LeaveDebug] FINAL sickTotal:', sickTotal, 'isMonthlyAccrual:', isMonthlyAccrual);
 
