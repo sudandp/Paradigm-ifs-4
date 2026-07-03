@@ -49,6 +49,7 @@ export interface DailyData {
   travelDistance?: number;
   travelDuration?: number;
   isAutoCheckout?: boolean;
+  totalSteps?: number;
 }
 
 export interface EmployeeMonthlyData {
@@ -63,6 +64,7 @@ export interface EmployeeMonthlyData {
   totalOT: number;
   totalTravelDistance?: number;
   totalTravelDuration?: number;
+  totalSteps?: number;
   presentDays: number;
   absentDays: number;
   weekOffs: number;
@@ -137,7 +139,7 @@ export function processEmployeeMonth(
   const daysInPeriod = effectiveEnd.getDate();
   const dailyData: DailyData[] = [];
   
-  let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0, totalTravelDistance = 0, totalTravelDuration = 0;
+  let totalGrossWorkDuration = 0, totalNetWorkDuration = 0, totalBreakDuration = 0, totalOT = 0, totalTravelDistance = 0, totalTravelDuration = 0, totalSteps = 0;
   let presentDays = 0, absentDays = 0, halfDays = 0, threeQuarterDays = 0, quarterDays = 0, holidaysCount = 0;
   let leavesCount = 0, floatingHolidays = 0, lossOfPay = 0, holidayPresents = 0, weekendPresents = 0;
   let sickLeaves = 0, earnedLeaves = 0, casualLeaves = 0, compOffs = 0, workFromHomeDays = 0, weekOffs = 0, totalPayableDays = 0, overtimeDays = 0;
@@ -314,6 +316,7 @@ export function processEmployeeMonth(
     let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
     let currentDayTravelKm = 0;
     let currentDayTravelDuration = 0;
+    let currentDaySteps = 0;
     let netHours = 0, grossHours = 0, breakHours = 0;
     let fieldResultStatus = '';
     let resolvedShift: any = null;
@@ -389,6 +392,11 @@ export function processEmployeeMonth(
           (punchOut as any).checkoutNote?.includes('Auto punch-out')
       ));
 
+      // Sum daily steps from all punch-out events for this day (works for office, field, site)
+      currentDaySteps = dayEvents
+          .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
+          .reduce((sum, e) => sum + (e.steps || 0), 0);
+
       if (!isFuture) { 
           totalNetWorkDuration += netHours; 
           totalGrossWorkDuration += grossHours; 
@@ -396,6 +404,7 @@ export function processEmployeeMonth(
           totalOT += ot; 
           totalTravelDistance += currentDayTravelKm;
           totalTravelDuration += currentDayTravelDuration;
+          totalSteps += currentDaySteps;
           // OT duty count = extra shifts worked beyond first (smarter than binary +1 per day)
           // e.g. Day with [Shift C, Shift A, Shift B] = 3 shifts = +2 OT duties
           if (category === 'site') {
@@ -475,7 +484,8 @@ export function processEmployeeMonth(
       netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift,
       travelDistance: currentDayTravelKm,
       travelDuration: currentDayTravelDuration,
-      isAutoCheckout
+      isAutoCheckout,
+      totalSteps: currentDaySteps
     });
   }
 
@@ -485,7 +495,7 @@ export function processEmployeeMonth(
 
   return {
     employeeId: user.id, employeeName: user.name, role: user.role, statuses: dailyData.map(d => d.status),
-    totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration,
+    totalGrossWorkDuration, totalNetWorkDuration, totalBreakDuration, totalOT, totalTravelDistance, totalTravelDuration, totalSteps,
     presentDays, absentDays, weekOffs, holidays: holidaysCount, holidayPresents, weekendPresents,
     halfDays, threeQuarterDays, quarterDays, sickLeaves, earnedLeaves, casualLeaves, floatingHolidays, compOffs,
     lossOfPays: lossOfPay, workFromHomeDays, totalPayableDays: cappedPayableDays,

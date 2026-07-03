@@ -908,48 +908,37 @@ export function evaluateAttendanceStatus(params: {
 export function calculateDailyTravelKm(events: AttendanceEvent[]): number {
   if (!events || events.length === 0) return 0;
 
-  // 1. Sum up saved travelDistance fields if available
+  // 1. Sum up saved travelDistance fields if available and positive
   let savedDistance = 0;
-  let hasSavedDistance = false;
+  let hasNonZeroSavedDistance = false;
   events.forEach(e => {
-    if (e.travelDistance !== undefined && e.travelDistance !== null) {
+    if (e.travelDistance !== undefined && e.travelDistance !== null && e.travelDistance > 0) {
       savedDistance += e.travelDistance;
-      hasSavedDistance = true;
+      hasNonZeroSavedDistance = true;
     }
   });
 
-  if (hasSavedDistance) {
+  if (hasNonZeroSavedDistance) {
     return Number(savedDistance.toFixed(2));
   }
 
-  // 2. Fallback: calculate site-to-site travel dynamically from coordinates
+  // 2. Fallback: calculate travel dynamically from consecutive punch coordinates (both within and between sites)
   const sorted = [...events]
       .filter(e => e.type === 'punch-in' || e.type === 'punch-out')
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      .filter((e, i, arr) => {
-          if (i === 0) return true;
-          const prev = arr[i - 1];
-          return e.type !== prev.type || e.timestamp !== prev.timestamp;
-      });
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   let totalDist = 0;
-  let lastPunchOut: AttendanceEvent | null = null;
-
-  for (let i = 0; i < sorted.length; i++) {
-      const evt = sorted[i];
-      if (evt.type === 'punch-out') {
-          lastPunchOut = evt;
-      } else if (evt.type === 'punch-in' && lastPunchOut) {
-          if (lastPunchOut.latitude && lastPunchOut.longitude && evt.latitude && evt.longitude) {
-              const dist = calculateDistanceMeters(
-                  lastPunchOut.latitude,
-                  lastPunchOut.longitude,
-                  evt.latitude,
-                  evt.longitude
-              ) / 1000;
-              totalDist += dist;
-          }
-          lastPunchOut = null;
+  for (let i = 0; i < sorted.length - 1; i++) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+          const dist = calculateDistanceMeters(
+              current.latitude,
+              current.longitude,
+              next.latitude,
+              next.longitude
+          ) / 1000;
+          totalDist += dist;
       }
   }
 

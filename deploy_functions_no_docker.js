@@ -36,6 +36,7 @@ async function deploy(slug, filePath) {
 try {
   await deploy('send-email', 'supabase/functions/send-email/index.ts');
   await deploy('process-notification-rules', 'supabase/functions/process-notification-rules/index.ts');
+  await deploy('process-automated-pings', 'supabase/functions/process-automated-pings/index.ts');
   console.log('--- ALL DEPLOYMENTS FINISHED ---');
 } catch (err) {
   console.error('Deployment failed:', err.message);

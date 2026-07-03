@@ -253,14 +253,21 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
               (presentDays + halfDays) > 0 ? totalNetWorkDuration / (presentDays + halfDays) : 0
             );
 
+            // Compute totalTravelDistance and totalTravelDuration from dailyData for backward compatibility
+            const dailyData = snap.dailyData || [];
+            const totalTravelDistance = summary.totalTravelDistance ?? dailyData.reduce((sum: number, d: any) => sum + (d.travelDistance || 0), 0);
+            const totalTravelDuration = summary.totalTravelDuration ?? dailyData.reduce((sum: number, d: any) => sum + (d.travelDuration || 0), 0);
+
             return {
               ...summary,
               employeeId: snap.employeeId,
               employeeName: targetUsers.find(u => u.id === snap.employeeId)?.name || snap.employeeId,
               role: targetUsers.find(u => u.id === snap.employeeId)?.role,
-              statuses: (snap.dailyData || []).map((d: any) => d.status),
-              dailyData: snap.dailyData || [],
+              statuses: dailyData.map((d: any) => d.status),
+              dailyData,
               shiftCounts: summary.shiftCounts || {},
+              totalTravelDistance,
+              totalTravelDuration,
               
               // Map missing fields/backward compatibility
               averageWorkingHrs,
@@ -507,6 +514,9 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           totalGrossWorkDuration: emp.totalGrossWorkDuration,
           totalBreakDuration: emp.totalBreakDuration,
           totalOT: emp.totalOT,
+          totalTravelDistance: emp.totalTravelDistance,
+          totalTravelDuration: emp.totalTravelDuration,
+          totalSteps: emp.totalSteps,
           leavesCount: emp.leaves,
           shiftCounts: emp.shiftCounts,
           // Newly added fields

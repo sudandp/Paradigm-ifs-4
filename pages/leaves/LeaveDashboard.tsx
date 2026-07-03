@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -234,6 +234,8 @@ const LeaveDashboard: React.FC = () => {
     const [siteOtDays, setSiteOtDays] = useState(0);
     const [monthlyTravelKm, setMonthlyTravelKm] = useState<number>(0);
     const [monthlyTravelDuration, setMonthlyTravelDuration] = useState<number>(0);
+    const [monthlySteps, setMonthlySteps] = useState<number>(0);
+    const [snapshotData, setSnapshotData] = useState<any | null>(null);
     const currentYear = viewingDate.getFullYear();
 
     const formatPreciseHours = (hours: number) => {
@@ -283,7 +285,7 @@ const LeaveDashboard: React.FC = () => {
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
             // Fetch base data points
-            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData, routePointsData] = await Promise.all([
+            const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData, routePointsData, snapshotDataRes] = await Promise.all([
                 // Use the selected calendar month for balance calculation
                 api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
                 api.getLeaveRequests({
@@ -303,7 +305,8 @@ const LeaveDashboard: React.FC = () => {
                     endDate: endOfYearStr
                 }).then(res => res.data).catch(() => []),
                 api.getUserChildren(user.id).catch(() => []),
-                api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[])
+                api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[]),
+                api.getMonthSnapshot(user.id, viewingDate.getFullYear(), viewingDate.getMonth() + 1).catch(() => null)
             ]);
 
             setBalance(balanceData);
@@ -319,6 +322,67 @@ const LeaveDashboard: React.FC = () => {
                 userHolidays: selections,
                 leaves: yearlyRequests
             });
+            
+            if (snapshotDataRes) {
+                const summary = snapshotDataRes.summary || {};
+                
+                if (summary.totalTravelDistance === undefined || summary.totalTravelDistance === null) {
+                    let calculatedTravelKm = 0;
+                    if (Array.isArray(snapshotDataRes.dailyData)) {
+                        calculatedTravelKm = (snapshotDataRes.dailyData as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.travelDistance || 0),
+                            0
+                        );
+                    } else if (snapshotDataRes.dailyData) {
+                        calculatedTravelKm = (Object.values(snapshotDataRes.dailyData) as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.travelDistance || 0),
+                            0
+                        );
+                    }
+                    summary.totalTravelDistance = calculatedTravelKm;
+                }
+                
+                if (summary.totalTravelDuration === undefined || summary.totalTravelDuration === null) {
+                    let calculatedTravelDuration = 0;
+                    if (Array.isArray(snapshotDataRes.dailyData)) {
+                        calculatedTravelDuration = (snapshotDataRes.dailyData as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.travelDuration || 0),
+                            0
+                        );
+                    } else if (snapshotDataRes.dailyData) {
+                        calculatedTravelDuration = (Object.values(snapshotDataRes.dailyData) as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.travelDuration || 0),
+                            0
+                        );
+                    }
+                    summary.totalTravelDuration = calculatedTravelDuration;
+                }
+                
+                if (summary.totalPayableDays === undefined || summary.totalPayableDays === null) {
+                    summary.totalPayableDays = summary.present ?? 0;
+                }
+                
+                if (summary.totalSteps === undefined || summary.totalSteps === null) {
+                    let calculatedSteps = 0;
+                    if (Array.isArray(snapshotDataRes.dailyData)) {
+                        calculatedSteps = (snapshotDataRes.dailyData as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.totalSteps || 0),
+                            0
+                        );
+                    } else if (snapshotDataRes.dailyData) {
+                        calculatedSteps = (Object.values(snapshotDataRes.dailyData) as any[]).reduce(
+                            (sum: number, day: any) => sum + (day.totalSteps || 0),
+                            0
+                        );
+                    }
+                    summary.totalSteps = calculatedSteps;
+                }
+                
+                snapshotDataRes.summary = summary;
+                setSnapshotData(snapshotDataRes);
+            } else {
+                setSnapshotData(null);
+            }
             
             // Refetch current user profile to get latest persistent OT fields (bank, monthly)
             // This ensures we have the most up-to-date role and balance information
@@ -372,6 +436,7 @@ const LeaveDashboard: React.FC = () => {
             let totalShortfallMinutes = 0;
             let totalTravelKm = 0;
             let totalTravelDurationMins = 0;
+            let totalMonthlySteps = 0;
             const targetHours = 8;
 
             const viewMonthStart = startOfMonth(viewingDate);
@@ -385,6 +450,11 @@ const LeaveDashboard: React.FC = () => {
                     const travelRes = calculateDailyPathTravelKm(dayEvents, dayRoutePoints);
                     totalTravelKm += travelRes.distance;
                     totalTravelDurationMins += travelRes.duration;
+                    // Accumulate steps from punch-out events (all staff types)
+                    const daySteps = (dayEvents as AttendanceEvent[])
+                        .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
+                        .reduce((sum, e) => sum + (e.steps || 0), 0);
+                    totalMonthlySteps += daySteps;
                 }
 
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
@@ -404,6 +474,7 @@ const LeaveDashboard: React.FC = () => {
             setCalculatedShortfallMins(totalShortfallMinutes);
             setMonthlyTravelKm(Number(totalTravelKm.toFixed(2)));
             setMonthlyTravelDuration(totalTravelDurationMins);
+            setMonthlySteps(totalMonthlySteps);
             setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays ?? true);
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
@@ -632,21 +703,36 @@ const LeaveDashboard: React.FC = () => {
         },
         {
             title: 'Monthly Pay Days',
-            value: monthlyPaydays !== null ? `${monthlyPaydays}` : '-',
+            value: snapshotData?.summary?.totalPayableDays !== undefined 
+                ? `${snapshotData.summary.totalPayableDays}` 
+                : (monthlyPaydays !== null ? `${monthlyPaydays}` : '-'),
             description: `Total payable days tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Calculator,
             isExpired: false
         },
         {
             title: 'Monthly Travel KM',
-            value: `${monthlyTravelKm.toFixed(2)} KM`,
-            description: `Cumulative site-to-site travel for ${format(viewingDate, 'MMMM yyyy')}.${monthlyTravelDuration > 0 ? ` Duration: ${formatDuration(monthlyTravelDuration)}` : ''}`,
+            value: `${(snapshotData?.summary?.totalTravelDistance !== undefined 
+                ? snapshotData.summary.totalTravelDistance 
+                : monthlyTravelKm).toFixed(2)} KM`,
+            description: `Cumulative site-to-site travel for ${format(viewingDate, 'MMMM yyyy')}.${(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration) > 0 ? ` Duration: ${formatDuration(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration)}` : ''}`,
             icon: MapPin,
+            isExpired: false
+        },
+        {
+            title: 'Monthly Footsteps',
+            value: `${(snapshotData?.summary?.totalSteps !== undefined
+                ? snapshotData.summary.totalSteps
+                : monthlySteps).toLocaleString()} steps`,
+            description: `Total footsteps tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
+            icon: Footprints,
             isExpired: false
         },
         ...(isTechnicalRole(user?.role) ? [{
             title: 'Site OT Days',
-            value: `${siteOtDays || (balanceDataState?.siteOtDaysThisMonth || 0)}`,
+            value: snapshotData?.summary?.overtimeDays !== undefined 
+                ? `${snapshotData.summary.overtimeDays}`
+                : `${siteOtDays || (balanceDataState?.siteOtDaysThisMonth || 0)}`,
             description: `Total Site OT shifts performed in ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Clock,
             isExpired: false

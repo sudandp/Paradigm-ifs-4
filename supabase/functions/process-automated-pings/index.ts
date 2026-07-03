@@ -33,7 +33,7 @@ serve(async (req: Request) => {
     }
 
     const apiSettings = settingsData.api_settings || {};
-    const trackingSettings = apiSettings.automatedTracking;
+    const trackingSettings = apiSettings.automatedTracking || apiSettings.automated_tracking;
 
     if (!trackingSettings?.enabled) {
       return new Response(JSON.stringify({ message: "Automated tracking is disabled in settings." }), {
@@ -42,7 +42,7 @@ serve(async (req: Request) => {
       })
     }
 
-    const intervalMinutes = trackingSettings.intervalMinutes || 15;
+    const intervalMinutes = trackingSettings.intervalMinutes || trackingSettings.interval_minutes || 15;
     
     // 2. Fetch Active Field Staff
     // An active field staff is someone whose latest attendance event for today is 'check_in'
