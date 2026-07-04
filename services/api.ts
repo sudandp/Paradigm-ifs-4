@@ -33,6 +33,12 @@ import { GoogleGenAI, Type, Modality } from '@google/genai';
 import { createWorker } from 'tesseract.js';
 import { withTimeout } from '../utils/async';
 import { getProxyUrl } from '../utils/fileUrl';
+import {
+  saveRoutePointLocally,
+  getLocalRoutePoints,
+  pushLocalPointsToSupabase,
+  markRoutePointsAsSynced
+} from '../utils/localRouteHistory';
 
 const ONBOARDING_DOCS_BUCKET = 'onboarding-documents';
 const COMPLIANCE_DOCS_BUCKET = 'compliance-documents';
@@ -3019,47 +3025,121 @@ export const api = {
   },
 
   addRoutePoint: async (point: Omit<RoutePoint, 'id'>): Promise<void> => {
+    // 1. Save locally first (marked as unsynced initially)
+    const localPoint = await saveRoutePointLocally(point.userId, point, false);
+
     const status = await Network.getStatus();
     if (!status.connected) {
-        await offlineDb.addToOutbox({ table_name: 'route_history', action: 'INSERT', payload: point });
-        return;
+      console.log('[RouteTracking] Network offline; kept route point locally.');
+      return;
     }
+    
     try {
+      // 2. Attempt to write to Supabase
       const { error } = await supabase
         .from('route_history')
         .insert(toSnakeCase(point));
+      
       if (error) throw error;
-    } catch (err) {
-      console.warn('Failed to submit route point to cloud, saving to outbox');
-      await offlineDb.addToOutbox({ table_name: 'route_history', action: 'INSERT', payload: point });
+
+      // 3. Mark as synced locally if Supabase write succeeds
+      await markRoutePointsAsSynced(point.userId, [localPoint.id]);
+    } catch (err: any) {
+      // 4. Catch errors gracefully (e.g. schema issues, RLS policies)
+      console.warn('[RouteTracking] Failed to write route point to Supabase. Kept locally.', err.message || err);
+      // Do not throw or propagate error, keeping background execution stable
     }
   },
 
   getRoutePoints: async (userId: string, start: string, end: string): Promise<RoutePoint[]> => {
-    const { data, error } = await supabase
-      .from('route_history')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('timestamp', start)
-      .lte('timestamp', end)
-      .order('timestamp', { ascending: true });
+    let remotePoints: RoutePoint[] = [];
     
-    if (error) throw error;
-    return (data || []).map(toCamelCase) as RoutePoint[];
+    const status = await Network.getStatus();
+    if (status.connected) {
+      try {
+        const { data, error } = await supabase
+          .from('route_history')
+          .select('*')
+          .eq('user_id', userId)
+          .gte('timestamp', start)
+          .lte('timestamp', end)
+          .order('timestamp', { ascending: true });
+        
+        if (error) throw error;
+        remotePoints = (data || []).map(toCamelCase) as RoutePoint[];
+      } catch (err) {
+        console.warn('[RouteTracking] Failed to fetch route points from Supabase, using local cache only.', err);
+      }
+    }
+
+    // Load local cached points
+    const localPoints = await getLocalRoutePoints(userId, start, end);
+
+    // Merge and deduplicate by timestamp (closest approximation since local/remote IDs might differ)
+    const mergedMap = new Map<string, RoutePoint>();
+    
+    // Add remote points first
+    for (const p of remotePoints) {
+      mergedMap.set(p.timestamp, p);
+    }
+    
+    // Overlay local points (overwrite or add if not present)
+    for (const p of localPoints) {
+      mergedMap.set(p.timestamp, p);
+    }
+
+    return Array.from(mergedMap.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
   },
 
   getRoutePointsForUsers: async (userIds: string[], start: string, end: string): Promise<RoutePoint[]> => {
     if (!userIds || userIds.length === 0) return [];
-    const { data, error } = await supabase
-      .from('route_history')
-      .select('*')
-      .in('user_id', userIds)
-      .gte('timestamp', start)
-      .lte('timestamp', end)
-      .order('timestamp', { ascending: true });
     
-    if (error) throw error;
-    return (data || []).map(toCamelCase) as RoutePoint[];
+    let remotePoints: RoutePoint[] = [];
+    const status = await Network.getStatus();
+    
+    if (status.connected) {
+      try {
+        const { data, error } = await supabase
+          .from('route_history')
+          .select('*')
+          .in('user_id', userIds)
+          .gte('timestamp', start)
+          .lte('timestamp', end)
+          .order('timestamp', { ascending: true });
+        
+        if (error) throw error;
+        remotePoints = (data || []).map(toCamelCase) as RoutePoint[];
+      } catch (err) {
+        console.warn('[RouteTracking] Failed to fetch route points for users from Supabase.', err);
+      }
+    }
+
+    // Load local points for all requested users
+    let localPoints: RoutePoint[] = [];
+    for (const userId of userIds) {
+      const userLocal = await getLocalRoutePoints(userId, start, end);
+      localPoints.push(...userLocal);
+    }
+
+    // Merge and deduplicate by user_id + timestamp
+    const mergedMap = new Map<string, RoutePoint>();
+    
+    for (const p of remotePoints) {
+      mergedMap.set(`${p.userId}_${p.timestamp}`, p);
+    }
+    for (const p of localPoints) {
+      mergedMap.set(`${p.userId}_${p.timestamp}`, p);
+    }
+
+    return Array.from(mergedMap.values()).sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  },
+
+  syncLocalRoutePoints: async (userId: string): Promise<{ successCount: number; failedCount: number }> => {
+    return await pushLocalPointsToSupabase(userId);
   },
 
   requestAttendanceUnlock: async (reason: string): Promise<void> => {
