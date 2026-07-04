@@ -11,6 +11,8 @@ import { useAuthStore } from '../../store/authStore';
 import { Plus } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import Tesseract from 'tesseract.js';
+import Input from '../../components/ui/Input';
 
 const formatNameToTitleCase = (value: string | undefined) => {
     if (!value) return '';
@@ -28,6 +30,40 @@ const Documents = () => {
     const navigate = useNavigate();
     const { data, updatePersonal, updateBank, addEducationRecord, updateFamilyMember, updateEducationRecord, updateUan, updateEsi, updateGmc } = useOnboardingStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
+    
+    const [techLicenseFile, setTechLicenseFile] = useState<File | null>(null);
+    const [techLicenseExpiry, setTechLicenseExpiry] = useState<string>('');
+    const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+    
+    const processLicenseOcr = async (file: File) => {
+        setTechLicenseFile(file);
+        setIsOcrProcessing(true);
+        setToast({ message: 'Analyzing license for expiry date...', type: 'success' });
+        try {
+            const result = await Tesseract.recognize(file, 'eng');
+            const text = result.data.text;
+            
+            // Basic regex to find common expiry date formats (e.g., DD/MM/YYYY, DD-MM-YYYY, Exp: 12/2026)
+            const dateMatch = text.match(/(?:valid till|expiry|exp|validity|valid upto)[\s:]*([\d]{2}[\/\-][\d]{2}[\/\-][\d]{4})/i) ||
+                              text.match(/([\d]{2}[\/\-][\d]{2}[\/\-][\d]{4})/);
+                              
+            if (dateMatch && dateMatch[1]) {
+                // Convert DD/MM/YYYY to YYYY-MM-DD for input type="date"
+                const parts = dateMatch[1].split(/[\/\-]/);
+                if (parts.length === 3) {
+                    const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                    setTechLicenseExpiry(isoDate);
+                    setToast({ message: 'Expiry date successfully extracted!', type: 'success' });
+                }
+            } else {
+                setToast({ message: 'Could not automatically detect expiry date. Please enter manually.', type: 'error' });
+            }
+        } catch (error) {
+            setToast({ message: 'OCR processing failed.', type: 'error' });
+        } finally {
+            setIsOcrProcessing(false);
+        }
+    };
     
     const handlePersonalIdOcr = (extractedData: any) => {
         const update: Partial<OnboardingData['personal']> = {};
@@ -154,6 +190,33 @@ const Documents = () => {
                             </Button>
                         </div>
                     </div>
+                    
+                    {/* Technical License Expiry Vault */}
+                    <div className="mt-6 pt-6 border-t border-[#374151]">
+                        <h4 className="form-header-title mb-4">Technical License Expiry Vault</h4>
+                        <div className="space-y-4">
+                            <UploadDocument 
+                                label="Upload Technical License (e.g., Driving, Electrical, Arms)" 
+                                file={techLicenseFile ? { name: techLicenseFile.name, url: URL.createObjectURL(techLicenseFile) } as any : null} 
+                                onFileChange={(file) => {
+                                    if (file && file instanceof File) {
+                                        processLicenseOcr(file);
+                                    }
+                                }} 
+                                allowCapture 
+                            />
+                            {isOcrProcessing && <p className="text-sm text-accent animate-pulse">Running OCR Engine...</p>}
+                            <div className="mt-2">
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Detected Expiry Date</label>
+                                <input 
+                                    type="date" 
+                                    value={techLicenseExpiry} 
+                                    onChange={(e) => setTechLicenseExpiry(e.target.value)} 
+                                    className="form-input bg-[#243524] text-white border-[#374151]" 
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </form>
         );
@@ -244,6 +307,39 @@ const Documents = () => {
                         <Button type="button" variant="outline" onClick={() => navigate('/onboarding/add/family')}>
                             <Plus className="mr-2 h-4 w-4" /> Go to Family Page to Add/Edit
                         </Button>
+                    </div>
+                </section>
+                
+                {/* Technical License Expiry Vault */}
+                <section>
+                    <h4 className="text-md font-semibold text-primary-text mb-4 border-b pb-2">Technical License Expiry Vault</h4>
+                    <p className="text-sm text-muted mb-4">Upload technical licenses (Driving, Firearms, Electrical, etc.). Our OCR engine will automatically detect the expiry date for the expiry vault.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                        <div>
+                            <UploadDocument 
+                                label="Upload License Document" 
+                                file={techLicenseFile ? { name: techLicenseFile.name, url: URL.createObjectURL(techLicenseFile) } as any : null} 
+                                onFileChange={(file) => {
+                                    if (file && file instanceof File) {
+                                        processLicenseOcr(file);
+                                    }
+                                }} 
+                                allowCapture 
+                            />
+                            {isOcrProcessing && <p className="text-sm text-accent mt-2 animate-pulse">Running Tesseract.js OCR Engine...</p>}
+                        </div>
+                        <div>
+                            <Input 
+                                type="date" 
+                                label="License Expiry Date (Auto-detected)"
+                                value={techLicenseExpiry} 
+                                onChange={(e) => setTechLicenseExpiry(e.target.value)} 
+                            />
+                            <p className="text-xs text-slate-500 mt-2">
+                                Expiry dates are monitored in the Expiry Vault to ensure 100% compliance. 
+                                Notifications will be sent 30 days prior to expiration.
+                            </p>
+                        </div>
                     </div>
                 </section>
             </div>

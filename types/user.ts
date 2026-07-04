@@ -156,6 +156,7 @@ export interface PersonalDetails {
   middleName?: string;
   lastName: string;
   preferredName?: string;
+  badgeName?: string;
   dob: string;
   gender: 'Male' | 'Female' | 'Other' | '';
   maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed' | '';
@@ -181,6 +182,8 @@ export interface PersonalDetails {
     email?: boolean | null;
   };
   isQrVerified?: boolean;
+  spokenLanguages?: string[];
+  writtenLanguages?: string[];
 }
 
 export interface Address {
@@ -306,6 +309,8 @@ export interface OrganizationDetails {
   groupId?: string;
   location?: string;
   companyId?: string;
+  oshFitness?: Record<string, boolean>;
+  compensationPackage?: any;
 }
 
 export interface EmployeeUniformSelection {

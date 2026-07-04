@@ -12,6 +12,7 @@ import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import Checkbox from '../../components/ui/Checkbox';
 
 
 interface OutletContext {
@@ -27,6 +28,8 @@ type FormData = {
         sizeId: string;
         quantity: number;
     }[];
+    deductionPlan: 'Upfront' | '2-Installments' | '3-Installments' | 'Company-Sponsored';
+    payrollConsent: boolean;
 };
 
 const UniformDetails = () => {
@@ -234,6 +237,39 @@ const UniformDetails = () => {
                         );
                     })}
                 </div>
+                
+                <div className="mt-6 p-4 border border-border rounded-xl bg-page/50">
+                    <h4 className="font-semibold text-primary-text mb-4">Uniform Deduction Plan</h4>
+                    <Controller
+                        name="deductionPlan"
+                        control={control}
+                        defaultValue="2-Installments"
+                        render={({ field }) => (
+                            <Select label="Installment Plan" {...field}>
+                                <option value="Upfront">Upfront Deduction (100% in Month 1)</option>
+                                <option value="2-Installments">2-Installments (50% Month 1, 50% Month 2)</option>
+                                <option value="3-Installments">3-Installments (33% over 3 Months)</option>
+                                <option value="Company-Sponsored">Company-Sponsored (No Deduction)</option>
+                            </Select>
+                        )}
+                    />
+                    {watch('deductionPlan') !== 'Company-Sponsored' && (
+                        <div className="mt-4">
+                            <Controller
+                                name="payrollConsent"
+                                control={control}
+                                render={({ field }) => (
+                                    <Checkbox 
+                                        id="payrollConsent-mobile" 
+                                        label="I explicitly consent to the selected wage deductions for the uniform provision, in compliance with standard operating procedures." 
+                                        checked={!!field.value} 
+                                        onChange={(e) => field.onChange(e.target.checked)} 
+                                    />
+                                )}
+                            />
+                        </div>
+                    )}
+                </div>
             </form>
         );
     }
@@ -279,6 +315,45 @@ const UniformDetails = () => {
                         </div>
                     );
                 })}
+            </div>
+            
+            <div className="mt-8 p-6 border border-border rounded-xl bg-page/50">
+                <h4 className="text-lg font-semibold text-primary-text mb-4">Uniform Deduction Plan</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Controller
+                        name="deductionPlan"
+                        control={control}
+                        defaultValue="2-Installments"
+                        render={({ field }) => (
+                            <Select label="Installment Plan" {...field}>
+                                <option value="Upfront">Upfront Deduction (100% in Month 1)</option>
+                                <option value="2-Installments">2-Installments (50% Month 1, 50% Month 2)</option>
+                                <option value="3-Installments">3-Installments (33% over 3 Months)</option>
+                                <option value="Company-Sponsored">Company-Sponsored (No Deduction)</option>
+                            </Select>
+                        )}
+                    />
+                </div>
+                {watch('deductionPlan') !== 'Company-Sponsored' && (
+                    <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                        <Controller
+                            name="payrollConsent"
+                            control={control}
+                            rules={{ required: watch('deductionPlan') !== 'Company-Sponsored' }}
+                            render={({ field, fieldState }) => (
+                                <div>
+                                    <Checkbox 
+                                        id="payrollConsent" 
+                                        label="I explicitly consent to the selected wage deductions for the uniform provision, in compliance with standard operating procedures." 
+                                        checked={!!field.value} 
+                                        onChange={(e) => field.onChange(e.target.checked)} 
+                                    />
+                                    {fieldState.error && <p className="mt-1 text-sm text-red-500">{fieldState.error.message || 'Consent required'}</p>}
+                                </div>
+                            )}
+                        />
+                    </div>
+                )}
             </div>
         </form>
     );

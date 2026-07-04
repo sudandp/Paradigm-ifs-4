@@ -13,6 +13,7 @@ import DatePicker from '../../components/ui/DatePicker';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import Checkbox from '../../components/ui/Checkbox';
 
 // Fix: Removed generic type argument from yup.object and yup.string
 export const organizationDetailsSchema = yup.object({
@@ -25,6 +26,8 @@ export const organizationDetailsSchema = yup.object({
     workType: yup.string().oneOf(['Full-time', 'Part-time', 'Contract', '']).required('Work type is required'),
     site: yup.string().optional(),
     defaultSalary: yup.number().nullable().optional(),
+    oshFitness: yup.object().optional(),
+    compensationPackage: yup.mixed().optional(),
 }).defined();
 
 interface OutletContext {
@@ -103,6 +106,19 @@ const OrganizationDetails = () => {
         const selectedOrg = dropdownOptions.find(o => o.id === selectedOrgId);
         if (selectedOrg) {
             setValue('organizationName', selectedOrg.name);
+            
+            // Flag-Based Compensation Engine (Excluding Minimum Wage Zoning/Skill Matrix)
+            api.getManpowerDetails(selectedOrg.id).then((details: any) => {
+                if (details && details.length > 0) {
+                    // Just take a basic matching or first structure
+                    setValue('compensationPackage', details[0]);
+                    setValue('defaultSalary', details[0].gross_salary || null);
+                } else {
+                    setValue('compensationPackage', null);
+                }
+            }).catch(() => {
+                setValue('compensationPackage', null);
+            });
         }
     }, [selectedOrgId, dropdownOptions, setValue]);
     
@@ -186,6 +202,79 @@ const OrganizationDetails = () => {
                     <option>Contract</option>
                 </Select>
             </div>
+            
+            {/* OSH Occupational Fitness Checklist */}
+            <div className="mt-8 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Occupational Safety and Health (OSH) Fitness</h3>
+                <p className="text-sm text-gray-600 mb-4">Verify the physical and mental fitness required for facility management roles.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <Controller
+                        name="oshFitness.heightPhobia"
+                        control={control}
+                        render={({ field }) => (
+                            <Checkbox 
+                                id="heightPhobia" 
+                                label="Cleared for Height Work (No Acrophobia)" 
+                                checked={!!field.value} 
+                                onChange={(e) => field.onChange(e.target.checked)} 
+                            />
+                        )}
+                    />
+                    <Controller
+                        name="oshFitness.nightShift"
+                        control={control}
+                        render={({ field }) => (
+                            <Checkbox 
+                                id="nightShift" 
+                                label="Cleared for Night Shifts" 
+                                checked={!!field.value} 
+                                onChange={(e) => field.onChange(e.target.checked)} 
+                            />
+                        )}
+                    />
+                    <Controller
+                        name="oshFitness.heavyLifting"
+                        control={control}
+                        render={({ field }) => (
+                            <Checkbox 
+                                id="heavyLifting" 
+                                label="Capable of Heavy Lifting (>15kg)" 
+                                checked={!!field.value} 
+                                onChange={(e) => field.onChange(e.target.checked)} 
+                            />
+                        )}
+                    />
+                    <Controller
+                        name="oshFitness.eyeSight"
+                        control={control}
+                        render={({ field }) => (
+                            <Checkbox 
+                                id="eyeSight" 
+                                label="Eye Sight Cleared for Duty" 
+                                checked={!!field.value} 
+                                onChange={(e) => field.onChange(e.target.checked)} 
+                            />
+                        )}
+                    />
+                </div>
+            </div>
+
+            {/* Compensation Overview */}
+            {watch('compensationPackage') && (
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Compensation Structure</h3>
+                    <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-emerald-800 font-medium">Standard Gross Salary</p>
+                            <p className="text-2xl font-bold text-emerald-900">₹{watch('defaultSalary') || watch('compensationPackage')?.gross_salary || '---'}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm text-emerald-800 font-medium">Role Level</p>
+                            <p className="text-md text-emerald-900 capitalize">{watch('compensationPackage')?.skill_category || 'General'}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </form>
     );
 };

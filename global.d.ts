@@ -20,6 +20,22 @@ interface ImportMetaEnv {
     readonly VITE_FIREBASE_VAPID_KEY: string;
     readonly VITE_GOOGLE_WEB_CLIENT_ID: string;
     readonly VITE_GOOGLE_ANDROID_CLIENT_ID: string;
+    readonly VITE_EMPLOYMENT_AGREEMENT_PDF_URL: string;
+    readonly VITE_KYC_VENDOR: string;
+    readonly VITE_ESIGN_VENDOR: string;
+    readonly VITE_ESIGN_DIGIO_CLIENT_ID: string;
+    readonly VITE_ESIGN_DIGIO_CLIENT_SECRET: string;
+    readonly VITE_ESIGN_LEEGALITY_AUTH_TOKEN: string;
+    readonly VITE_ESIGN_SIGNDESK_APP_ID: string;
+    readonly VITE_ESIGN_SIGNDESK_API_KEY: string;
+    readonly VITE_KYC_DECENTRO_CLIENT_ID: string;
+    readonly VITE_KYC_DECENTRO_CLIENT_SECRET: string;
+    readonly VITE_KYC_DECENTRO_MODULE_SECRET: string;
+    readonly VITE_KYC_DECENTRO_PROVIDER_SECRET: string;
+    readonly VITE_KYC_HYPERVERGE_APP_ID: string;
+    readonly VITE_KYC_HYPERVERGE_APP_KEY: string;
+    readonly VITE_KYC_SIGNZY_API_KEY: string;
+    readonly VITE_KYC_SIGNZY_PATIENT_ID: string;
   }
 
   

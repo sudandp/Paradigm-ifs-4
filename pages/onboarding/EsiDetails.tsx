@@ -10,12 +10,13 @@ import type { EsiDetails, UploadedFile } from '../../types';
 import Input from '../../components/ui/Input';
 import FormHeader from '../../components/onboarding/FormHeader';
 import DatePicker from '../../components/ui/DatePicker';
-import { Info } from 'lucide-react';
+import { Info, Loader2, CheckCircle2, XCircle, ShieldCheck, AlertTriangle } from 'lucide-react';
 import UploadDocument from '../../components/UploadDocument';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import { Type } from '@google/genai';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { kycGateway } from '../../services/kyc/kycGateway';
 
 // Fix: Removed generic type argument from yup.object
 export const esiDetailsSchema = yup.object({
@@ -48,6 +49,8 @@ interface OutletContext {
   setToast: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
+type ESICVerifyState = 'idle' | 'loading' | 'active' | 'inactive' | 'error';
+
 const EsiDetails = () => {
     const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { user } = useAuthStore();
@@ -55,6 +58,8 @@ const EsiDetails = () => {
     const { esiCtcThreshold, enableEsiRule } = useEnrollmentRulesStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
     const autoCheckedRef = useRef(false);
+    const [esicVerifyState, setEsicVerifyState] = useState<ESICVerifyState>('idle');
+    const [esicMemberInfo, setEsicMemberInfo] = useState<{ memberName: string | null; dispensary: string | null } | null>(null);
     
     const { register, control, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<EsiDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -113,6 +118,38 @@ const EsiDetails = () => {
     
     const handleManualInput = () => {
         setEsiVerifiedStatus({ esiNumber: false });
+        setEsicVerifyState('idle');
+        setEsicMemberInfo(null);
+    };
+
+    const handleVerifyESIC = async () => {
+        const esiNumber = esiData.esiNumber;
+        if (!esiNumber || (esiNumber.length !== 10 && esiNumber.length !== 17)) {
+            setToast({ message: 'Enter a valid 10 or 17-digit ESI number before verifying.', type: 'error' });
+            return;
+        }
+        setEsicVerifyState('loading');
+        setEsicMemberInfo(null);
+        try {
+            const result = await kycGateway.verifyESIC({ esicNumber: esiNumber }, data.id);
+            if (result.success) {
+                setEsicMemberInfo({ memberName: result.memberName, dispensary: result.dispensary });
+                if (result.status === 'active') {
+                    setEsicVerifyState('active');
+                    setEsiVerifiedStatus({ esiNumber: true });
+                    setToast({ message: `ESI Active ✓ ${result.memberName ?? ''}${result.dispensary ? ` — ${result.dispensary}` : ''}`, type: 'success' });
+                } else {
+                    setEsicVerifyState('inactive');
+                    setToast({ message: 'ESI number found but status is INACTIVE. Please verify with worker.', type: 'error' });
+                }
+            } else {
+                setEsicVerifyState('error');
+                setToast({ message: 'ESI verification failed — check the number and retry.', type: 'error' });
+            }
+        } catch {
+            setEsicVerifyState('error');
+            setToast({ message: 'ESIC registry unavailable. Try again.', type: 'error' });
+        }
     };
 
     const handleOcrComplete = (extractedData: any) => {
@@ -232,6 +269,44 @@ const EsiDetails = () => {
                                <DatePicker label="ESI Registration Date" id="esiRegistrationDate" error={errors.esiRegistrationDate?.message} value={field.value} onChange={field.onChange} maxDate={new Date()} />
                             )} />
                             <Input label="ESIC Branch" id="esicBranch" registration={register('esicBranch')} error={errors.esicBranch?.message}/>
+
+                            {/* ── ESIC Registry Verify Button ── */}
+                            <div className="flex flex-col gap-2 pt-2 border-t">
+                                <button
+                                    id="esic-verify-btn"
+                                    type="button"
+                                    onClick={handleVerifyESIC}
+                                    disabled={esicVerifyState === 'loading' || !esiData.esiNumber}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-50 hover:bg-accent/90 transition-colors w-fit"
+                                >
+                                    {esicVerifyState === 'loading' ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin" /> Verifying ESIC…</>
+                                    ) : (
+                                        <><ShieldCheck className="h-4 w-4" /> Verify ESI Number</>
+                                    )}
+                                </button>
+                                {esicVerifyState === 'active' && esicMemberInfo && (
+                                    <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                                            <CheckCircle2 className="h-4 w-4" /> ESI Active — {esicMemberInfo.memberName}
+                                            <span className="text-xs text-muted">({kycGateway.activeVendor()})</span>
+                                        </div>
+                                        {esicMemberInfo.dispensary && (
+                                            <p className="text-xs text-muted ml-6">Dispensary: {esicMemberInfo.dispensary}</p>
+                                        )}
+                                    </div>
+                                )}
+                                {esicVerifyState === 'inactive' && (
+                                    <div className="flex items-center gap-2 text-sm text-amber-600 font-medium">
+                                        <AlertTriangle className="h-4 w-4" /> ESI found but INACTIVE — manual review required.
+                                    </div>
+                                )}
+                                {esicVerifyState === 'error' && (
+                                    <div className="flex items-center gap-2 text-sm text-red-600">
+                                        <XCircle className="h-4 w-4" /> Verification failed — retry.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <Controller name="document" control={control} render={({ field }) => (
                              <UploadDocument

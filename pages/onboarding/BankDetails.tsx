@@ -13,7 +13,8 @@ import { Type } from '@google/genai';
 import VerifiedInput from '../../components/ui/VerifiedInput';
 import { useAuthStore } from '../../store/authStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, XCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { kycGateway } from '../../services/kyc/kycGateway';
 
 const formatNameToTitleCase = (value: string | undefined) => {
     if (!value) return '';
@@ -41,11 +42,15 @@ interface OutletContext {
   setToast: (toast: { message: string; type: 'success' | 'error' } | null) => void;
 }
 
+type PennyDropState = 'idle' | 'loading' | 'matched' | 'mismatch' | 'error';
+
 const BankDetails = () => {
     const { onValidated, setToast } = useOutletContext<OutletContext>();
     const { user } = useAuthStore();
     const { data, updateBank, setBankVerifiedStatus } = useOnboardingStore();
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const [pennyDropState, setPennyDropState] = useState<PennyDropState>('idle');
+    const [pennyDropName, setPennyDropName] = useState<string | null>(null);
 
     const { register, handleSubmit, formState: { errors }, control, setValue, watch, reset } = useForm<BankDetails>({
         // FIX: Cast resolver to resolve type incompatibility between yup and react-hook-form.
@@ -109,7 +114,45 @@ const BankDetails = () => {
         updateBank(formData);
         await onValidated();
     };
-    
+
+    const handlePennyDrop = async () => {
+        const { accountNumber, ifscCode } = bankData;
+        if (!accountNumber || !ifscCode) {
+            setToast({ message: 'Enter account number and IFSC code before verifying.', type: 'error' });
+            return;
+        }
+        setPennyDropState('loading');
+        setPennyDropName(null);
+        try {
+            const result = await kycGateway.pennyDrop({
+                accountNumber,
+                ifsc: ifscCode.toUpperCase(),
+                employeeId: data.id,
+            });
+            if (result.success && result.nameReturned) {
+                setPennyDropName(result.nameReturned);
+                // Name match: compare returned bank name vs employee name (case-insensitive)
+                const bankName = result.nameReturned.toLowerCase().trim();
+                const empName = `${data.personal.firstName} ${data.personal.lastName}`.toLowerCase().trim();
+                const isMatch = bankName.includes(empName.split(' ')[0]) || empName.includes(bankName.split(' ')[0]);
+                if (isMatch) {
+                    setPennyDropState('matched');
+                    setBankVerifiedStatus({ accountNumber: true });
+                    setToast({ message: `Account verified ✓ Name: ${result.nameReturned}${result.cachedHit ? ' (cached)' : ''}`, type: 'success' });
+                } else {
+                    setPennyDropState('mismatch');
+                    setToast({ message: `Name mismatch — Bank: "${result.nameReturned}" vs Profile: "${data.personal.firstName} ${data.personal.lastName}"`, type: 'error' });
+                }
+            } else {
+                setPennyDropState('error');
+                setToast({ message: 'Bank account verification failed. Check account number and IFSC.', type: 'error' });
+            }
+        } catch (err) {
+            setPennyDropState('error');
+            setToast({ message: 'Verification service unavailable. Try again.', type: 'error' });
+        }
+    };
+
     const handleNameBlur = (event: React.FocusEvent<HTMLInputElement>) => {
         const value = event.target.value;
         setValue('accountHolderName', formatNameToTitleCase(value), { shouldValidate: true });
@@ -242,6 +285,42 @@ const BankDetails = () => {
                     <VerifiedInput label="Confirm Account Number" id="confirmAccountNumber" hasValue={!!bankData.confirmAccountNumber} isVerified={data.bank.verifiedStatus?.accountNumber === true} onManualInput={() => handleManualInput(['accountNumber'])} error={errors.confirmAccountNumber?.message} registration={register('confirmAccountNumber')} />
                     <VerifiedInput label="IFSC Code" id="ifscCode" hasValue={!!bankData.ifscCode} isVerified={data.bank.verifiedStatus?.ifscCode === true} onManualInput={() => handleManualInput(['ifscCode'])} error={errors.ifscCode?.message} registration={register('ifscCode')} />
                     <VerifiedInput label="Branch Name" id="branchName" hasValue={!!bankData.branchName} isVerified={false} error={errors.branchName?.message} registration={register('branchName')} />
+                </div>
+
+                {/* ── Penny Drop Verification Button ── */}
+                <div className="pt-4 border-t flex flex-col gap-3">
+                    <button
+                        id="penny-drop-verify-btn"
+                        type="button"
+                        onClick={handlePennyDrop}
+                        disabled={pennyDropState === 'loading' || !bankData.accountNumber || !bankData.ifscCode}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-50 hover:bg-accent/90 transition-colors w-fit"
+                    >
+                        {pennyDropState === 'loading' ? (
+                            <><Loader2 className="h-4 w-4 animate-spin" /> Verifying Account…</>
+                        ) : (
+                            <><ShieldCheck className="h-4 w-4" /> Verify Bank Account (Penny Drop)</>  
+                        )}
+                    </button>
+
+                    {pennyDropState === 'matched' && (
+                        <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                            <CheckCircle2 className="h-4 w-4" />
+                            Account verified — Bank name: <span className="font-bold">{pennyDropName}</span>
+                            <span className="text-xs text-muted ml-1">({kycGateway.activeVendor()})</span>
+                        </div>
+                    )}
+                    {pennyDropState === 'mismatch' && (
+                        <div className="flex items-start gap-2 text-sm text-amber-600 font-medium">
+                            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                            <span>Name mismatch — Bank returned: <span className="font-bold">{pennyDropName}</span>. Manual review required.</span>
+                        </div>
+                    )}
+                    {pennyDropState === 'error' && (
+                        <div className="flex items-center gap-2 text-sm text-red-600 font-medium">
+                            <XCircle className="h-4 w-4" /> Verification failed — check account details and retry.
+                        </div>
+                    )}
                 </div>
             </div>
         </form>

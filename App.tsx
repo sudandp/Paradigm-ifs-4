@@ -196,6 +196,8 @@ const UniformDetails = lazyWithRetry(() => import('./pages/onboarding/UniformDet
 const Documents = lazyWithRetry(() => import('./pages/onboarding/Documents'));
 const Review = lazyWithRetry(() => import('./pages/onboarding/Review'));
 const AadhaarScannerPage = lazyWithRetry(() => import('./pages/onboarding/AadhaarScannerPage'));
+const DeboardingInitiate = lazyWithRetry(() => import('./pages/onboarding/DeboardingInitiate'));
+const PCCDashboard = lazyWithRetry(() => import('./pages/onboarding/PCCDashboard'));
 
 // Public Forms
 const FormsSelection = lazyWithRetry(() => import('./pages/public/FormsSelection'));
@@ -1381,6 +1383,8 @@ const App: React.FC = () => {
               <Route path="review" element={<Review />} />
             </Route>
             <Route path="onboarding/pdf/:id" element={<OnboardingPdfOutput />} />
+            <Route path="onboarding/deboarding" element={<DeboardingInitiate />} />
+            <Route path="onboarding/pcc" element={<PCCDashboard />} />
           </Route>
 
           {/* Verification */}

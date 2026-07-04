@@ -238,16 +238,16 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 {verificationStatus === false && <span title="Verification Failed"><XCircle className="h-4 w-4 text-red-400" /></span>}
             </div>
 
-            <div className="w-full text-center transition-all duration-300">
+            <div className="w-full text-center transition-all duration-300 group">
                 {file ? (
                      <div className={`
-                        w-full flex flex-col rounded-lg relative overflow-hidden justify-center
+                        w-full flex flex-col rounded-2xl relative overflow-hidden justify-center transition-all duration-300
                         ${transparent 
                             ? 'bg-transparent border-0' 
-                            : 'border-2 border-dashed border-accent/30 bg-page/50 pro-dark-theme:bg-accent/5 pro-dark-theme:border-accent/40'}
+                            : 'bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-xl hover:border-white/30'}
                         ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
-                        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none">
+                        <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none mix-blend-overlay">
                             <Icon className="h-32 w-32" />
                         </div>
 
@@ -349,35 +349,34 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                 ) : (
                     <label htmlFor={inputId} className={`
                         cursor-pointer flex flex-col items-center justify-center
-                        p-6 rounded-xl transition-all duration-300
+                        p-6 rounded-2xl transition-all duration-300
                         ${transparent 
-                            ? 'bg-transparent border-0 hover:bg-emerald-500/5' 
-                            : 'bg-slate-50/50 border-2 border-dashed border-slate-300 hover:border-emerald-500 hover:bg-emerald-50/20 pro-dark-theme:border-accent/30 pro-dark-theme:hover:border-accent pro-dark-theme:bg-accent/5'}
-                        ${displayError ? '!border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : ''}
+                            ? 'bg-transparent border-0 hover:bg-white/5' 
+                            : 'bg-white/5 border border-dashed border-white/10 hover:border-accent/50 hover:bg-white/10'}
+                        ${displayError ? '!border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : ''}
                         ${variant === 'compact' ? 'min-h-[100px] p-4' : 'min-h-[180px] p-6'}
                     `}>
-                        <div className={`${variant === 'compact' ? 'mb-1' : 'mb-3'} ${transparent ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                        <div className={`transition-all duration-300 ${variant === 'compact' ? 'mb-1' : 'mb-3'} text-accent group-hover:scale-110`}>
                             <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
                         </div>
-                        <p className={`font-bold ${transparent ? 'text-emerald-400/90' : 'text-slate-800'} ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
-                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider ${transparent ? 'text-emerald-500/50' : 'text-slate-400'}`}>or drag & drop</p>}
+                        <p className={`font-bold text-white transition-colors ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
+                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider text-white/50`}>or drag & drop</p>}
                         
                         {allowCapture && (
-                            <div className="w-full flex flex-col items-center mt-4">
-                                <div className="flex items-center w-full max-w-[120px] mb-4">
-                                    <div className="h-px flex-1 bg-border/50"></div>
-                                    <span className="px-3 text-[10px] font-bold text-muted/60">OR</span>
-                                    <div className="h-px flex-1 bg-border/50"></div>
+                            <div className="w-full flex flex-col items-center mt-5">
+                                <div className="flex items-center w-full max-w-[140px] mb-4">
+                                    <div className="h-px flex-1 bg-white/10"></div>
+                                    <span className="px-3 text-[10px] font-semibold text-white/40">OR</span>
+                                    <div className="h-px flex-1 bg-white/10"></div>
                                 </div>
-                                <Button 
+                                <button 
                                     type="button" 
                                     onClick={(e) => { e.preventDefault(); setIsCameraOpen(true); }} 
-                                    variant="secondary" 
-                                    size="sm"
-                                    className="!rounded-full font-bold shadow-sm">
-                                    <Camera className="h-4 w-4 mr-2 text-accent" />
+                                    className="flex items-center justify-center font-bold text-white hover:text-white/80 transition-colors text-sm"
+                                >
+                                    <Camera className="h-4 w-4 mr-2 text-red-500" />
                                     Capture with Camera
-                                </Button>
+                                </button>
                             </div>
                         )}
                     </label>

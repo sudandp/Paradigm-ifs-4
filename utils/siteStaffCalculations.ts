@@ -1,5 +1,4 @@
-import { isSameDay, isAfter, isBefore, differenceInDays, format, parseISO } from 'date-fns';
-import { AttendanceEvent } from '../types';
+import { isSameDay, isAfter, isBefore, format } from 'date-fns';
 import { getShiftDurationHours } from './shiftDetection';
 
 export interface SiteStaffConfig {
@@ -145,7 +144,6 @@ export function generateMonthlyOutput(
   let daysPresent = 0;
   let countHp = 0;
   let countHalfHp = 0;
-  let weekendPresent = 0;
 
   for (const m of attendanceMarks) {
     if (!m) continue;
@@ -165,10 +163,8 @@ export function generateMonthlyOutput(
       countHalfHp += 1.0;
     } else if (m === 'W/P') {
       daysPresent += 1.0;
-      weekendPresent += 1.0;
     } else if (m === 'W/0.5P' || m === 'W/0.5 P') {
       daysPresent += 0.5;
-      weekendPresent += 0.5;
     } else {
       const match = m.match(/^(\d+(\.\d+)?)\s*(P|H\/P|W\/P)$/);
       if (match) {
@@ -178,8 +174,6 @@ export function generateMonthlyOutput(
         if (type === 'H/P') {
           if (val === 0.5) countHalfHp += 1.0;
           else if (val >= 1.0) countHp += val;
-        } else if (type === 'W/P') {
-          weekendPresent += val;
         }
       }
     }
@@ -258,7 +252,7 @@ export function generateMonthlyOutput(
 export function evaluateSiteStaffStatus(params: any): string {
   const { 
     day, userId, user_id, dayEvents, siteHolidays, leaves, userRules, workingHours, fieldStatus,
-    daysPresentInWeek, isActiveInPreviousWeek, resolvedShift
+    daysPresentInWeek, resolvedShift
   } = params;
   const targetUserId = userId || user_id;
 

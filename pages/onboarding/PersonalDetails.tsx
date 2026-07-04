@@ -12,6 +12,7 @@ import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import FormHeader from '../../components/onboarding/FormHeader';
 import DatePicker from '../../components/ui/DatePicker';
 import VerifiedInput from '../../components/ui/VerifiedInput';
+import MultiSelect from '../../components/ui/MultiSelect';
 import { AlertTriangle } from 'lucide-react';
 import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 
@@ -39,6 +40,7 @@ const validationSchema = yup.object({
     middleName: yup.string().optional(),
     lastName: yup.string().required('Last name is required'),
     preferredName: yup.string().optional(),
+    badgeName: yup.string().max(18, 'Badge name must be 18 characters or less').optional(),
     dob: yup.string().required('Date of birth is required'),
     gender: yup.string().oneOf(['Male', 'Female', 'Other', '']).required('Gender is required'),
     maritalStatus: yup.string().oneOf(['Single', 'Married', 'Divorced', 'Widowed', '']).required('Marital status is required'),
@@ -56,6 +58,8 @@ const validationSchema = yup.object({
     emergencyContactId: yup.string().optional().nullable(),
     relationship: yup.string().oneOf(['Spouse', 'Child', 'Father', 'Mother', 'Sibling', 'Other', '']).required('Relationship is required'),
     salary: yup.number().typeError('Salary must be a number').min(0).required('Salary is required').nullable(),
+    spokenLanguages: yup.array().of(yup.string().required()).optional(),
+    writtenLanguages: yup.array().of(yup.string().required()).optional(),
     verifiedStatus: yup.object().optional(),
 }).defined();
 
@@ -70,6 +74,16 @@ const PersonalDetails = () => {
     const { esiCtcThreshold } = useEnrollmentRulesStore();
 
     const family = data.family || [];
+    const INDIAN_LANGUAGES = [
+        { id: 'English', name: 'English' }, { id: 'Hindi', name: 'Hindi' }, { id: 'Assamese', name: 'Assamese' },
+        { id: 'Bengali', name: 'Bengali' }, { id: 'Bodo', name: 'Bodo' }, { id: 'Dogri', name: 'Dogri' },
+        { id: 'Gujarati', name: 'Gujarati' }, { id: 'Kannada', name: 'Kannada' }, { id: 'Kashmiri', name: 'Kashmiri' },
+        { id: 'Konkani', name: 'Konkani' }, { id: 'Maithili', name: 'Maithili' }, { id: 'Malayalam', name: 'Malayalam' },
+        { id: 'Manipuri', name: 'Manipuri' }, { id: 'Marathi', name: 'Marathi' }, { id: 'Nepali', name: 'Nepali' },
+        { id: 'Odia', name: 'Odia' }, { id: 'Punjabi', name: 'Punjabi' }, { id: 'Sanskrit', name: 'Sanskrit' },
+        { id: 'Santali', name: 'Santali' }, { id: 'Sindhi', name: 'Sindhi' }, { id: 'Tamil', name: 'Tamil' },
+        { id: 'Telugu', name: 'Telugu' }, { id: 'Urdu', name: 'Urdu' }
+    ];
 
     const initialPersonal = useMemo(() => {
         const personal = { ...data.personal };
@@ -265,6 +279,7 @@ const PersonalDetails = () => {
                     <Input label="Middle Name (Optional)" id="middleName" registration={register('middleName')} />
                     <VerifiedInput label="Last Name" id="lastName" registration={register('lastName')} error={errors.lastName?.message} isVerified={data.personal.verifiedStatus?.name === true} hasValue={!!personalData.lastName} onManualInput={() => setPersonalVerifiedStatus({ name: false })} />
                     <Input label="Preferred Name (Optional)" id="preferredName" registration={register('preferredName', { onChange: () => { preferredNameManuallyEdited.current = true; } })} />
+                    <Input label="Badge Name (ID Card)" id="badgeName" maxLength={18} registration={register('badgeName')} error={errors.badgeName?.message} description="Max 18 characters" />
                     <div className="relative">
                         <Controller
                             name="dob"
@@ -308,6 +323,34 @@ const PersonalDetails = () => {
                     <Select label="Blood Group" id="bloodGroup" registration={register('bloodGroup')} error={errors.bloodGroup?.message}>
                         <option value="">Select</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
                     </Select>
+                    
+                    <Controller
+                        name="spokenLanguages"
+                        control={control}
+                        render={({ field }) => (
+                            <MultiSelect 
+                                label="Spoken Languages" 
+                                id="spokenLanguages" 
+                                options={INDIAN_LANGUAGES} 
+                                value={field.value || []} 
+                                onChange={field.onChange} 
+                            />
+                        )}
+                    />
+                    <Controller
+                        name="writtenLanguages"
+                        control={control}
+                        render={({ field }) => (
+                            <MultiSelect 
+                                label="Written Languages" 
+                                id="writtenLanguages" 
+                                options={INDIAN_LANGUAGES} 
+                                value={field.value || []} 
+                                onChange={field.onChange} 
+                            />
+                        )}
+                    />
+
                     <Input label="Mobile Number" id="mobile" type="tel" registration={register('mobile')} error={errors.mobile?.message} description="Onboarding updates and alerts will be sent to this number via WhatsApp." />
                     <Input label="Alternate Mobile (Optional)" id="alternateMobile" type="tel" registration={register('alternateMobile')} />
                     <Input label="Email Address" id="email" type="email" registration={register('email')} error={errors.email?.message} />

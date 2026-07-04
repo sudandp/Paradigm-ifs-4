@@ -14,6 +14,7 @@ import { useEnrollmentRulesStore } from '../../store/enrollmentRulesStore';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
+import ConsentGate from '../../components/onboarding/ConsentGate';
 
 
 const stepDefinitions: Omit<Step, 'status'>[] = [
@@ -58,6 +59,12 @@ const AddEmployee: React.FC = () => {
     const debounceTimeoutRef = useRef<number | null>(null);
     
     const isMobile = useMediaQuery('(max-width: 767px)');
+    
+    // DPDP Consent Gate State
+    const [hasConsented, setHasConsented] = useState(() => {
+        // Assume consented if there's an existing ID from search params (editing draft or viewing submitted)
+        return !!searchParams.get('id');
+    });
 
     const navigationTargetRef = useRef<OnboardingStep | null>(null);
     const currentStepKey = location.pathname.split('/').pop() as OnboardingStep;
@@ -83,7 +90,15 @@ const AddEmployee: React.FC = () => {
             sessionStorage.setItem(`onboarding_progress_${data.id}`, String(currentStepIndex));
         }
     }, [data, currentStepIndex]);
-
+    
+    if (!hasConsented) {
+        return (
+            <ConsentGate 
+                onAccept={() => setHasConsented(true)} 
+                onDecline={() => navigate('/onboarding')} 
+            />
+        );
+    }
 
     const steps = useMemo((): Step[] => {
       return stepDefinitions.map((step, index) => ({

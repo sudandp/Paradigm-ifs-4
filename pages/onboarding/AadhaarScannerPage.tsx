@@ -1,19 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import jsQR from 'jsqr';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw, Zap, ZapOff, Upload, CheckCircle2, XCircle, Calendar, MapPin, Phone, Mail, User, CreditCard, UserCheck, Users } from 'lucide-react';
+import { ArrowLeft, Loader2, RefreshCw, Zap, ZapOff, Upload, CheckCircle2, XCircle, Calendar, MapPin, Phone, Mail, User, CreditCard, UserCheck, Users, ShieldCheck, ShieldAlert, Camera } from 'lucide-react';
 import JSZip from 'jszip';
 import { differenceInYears } from 'date-fns';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-
 import { AadhaarData, formatNameToTitleCase, formatGender, parseAadhaarQR, decodeSecureQR, parseAadhaarSecureText, isAgeAbove18 } from '../../utils/aadhaarUtils';
+import { captureRecruiterGPS, runAntiFraudGate, type AntiFraudGateResult } from '../../services/antiFraudEngine';
 
 const AadhaarScannerPage: React.FC = () => {
     const navigate = useNavigate();
     const store = useOnboardingStore();
+    const { user } = useAuthStore();
     const [isInitializing, setIsInitializing] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isFlashOn, setIsFlashOn] = useState(false);
@@ -21,6 +23,12 @@ const AadhaarScannerPage: React.FC = () => {
     const [isScanningFile, setIsScanningFile] = useState(false);
     const [scannedData, setScannedData] = useState<AadhaarData | null>(null);
     const [isReviewOpen, setIsReviewOpen] = useState(false);
+
+    // Anti-fraud state
+    const [antiFraudResult, setAntiFraudResult] = useState<AntiFraudGateResult | null>(null);
+    const [isRunningAntiFraud, setIsRunningAntiFraud] = useState(false);
+    const [showOverrideWarning, setShowOverrideWarning] = useState(false);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const scannerRef = useRef<Html5Qrcode | null>(null);
     const qrCodeRegionId = "qr-reader-full-page";
@@ -44,7 +52,39 @@ const AadhaarScannerPage: React.FC = () => {
         await stopScanner();
         setScannedData(aadhaarData);
         setIsReviewOpen(true);
+        setAntiFraudResult(null);
+        // Log GPS at scan moment (non-blocking)
+        if (user?.id) captureRecruiterGPS('aadhaar_scan_confirm', user.id, store.data.id);
     };
+
+    // ── Anti-fraud gate before confirm ──────────────────────────────────────
+    const handleConfirmClick = useCallback(async () => {
+        if (!scannedData) return;
+        setIsRunningAntiFraud(true);
+        setAntiFraudResult(null);
+
+        try {
+            const result = await runAntiFraudGate(
+                scannedData.photo ?? null,
+                user?.id ?? 'unknown',
+                store.data.id,
+            );
+            setAntiFraudResult(result);
+
+            if (!result.overallPassed) {
+                // Face match failed — show override warning before allowing confirm
+                setShowOverrideWarning(true);
+                setIsRunningAntiFraud(false);
+                return;
+            }
+        } catch {
+            // Anti-fraud failure is non-blocking — allow through with degraded record
+            console.warn('[AntiFraud] Gate error — proceeding without face match');
+        }
+
+        setIsRunningAntiFraud(false);
+        confirmAndFill();
+    }, [scannedData, user, store.data.id]);
 
     const confirmAndFill = () => {
         if (!scannedData) return;
@@ -506,13 +546,76 @@ const AadhaarScannerPage: React.FC = () => {
 
                 <footer className="p-6 bg-white border-t border-gray-100">
                      <div className="flex flex-col gap-3">
-                        <Button 
+
+                        {/* Anti-fraud result display */}
+                        {antiFraudResult && (
+                            <div className={`rounded-xl p-3 mb-1 flex flex-col gap-1 ${
+                                antiFraudResult.overallPassed
+                                    ? 'bg-green-50 border border-green-200'
+                                    : 'bg-red-50 border border-red-200'
+                            }`}>
+                                <div className="flex items-center gap-2 text-sm font-semibold">
+                                    {antiFraudResult.overallPassed
+                                        ? <><ShieldCheck className="h-4 w-4 text-green-600" /><span className="text-green-700">Anti-Fraud Check Passed</span></>
+                                        : <><ShieldAlert className="h-4 w-4 text-red-600" /><span className="text-red-700">Anti-Fraud Alert</span></>}
+                                </div>
+                                {antiFraudResult.faceMatch && (
+                                    <p className="text-xs text-gray-600">
+                                        Face match score: <span className="font-bold">{antiFraudResult.faceMatch.score}/100</span>
+                                        {' '}(threshold: {antiFraudResult.faceMatch.threshold})
+                                    </p>
+                                )}
+                                {antiFraudResult.selfie && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <img src={antiFraudResult.selfie.dataUrl} alt="Live selfie" className="w-10 h-10 rounded-lg object-cover border border-gray-200" />
+                                        <div className="text-xs text-gray-500">
+                                            <p className="font-medium">Geo-tagged selfie captured</p>
+                                            <p>{antiFraudResult.selfie.latitude.toFixed(4)}, {antiFraudResult.selfie.longitude.toFixed(4)}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                {antiFraudResult.failureReasons.map((r, i) => (
+                                    <p key={i} className="text-xs text-red-600">⚠ {r}</p>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Override warning modal for failed face match */}
+                        {showOverrideWarning && (
+                            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex flex-col gap-2">
+                                <p className="text-sm font-semibold text-amber-800">⚠ Face match failed. Do you want to proceed anyway?</p>
+                                <p className="text-xs text-amber-700">This override will be logged with your GPS coordinates and escalated for manual review.</p>
+                                <div className="flex gap-2 mt-1">
+                                    <button
+                                        id="anti-fraud-override-btn"
+                                        onClick={() => { setShowOverrideWarning(false); confirmAndFill(); }}
+                                        className="flex-1 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold"
+                                    >
+                                        Override &amp; Proceed
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowOverrideWarning(false); setIsReviewOpen(false); }}
+                                        className="flex-1 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-semibold"
+                                    >
+                                        Rescan
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <Button
+                            id="aadhaar-confirm-btn"
                             className="w-full !rounded-2xl !py-4 font-bold text-lg shadow-lg"
-                            onClick={confirmAndFill}
+                            onClick={handleConfirmClick}
+                            isLoading={isRunningAntiFraud}
+                            disabled={isRunningAntiFraud || showOverrideWarning}
                         >
-                            Confirm & Auto-Fill
+                            {isRunningAntiFraud
+                                ? 'Running anti-fraud checks…'
+                                : 'Confirm & Auto-Fill'
+                            }
                         </Button>
-                        <Button 
+                        <Button
                             variant="secondary"
                             className="w-full !rounded-2xl !py-4 !bg-gray-100 !border-gray-200 !text-gray-600 font-medium"
                             onClick={() => setIsReviewOpen(false)}

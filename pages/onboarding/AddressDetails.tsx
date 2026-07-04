@@ -10,8 +10,10 @@ import type { AddressDetails, Address, ExtractedAddress } from '../../types';
 import Input from '../../components/ui/Input';
 import FormHeader from '../../components/onboarding/FormHeader';
 import { api } from '../../services/api';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, MapPin, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import VerifiedInput from '../../components/ui/VerifiedInput';
+import { detectMigrantStatus, type ISMWFlags } from '../../services/ismwEngine';
+import ISMWLocalAddressCapture, { type ISMWLocalAddress } from '../../components/onboarding/ISMWLocalAddressCapture';
 
 // Fix: Removed generic type argument from yup.object
 const addressSchema = yup.object({
@@ -41,6 +43,9 @@ const AddressDetails = () => {
     const { address: addressSettings } = useSettingsStore();
     const [isPincodeLoading, setIsPincodeLoading] = useState(false);
     const [pincodeError, setPincodeError] = useState('');
+    const [ismwFlags, setIsmwFlags] = useState<ISMWFlags | null>(null);
+    const [ismwLoading, setIsmwLoading] = useState(false);
+    const [ismwLocalAddress, setIsmwLocalAddress] = useState<ISMWLocalAddress | null>(null);
 
     const uniqueAddresses = useMemo(() => {
         const list = data.address.extractedAddresses || [];
@@ -150,6 +155,21 @@ const AddressDetails = () => {
                 setValue('permanent.city', details.city, { shouldValidate: true });
                 setValue('permanent.state', details.state, { shouldValidate: true });
                 setAddressVerifiedStatus('permanent', { city: true, state: true, pincode: true });
+
+                // ── ISMW: compare permanent state (already resolved) vs current GPS state ──
+                setIsmwLoading(true);
+                try {
+                    // Pass state from India Post response as override to avoid double-calling the API
+                    const flags = await detectMigrantStatus(pincode, details.state);
+                    setIsmwFlags(flags);
+                    setIsmwLocalAddress(null); // reset local address capture if pincode changes
+                    // Persist ISMW flags to onboarding store so gateway can read them on approval
+                    updateAddress({ ...getValues(), ismwFlags: flags } as any);
+                } catch {
+                    // ISMW detection failure is non-blocking
+                } finally {
+                    setIsmwLoading(false);
+                }
             } catch (error) {
                 setPincodeError('Invalid Pincode. Please check and try again.');
             } finally {
@@ -287,12 +307,15 @@ const AddressDetails = () => {
                                 onManualInput={() => handleManualInput('permanent', 'country')}
                                 error={errors.permanent?.country?.message} registration={register('permanent.country')}
                             />
-                            <VerifiedInput label="Pincode" id="permanent.pincode" type="tel" 
-                                isVerified={!!data.address.permanent.verifiedStatus?.pincode} 
-                                hasValue={!!permanentAddress?.pincode}
-                                onManualInput={() => handleManualInput('permanent', 'pincode')}
-                                error={errors.permanent?.pincode?.message} registration={register('permanent.pincode')} 
-                                onBlur={handlePermanentPincodeBlur} />
+                            <div className="relative">
+                                <VerifiedInput label="Pincode" id="permanent.pincode" type="tel" 
+                                    isVerified={!!data.address.permanent.verifiedStatus?.pincode} 
+                                    hasValue={!!permanentAddress?.pincode}
+                                    onManualInput={() => handleManualInput('permanent', 'pincode')}
+                                    error={errors.permanent?.pincode?.message} registration={register('permanent.pincode')} 
+                                    onBlur={handlePermanentPincodeBlur} />
+                                {(isPincodeLoading || ismwLoading) && <Loader2 className="absolute right-3 top-9 h-5 w-5 animate-spin text-muted" />}
+                            </div>
                             <VerifiedInput label="City" id="permanent.city" 
                                 isVerified={!!data.address.permanent.verifiedStatus?.city} 
                                 hasValue={!!permanentAddress?.city}
@@ -303,6 +326,74 @@ const AddressDetails = () => {
                                 hasValue={!!permanentAddress?.state}
                                 onManualInput={() => handleManualInput('permanent', 'state')}
                                 error={errors.permanent?.state?.message} registration={register('permanent.state')} />
+
+                            {/* ── ISMW Compliance Alert ── */}
+                            {ismwFlags && (
+                                <div className={`sm:col-span-2 rounded-lg p-4 border flex flex-col gap-2 ${
+                                    ismwFlags.isMigrant
+                                        ? 'bg-amber-900/20 border-amber-500/40'
+                                        : 'bg-green-900/20 border-green-500/30'
+                                }`}>
+                                    <div className="flex items-center gap-2 font-semibold text-sm">
+                                        {ismwFlags.isMigrant ? (
+                                            <><ShieldAlert className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                                            <span className="text-amber-300">Inter-State Migrant Worker Detected</span></>
+                                        ) : (
+                                            <><MapPin className="h-4 w-4 text-green-400 flex-shrink-0" />
+                                            <span className="text-green-300">Local Worker — No ISMW compliance required</span></>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-muted">{ismwFlags.ismwComplianceNote}</p>
+                                    {ismwFlags.isMigrant && (
+                                        <div className="grid grid-cols-2 gap-1 mt-1">
+                                            {ismwFlags.requiresLocalAddress && (
+                                                <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                                                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                                    Local address capture required
+                                                </div>
+                                            )}
+                                            {ismwFlags.requiresPhysicalPCC && (
+                                                <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                                                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                                    Physical PCC at deployment city
+                                                </div>
+                                            )}
+                                            {ismwFlags.requiresBonafideCertificate && (
+                                                <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                                                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                                    Bonafide certificate required
+                                                </div>
+                                            )}
+                                            {ismwFlags.requiresGeoTaggedPhoto && (
+                                                <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                                                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                                    Geo-tagged photo at local address
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── ISMW Local Address Capture sub-step ── */}
+                            {ismwFlags?.isMigrant && !ismwLocalAddress && (
+                                <div className="sm:col-span-2">
+                                    <ISMWLocalAddressCapture
+                                        deploymentState={presentAddress?.state ?? ''}
+                                        requiresEmergencyContact={!!ismwFlags.requiresBonafideCertificate}
+                                        onComplete={(localAddr) => {
+                                            setIsmwLocalAddress(localAddr);
+                                            updateAddress({ ...getValues(), ismwLocalAddress: localAddr } as any);
+                                        }}
+                                    />
+                                </div>
+                            )}
+                            {ismwLocalAddress && (
+                                <div className="sm:col-span-2 flex items-center gap-2 text-sm text-green-500 font-medium">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Local ISMW address captured — {ismwLocalAddress.city}, {ismwLocalAddress.pincode}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

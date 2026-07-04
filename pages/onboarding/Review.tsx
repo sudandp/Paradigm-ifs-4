@@ -9,6 +9,7 @@ import { api } from '../../services/api';
 import type { VerificationResult, EducationRecord, UploadedFile } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import DraftSaveIndicator, { type DraftSaveStatus } from '../../components/onboarding/DraftSaveIndicator';
+import ESignFlow from '../../components/onboarding/ESignFlow';
 
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
@@ -45,6 +46,7 @@ const Review = () => {
     const { perfiosApi } = useSettingsStore();
     const navigate = useNavigate();
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [esignDocUrl, setEsignDocUrl] = useState<string | null>(null);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -143,7 +145,7 @@ const Review = () => {
         navigate(`/onboarding/pdf/${data.id || 'draft'}`);
     };
 
-    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated;
+    const canSubmit = (verificationState === 'success' || !perfiosApi.enabled) && data.formsGenerated && !!esignDocUrl;
     
     if (isMobileView) {
         return (
@@ -322,6 +324,33 @@ const Review = () => {
                     )}
                 </div>
             </div>
+
+            {/* ── e-Sign: Digital Employment Agreement ── */}
+            {data.formsGenerated && (
+                <div className="mt-8 pt-6 border-t">
+                    <h3 className="text-lg font-semibold text-primary-text mb-1">Digital Signature</h3>
+                    <p className="text-sm text-muted mb-4">
+                        Worker must sign the employment agreement digitally before submission.
+                        {(data as any).ismwFlags?.isMigrant && ' (Client NDA will be appended for migrant worker compliance.)'}
+                    </p>
+                    {esignDocUrl ? (
+                        <div className="flex items-center gap-2 text-green-600 font-semibold text-sm">
+                            <CheckCircle className="h-5 w-5" />
+                            Agreement signed — ready to submit
+                        </div>
+                    ) : (
+                        <ESignFlow
+                            employeeId={data.id}
+                            employeeName={`${data.personal.firstName} ${data.personal.lastName}`}
+                            mobile={data.personal.mobile}
+                            signerEmail={data.personal.email}
+                            baseContractUrl={import.meta.env.VITE_EMPLOYMENT_AGREEMENT_PDF_URL ?? ''}
+                            clientSiteId={data.organization.site ?? data.organization.organizationName}
+                            onSigned={(url) => setEsignDocUrl(url)}
+                        />
+                    )}
+                </div>
+            )}
 
             <div className="mt-8 pt-6 border-t">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

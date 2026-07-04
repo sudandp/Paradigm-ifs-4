@@ -187,6 +187,9 @@ const PreUpload = () => {
     const [isZipReviewOpen, setIsZipReviewOpen] = useState(false);
     const zipInputRef = React.useRef<HTMLInputElement>(null);
 
+    // AI Mode Toggle
+    const [isManualMode, setIsManualMode] = useState(true);
+
     // Draft auto-save state
     const [saveStatus, setSaveStatus] = useState<DraftSaveStatus>('idle');
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -893,7 +896,22 @@ const PreUpload = () => {
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
                 <MismatchModal {...mismatchModalState} onClose={() => setMismatchModalState({ isOpen: false, employeeName: '', bankName: '', reason: '' })} onOverride={handleOverride} />
                 <form onSubmit={handleSubmit(handleFormSubmit)}>
-                    <FormHeader title="Document Collection" subtitle="Upload documents to auto-fill the application." />
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <FormHeader title="Document Collection" subtitle="Upload documents to auto-fill the application." />
+                        <div className="flex items-center gap-4 px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl transition-all duration-300 hover:bg-white/10 hover:border-white/20">
+                            <span className={`text-sm font-bold tracking-wide transition-colors ${isManualMode ? 'text-accent drop-shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'text-muted'}`}>Manual</span>
+                            <button
+                                type="button"
+                                onClick={() => setIsManualMode(!isManualMode)}
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 outline-none focus:ring-2 focus:ring-accent/50 ${!isManualMode ? 'bg-accent shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'bg-black/20 pro-dark-theme:bg-white/10'}`}
+                            >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                            <span className={`text-sm font-bold tracking-wide transition-colors ${!isManualMode ? 'text-accent drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'text-muted'}`}>
+                                Auto AI
+                            </span>
+                        </div>
+                    </div>
 
                     <div className="space-y-8 mt-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -907,9 +925,9 @@ const PreUpload = () => {
                             </div>
                         </div>
 
-                        <div className="border border-border rounded-lg p-4 bg-white">
+                        <div className="border border-white/10 rounded-2xl p-5">
                             <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-sm font-semibold text-primary-text">Aadhaar Verification</h4>
+                                <h4 className="text-sm font-bold text-white/90">Aadhaar Verification</h4>
                                 <div className="flex items-center gap-2">
                                     <input
                                         type="file"
@@ -933,52 +951,52 @@ const PreUpload = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                                 <div>
                                     <MandatoryToggle fieldKey="idProofFront" label="Aadhaar Front" checked={mandatoryFields.idProofFront} onChange={handleMandatoryToggle} />
-                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={idFrontSchema} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? idFrontSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                                 <div>
                                     <MandatoryToggle fieldKey="idProofBack" label="Aadhaar Back" checked={mandatoryFields.idProofBack} onChange={handleMandatoryToggle} />
-                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={addressSchema} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
+                                    <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? addressSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                             </div>
-                            <p className="text-xs text-muted mt-2">Tip: Use "Upload Zip" or "Scan QR" for instant auto-fill, or upload images for OCR extraction.</p>
+                            <p className="text-xs text-muted mt-2">Tip: Use "Upload Zip" or "Scan QR" for instant auto-fill, or switch to Auto AI for automatic extraction.</p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                             <div>
                                 <MandatoryToggle fieldKey="bankProof" label="Bank Proof" checked={mandatoryFields.bankProof} onChange={handleMandatoryToggle} />
-                                <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={bankProofSchema} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                                <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={!isManualMode ? bankProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
                             </div>
                             <div>
                                 <MandatoryToggle fieldKey="uanProof" label="UAN Proof" checked={mandatoryFields.uanProof} onChange={handleMandatoryToggle} />
-                                <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={uanProofSchema} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
+                                <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={!isManualMode ? uanProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
                             </div>
                         </div>
 
                         {currentRules.documents.pan && (
                             <div>
                                 <MandatoryToggle fieldKey="panCard" label="PAN Card" checked={mandatoryFields.panCard} onChange={handleMandatoryToggle} />
-                                <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={panSchema} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={!isManualMode ? panSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
                             </div>
                         )}
 
                         {currentRules.documents.salarySlip && (
                             <div>
                                 <MandatoryToggle fieldKey="salarySlip" label="Salary Slip" checked={mandatoryFields.salarySlip} onChange={handleMandatoryToggle} />
-                                <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={salarySlipSchema} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={!isManualMode ? salarySlipSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
                             </div>
                         )}
 
                         {currentRules.documents.educationCertificate && (
                             <div className="pt-6 border-t">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h4 className="text-md font-semibold text-primary-text">Education Certificates</h4>
+                                    <h4 className="text-md font-bold text-white/90">Education Certificates</h4>
                                     <MandatoryToggle fieldKey="educationCertificate" label="Education Certificate" checked={mandatoryFields.educationCertificate} onChange={handleMandatoryToggle} />
                                 </div>
                                 <div className="space-y-4">
                                     {educationFields.map((field, index) => (
-                                        <div key={field.id} className="p-4 border rounded-lg bg-page/50 relative">
-                                            <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (<UploadDocument label="Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={educationSchema} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />)} />
-                                            <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-2 right-2"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                        <div key={field.id} className="p-5 border border-white/10 rounded-2xl relative">
+                                            <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (<UploadDocument label="Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? educationSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />)} />
+                                            <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500 hover:text-red-400 transition-colors" /></Button>
                                         </div>
                                     ))}
                                     <Button type="button" variant="outline" onClick={() => appendEducation({ id: `edu_upload_${Date.now()}`, document: null })}><Plus className="mr-2 h-4 w-4" /> Add Certificate</Button>
@@ -989,7 +1007,7 @@ const PreUpload = () => {
                         {currentRules.documents.familyAadhaar && (
                             <div className="pt-6 border-t">
                                 <div className="flex justify-between items-center mb-4">
-                                    <h4 className="text-md font-semibold text-primary-text">Family Member Documents</h4>
+                                    <h4 className="text-md font-bold text-white/90">Family Member Documents</h4>
                                     <MandatoryToggle fieldKey="familyAadhaar" label="Family Aadhaar" checked={mandatoryFields.familyAadhaar} onChange={handleMandatoryToggle} />
                                 </div>
                                 <div className="space-y-4">
@@ -997,13 +1015,13 @@ const PreUpload = () => {
                                         const relation = familyValues?.[index]?.relation;
                                         const isChild = relation === 'Child';
                                         return (
-                                            <div key={field.id} className="p-4 border rounded-lg bg-page/50 grid grid-cols-1 md:grid-cols-3 gap-4 items-start relative">
+                                            <div key={field.id} className="p-5 border border-white/10 rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-5 items-start relative">
                                                 <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
                                                 <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
                                                 <div className="md:col-start-1 md:col-span-3">
-                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={familyAadhaarSchema} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? familyAadhaarSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
                                                 </div>
-                                                <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-2 right-2"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                                <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500 hover:text-red-400 transition-colors" /></Button>
                                             </div>
                                         )
                                     })}

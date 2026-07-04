@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Eye, FileText, Send, RefreshCw, AlertTriangle, Loader2, CheckSquare, XSquare, Square } from 'lucide-react';
 import Toast from '@/components/ui/Toast';
 import { useAuthStore } from '@/store/authStore';
+import { triggerEnterpriseHandshake } from '@/services/enterpriseHandshake';
 
 
 const VerificationChecks: React.FC<{ submission: OnboardingData; isSyncing: boolean }> = ({ submission, isSyncing }) => {
@@ -60,6 +61,7 @@ const VerificationDashboard: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [syncingId, setSyncingId] = useState<string | null>(null);
+    const [deployingId, setDeployingId] = useState<string | null>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const { user } = useAuthStore();
     const navigate = useNavigate();
@@ -112,6 +114,33 @@ const VerificationDashboard: React.FC = () => {
         } catch (error) {
             console.error(`Failed to ${action} submission`, error);
             setSubmissions(originalSubmissions);
+        }
+    };
+
+    const handleDeploy = async (submission: OnboardingData) => {
+        if (!submission.id) return;
+        setDeployingId(submission.id);
+        try {
+            await api.verifySubmission(submission.id); // Mark as verified first
+
+            const result = await triggerEnterpriseHandshake(submission.id, {
+                site: submission.organizationName || submission.organization?.organizationName,
+                shift: 'General'
+            });
+
+            if (result.overallSuccess) {
+                setToast({ message: 'Deployed successfully! 5-part handshake complete.', type: 'success' });
+                setSubmissions(prev => prev.map(s => s.id === submission.id ? { ...s, status: 'deployed' as any, portalSyncStatus: 'synced' } : s));
+            } else {
+                setToast({ message: 'Deployment partial failure. Check logs.', type: 'error' });
+                // Still mark as verified
+                setSubmissions(prev => prev.map(s => s.id === submission.id ? { ...s, status: 'verified', portalSyncStatus: 'pending_sync' } : s));
+            }
+        } catch (error) {
+            console.error('Deployment failed:', error);
+            setToast({ message: 'Deployment failed.', type: 'error' });
+        } finally {
+            setDeployingId(null);
         }
     };
 
@@ -225,7 +254,10 @@ const VerificationDashboard: React.FC = () => {
                                             <Button variant="icon" size="sm" onClick={() => navigate(`/onboarding/pdf/${s.id}`)} title="Download Forms" aria-label={`Download forms for ${s.personal.firstName}`}><FileText className="h-4 w-4" /></Button>
                                             {s.status === 'pending' && (
                                                 <>
-                                                    <Button variant="icon" size="sm" onClick={() => handleAction('approve', s.id!)} title="Verify" aria-label={`Verify submission for ${s.personal.firstName}`}><CheckSquare className="h-4 w-4 text-green-600" /></Button>
+                                                    <Button variant="outline" size="sm" onClick={() => handleDeploy(s)} isLoading={deployingId === s.id} title="Approve & Deploy" aria-label={`Approve and deploy ${s.personal.firstName}`}>
+                                                        {deployingId !== s.id && <CheckSquare className="h-4 w-4 mr-1 text-green-600" />}
+                                                        Approve & Deploy
+                                                    </Button>
                                                     <Button variant="icon" size="sm" onClick={() => handleAction('reject', s.id!)} title="Request Changes" aria-label={`Request changes for ${s.personal.firstName}`}><XSquare className="h-4 w-4 text-red-600" /></Button>
                                                 </>
                                             )}

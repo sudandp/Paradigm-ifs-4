@@ -21,8 +21,32 @@ const PLACEHOLDERS = [
   { token: '{{location}}', desc: 'Work Location' },
   { token: '{{ref_number}}', desc: 'Letter Reference No' },
   { token: '{{company_name}}', desc: 'Paradigm Services' },
-  { token: '{{issue_date}}', desc: 'Date of Issuance' }
+  { token: '{{issue_date}}', desc: 'Date of Issuance' },
+  { token: '{{employee_id}}', desc: 'Employee ID' },
+  { token: '{{father_name}}', desc: 'Father\'s Name' },
+  { token: '{{address}}', desc: 'Permanent Address' },
+  { token: '{{purpose}}', desc: 'Purpose of Certificate' }
 ];
+
+const BONAFIDE_TEMPLATE = `
+<div style="font-family: Arial, sans-serif; text-align: center;">
+  <h2>BONAFIDE CERTIFICATE</h2>
+  <br />
+  <div style="text-align: left; line-height: 1.6;">
+    <p>Date: {{issue_date}}</p>
+    <p>Ref: {{ref_number}}</p>
+    <br />
+    <p><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
+    <p>This is to certify that Mr./Ms. <strong>{{candidate_name}}</strong>, son/daughter of <strong>{{father_name}}</strong>, is a bonafide employee of <strong>{{company_name}}</strong>.</p>
+    <p>He/She is working with us since <strong>{{joining_date}}</strong> and is currently holding the designation of <strong>{{designation}}</strong>.</p>
+    <p>His/Her Employee ID is <strong>{{employee_id}}</strong> and his/her recorded address is <strong>{{address}}</strong>.</p>
+    <p>This certificate is being issued upon the employee's request for the purpose of <strong>{{purpose}}</strong>.</p>
+    <br /><br /><br />
+    <p>For <strong>{{company_name}}</strong>,</p>
+    <p>Authorized Signatory</p>
+  </div>
+</div>
+`;
 
 const LetterComposer: React.FC<LetterComposerProps> = ({ letterId, onClose, onLetterIssued }) => {
   const [letter, setLetter] = useState<any>(null);
@@ -184,9 +208,17 @@ const LetterComposer: React.FC<LetterComposerProps> = ({ letterId, onClose, onLe
         {/* Left Side: Textarea Editor or Info panel */}
         {previewMode === 'edit' && !isIssued && !isRevoked ? (
           <div className="flex-1 flex flex-col p-4 bg-slate-50 overflow-hidden">
-            <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 mb-2">
-              HTML Document Source code
-            </label>
+            <div className="flex justify-between items-center mb-2">
+                <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+                HTML Document Source code
+                </label>
+                <button
+                    onClick={() => setHtmlContent(BONAFIDE_TEMPLATE.trim())}
+                    className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent hover:underline"
+                >
+                    Load Bonafide Template
+                </button>
+            </div>
             <textarea
               value={htmlContent}
               onChange={(e) => setHtmlContent(e.target.value)}
