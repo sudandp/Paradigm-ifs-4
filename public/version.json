@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 86,
-  "latestVersionName": "17.6.0",
+  "latestVersionCode": 87,
+  "latestVersionName": "17.7.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "fix: restrict WhatsNewModal display to only when no app updates are pending\nfeat: implement WhatsNewModal, add versioning scripts, and update app version to 17.5.0\nfeat: add user profile page, attendance metrics tracking, and support for home address configuration\nfeat: implement EntityForm component with comprehensive yup validation schema for onboarding module\nfeat: add AddUserPage for creating and editing system users with form validation and role management",
+  "releaseNotes": "feat: implement MonthlyHoursReport component with automated payroll filtering and record analysis services\nfix: sick leave opening balance only applies to genuine mid-year joiners (explicit date strictly after Jan 1)\nchore: add .vercel to .gitignore to prevent accidental tracking\nfeat: implement multi-key Gemini API rotation logic with automatic rate-limit and quota management\nfeat: implement WhatsNewModal and update version tracking logic to prevent modal display on first launch",
   "isMandatory": true
 }

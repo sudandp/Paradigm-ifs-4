@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '17.6.0',
-  date: '2026-06-30',
+  version: '17.7.0',
+  date: '2026-07-03',
   notes: [
-  "fix: restrict WhatsNewModal display to only when no app updates are pending",
-  "feat: implement WhatsNewModal, add versioning scripts, and update app version to 17.5.0",
-  "feat: add user profile page, attendance metrics tracking, and support for home address configuration",
-  "feat: implement EntityForm component with comprehensive yup validation schema for onboarding module",
-  "feat: add AddUserPage for creating and editing system users with form validation and role management"
+  "feat: implement MonthlyHoursReport component with automated payroll filtering and record analysis services",
+  "fix: sick leave opening balance only applies to genuine mid-year joiners (explicit date strictly after Jan 1)",
+  "chore: add .vercel to .gitignore to prevent accidental tracking",
+  "feat: implement multi-key Gemini API rotation logic with automatic rate-limit and quota management",
+  "feat: implement WhatsNewModal and update version tracking logic to prevent modal display on first launch"
 ]
 };
