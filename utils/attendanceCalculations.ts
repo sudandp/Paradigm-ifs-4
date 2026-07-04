@@ -768,10 +768,13 @@ export function evaluateAttendanceStatus(params: {
 
   const resolveHoursStatus = (hrs: number): string => {
       if (hrs >= full) return 'P';
-      if (hrs >= threeQuarterHrs) return '0.75P';
-      if (hrs >= halfDayHrs) return '0.5P';
-      if (hrs >= quarterDayHrs) return '0.25P';
-      return 'A';
+      if (hrs <= 0) return 'A';
+      const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+      const computed = hrs / baseHrs;
+      let rounded = Math.round(computed * 100) / 100;
+      if (rounded >= 1.0) rounded = 0.99;
+      if (hrs > 0 && rounded === 0) rounded = 0.01;
+      return `${rounded}P`;
   };
 
   let workStatus = '';
@@ -1068,6 +1071,10 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
     if (s === '1/4P' || s === '0.25P') return 0.25;
+    if (s.endsWith('P') && s !== 'LOP') {
+      const numericVal = parseFloat(s.slice(0, -1));
+      if (!isNaN(numericVal)) return numericVal;
+    }
     return 0;
   };
 
@@ -1093,6 +1100,16 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part === '3/4P' || part === '0.75P') presentDays += 0.75;
       else if (part === 'Half Day' || part === '0.5P' || part === '1/2P' || part === '2/4P') halfDays++;
       else if (part === '1/4P' || part === '0.25P') presentDays += 0.25;
+      else if (part.endsWith('P') && part !== 'LOP' && !part.includes('+') && !part.includes('/')) {
+        const val = parseFloat(part.slice(0, -1));
+        if (!isNaN(val)) {
+          if (val === 0.5) {
+            halfDays++;
+          } else {
+            presentDays += val;
+          }
+        }
+      }
       else if (part === 'A') absentDays++;
       else if (part === 'W/O') weekOffs++;
       else if (part === 'BL' || part === '0.5BL' || part === 'FH' || part === '0.5FH') { floatingHolidays += inc; }

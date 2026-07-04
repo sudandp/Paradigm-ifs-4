@@ -252,6 +252,10 @@ export function processEmployeeMonth(
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
     if (s === '3/4P' || s === '0.75P') return 0.75;
     if (s === '1/4P' || s === '0.25P') return 0.25;
+    if (s.endsWith('P') && s !== 'LOP') {
+      const numericVal = parseFloat(s.slice(0, -1));
+      if (!isNaN(numericVal)) return numericVal;
+    }
     return 0;
   };
 
@@ -272,6 +276,17 @@ export function processEmployeeMonth(
     else if (s === '3/4P' || s === '0.75P') threeQuarterDays++;
     else if (s === 'Half Day' || s === '0.5P' || s === '1/2P' || s === '2/4P') halfDays++;
     else if (s === '1/4P' || s === '0.25P') quarterDays++;
+    else if (s.endsWith('P') && s !== 'LOP' && !s.includes('+') && !s.includes('/')) {
+      const val = parseFloat(s.slice(0, -1));
+      if (!isNaN(val)) {
+        if (val >= 1.0) presentDays++;
+        else if (val >= 0.75) threeQuarterDays++;
+        else if (val >= 0.5) halfDays++;
+        else if (val >= 0.25) quarterDays++;
+        else if (val > 0) quarterDays++;
+        else absentDays++;
+      }
+    }
     else if (s === 'A') absentDays++;
     else if (s === 'W/O') weekOffs++;
     else if (s === 'BL' || s === '0.5BL' || s === 'FH' || s === '0.5FH') { floatingHolidays += inc; }

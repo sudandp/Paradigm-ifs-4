@@ -532,22 +532,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     };
                                 }
                             } else {
-                                const threeQuarterHrs = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? (shiftThreshold * 0.75);
-                                const halfDayHrs = (settings as any)?.[staffCategory]?.minimumHoursHalfDay ?? (shiftThreshold * 0.5);
-                                const quarterDayHrs = (settings as any)?.[staffCategory]?.quarterDayHours ?? (shiftThreshold * 0.25);
+                                const fractionValue = workingHours / shiftThreshold;
+                                const greenPercentage = Math.min(100, Math.max(0, Math.round(fractionValue * 100)));
                                 
-                                let fractionText = '0.5P';
-                                let greenPercentage = 50;
-                                
-                                if (workingHours >= threeQuarterHrs) {
-                                    fractionText = '0.75P';
-                                    greenPercentage = 75;
-                                } else if (workingHours >= halfDayHrs) {
-                                    fractionText = '0.5P';
-                                    greenPercentage = 50;
-                                } else if (workingHours >= quarterDayHrs) {
-                                    fractionText = '0.25P';
-                                    greenPercentage = 25;
+                                let fractionText = '0.00P';
+                                if (workingHours > 0) {
+                                    const computed = Math.round(fractionValue * 100) / 100;
+                                    const displayValue = computed === 0 ? 0.01 : computed;
+                                    fractionText = `${displayValue}P`;
                                 }
 
                                 const prefix = holidayName === 'Blue Leave' ? 'BL' : (holidayName === 'Pink Leave' ? 'PL' : 'W');
@@ -690,14 +682,15 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                   }
                                   else usedCodes.add('P');
                             } else {
-                                const threeQtr = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? shiftThreshold * 0.75;
-                                const halfHrs  = (settings as any)?.[staffCategory]?.minimumHoursHalfDay  ?? shiftThreshold * 0.5;
-                                const qtrHrs   = (settings as any)?.[staffCategory]?.quarterDayHours      ?? shiftThreshold * 0.25;
-                                if (workingHours >= threeQtr) usedCodes.add('0.75P');
-                                else if (workingHours >= halfHrs) usedCodes.add('0.5P');
-                                else if (workingHours >= qtrHrs) usedCodes.add('0.25P');
-                                else usedCodes.add('A');
-                            }
+                                 const threeQtr = (settings as any)?.[staffCategory]?.threeQuarterDayHours ?? shiftThreshold * 0.75;
+                                 const halfHrs  = (settings as any)?.[staffCategory]?.minimumHoursHalfDay  ?? shiftThreshold * 0.5;
+                                 const qtrHrs   = (settings as any)?.[staffCategory]?.quarterDayHours      ?? shiftThreshold * 0.25;
+                                 if (workingHours >= threeQtr) usedCodes.add('0.75P');
+                                 else if (workingHours >= halfHrs) usedCodes.add('0.5P');
+                                 else if (workingHours >= qtrHrs) usedCodes.add('0.25P');
+                                 else if (workingHours > 0) usedCodes.add('0.25P');
+                                 else usedCodes.add('A');
+                             }
                             return;
                         }
                         if (s === 'leave') {

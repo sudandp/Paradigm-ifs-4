@@ -28,6 +28,11 @@ export function calcNetDuties(dailyCodes: string[]): number {
     else if (c === '1/4P' || c === '0.25P') {
       total += 0.25;
     }
+    // Dynamic numeric P values (like 0.01P, 0.23P, etc.)
+    else if (c.endsWith('P') && c !== 'LOP' && !c.includes('+') && !c.includes('/')) {
+      const numericVal = parseFloat(c.slice(0, -1));
+      if (!isNaN(numericVal)) total += numericVal;
+    }
     // Skip non-duty codes: A, W/O, H, W/P (counted separately), C/O, E/L, S/L, O/H, O/H.5
   }
   return total;
