@@ -1134,7 +1134,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                        {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -1152,7 +1152,7 @@ const ProfilePage: React.FC = () => {
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Daily Steps</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums flex items-baseline">
-                                                        {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                        {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
                                                         {effectivelyCheckedIn && liveSteps > 0 && (
                                                             <span className="text-sm font-black text-emerald-400 ml-2 animate-pulse">
                                                                 ({liveSteps} live)
@@ -2520,7 +2520,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                    {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)
@@ -2539,7 +2539,7 @@ const ProfilePage: React.FC = () => {
                                                     Daily Steps
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums flex items-baseline">
-                                                    {isMetricsLoading ? '—' : todayMetrics.totalSteps.toLocaleString()}
+                                                    {isMetricsLoading ? '—' : (todayMetrics.totalSteps + (effectivelyCheckedIn ? liveSteps : 0)).toLocaleString()}
                                                     {effectivelyCheckedIn && liveSteps > 0 && (
                                                         <span className="text-xs font-black text-emerald-600 ml-2 animate-pulse">
                                                             ({liveSteps} live)
