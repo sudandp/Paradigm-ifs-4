@@ -22,6 +22,8 @@ declare global {
   }
 }
 
+let webTrackingIntervalId: any = null;
+
 export const NativeBridge = {
   startTracking: (intervalMinutes: number, userId: string) => {
     console.log(`Starting tracking with interval: ${intervalMinutes} mins for user: ${userId}`);
@@ -44,6 +46,47 @@ export const NativeBridge = {
        }
     } else {
       console.log('Web platform: Tracking simulation started');
+      if (webTrackingIntervalId) clearInterval(webTrackingIntervalId);
+      
+      const trackLocation = () => {
+          if ('geolocation' in navigator) {
+             navigator.geolocation.getCurrentPosition(
+               async (position) => {
+                  try {
+                      const payload = {
+                          user_id: userId,
+                          type: 'TRACKING',
+                          latitude: position.coords.latitude,
+                          longitude: position.coords.longitude,
+                          timestamp: new Date().toISOString()
+                      };
+                      
+                      await fetch(`${supabaseUrl}/rest/v1/attendance_events`, {
+                          method: 'POST',
+                          headers: {
+                              'apikey': supabaseAnonKey || '',
+                              'Authorization': `Bearer ${supabaseAnonKey}`,
+                              'Content-Type': 'application/json',
+                              'Prefer': 'return=minimal'
+                          },
+                          body: JSON.stringify(payload)
+                      });
+                      console.log('Web tracking updated successfully');
+                  } catch (e) {
+                      console.error('Web tracking failed', e);
+                  }
+               },
+               (err) => console.warn('Geolocation error:', err),
+               { enableHighAccuracy: true }
+             );
+          }
+      };
+      
+      // Call immediately once
+      trackLocation();
+      
+      // Then set interval
+      webTrackingIntervalId = setInterval(trackLocation, intervalMinutes * 60 * 1000);
     }
   },
 
@@ -58,6 +101,11 @@ export const NativeBridge = {
       if (window.webkit?.messageHandlers?.stopTracking) {
         window.webkit.messageHandlers.stopTracking.postMessage({});
       }
+    } else {
+       if (webTrackingIntervalId) {
+          clearInterval(webTrackingIntervalId);
+          webTrackingIntervalId = null;
+       }
     }
   }
 };

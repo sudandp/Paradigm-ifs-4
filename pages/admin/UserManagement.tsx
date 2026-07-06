@@ -71,81 +71,90 @@ const UserRow = React.memo(({
     user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
-        <tr className={`hover:bg-slate-50 transition-colors border-b border-slate-100 ${isSelected ? 'bg-emerald-50/50' : ''}`}>
-            <td className="px-6 py-4 whitespace-nowrap">
+        <tr className={`hover:bg-slate-50 transition-colors border-b border-border ${isSelected ? 'bg-emerald-50/50' : ''}`}>
+            <td className="p-3 align-top">
                 <button 
                     onClick={() => onSelect(user.id)}
-                    className={`transition-colors ${isSelected ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-400'}`}
+                    className={`mt-0.5 transition-colors ${isSelected ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-400'}`}
                 >
-                    {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                    {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                 </button>
             </td>
-            <td data-label="Name" className="px-6 py-4 font-semibold text-base">{user.name}</td>
-            <td data-label="Email" className="px-6 py-4 text-sm text-muted">{user.email}</td>
-            <td data-label="Role" className="px-6 py-4 text-sm text-muted min-w-[160px]">
-                <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${getRoleBadgeClass(user.role)}`}>
+            <td data-label="Name" className="p-3 align-top">
+                <div className="font-semibold text-primary-text truncate" title={user.name}>{user.name}</div>
+            </td>
+            <td data-label="Email" className="p-3 align-top">
+                <div className="text-muted truncate" title={user.email}>{user.email}</div>
+            </td>
+            <td data-label="Role" className="p-3 align-top">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider whitespace-nowrap ${getRoleBadgeClass(user.role)}`}>
                     {getRoleName(user.role)}
                 </span>
                 {user.role === 'unverified' && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-2 uppercase tracking-tight">Pending Approval</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-800 ml-1 uppercase tracking-tight whitespace-nowrap">Pending Approval</span>
                 )}
                 {user.role === 'gate_only' && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 ml-2 uppercase tracking-tight">Gate Only</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 ml-1 uppercase tracking-tight whitespace-nowrap">Gate Only</span>
                 )}
             </td>
-            <td data-label="Company" className="px-6 py-4 text-base text-primary-text font-medium">
-                {user.societyName || '-'}
+            <td data-label="Company" className="p-3 align-top">
+                <div className="text-primary-text truncate" title={user.societyName || ''}>
+                    {user.societyName || '-'}
+                </div>
             </td>
-            <td data-label="Location" className="px-6 py-4 text-base text-primary-text font-medium">
-                {resolveUserLocation(user, orgStructure) || '-'}
+            <td data-label="Location" className="p-3 align-top">
+                <div className="text-primary-text truncate" title={resolveUserLocation(user, orgStructure) || ''}>
+                    {resolveUserLocation(user, orgStructure) || '-'}
+                </div>
             </td>
-            <td data-label="Biometric ID" className="px-6 py-4 text-base font-mono text-muted/80">
-                {user.biometricId || '-'}
+            <td data-label="Biometric ID" className="p-3 align-top">
+                <div className="font-mono text-muted/80 truncate">
+                    {user.biometricId || '-'}
+                </div>
             </td>
-            <td data-label="Actions" className="px-6 py-3">
-                <div className="flex items-center gap-4 md:justify-start justify-end">
+            <td data-label="Actions" className="p-3 align-top">
+                <div className="flex items-center gap-2 justify-end">
                     {(user.role === 'unverified' || user.role === 'gate_only') && (
                         <button 
                             onClick={() => handleApprove(user)} 
                             aria-label={`Approve ${user.name}`} 
                             title={`Approve ${user.name}`} 
-                            className="p-1 text-emerald-600 hover:text-emerald-700 hover:scale-110 transition-all flex items-center gap-1.5"
+                            className="p-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-all flex items-center gap-1"
                         >
-                            <UserCheck className="h-5 w-5" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Approve</span>
+                            <UserCheck className="h-4 w-4" />
                         </button>
                     )}
                     <button 
                         onClick={() => handleEdit(user)} 
                         aria-label={`Edit ${user.name}`} 
                         title={`Edit ${user.name}`} 
-                        className="p-1 text-slate-500 hover:text-slate-700 hover:scale-110 transition-all"
+                        className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-all"
                     >
-                        <Edit className="h-5 w-5" />
+                        <Edit className="h-4 w-4" />
                     </button>
                     <button 
                         onClick={() => handleManageLocations(user)} 
                         aria-label={`Geofencing ${user.name}`} 
                         title={`Geofencing ${user.name}`} 
-                        className="p-1 text-emerald-500 hover:text-emerald-700 hover:scale-110 transition-all"
+                        className="p-1 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-all"
                     >
-                        <MapPin className="h-5 w-5" />
+                        <MapPin className="h-4 w-4" />
                     </button>
                     <button 
                         onClick={() => handleResetPasscode(user)} 
                         aria-label={`Reset ${user.name}`} 
                         title={`Reset ${user.name}`} 
-                        className="p-1 text-amber-500 hover:text-amber-700 hover:scale-110 transition-all"
+                        className="p-1 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded transition-all"
                     >
-                        <RotateCw className="h-5 w-5" />
+                        <RotateCw className="h-4 w-4" />
                     </button>
                     <button 
                         onClick={() => handleDelete(user)} 
                         aria-label={`Delete ${user.name}`} 
                         title={`Delete ${user.name}`} 
-                        className="p-1 text-red-500 hover:text-red-700 hover:scale-110 transition-all"
+                        className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-all"
                     >
-                        <Trash2 className="h-5 w-5" />
+                        <Trash2 className="h-4 w-4" />
                     </button>
                 </div>
             </td>
@@ -892,7 +901,7 @@ const UserManagement: React.FC = () => {
 
             {/* Premium Filters Section - Matching Attendance Dashboard */}
             <div className="bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 mb-6 flex flex-col gap-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:flex xl:flex-wrap items-end gap-x-3 gap-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7 items-end gap-x-3 gap-y-4">
                     <div className="col-span-1">
                         <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
                         <div className="relative">
@@ -1013,17 +1022,17 @@ const UserManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="col-span-2 md:col-span-1 xl:ml-auto">
+                    <div className="col-span-2 md:col-span-1 xl:col-span-1">
                         <button
                             onClick={handleApplyFilters}
-                            className={`w-full md:w-auto md:min-w-[180px] text-white shadow-lg flex items-center justify-center gap-2 py-3 px-8 rounded-xl font-bold text-sm md:text-base transition-all duration-300 border border-transparent ${
+                            className={`w-full text-white shadow-lg flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-sm transition-all duration-300 border border-transparent ${
                                 isFiltersDirty 
                                     ? "bg-rose-600 hover:bg-rose-700 animate-pulse" 
                                     : "bg-emerald-600 hover:bg-emerald-700"
                             }`}
                         >
-                            <Filter className="w-5 h-5" />
-                            Apply Filters
+                            <Filter className="w-4 h-4" />
+                            Apply
                         </button>
                     </div>
                 </div>
@@ -1074,33 +1083,33 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     {/* Desktop View - Table */}
-                    <div className="hidden lg:block overflow-x-auto max-w-full relative">
+                <div className="hidden lg:block overflow-x-auto border border-border rounded-lg bg-page shadow-sm relative">
                         {/* Subtle loading indicator that doesn't block interactions */}
                         {isLoading && (
                             <div className="absolute top-0 right-0 p-1">
                                 <span className="animate-pulse text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">AUTO-REFRESHING...</span>
                             </div>
                         )}
-                        <table className="w-full table-auto responsive-table">
-                            <thead>
+                        <table className="min-w-full border-collapse text-sm table-fixed">
+                            <thead className="bg-muted/10 text-primary-text">
                                 <tr>
-                                    <th scope="col" className="px-6 py-3 text-left">
+                                    <th scope="col" className="p-3 text-left w-[4%] border-b border-border">
                                         <button 
                                             onClick={toggleAllSelection}
-                                            className={`transition-colors ${selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-400'}`}
+                                            className={`transition-colors ${selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? 'text-emerald-500' : 'text-slate-400 hover:text-slate-600'}`}
                                             title="Select All Visible"
                                         >
-                                            {selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                                            {selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                                         </button>
                                     </th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Name</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Email</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider min-w-[170px]">Role</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Company</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Location</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">Biometric ID</th>
-                                    <th scope="col" className="px-6 py-3 text-left text-sm font-bold text-muted uppercase tracking-wider">
-                                        <div className="flex items-center gap-2">
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[15%] border-b border-border">Name</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[18%] border-b border-border">Email</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[12%] border-b border-border">Role</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[18%] border-b border-border">Company</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[12%] border-b border-border">Location</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[10%] border-b border-border">Biometric ID</th>
+                                    <th scope="col" className="p-3 text-left text-xs font-semibold uppercase tracking-wider w-[11%] border-b border-border">
+                                        <div className="flex items-center gap-2 justify-end mr-4">
                                             Actions
                                             {hasActiveFilters && (
                                                 <button onClick={clearAllFilters} className="text-red-500 hover:text-red-700 transition-colors" title="Clear all filters">
@@ -1110,8 +1119,6 @@ const UserManagement: React.FC = () => {
                                         </div>
                                     </th>
                                 </tr>
-                                {/* Filter row removed in favor of top-level premium filters */}
-
                             </thead>
                             <tbody 
                                 className="divide-y divide-border md:bg-card md:divide-y-0"

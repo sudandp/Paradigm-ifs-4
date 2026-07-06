@@ -5,7 +5,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, PerfiosApiSettings, GeminiApiSettings, OfflineOcrSettings, OtpSettings, ApiSettings, NotificationSettings, VerificationCosts, VerificationCostSetting, SiteManagementSettings, StaffAttendanceRules, RecurringHolidayRule, VoipSettings } from '../types';
+import type { AddressSettings, AttendanceSettings, Holiday, GmcPolicySettings, PerfiosApiSettings, GeminiApiSettings, KycApiSettings, EsignApiSettings, OfflineOcrSettings, OtpSettings, ApiSettings, NotificationSettings, VerificationCosts, VerificationCostSetting, SiteManagementSettings, StaffAttendanceRules, RecurringHolidayRule, VoipSettings } from '../types';
 import { api } from '../services/api';
 import { HOLIDAY_SELECTION_POOL } from '../utils/constants';
 
@@ -19,6 +19,8 @@ interface SettingsState {
   gmcPolicy: GmcPolicySettings;
   perfiosApi: PerfiosApiSettings;
   geminiApi: GeminiApiSettings;
+  kycApi: KycApiSettings;
+  esignApi: EsignApiSettings;
   otp: OtpSettings;
   notifications: NotificationSettings;
   verificationCosts: VerificationCosts;
@@ -34,6 +36,8 @@ interface SettingsState {
     apiSettings?: ApiSettings,
     addressSettings?: AddressSettings,
     geminiApiSettings?: GeminiApiSettings,
+    kycApiSettings?: KycApiSettings,
+    esignApiSettings?: EsignApiSettings,
     offlineOcrSettings?: OfflineOcrSettings,
     perfiosApiSettings?: PerfiosApiSettings,
     otpSettings?: OtpSettings,
@@ -46,6 +50,8 @@ interface SettingsState {
   updateGmcPolicySettings: (settings: Partial<GmcPolicySettings>) => void;
   updatePerfiosApiSettings: (settings: Partial<PerfiosApiSettings>) => void;
   updateGeminiApiSettings: (settings: Partial<GeminiApiSettings>) => void;
+  updateKycApiSettings: (settings: Partial<KycApiSettings>) => void;
+  updateEsignApiSettings: (settings: Partial<EsignApiSettings>) => void;
   updateOtpSettings: (settings: Partial<OtpSettings>) => void;
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => void;
   updateVerificationCosts: (costs: VerificationCosts) => void;
@@ -201,6 +207,15 @@ const initialPerfiosApi: PerfiosApiSettings = {
 
 const initialGeminiApi: GeminiApiSettings = {
   enabled: true,
+  apiKey: '',
+};
+
+const initialKycApi: KycApiSettings = {
+  vendor: 'hyperverge',
+};
+
+const initialEsignApi: EsignApiSettings = {
+  vendor: 'digio',
 };
 
 const initialOtp: OtpSettings = {
@@ -275,6 +290,8 @@ export const useSettingsStore = create<SettingsState>()(
       gmcPolicy: initialGmcPolicy,
       perfiosApi: initialPerfiosApi,
       geminiApi: initialGeminiApi,
+      kycApi: initialKycApi,
+      esignApi: initialEsignApi,
       otp: initialOtp,
       notifications: initialNotifications,
       verificationCosts: initialVerificationCosts,
@@ -286,7 +303,7 @@ export const useSettingsStore = create<SettingsState>()(
         if (data) {
           const { 
             holidays, attendanceSettings, recurringHolidays, apiSettings,
-            addressSettings, geminiApiSettings, offlineOcrSettings, perfiosApiSettings,
+            addressSettings, geminiApiSettings, kycApiSettings, esignApiSettings, offlineOcrSettings, perfiosApiSettings,
             otpSettings, siteManagementSettings, notificationSettings, voipSettings
           } = data;
           const office = holidays.filter(h => h.type === 'office');
@@ -302,6 +319,8 @@ export const useSettingsStore = create<SettingsState>()(
             apiSettings: apiSettings ? { ...initialApiSettings, ...apiSettings } : initialApiSettings,
             address: addressSettings || initialAddress,
             geminiApi: geminiApiSettings || initialGeminiApi,
+            kycApi: kycApiSettings || initialKycApi,
+            esignApi: esignApiSettings || initialEsignApi,
             offlineOcr: offlineOcrSettings || initialOfflineOcr,
             perfiosApi: perfiosApiSettings || initialPerfiosApi,
             otp: otpSettings || initialOtp,
@@ -323,6 +342,12 @@ export const useSettingsStore = create<SettingsState>()(
       })),
       updateGeminiApiSettings: (settings) => set((state) => ({
         geminiApi: { ...state.geminiApi, ...settings }
+      })),
+      updateKycApiSettings: (settings) => set((state) => ({
+        kycApi: { ...state.kycApi, ...settings }
+      })),
+      updateEsignApiSettings: (settings) => set((state) => ({
+        esignApi: { ...state.esignApi, ...settings }
       })),
       updateOtpSettings: (settings) => set((state) => ({
         otp: { ...state.otp, ...settings }

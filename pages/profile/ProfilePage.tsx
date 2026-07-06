@@ -1458,8 +1458,8 @@ const ProfilePage: React.FC = () => {
                                                     ${isOnBreak 
                                                         ? 'text-gray-500 opacity-40 cursor-not-allowed' 
                                                         : (isFieldCheckedIn || isSiteOtCheckedIn
-                                                            ? 'text-rose-500/80 hover:text-rose-500' 
-                                                            : 'text-emerald-500/80 hover:text-emerald-500')}
+                                                            ? 'text-rose-400 hover:text-rose-300' 
+                                                            : 'text-[#00c58d] hover:text-[#00c58d]/80')}
                                                 `}
                                             >
                                                 {isOnBreak ? <Lock className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
@@ -1493,8 +1493,8 @@ const ProfilePage: React.FC = () => {
                                             className={`
                                                 flex items-center gap-2 transition-colors
                                                 ${isOnBreak
-                                                    ? 'text-amber-500/80 hover:text-amber-500' 
-                                                    : 'text-blue-500/80 hover:text-blue-500'}
+                                                    ? 'text-amber-400 hover:text-amber-300' 
+                                                    : 'text-blue-400 hover:text-blue-300'}
                                             `}
                                         >
                                             <Coffee className="h-4 w-4" />

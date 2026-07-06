@@ -2067,7 +2067,7 @@ export const api = {
     // 1. Fetch data in parallel
     const [subResults, userResults, orgResults] = await Promise.all([
       supabase.from('onboarding_submissions').select('user_id, address').in('user_id', userIds).not('address', 'is', null),
-      supabase.from('users').select('id, organization_id, organization_name').in('id', userIds),
+      supabase.from('users').select('id, organization_id, organization_name, location').in('id', userIds),
       supabase.from('organizations').select('id, address')
     ]);
 
@@ -2075,20 +2075,30 @@ export const api = {
     const orgMap = new Map((orgResults.data || []).map(o => [o.id, o.address]));
     const userToOrg = new Map((userResults.data || []).map(u => [u.id, u.organization_id]));
     const userToOrgName = new Map((userResults.data || []).map(u => [u.id, u.organization_name]));
+    const userToLocation = new Map((userResults.data || []).map(u => [u.id, u.location]));
 
-    // 2. Fallback: Use Organization/Site address for users
+    // 2. Fallback: Use Organization/Site address or user's direct location
     userIds.forEach(uid => {
       const orgId = userToOrg.get(uid);
       const orgName = userToOrgName.get(uid);
       const orgAddr = orgId ? orgMap.get(orgId) : null;
+      const userLoc = userToLocation.get(uid);
       
-      const combinedText = `${orgName || ''} ${orgAddr || ''}`;
+      const combinedText = `${orgName || ''} ${orgAddr || ''} ${userLoc || ''}`;
       if (combinedText.trim()) {
-        const state = inferState('', combinedText);
-        const city = inferCity(combinedText);
+        let state = inferState('', combinedText);
+        let city = inferCity(combinedText);
         
-        if (state) {
-          locations[uid] = { state, city: city || 'Other' };
+        // If city still not found, use userLoc if present
+        if (!city && userLoc) {
+           city = normalize(userLoc);
+        }
+        if (!state && city) {
+           state = inferState(city, '');
+        }
+
+        if (state || city) {
+          locations[uid] = { state: state || 'Other', city: city || 'Other' };
         }
       }
     });
@@ -3488,10 +3498,22 @@ export const api = {
    * user_locations referencing this location.  Returns void.
    */
   deleteLocation: async (id: string): Promise<void> => {
+    // First, manually remove any user assignments to prevent foreign key constraint violations
+    // if the database doesn't have ON DELETE CASCADE set up for this relationship.
+    const { error: unlinkError } = await supabase
+      .from('user_locations')
+      .delete()
+      .eq('location_id', id);
+      
+    if (unlinkError) {
+      console.warn('Failed to unlink users from location, continuing with delete attempt:', unlinkError);
+    }
+
     const { error } = await supabase
       .from('locations')
       .delete()
       .eq('id', id);
+      
     if (error) throw error;
   },
 
@@ -3668,6 +3690,18 @@ export const api = {
     const { error } = await supabase
       .from('settings')
       .upsert({ id: 'singleton', gemini_api_settings: toSnakeCase(settings) }, { onConflict: 'id' });
+    if (error) throw error;
+  },
+  saveKycApiSettings: async (settings: any): Promise<void> => {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 'singleton', kyc_api_settings: toSnakeCase(settings) }, { onConflict: 'id' });
+    if (error) throw error;
+  },
+  saveEsignApiSettings: async (settings: any): Promise<void> => {
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ id: 'singleton', esign_api_settings: toSnakeCase(settings) }, { onConflict: 'id' });
     if (error) throw error;
   },
   saveOfflineOcrSettings: async (settings: any): Promise<void> => {

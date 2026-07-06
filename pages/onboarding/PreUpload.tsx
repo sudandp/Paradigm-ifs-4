@@ -109,6 +109,9 @@ const getValidationSchema = (
 
     const educationRecordUploadSchema = yup.object({
         id: yup.string().required(),
+        degree: yup.string().optional().nullable(),
+        institution: yup.string().optional().nullable(),
+        endYear: yup.string().optional().nullable(),
         document: mandatory.educationCertificate
             ? yup.mixed<UploadedFile | null>().nonNullable("Education certificate is required.")
             : yup.mixed<UploadedFile | null>().optional().nullable(),
@@ -159,7 +162,7 @@ type PreUploadFormData = {
     salarySlip: UploadedFile | null;
     uanProof: UploadedFile | null;
     family: { id: string; relation: FamilyMember['relation']; idProof: UploadedFile | null; phone: string; }[];
-    education: { id: string; document: UploadedFile | null }[];
+    education: { id: string; degree?: string; institution?: string; endYear?: string; document: UploadedFile | null }[];
 };
 
 const fileToBase64 = (file: File): Promise<{ base64: string; type: string }> => {
@@ -266,7 +269,7 @@ const PreUpload = () => {
             salarySlip: store.data.uan.salarySlip || null,
             uanProof: store.data.uan.document || null,
             family: store.data.family?.map(f => ({ id: f.id, relation: f.relation || '', idProof: f.idProof || null, phone: f.phone || '' })) || [],
-            education: store.data.education?.map(e => ({ id: e.id, document: e.document || null })) || []
+            education: store.data.education?.map(e => ({ id: e.id, degree: e.degree || '', institution: e.institution || '', endYear: e.endYear || '', document: e.document || null })) || []
         },
     });
 
@@ -759,7 +762,7 @@ const PreUpload = () => {
                         id: `edu_preupload_${Date.now()}_${i}`,
                         degree: '', institution: '', startYear: '', endYear: '', document: null
                     };
-                    return { ...currentEdu, document: e.document };
+                    return { ...currentEdu, degree: e.degree || currentEdu.degree, institution: e.institution || currentEdu.institution, endYear: e.endYear || currentEdu.endYear, document: e.document };
                 }),
                 requiresManualVerification: isOverridden,
             };
@@ -885,129 +888,153 @@ const PreUpload = () => {
         <>
             {isProcessing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex flex-col items-center justify-center animate-fade-in">
-                    <div className="bg-white p-8 rounded-xl shadow-xl">
+                    <div className="bg-[#0a2518] md:bg-white border border-white/10 md:border-border p-8 rounded-2xl shadow-xl">
                         <Loader2 className="h-12 w-12 animate-spin text-accent mx-auto" />
-                        <p className="mt-4 text-lg font-semibold text-primary-text">Processing Documents...</p>
-                        <p className="text-muted text-center max-w-xs">Our AI is analyzing your files. This may take a moment.</p>
+                        <p className="mt-4 text-lg font-semibold text-white md:text-primary-text">Processing Documents...</p>
+                        <p className="text-white/50 md:text-muted text-center max-w-xs mt-1">Our AI is analyzing your files. This may take a moment.</p>
                     </div>
                 </div>
             )}
-            <div className="bg-card p-4 md:p-6 lg:p-8 rounded-xl shadow-card">
+            <div className="w-full px-0 md:bg-card md:p-6 lg:p-8 md:rounded-xl md:shadow-card md:border md:border-border">
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
                 <MismatchModal {...mismatchModalState} onClose={() => setMismatchModalState({ isOpen: false, employeeName: '', bankName: '', reason: '' })} onOverride={handleOverride} />
                 <form onSubmit={handleSubmit(handleFormSubmit)}>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <FormHeader title="Document Collection" subtitle="Upload documents to auto-fill the application." />
-                        <div className="flex items-center gap-4 px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl transition-all duration-300 hover:bg-white/10 hover:border-white/20">
-                            <span className={`text-sm font-bold tracking-wide transition-colors ${isManualMode ? 'text-accent drop-shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'text-muted'}`}>Manual</span>
-                            <button
-                                type="button"
-                                onClick={() => setIsManualMode(!isManualMode)}
-                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 outline-none focus:ring-2 focus:ring-accent/50 ${!isManualMode ? 'bg-accent shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'bg-black/20 pro-dark-theme:bg-white/10'}`}
-                            >
-                                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                    {/* Page header — matches mobile style */}
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-xl font-bold text-white md:text-primary-text">Document Collection</h1>
+                            <p className="text-sm text-white/50 md:text-muted mt-0.5">Upload documents to auto-fill the application.</p>
+                        </div>
+                        <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 md:bg-gray-100 md:border-gray-200">
+                            <span className={`text-sm font-bold ${isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Manual</span>
+                            <button type="button" onClick={() => setIsManualMode(!isManualMode)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${!isManualMode ? 'bg-accent' : 'bg-white/10 md:bg-gray-200'}`}>
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${!isManualMode ? 'translate-x-6' : 'translate-x-1'}`} />
                             </button>
-                            <span className={`text-sm font-bold tracking-wide transition-colors ${!isManualMode ? 'text-accent drop-shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'text-muted'}`}>
-                                Auto AI
-                            </span>
+                            <span className={`text-sm font-bold ${!isManualMode ? 'text-accent' : 'text-white/40 md:text-muted'}`}>Auto AI</span>
                         </div>
                     </div>
 
-                    <div className="space-y-8 mt-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            <div>
-                                <MandatoryToggle fieldKey="photo" label="Profile Photo" checked={mandatoryFields.photo} onChange={handleMandatoryToggle} />
-                                <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Profile Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
-                            </div>
-                            <div className="space-y-6">
-                                <Controller name="aadhaarLinkedMobile" control={control} render={({ field, fieldState }) => (<Input label="Aadhaar Linked Mobile Number" type="tel" {...field} error={fieldState.error?.message} />)} />
-                                <Controller name="alternateMobile" control={control} render={({ field, fieldState }) => (<Input label="Alternative Mobile Number (Optional)" type="tel" {...field} error={fieldState.error?.message} />)} />
+                    <div className="space-y-0">
+
+                        {/* Section 1: Profile & Contact */}
+                        <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                            <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest mb-4">Profile & Contact</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                                <div className="flex flex-col gap-2">
+                                    <MandatoryToggle fieldKey="photo" label="Profile Photo" checked={mandatoryFields.photo} onChange={handleMandatoryToggle} />
+                                    <Controller name="photo" control={control} render={({ field }) => <UploadDocument label={`Profile Photo${mandatoryFields.photo ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} allowCapture allowedTypes={['image/jpeg', 'image/png', 'image/webp']} />} />
+                                </div>
+                                <div className="flex flex-col gap-5 md:pt-8">
+                                    <Controller name="aadhaarLinkedMobile" control={control} render={({ field, fieldState }) => (<Input label="Aadhaar Linked Mobile Number" type="tel" {...field} error={fieldState.error?.message} />)} />
+                                    <Controller name="alternateMobile" control={control} render={({ field, fieldState }) => (<Input label="Alternative Mobile Number (Optional)" type="tel" {...field} error={fieldState.error?.message} />)} />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="border border-white/10 rounded-2xl p-5">
+                        {/* Section 2: Aadhaar Verification */}
+                        <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
                             <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-sm font-bold text-white/90">Aadhaar Verification</h4>
+                                <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Aadhaar Verification</p>
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="file"
-                                        accept=".zip"
-                                        className="hidden"
-                                        ref={zipInputRef}
-                                        onChange={handleZipUpload}
-                                    />
-                                    <Button 
-                                        type="button" 
-                                        variant="outline" 
-                                        size="sm"
-                                        onClick={() => zipInputRef.current?.click()}
-                                        className="text-xs"
-                                    >
-                                        <FileStack className="h-4 w-4 mr-1 text-accent" />
-                                        Upload Zip
+                                    <input type="file" accept=".zip" className="hidden" ref={zipInputRef} onChange={handleZipUpload} />
+                                    <Button type="button" variant="outline" size="sm" onClick={() => zipInputRef.current?.click()} className="text-xs !py-1">
+                                        <FileStack className="h-3.5 w-3.5 mr-1 text-accent" /> Upload Zip
                                     </Button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                                <div>
+                            <p className="text-xs text-white/40 md:text-muted mb-5">Tip: Use "Upload Zip" or "Scan QR" for instant auto-fill, or switch to Auto AI for automatic extraction.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="idProofFront" label="Aadhaar Front" checked={mandatoryFields.idProofFront} onChange={handleMandatoryToggle} />
                                     <Controller name="idProofFront" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Front Side)${mandatoryFields.idProofFront ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofFront?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? idFrontSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idFront', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
-                                <div>
+                                <div className="flex flex-col gap-2">
                                     <MandatoryToggle fieldKey="idProofBack" label="Aadhaar Back" checked={mandatoryFields.idProofBack} onChange={handleMandatoryToggle} />
                                     <Controller name="idProofBack" control={control} render={({ field }) => <UploadDocument label={`Aadhaar (Back Side)${mandatoryFields.idProofBack ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.idProofBack?.message as string} allowCapture verificationStatus={store.data.personal.verifiedStatus?.idProofNumber} ocrSchema={!isManualMode ? addressSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('idBack', data)} docType={idProofType} setToast={setToast} />} />
                                 </div>
                             </div>
-                            <p className="text-xs text-muted mt-2">Tip: Use "Upload Zip" or "Scan QR" for instant auto-fill, or switch to Auto AI for automatic extraction.</p>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            <div>
-                                <MandatoryToggle fieldKey="bankProof" label="Bank Proof" checked={mandatoryFields.bankProof} onChange={handleMandatoryToggle} />
-                                <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={!isManualMode ? bankProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                        {/* Section 3: Financial Documents */}
+                        <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                            <div className="flex items-center justify-between mb-4">
+                                <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Financial Documents</p>
                             </div>
-                            <div>
-                                <MandatoryToggle fieldKey="uanProof" label="UAN Proof" checked={mandatoryFields.uanProof} onChange={handleMandatoryToggle} />
-                                <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={!isManualMode ? uanProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div className="flex flex-col gap-2">
+                                    <MandatoryToggle fieldKey="bankProof" label="Bank Proof" checked={mandatoryFields.bankProof} onChange={handleMandatoryToggle} />
+                                    <Controller name="bankProof" control={control} render={({ field }) => <UploadDocument label={`Bank Proof (Passbook/Cancelled Cheque)${mandatoryFields.bankProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.bankProof?.message as string} allowCapture verificationStatus={store.data.bank.verifiedStatus?.accountNumber} ocrSchema={!isManualMode ? bankProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('bank', data)} docType="Bank" setToast={setToast} />} />
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <MandatoryToggle fieldKey="uanProof" label="UAN Proof" checked={mandatoryFields.uanProof} onChange={handleMandatoryToggle} />
+                                    <Controller name="uanProof" control={control} render={({ field }) => <UploadDocument label={`UAN Proof Document${mandatoryFields.uanProof ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.uanProof?.message as string} allowCapture verificationStatus={store.data.uan.verifiedStatus?.uanNumber} ocrSchema={!isManualMode ? uanProofSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('uan', data)} docType="UAN" setToast={setToast} />} />
+                                </div>
+                                {currentRules.documents.pan && (
+                                    <div className="flex flex-col gap-2">
+                                        <MandatoryToggle fieldKey="panCard" label="PAN Card" checked={mandatoryFields.panCard} onChange={handleMandatoryToggle} />
+                                        <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={!isManualMode ? panSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
+                                    </div>
+                                )}
+                                {currentRules.documents.salarySlip && (
+                                    <div className="flex flex-col gap-2">
+                                        <MandatoryToggle fieldKey="salarySlip" label="Salary Slip" checked={mandatoryFields.salarySlip} onChange={handleMandatoryToggle} />
+                                        <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={!isManualMode ? salarySlipSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {currentRules.documents.pan && (
-                            <div>
-                                <MandatoryToggle fieldKey="panCard" label="PAN Card" checked={mandatoryFields.panCard} onChange={handleMandatoryToggle} />
-                                <Controller name="panCard" control={control} render={({ field }) => <UploadDocument label={`PAN Card${mandatoryFields.panCard ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.panCard?.message as string} allowCapture ocrSchema={!isManualMode ? panSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('pan', data)} docType="PAN" setToast={setToast} />} />
-                            </div>
-                        )}
-
-                        {currentRules.documents.salarySlip && (
-                            <div>
-                                <MandatoryToggle fieldKey="salarySlip" label="Salary Slip" checked={mandatoryFields.salarySlip} onChange={handleMandatoryToggle} />
-                                <Controller name="salarySlip" control={control} render={({ field }) => <UploadDocument label={`Latest Salary Slip${mandatoryFields.salarySlip ? ' *' : ' (Optional)'}`} file={field.value} onFileChange={field.onChange} error={errors.salarySlip?.message as string} allowCapture ocrSchema={!isManualMode ? salarySlipSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('salary', data)} docType="Salary" setToast={setToast} />} />
-                            </div>
-                        )}
-
+                        {/* Section 4: Education Certificates */}
                         {currentRules.documents.educationCertificate && (
-                            <div className="pt-6 border-t">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h4 className="text-md font-bold text-white/90">Education Certificates</h4>
+                            <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                                <div className="flex items-center justify-between mb-4">
+                                    <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Education Certificates</p>
                                     <MandatoryToggle fieldKey="educationCertificate" label="Education Certificate" checked={mandatoryFields.educationCertificate} onChange={handleMandatoryToggle} />
                                 </div>
                                 <div className="space-y-4">
                                     {educationFields.map((field, index) => (
-                                        <div key={field.id} className="p-5 border border-white/10 rounded-2xl relative">
-                                            <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (<UploadDocument label="Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? educationSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />)} />
-                                            <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500 hover:text-red-400 transition-colors" /></Button>
+                                        <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+                                                <Controller name={`education.${index}.degree`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                    <Select label="Degree / Qualification" error={fieldState.error?.message} {...controllerField}>
+                                                        <option value="">Select Degree</option>
+                                                        <option>SSLC / 10th</option>
+                                                        <option>PUC / 12th</option>
+                                                        <option>Graduation</option>
+                                                        <option>Post Graduation</option>
+                                                        <option>Diploma</option>
+                                                        <option>Other</option>
+                                                    </Select>
+                                                )} />
+                                                <Controller name={`education.${index}.institution`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                    <Input label="School / College / Institution" {...controllerField} error={fieldState.error?.message} />
+                                                )} />
+                                                <Controller name={`education.${index}.endYear`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                    <Input label="Passing Year" placeholder="e.g. 2024" {...controllerField} error={fieldState.error?.message} />
+                                                )} />
+                                                <div className="md:col-span-3">
+                                                    <Controller name={`education.${index}.document`} control={control} render={({ field: controllerField, fieldState }) => (
+                                                        <UploadDocument label="Upload Certificate" file={controllerField.value} onFileChange={controllerField.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? educationSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('education', data, index)} docType="Education" setToast={setToast} />
+                                                    )} />
+                                                </div>
+                                            </div>
+                                            <Button type="button" variant="icon" size="sm" onClick={() => removeEducation(index)} className="!absolute top-3 right-3">
+                                                <Trash2 className="h-4 w-4 text-red-500" />
+                                            </Button>
                                         </div>
                                     ))}
-                                    <Button type="button" variant="outline" onClick={() => appendEducation({ id: `edu_upload_${Date.now()}`, document: null })}><Plus className="mr-2 h-4 w-4" /> Add Certificate</Button>
+                                    <Button type="button" variant="outline" onClick={() => appendEducation({ id: `edu_upload_${Date.now()}`, degree: '', institution: '', endYear: '', document: null })}>
+                                        <Plus className="mr-2 h-4 w-4" /> Add Education Certificate
+                                    </Button>
                                 </div>
                             </div>
                         )}
 
+                        {/* Section 5: Family Member Documents */}
                         {currentRules.documents.familyAadhaar && (
-                            <div className="pt-6 border-t">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h4 className="text-md font-bold text-white/90">Family Member Documents</h4>
+                            <div className="pb-6 mb-6 border-b border-white/10 md:border-border">
+                                <div className="flex items-center justify-between mb-4">
+                                    <p className="text-xs font-bold text-white/40 md:text-muted uppercase tracking-widest">Family Member Documents</p>
                                     <MandatoryToggle fieldKey="familyAadhaar" label="Family Aadhaar" checked={mandatoryFields.familyAadhaar} onChange={handleMandatoryToggle} />
                                 </div>
                                 <div className="space-y-4">
@@ -1015,13 +1042,15 @@ const PreUpload = () => {
                                         const relation = familyValues?.[index]?.relation;
                                         const isChild = relation === 'Child';
                                         return (
-                                            <div key={field.id} className="p-5 border border-white/10 rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-5 items-start relative">
-                                                <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
-                                                <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
-                                                <div className="md:col-start-1 md:col-span-3">
-                                                    <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label={`Aadhaar Card`} file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? familyAadhaarSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                            <div key={field.id} className="border border-white/10 md:border-border rounded-2xl p-5 relative">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                                                    <Controller name={`family.${index}.relation`} control={control} render={({ field, fieldState }) => (<Select label="Relation" error={fieldState.error?.message} {...field}> <option value="">Select</option><option>Spouse</option><option>Child</option><option>Father</option><option>Mother</option> </Select>)} />
+                                                    <Controller name={`family.${index}.phone`} control={control} render={({ field, fieldState }) => (<Input label={`Phone Number${isChild ? ' (Optional)' : ''}`} type="tel" {...field} error={fieldState.error?.message} />)} />
+                                                    <div className="md:col-span-2">
+                                                        <Controller name={`family.${index}.idProof`} control={control} render={({ field, fieldState }) => (<UploadDocument label="Aadhaar Card" file={field.value} onFileChange={field.onChange} error={fieldState.error?.message} allowCapture ocrSchema={!isManualMode ? familyAadhaarSchema : undefined} onOcrComplete={(data) => handleImmediateOcr('familyAadhaar', data, index)} docType="Aadhaar" setToast={setToast} />)} />
+                                                    </div>
                                                 </div>
-                                                <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500 hover:text-red-400 transition-colors" /></Button>
+                                                <Button type="button" variant="icon" size="sm" onClick={() => removeFamily(index)} className="!absolute top-3 right-3"><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                             </div>
                                         )
                                     })}
@@ -1033,27 +1062,17 @@ const PreUpload = () => {
                         )}
                     </div>
 
-                    <div className="mt-8 pt-6 border-t">
+                    {/* Footer Actions */}
+                    <div className="pt-6 border-t border-white/10 md:border-border">
                         <div className="flex justify-between items-center gap-4">
                             <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
                                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
                             </Button>
                             <div className="flex items-center gap-3">
-                                <DraftSaveIndicator
-                                    status={saveStatus}
-                                    lastSavedAt={lastSavedAt}
-                                    onManualSave={handlePreUploadDraft}
-                                />
+                                <DraftSaveIndicator status={saveStatus} lastSavedAt={lastSavedAt} onManualSave={handlePreUploadDraft} />
                                 {saveStatus === 'dirty' && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handlePreUploadDraft}
-                                        className="flex items-center gap-1 text-sm"
-                                    >
-                                        <Save className="h-4 w-4" />
-                                        Save Draft
+                                    <Button type="button" variant="outline" size="sm" onClick={handlePreUploadDraft} className="flex items-center gap-1 text-sm">
+                                        <Save className="h-4 w-4" /> Save Draft
                                     </Button>
                                 )}
                                 <Button type="submit" isLoading={isProcessing}>Process & Continue</Button>
@@ -1064,34 +1083,21 @@ const PreUpload = () => {
             </div>
             {isZipReviewOpen && zipReviewData && (
                 <div className="fixed inset-0 z-[500] flex flex-col bg-[#041b0f] text-white animate-fade-in overflow-hidden">
-                    {/* Main content starts below the global header */}
                     <main className="flex-1 overflow-y-auto px-6 py-4 space-y-6" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 64px)' }}>
-                        {/* Page Header Context */}
                         <div className="space-y-1">
                             <h1 className="text-xl font-bold text-white">Document Collection</h1>
                             <p className="text-sm text-white/50">Upload documents to auto-fill the application.</p>
                         </div>
-
-                        {/* Verification Title */}
                         <div className="flex items-center gap-3 py-2">
-                            <button 
-                                type="button"
-                                onClick={() => setIsZipReviewOpen(false)}
-                                className="p-1 hover:bg-white/10 rounded-full transition-colors"
-                            >
+                            <button type="button" onClick={() => setIsZipReviewOpen(false)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
                                 <ArrowLeft className="h-6 w-6 text-accent" />
                             </button>
                             <h2 className="text-lg font-bold">Verify Extracted Details</h2>
                         </div>
-                        {/* Photo Section */}
                         <div className="flex items-center gap-4">
                             <div className="relative">
                                 {zipReviewData.photo ? (
-                                    <img 
-                                        src={zipReviewData.photo} 
-                                        alt="Resident" 
-                                        className="w-20 h-20 rounded-full object-cover border-2 border-accent/20"
-                                    />
+                                    <img src={zipReviewData.photo} alt="Resident" className="w-20 h-20 rounded-full object-cover border-2 border-accent/20" />
                                 ) : (
                                     <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center border-2 border-accent/10">
                                         <User className="h-10 w-10 text-accent/50" />
@@ -1103,8 +1109,6 @@ const PreUpload = () => {
                                 <p className="text-white/40 text-sm">Your digital photo saved on Aadhaar</p>
                             </div>
                         </div>
-
-                        {/* Details List */}
                         <div className="space-y-6">
                             {[
                                 { icon: User, label: "Full name", value: zipReviewData.name },
@@ -1129,23 +1133,12 @@ const PreUpload = () => {
                             ))}
                         </div>
                     </main>
-
                     <footer className="p-6 space-y-3 bg-[#041b0f] border-t border-[#1f3d2b]">
-                        <Button 
-                            type="button"
-                            className="w-full !bg-accent !text-[#02140a] !h-14 !rounded-2xl font-bold text-lg shadow-[0_0_20px_rgba(34,197,94,0.3)]"
-                            onClick={confirmZipDataAndFill}
-                        >
+                        <Button type="button" className="w-full !bg-accent !text-[#02140a] !h-14 !rounded-2xl font-bold text-lg shadow-[0_0_20px_rgba(34,197,94,0.3)]" onClick={confirmZipDataAndFill}>
                             Confirm & Auto-fill
                         </Button>
-                        <button 
-                            type="button"
-                            className="w-full h-14 rounded-2xl font-bold text-lg bg-white/10 hover:bg-white/20 transition-colors text-white"
-                            onClick={() => {
-                                setIsZipReviewOpen(false);
-                                zipInputRef.current?.click();
-                            }}
-                        >
+                        <button type="button" className="w-full h-14 rounded-2xl font-bold text-lg bg-white/10 hover:bg-white/20 transition-colors text-white"
+                            onClick={() => { setIsZipReviewOpen(false); zipInputRef.current?.click(); }}>
                             Re-upload Zip File
                         </button>
                     </footer>

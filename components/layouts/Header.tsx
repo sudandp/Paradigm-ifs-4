@@ -86,15 +86,15 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                         <div className="flex-1 flex justify-start" />
                     )}
 
-                    <div className={isMobile ? "hidden" : "flex-none flex items-center justify-center ml-auto"}>
-                        <div className="flex items-center space-x-2">
+                    <div className={isMobile ? "hidden" : "flex-none flex items-center justify-end ml-auto"}>
+                        <div className="flex items-center space-x-4">
                             <div className="relative">
                                   {/* Sky-Shot Firework Animation Effect */}
                                   <SkyShotFireworks />
 
                                 <button
                                     onClick={() => setReferralModalOpen(true)}
-                                    className="relative flex items-center group mr-2 active:scale-95 transition-all"
+                                    className="relative flex items-center group active:scale-95 transition-all"
                                     title="Referral Program"
                                 >
                                     <div className="relative inline-flex items-center rounded-lg border border-white/80 overflow-hidden shadow-md group-hover:scale-105 transition-all duration-300">

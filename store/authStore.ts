@@ -997,9 +997,7 @@ export const useAuthStore = create<AuthState>()(
                               const { stepCounterService } = await import('../services/stepCounterService');
                               await stepCounterService.getStepCountFromNative();
                               stepsValue = stepCounterService.getStepsCount();
-                              if (workType === 'field') {
-                                  sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
-                              }
+                              sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
                               await stepCounterService.stopCounting();
                               set({ liveSteps: 0 }); // Reset live display after checkout
                             console.log(`[authStore] Saved steps: ${stepsValue}, sqft: ${sqftValue}`);

@@ -1,0 +1,4086 @@
+{
+  "id": "singleton",
+  "attendance_settings": {
+    "id": "singleton",
+    "site": {
+      "recurring_holidays": [
+        {
+          "n": 3,
+          "day": "Saturday",
+          "type": "site"
+        }
+      ],
+      "enable_field_report": false,
+      "earned_leave_accrual": {
+        "amount_earned": 1.5,
+        "days_required": 30
+      },
+      "enable_custom_holidays": true,
+      "enable_sick_leave_accrual": true,
+      "weekend_present_threshold": 2
+    },
+    "admin": {
+      "device_limits": {
+        "ios": 5,
+        "web": 5,
+        "android": 5
+      },
+      "enable_field_report": false
+    },
+    "field": {
+      "enable_field_report": false,
+      "earned_leave_accrual": {
+        "amount_earned": 1.5,
+        "days_required": 30
+      },
+      "enable_custom_holidays": true,
+      "enable_sick_leave_accrual": true,
+      "weekend_present_threshold": 2
+    },
+    "office": {
+      "recurring_holidays": [
+        {
+          "n": 3,
+          "day": "Saturday",
+          "type": "office"
+        }
+      ],
+      "enable_field_report": false,
+      "earned_leave_accrual": {
+        "amount_earned": 1.5,
+        "days_required": 30
+      },
+      "enable_custom_holidays": true,
+      "enable_sick_leave_accrual": true,
+      "weekend_present_threshold": 2
+    },
+    "gmc_policy": [
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      },
+      {
+        "provider": "Star Health Insurance",
+        "plan_name": "Standard Plan",
+        "valid_from": "2026-01-01",
+        "valid_till": "2026-12-31",
+        "company_name": "AP Security Services Pvt Ltd",
+        "premium_amount": 5000,
+        "coverage_amount": 200000
+      }
+    ],
+    "management": {
+      "device_limits": {
+        "ios": 5,
+        "web": 5,
+        "android": 5
+      },
+      "enable_field_report": false
+    },
+    "api_settings": {
+      "app_version": "16.6",
+      "backup_schedule": {
+        "interval": 1,
+        "frequency": "weekly",
+        "start_time": "00:00",
+        "day_of_week": 0,
+        "day_of_month": 1,
+        "month_of_year": 1
+      },
+      "one_signal_app_id": "bf3d8830-1a71-439c-ae14-a6efaa0b62c6",
+      "automated_tracking": {
+        "enabled": true,
+        "interval_minutes": 5
+      },
+      "auto_backup_enabled": true
+    },
+    "email_config": {
+      "host": "smtp.gmail.com",
+      "pass": "jkwq aqfl qbkv jauc",
+      "port": 465,
+      "user": "noreply@paradigmfms.com",
+      "secure": true,
+      "enabled": true,
+      "reply_to": "Noreply@Paradigmfms.Com",
+      "from_name": "Paradigm Fms ",
+      "from_email": "Sudhan@Paradigmfms.Com"
+    },
+    "master_tools": null,
+    "otp_settings": {
+      "enabled": true
+    },
+    "voip_settings": {},
+    "address_settings": {
+      "enable_pincode_verification": true
+    },
+    "enrollment_rules": {
+      "enable_esi_rule": false,
+      "enable_gmc_rule": false,
+      "salary_threshold": 21000,
+      "allow_salary_edit": false,
+      "esi_ctc_threshold": 21000,
+      "manpower_limit_rule": "warn",
+      "rules_by_designation": {},
+      "default_policy_single": "1L",
+      "default_policy_married": "2L",
+      "enforce_manpower_limit": false,
+      "enforce_family_validation": true
+    },
+    "verification_costs": null,
+    "attendance_settings": {
+      "site": {
+        "site_shifts": [
+          {
+            "id": "shift_a",
+            "name": "Shift A",
+            "end_time": "15:00",
+            "start_time": "07:00",
+            "crosses_midnight": false,
+            "auto_checkout_buffer_minutes": 30
+          },
+          {
+            "id": "shift_b",
+            "name": "Shift B",
+            "end_time": "21:00",
+            "start_time": "14:00",
+            "crosses_midnight": false,
+            "auto_checkout_buffer_minutes": 30
+          },
+          {
+            "id": "shift_c",
+            "name": "Shift C",
+            "end_time": "07:00",
+            "start_time": "21:00",
+            "crosses_midnight": true,
+            "auto_checkout_buffer_minutes": 30
+          }
+        ],
+        "holiday_pool": [
+          {
+            "date": "-01-01",
+            "name": "New Year"
+          },
+          {
+            "date": "-01-15",
+            "name": "Uttarayana Punyakala, Makara Sankranti Festival"
+          },
+          {
+            "date": "-03-04",
+            "name": "Holi"
+          },
+          {
+            "date": "-03-19",
+            "name": "Ugadi Festival"
+          },
+          {
+            "date": "-03-21",
+            "name": "Khutub-E-Ramzan"
+          },
+          {
+            "date": "-03-31",
+            "name": "Mahaveera Jayanthi"
+          },
+          {
+            "date": "-04-03",
+            "name": "Good Friday"
+          },
+          {
+            "date": "-04-14",
+            "name": "Dr. B.R. Ambedkar Jayanthi"
+          },
+          {
+            "date": "-04-15",
+            "name": "Vishu"
+          },
+          {
+            "date": "-04-20",
+            "name": "Basava Jayanthi, Akshaya Tritiya"
+          },
+          {
+            "date": "-05-28",
+            "name": "Bakrid"
+          },
+          {
+            "date": "-06-26",
+            "name": "Last Day of Moharam"
+          },
+          {
+            "date": "-08-21",
+            "name": "Varamahalakshmi Festival"
+          },
+          {
+            "date": "-08-26",
+            "name": "Eid-Milad"
+          },
+          {
+            "date": "-09-14",
+            "name": "Varasiddhi Vinayaka Vrata"
+          },
+          {
+            "date": "-10-20",
+            "name": "Mahanavami, Ayudhapooja"
+          },
+          {
+            "date": "-10-21",
+            "name": "Vijayadasami"
+          },
+          {
+            "date": "-11-10",
+            "name": "Balipadyami, Deepavali"
+          },
+          {
+            "date": "-11-27",
+            "name": "Kanakadasa Jayanthi"
+          },
+          {
+            "date": "-12-25",
+            "name": "Christmas"
+          }
+        ],
+        "device_limits": {
+          "ios": 5,
+          "web": 5,
+          "android": 5
+        },
+        "site_departments": [
+          {
+            "id": "facility_manager",
+            "label": "Facility manager",
+            "short_label": "FACIL"
+          }
+        ],
+        "dept_rule_configs": [
+          {
+            "dept_id": "facility_manager",
+            "shift_id": "",
+            "leave_types": [
+              "S/L",
+              "C/O"
+            ],
+            "weekly_off_days": [
+              0
+            ],
+            "deployment_count": 1,
+            "holiday_code_type": "H"
+          }
+        ],
+        "enable_permission": true,
+        "annual_sick_leaves": 0,
+        "geofencing_enabled": false,
+        "recurring_holidays": [
+          {
+            "n": 3,
+            "day": "Saturday",
+            "type": "site"
+          }
+        ],
+        "enable_field_report": false,
+        "shift_grace_minutes": 30,
+        "annual_earned_leaves": 10,
+        "earned_leave_accrual": {
+          "amount_earned": 1.5,
+          "days_required": 30
+        },
+        "enable_break_tracking": false,
+        "annual_comp_off_leaves": 10,
+        "enable_custom_holidays": true,
+        "minimum_hours_full_day": 9,
+        "minimum_hours_half_day": 5,
+        "enable_shift_management": true,
+        "monthly_floating_leaves": 0,
+        "enable_correction_limits": true,
+        "max_violations_per_month": 3,
+        "enable_sick_leave_accrual": true,
+        "enable_violation_blocking": false,
+        "weekend_present_threshold": 2,
+        "enable_hours_based_calculation": false,
+        "enable_attendance_notifications": true,
+        "enable_ot_to_comp_off_conversion": false,
+        "sick_leave_certificate_threshold": 3
+      },
+      "admin": {
+        "holiday_pool": [
+          {
+            "date": "-01-01",
+            "name": "New Year"
+          },
+          {
+            "date": "-01-15",
+            "name": "Uttarayana Punyakala, Makara Sankranti Festival"
+          },
+          {
+            "date": "-03-04",
+            "name": "Holi"
+          },
+          {
+            "date": "-03-19",
+            "name": "Ugadi Festival"
+          },
+          {
+            "date": "-03-21",
+            "name": "Khutub-E-Ramzan"
+          },
+          {
+            "date": "-03-31",
+            "name": "Mahaveera Jayanthi"
+          },
+          {
+            "date": "-04-03",
+            "name": "Good Friday"
+          },
+          {
+            "date": "-04-14",
+            "name": "Dr. B.R. Ambedkar Jayanthi"
+          },
+          {
+            "date": "-04-15",
+            "name": "Vishu"
+          },
+          {
+            "date": "-04-20",
+            "name": "Basava Jayanthi, Akshaya Tritiya"
+          },
+          {
+            "date": "-05-28",
+            "name": "Bakrid"
+          },
+          {
+            "date": "-06-26",
+            "name": "Last Day of Moharam"
+          },
+          {
+            "date": "-08-21",
+            "name": "Varamahalakshmi Festival"
+          },
+          {
+            "date": "-08-26",
+            "name": "Eid-Milad"
+          },
+          {
+            "date": "-09-14",
+            "name": "Varasiddhi Vinayaka Vrata"
+          },
+          {
+            "date": "-10-20",
+            "name": "Mahanavami, Ayudhapooja"
+          },
+          {
+            "date": "-10-21",
+            "name": "Vijayadasami"
+          },
+          {
+            "date": "-11-10",
+            "name": "Balipadyami, Deepavali"
+          },
+          {
+            "date": "-11-27",
+            "name": "Kanakadasa Jayanthi"
+          },
+          {
+            "date": "-12-25",
+            "name": "Christmas"
+          }
+        ],
+        "device_limits": {
+          "ios": 5,
+          "web": 5,
+          "android": 5
+        },
+        "employee_holidays": 5,
+        "enable_permission": true,
+        "annual_sick_leaves": 0,
+        "fixed_office_hours": {
+          "check_out_time": "17:00"
+        },
+        "geofencing_enabled": false,
+        "recurring_holidays": [
+          {
+            "n": 3,
+            "day": "Saturday",
+            "type": "office"
+          }
+        ],
+        "daily_working_hours": {
+          "max": 10,
+          "min": 8
+        },
+        "enable_field_report": false,
+        "annual_earned_leaves": 0,
+        "earned_leave_accrual": {
+          "amount_earned": 0.5,
+          "days_required": 10
+        },
+        "lunch_break_duration": 62,
+        "monthly_target_hours": 216,
+        "enable_break_tracking": true,
+        "annual_comp_off_leaves": 0,
+        "enable_custom_holidays": true,
+        "minimum_hours_full_day": 8,
+        "minimum_hours_half_day": 4,
+        "floating_holiday_months": [
+          0,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "monthly_floating_leaves": 1,
+        "sick_leaves_expiry_date": "2026-12-31",
+        "admin_allocated_holidays": 7,
+        "enable_correction_limits": true,
+        "max_violations_per_month": 3,
+        "earned_leaves_expiry_date": "2026-12-31",
+        "enable_sick_leave_accrual": true,
+        "enable_violation_blocking": false,
+        "max_holidays_per_category": 12,
+        "floating_leaves_valid_from": "2026-04-01",
+        "comp_off_leaves_expiry_date": "2026-12-31",
+        "floating_leaves_expiry_date": "2026-06-01",
+        "enable_hours_based_calculation": true,
+        "enable_attendance_notifications": true,
+        "sick_leave_certificate_threshold": 3
+      },
+      "field": {
+        "holiday_pool": [
+          {
+            "date": "-01-01",
+            "name": "New Year"
+          },
+          {
+            "date": "-01-15",
+            "name": "Uttarayana Punyakala, Makara Sankranti Festival"
+          },
+          {
+            "date": "-03-04",
+            "name": "Holi"
+          },
+          {
+            "date": "-03-19",
+            "name": "Ugadi Festival"
+          },
+          {
+            "date": "-03-21",
+            "name": "Khutub-E-Ramzan"
+          },
+          {
+            "date": "-03-31",
+            "name": "Mahaveera Jayanthi"
+          },
+          {
+            "date": "-04-03",
+            "name": "Good Friday"
+          },
+          {
+            "date": "-04-14",
+            "name": "Dr. B.R. Ambedkar Jayanthi"
+          },
+          {
+            "date": "-04-15",
+            "name": "Vishu"
+          },
+          {
+            "date": "-04-20",
+            "name": "Basava Jayanthi, Akshaya Tritiya"
+          },
+          {
+            "date": "-05-28",
+            "name": "Bakrid"
+          },
+          {
+            "date": "-06-26",
+            "name": "Last Day of Moharam"
+          },
+          {
+            "date": "-08-21",
+            "name": "Varamahalakshmi Festival"
+          },
+          {
+            "date": "-08-26",
+            "name": "Eid-Milad"
+          },
+          {
+            "date": "-09-14",
+            "name": "Varasiddhi Vinayaka Vrata"
+          },
+          {
+            "date": "-10-20",
+            "name": "Mahanavami, Ayudhapooja"
+          },
+          {
+            "date": "-10-21",
+            "name": "Vijayadasami"
+          },
+          {
+            "date": "-11-10",
+            "name": "Balipadyami, Deepavali"
+          },
+          {
+            "date": "-11-27",
+            "name": "Kanakadasa Jayanthi"
+          },
+          {
+            "date": "-12-25",
+            "name": "Christmas"
+          }
+        ],
+        "device_limits": {
+          "ios": 5,
+          "web": 5,
+          "android": 5
+        },
+        "enable_permission": true,
+        "annual_sick_leaves": 0,
+        "geofencing_enabled": false,
+        "recurring_holidays": [
+          {
+            "n": 3,
+            "day": "Saturday",
+            "type": "field"
+          }
+        ],
+        "daily_working_hours": {
+          "max": 6,
+          "min": 4
+        },
+        "enable_field_report": false,
+        "annual_earned_leaves": 0,
+        "earned_leave_accrual": {
+          "amount_earned": 1.5,
+          "days_required": 30
+        },
+        "enable_break_tracking": true,
+        "annual_comp_off_leaves": 0,
+        "enable_custom_holidays": true,
+        "minimum_hours_full_day": 4,
+        "minimum_hours_half_day": 2,
+        "floating_holiday_months": [
+          0,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "monthly_floating_leaves": 1,
+        "sick_leaves_expiry_date": "2026-12-31",
+        "enable_correction_limits": true,
+        "earned_leaves_expiry_date": "2026-12-31",
+        "enable_sick_leave_accrual": true,
+        "enable_site_time_tracking": true,
+        "enable_violation_blocking": false,
+        "weekend_present_threshold": 2,
+        "floating_leaves_valid_from": "2026-04-30",
+        "floating_leaves_expiry_date": "2026-12-31",
+        "max_correction_duration_hours": 24,
+        "max_permission_duration_hours": 3,
+        "enable_hours_based_calculation": true,
+        "enable_attendance_notifications": true,
+        "enable_ot_to_comp_off_conversion": false,
+        "sick_leave_certificate_threshold": 3
+      },
+      "office": {
+        "holiday_pool": [
+          {
+            "date": "-01-01",
+            "name": "New Year"
+          },
+          {
+            "date": "-01-15",
+            "name": "Uttarayana Punyakala, Makara Sankranti Festival"
+          },
+          {
+            "date": "-03-04",
+            "name": "Holi"
+          },
+          {
+            "date": "-03-19",
+            "name": "Ugadi Festival"
+          },
+          {
+            "date": "-03-21",
+            "name": "Khutub-E-Ramzan"
+          },
+          {
+            "date": "-03-31",
+            "name": "Mahaveera Jayanthi"
+          },
+          {
+            "date": "-04-03",
+            "name": "Good Friday"
+          },
+          {
+            "date": "-04-14",
+            "name": "Dr. B.R. Ambedkar Jayanthi"
+          },
+          {
+            "date": "-04-15",
+            "name": "Vishu"
+          },
+          {
+            "date": "-04-20",
+            "name": "Basava Jayanthi, Akshaya Tritiya"
+          },
+          {
+            "date": "-05-28",
+            "name": "Bakrid"
+          },
+          {
+            "date": "-06-26",
+            "name": "Last Day of Moharam"
+          },
+          {
+            "date": "-08-21",
+            "name": "Varamahalakshmi Festival"
+          },
+          {
+            "date": "-08-26",
+            "name": "Eid-Milad"
+          },
+          {
+            "date": "-09-14",
+            "name": "Varasiddhi Vinayaka Vrata"
+          },
+          {
+            "date": "-10-20",
+            "name": "Mahanavami, Ayudhapooja"
+          },
+          {
+            "date": "-10-21",
+            "name": "Vijayadasami"
+          },
+          {
+            "date": "-11-10",
+            "name": "Balipadyami, Deepavali"
+          },
+          {
+            "date": "-11-27",
+            "name": "Kanakadasa Jayanthi"
+          },
+          {
+            "date": "-12-25",
+            "name": "Christmas"
+          }
+        ],
+        "device_limits": {
+          "ios": 1,
+          "web": 1,
+          "android": 1
+        },
+        "employee_holidays": 5,
+        "enable_permission": true,
+        "annual_sick_leaves": 0,
+        "fixed_office_hours": {
+          "check_out_time": "17:00"
+        },
+        "geofencing_enabled": false,
+        "recurring_holidays": [
+          {
+            "n": 3,
+            "day": "Saturday",
+            "type": "office"
+          }
+        ],
+        "daily_working_hours": {
+          "max": 8,
+          "min": 8
+        },
+        "enable_field_report": false,
+        "annual_earned_leaves": 0,
+        "earned_leave_accrual": {
+          "amount_earned": 1.5,
+          "days_required": 30
+        },
+        "lunch_break_duration": 62,
+        "monthly_target_hours": 216,
+        "enable_break_tracking": true,
+        "annual_comp_off_leaves": 0,
+        "enable_custom_holidays": true,
+        "minimum_hours_full_day": 8,
+        "minimum_hours_half_day": 4,
+        "floating_holiday_months": [
+          0,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "monthly_floating_leaves": 1,
+        "sick_leaves_expiry_date": "2026-12-31",
+        "admin_allocated_holidays": 7,
+        "enable_correction_limits": true,
+        "max_violations_per_month": 3,
+        "earned_leaves_expiry_date": "2026-12-31",
+        "enable_sick_leave_accrual": true,
+        "enable_violation_blocking": false,
+        "max_holidays_per_category": 12,
+        "max_permissions_per_month": 3,
+        "weekend_present_threshold": 2,
+        "floating_leaves_valid_from": "2026-04-01",
+        "comp_off_leaves_expiry_date": "2026-12-31",
+        "enable_maternity_child_care": true,
+        "floating_leaves_expiry_date": "2026-02-01",
+        "max_correction_duration_hours": 24,
+        "max_permission_duration_hours": 2,
+        "enable_hours_based_calculation": true,
+        "enable_attendance_notifications": true,
+        "enable_ot_to_comp_off_conversion": false,
+        "sick_leave_certificate_threshold": 0
+      },
+      "management": {
+        "holiday_pool": [
+          {
+            "date": "-01-01",
+            "name": "New Year"
+          },
+          {
+            "date": "-01-15",
+            "name": "Uttarayana Punyakala, Makara Sankranti Festival"
+          },
+          {
+            "date": "-03-04",
+            "name": "Holi"
+          },
+          {
+            "date": "-03-19",
+            "name": "Ugadi Festival"
+          },
+          {
+            "date": "-03-21",
+            "name": "Khutub-E-Ramzan"
+          },
+          {
+            "date": "-03-31",
+            "name": "Mahaveera Jayanthi"
+          },
+          {
+            "date": "-04-03",
+            "name": "Good Friday"
+          },
+          {
+            "date": "-04-14",
+            "name": "Dr. B.R. Ambedkar Jayanthi"
+          },
+          {
+            "date": "-04-15",
+            "name": "Vishu"
+          },
+          {
+            "date": "-04-20",
+            "name": "Basava Jayanthi, Akshaya Tritiya"
+          },
+          {
+            "date": "-05-28",
+            "name": "Bakrid"
+          },
+          {
+            "date": "-06-26",
+            "name": "Last Day of Moharam"
+          },
+          {
+            "date": "-08-21",
+            "name": "Varamahalakshmi Festival"
+          },
+          {
+            "date": "-08-26",
+            "name": "Eid-Milad"
+          },
+          {
+            "date": "-09-14",
+            "name": "Varasiddhi Vinayaka Vrata"
+          },
+          {
+            "date": "-10-20",
+            "name": "Mahanavami, Ayudhapooja"
+          },
+          {
+            "date": "-10-21",
+            "name": "Vijayadasami"
+          },
+          {
+            "date": "-11-10",
+            "name": "Balipadyami, Deepavali"
+          },
+          {
+            "date": "-11-27",
+            "name": "Kanakadasa Jayanthi"
+          },
+          {
+            "date": "-12-25",
+            "name": "Christmas"
+          }
+        ],
+        "device_limits": {
+          "ios": 5,
+          "web": 5,
+          "android": 5
+        },
+        "employee_holidays": 5,
+        "annual_sick_leaves": 0,
+        "fixed_office_hours": {
+          "check_out_time": "17:00"
+        },
+        "geofencing_enabled": false,
+        "recurring_holidays": [
+          {
+            "n": 3,
+            "day": "Saturday",
+            "type": "office"
+          }
+        ],
+        "daily_working_hours": {
+          "max": 10,
+          "min": 8
+        },
+        "annual_earned_leaves": 0,
+        "earned_leave_accrual": {
+          "amount_earned": 0.5,
+          "days_required": 10
+        },
+        "lunch_break_duration": 62,
+        "monthly_target_hours": 216,
+        "enable_break_tracking": true,
+        "annual_comp_off_leaves": 0,
+        "enable_custom_holidays": true,
+        "minimum_hours_full_day": 8,
+        "minimum_hours_half_day": 4,
+        "floating_holiday_months": [
+          0,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "monthly_floating_leaves": 1,
+        "sick_leaves_expiry_date": "2026-12-31",
+        "admin_allocated_holidays": 7,
+        "max_violations_per_month": 3,
+        "earned_leaves_expiry_date": "2026-12-31",
+        "enable_sick_leave_accrual": true,
+        "enable_violation_blocking": false,
+        "max_holidays_per_category": 12,
+        "comp_off_leaves_expiry_date": "2026-12-31",
+        "floating_leaves_expiry_date": "2026-02-01",
+        "enable_hours_based_calculation": true,
+        "enable_attendance_notifications": true,
+        "sick_leave_certificate_threshold": 3
+      },
+      "device_limits": {
+        "admin": {
+          "ios": 2,
+          "web": 5,
+          "android": 2
+        },
+        "site_staff": {
+          "ios": 1,
+          "web": 1,
+          "android": 1
+        },
+        "field_staff": {
+          "ios": 1,
+          "web": 1,
+          "android": 1
+        },
+        "office_staff": {
+          "ios": 1,
+          "web": 1,
+          "android": 1
+        }
+      },
+      "missed_checkout_config": {
+        "role_mapping": {
+          "site": [
+            "site_manager",
+            "security_guard",
+            "supervisor",
+            "electrical_supervisor",
+            "electrician",
+            "lift_technician",
+            "plumber",
+            "hvac_technician",
+            "hv/ac_technician",
+            "TECHNICIAN",
+            "TECHNICAL SUPERVISOR",
+            "TECHNICAL RELIEVER",
+            "AFM - TECHNICAL",
+            "technical_supervisor",
+            "afm_-_technical",
+            "technical_reliever"
+          ],
+          "field": [
+            "field_staff",
+            "field_officer",
+            "operation_manager",
+            "bd",
+            "technical_manager"
+          ],
+          "office": [
+            "admin",
+            "hr",
+            "finance",
+            "developer",
+            "hr_ops",
+            "finance_manager",
+            "security_guard",
+            "pantry_boy",
+            "lady_guard",
+            "hr_recruitment",
+            "facility_executive",
+            "facility_executive"
+          ]
+        },
+        "trigger_times": {
+          "office": "19:30"
+        },
+        "enabled_groups": [
+          "office"
+        ]
+      }
+    },
+    "gemini_api_settings": {
+      "enabled": false
+    },
+    "offline_ocr_settings": {
+      "enabled": true
+    },
+    "perfios_api_settings": {
+      "enabled": false,
+      "client_id": "admin@paradigmfms.com",
+      "client_secret": "Paradigm@123"
+    },
+    "back_office_id_series": [
+      {
+        "id": "imported_1769252484975_0.09697388375970528",
+        "department": "Back Office",
+        "designation": "Field Staff",
+        "permanent_id": "MSD-01",
+        "temporary_id": "Temp-BO-01"
+      },
+      {
+        "id": "imported_1769252484975_0.13511766755145105",
+        "department": "Back Office",
+        "designation": "Ops manager",
+        "permanent_id": "MSD-02",
+        "temporary_id": "Temp-BO-02"
+      },
+      {
+        "id": "imported_1769252484975_0.668631388759156",
+        "department": "Back Office",
+        "designation": "Finance",
+        "permanent_id": "MSD-03",
+        "temporary_id": "Temp-BO-03"
+      },
+      {
+        "id": "imported_1769252484975_0.5063852020790964",
+        "department": "Back Office",
+        "designation": "Hr",
+        "permanent_id": "MSD-04",
+        "temporary_id": "Temp-BO-04"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      },
+      {
+        "site_name": "Prestige Lakeside",
+        "department": "Security",
+        "designation": "Security Guard",
+        "permanent_id": "AP-SEC-0001",
+        "temporary_id": "AP-SEC-T0001"
+      }
+    ],
+    "master_gents_uniforms": null,
+    "notification_settings": {
+      "email": {
+        "enabled": false
+      }
+    },
+    "master_ladies_uniforms": null,
+    "site_staff_designations": [
+      {
+        "id": "imported_1769252328947_0.14184333170282082",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "AFM - SOFT",
+        "permanent_id": "MS-01",
+        "temporary_id": "TEM-01",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8320790125038932",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ASSOCIATE FACILITY MANAGER",
+        "permanent_id": "MS-02",
+        "temporary_id": "TEM-02",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.1920484908460912",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "AFM - TECHNICAL",
+        "permanent_id": "MS-03",
+        "temporary_id": "TEM-03",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.417967209081341",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ASST FACILITY MANAGER OPERATIONS",
+        "permanent_id": "MS-04",
+        "temporary_id": "TEM-04",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6557260146227275",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ASST FACILITY MANAGER",
+        "permanent_id": "MS-05",
+        "temporary_id": "TEM-05",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6642433344640143",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ASST MANAGER CIVIL ENGINEER",
+        "permanent_id": "MS-06",
+        "temporary_id": "TEM-06",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9700466347288172",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ASST PROPERTY MANAGER",
+        "permanent_id": "MS-07",
+        "temporary_id": "TEM-07",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4809905007218622",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "CIVIL ENGINEER",
+        "permanent_id": "MS-08",
+        "temporary_id": "TEM-08",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8735279569699577",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "CLUB HOUSE MANAGER",
+        "permanent_id": "MS-09",
+        "temporary_id": "TEM-09",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8401269365230608",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "ESTATE MANAGER",
+        "permanent_id": "MS-10",
+        "temporary_id": "TEM-10",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6666069825945358",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "FACILITY MANAGER - SOFT SERVICE",
+        "permanent_id": "MS-11",
+        "temporary_id": "TEM-11",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.27365453096285275",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "FACILITY MANAGER - TECHNICAL",
+        "permanent_id": "MS-12",
+        "temporary_id": "TEM-12",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.1485410357700282",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "FACILITY MANAGER",
+        "permanent_id": "MS-13",
+        "temporary_id": "TEM-13",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6851412880154982",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "SENIOR FACILITY MANAGER",
+        "permanent_id": "MS-14",
+        "temporary_id": "TEM-14",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.11715072981873442",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "FIRE AND SAFETY OFFICER",
+        "permanent_id": "MS-15",
+        "temporary_id": "TEM-15",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.04152648708502449",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "GENERAL MANAGER",
+        "permanent_id": "MS-16",
+        "temporary_id": "TEM-16",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6406475563515043",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "MIS PROCUREMENT MANAGER",
+        "permanent_id": "MS-17",
+        "temporary_id": "TEM-17",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3800877593850659",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "PROPERTY MANAGER",
+        "permanent_id": "MS-18",
+        "temporary_id": "TEM-18",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.40415163016343103",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "SHIFT ENGINEER",
+        "permanent_id": "MS-19",
+        "temporary_id": "TEM-19",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4818353022864875",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "TECHNICAL MANAGER",
+        "permanent_id": "MS-20",
+        "temporary_id": "TEM-20",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.04221070297978413",
+        "department": "ADMINISTRATION_LEVEL_1",
+        "designation": "CUSTOMER RELATIONSHIP MANAGER",
+        "permanent_id": "MS-21",
+        "temporary_id": "TEM-21",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.03911310291501302",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "ACCOUNTANT",
+        "permanent_id": "MS-22",
+        "temporary_id": "TEM-22",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9337382540918053",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "ADMIN ASSISTANT",
+        "permanent_id": "MS-23",
+        "temporary_id": "TEM-23",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.1550625258316335",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "ASST FACILITY EXECUTIVE",
+        "permanent_id": "MS-24",
+        "temporary_id": "TEM-24",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8862335184902408",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "CLUB HOUSE ATTENDANT",
+        "permanent_id": "MS-25",
+        "temporary_id": "TEM-25",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8666107202076042",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "CLUB HOUSE EXECUTIVE",
+        "permanent_id": "MS-26",
+        "temporary_id": "TEM-26",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.02066119454688531",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "CLUB HOUSE SUPERVISOR",
+        "permanent_id": "MS-27",
+        "temporary_id": "TEM-27",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.39158823752411964",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "CUSTOMER RELATION EXECUTIVE",
+        "permanent_id": "MS-28",
+        "temporary_id": "TEM-28",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.059946201808317556",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "FACILITY EXECUTIVE",
+        "permanent_id": "MS-29",
+        "temporary_id": "TEM-29",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.39360741043903913",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "FACILITY EXECUTIVE-CIVIL BACKGROUND",
+        "permanent_id": "MS-30",
+        "temporary_id": "TEM-30",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2839552137022765",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "FIRE AND SAFETY EXECUTIVE",
+        "permanent_id": "MS-31",
+        "temporary_id": "TEM-31",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3552523138862006",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "FRONT OFFICE EXECUTIVE",
+        "permanent_id": "MS-32",
+        "temporary_id": "TEM-32",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.27983892458216597",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "HELP DESK CUM HK SUPERVISOR",
+        "permanent_id": "MS-33",
+        "temporary_id": "TEM-33",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.050494358051702104",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "HELP DESK FEMALE",
+        "permanent_id": "MS-34",
+        "temporary_id": "TEM-34",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8369926125782817",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "HELP DESK MALE",
+        "permanent_id": "MS-35",
+        "temporary_id": "TEM-35",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.5777619148417711",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "HELPDESK",
+        "permanent_id": "MS-36",
+        "temporary_id": "TEM-36",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.329541869820704",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "HELPDESK  SENIOR",
+        "permanent_id": "MS-37",
+        "temporary_id": "TEM-37",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4052460450846458",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "OFFICE ASSISTANT",
+        "permanent_id": "MS-38",
+        "temporary_id": "TEM-38",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.00337147084764966",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "PROPERTY EXECUTIVE",
+        "permanent_id": "MS-39",
+        "temporary_id": "TEM-39",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7770672656753655",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "SOFT SERVICE EXECUTIVE",
+        "permanent_id": "MS-40",
+        "temporary_id": "TEM-40",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2963556695310142",
+        "department": "ADMINISTRATION_LEVEL_2",
+        "designation": "TECHNICAL EXECUTIVE",
+        "permanent_id": "MS-41",
+        "temporary_id": "TEM-41",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.007908643764424794",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "DG OPERATOR",
+        "permanent_id": "MS-42",
+        "temporary_id": "TEM-42",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3507146110637085",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "ELECTRICAL SUPERVISOR - Reliever",
+        "permanent_id": "MS-43",
+        "temporary_id": "TEM-43",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.21135277958965215",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "ELECTRICAL SUPERVISOR",
+        "permanent_id": "MS-44",
+        "temporary_id": "TEM-44",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6228210016253629",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "ELECTRICIAN",
+        "permanent_id": "MS-45",
+        "temporary_id": "TEM-45",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4136116506655443",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "JUNIOR ELECTRICIAN",
+        "permanent_id": "MS-46",
+        "temporary_id": "TEM-46",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.5178504968650336",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "JUNIOR TECHNICIAN",
+        "permanent_id": "MS-47",
+        "temporary_id": "TEM-47",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2433530500071579",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "LEAD ELECTRICIAN",
+        "permanent_id": "MS-48",
+        "temporary_id": "TEM-48",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6333299988897604",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "SENIOR ELECTRICIAN",
+        "permanent_id": "MS-49",
+        "temporary_id": "TEM-49",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.004059388439237033",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "SENIOR ELECTRICIAN CUM PLUMBER",
+        "permanent_id": "MS-50",
+        "temporary_id": "TEM-50",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7793101767741633",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "TECHNICAL EXECUTIVE.",
+        "permanent_id": "MS-51",
+        "temporary_id": "TEM-51",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7890602338395575",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "SENIOR TECHNICIAN",
+        "permanent_id": "MS-52",
+        "temporary_id": "TEM-52",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6914441946346322",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "TECHNICAL SUPERVISOR",
+        "permanent_id": "MS-53",
+        "temporary_id": "TEM-53",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4946321288037012",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "TECHNICIAN",
+        "permanent_id": "MS-54",
+        "temporary_id": "TEM-54",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4310157749735197",
+        "department": "ELECTRICAL_DEPT",
+        "designation": "GYM TRAINER",
+        "permanent_id": "MS-55",
+        "temporary_id": "TEM-55",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.0321512113037008",
+        "department": "PLUMBING_DEPT",
+        "designation": "HANDYMAN",
+        "permanent_id": "MS-56",
+        "temporary_id": "TEM-56",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6875246290050853",
+        "department": "PLUMBING_DEPT",
+        "designation": "JUNIOR PLUMBER",
+        "permanent_id": "MS-57",
+        "temporary_id": "TEM-57",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4924870326922215",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBER",
+        "permanent_id": "MS-58",
+        "temporary_id": "TEM-58",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.38908892051669963",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBER CUM POOL OPERATOR",
+        "permanent_id": "MS-59",
+        "temporary_id": "TEM-59",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.776820409770333",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBER CUM CARPENTER",
+        "permanent_id": "MS-60",
+        "temporary_id": "TEM-60",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6907482529890021",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBER CUM POOL OPERATOR & WTP OPERATOR",
+        "permanent_id": "MS-61",
+        "temporary_id": "TEM-61",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9186106923067314",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBER CUM WTP OPERATOR",
+        "permanent_id": "MS-62",
+        "temporary_id": "TEM-62",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7193881878175402",
+        "department": "PLUMBING_DEPT",
+        "designation": "PLUMBING SUPERVISOR",
+        "permanent_id": "MS-63",
+        "temporary_id": "TEM-63",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6749895963869",
+        "department": "PLUMBING_DEPT",
+        "designation": "RELIEVER - PLUMBING",
+        "permanent_id": "MS-64",
+        "temporary_id": "TEM-64",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3428010509223749",
+        "department": "PLUMBING_DEPT",
+        "designation": "SENIOR PLUMBER",
+        "permanent_id": "MS-65",
+        "temporary_id": "TEM-65",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8670952156958555",
+        "department": "STP_WTP",
+        "designation": "JUNIOR STP",
+        "permanent_id": "MS-66",
+        "temporary_id": "TEM-66",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.46638227198659965",
+        "department": "STP_WTP",
+        "designation": "JUNIOR WTP",
+        "permanent_id": "MS-67",
+        "temporary_id": "TEM-67",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3988325952936467",
+        "department": "STP_WTP",
+        "designation": "SCAVENGER",
+        "permanent_id": "MS-68",
+        "temporary_id": "TEM-68",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3673731744796839",
+        "department": "STP_WTP",
+        "designation": "SENIOR STP",
+        "permanent_id": "MS-69",
+        "temporary_id": "TEM-69",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.31324224535159007",
+        "department": "STP_WTP",
+        "designation": "SENIOR WTP",
+        "permanent_id": "MS-70",
+        "temporary_id": "TEM-70",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3347313829335846",
+        "department": "STP_WTP",
+        "designation": "STP CUM WTP OPERATOR",
+        "permanent_id": "MS-71",
+        "temporary_id": "TEM-71",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.38996700810723806",
+        "department": "STP_WTP",
+        "designation": "STP OPERATOR",
+        "permanent_id": "MS-72",
+        "temporary_id": "TEM-72",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6397912137405785",
+        "department": "STP_WTP",
+        "designation": "STP SUPERVISOR",
+        "permanent_id": "MS-73",
+        "temporary_id": "TEM-73",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.19175554014207963",
+        "department": "STP_WTP",
+        "designation": "WTP OPERATOR",
+        "permanent_id": "MS-74",
+        "temporary_id": "TEM-74",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6067611063302808",
+        "department": "STP_WTP",
+        "designation": "WTP/RO OPERATOR",
+        "permanent_id": "MS-75",
+        "temporary_id": "TEM-75",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.06493623909408341",
+        "department": "MULTI_TECHNICIAN",
+        "designation": "JUNIOR MULTI TECHNICIAN",
+        "permanent_id": "MS-76",
+        "temporary_id": "TEM-76",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.01706091450813374",
+        "department": "MULTI_TECHNICIAN",
+        "designation": "MEP SUPERVISOR",
+        "permanent_id": "MS-77",
+        "temporary_id": "TEM-77",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.40610570636488175",
+        "department": "MULTI_TECHNICIAN",
+        "designation": "MULTI TECHNICIAN",
+        "permanent_id": "MS-78",
+        "temporary_id": "TEM-78",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.03436144200365687",
+        "department": "MULTI_TECHNICIAN",
+        "designation": "SENIOR MULTI TECHNICIAN",
+        "permanent_id": "MS-79",
+        "temporary_id": "TEM-79",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.06149561003164683",
+        "department": "OTHER_SERVICES",
+        "designation": "BMS OPERATOR",
+        "permanent_id": "MS-80",
+        "temporary_id": "TEM-80",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.5437020642099045",
+        "department": "OTHER_SERVICES",
+        "designation": "BOWLING ALLEY OPERATOR",
+        "permanent_id": "MS-81",
+        "temporary_id": "TEM-81",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.555864700067033",
+        "department": "OTHER_SERVICES",
+        "designation": "BUGGY DRIVERS",
+        "permanent_id": "MS-82",
+        "temporary_id": "TEM-82",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6068125554793412",
+        "department": "OTHER_SERVICES",
+        "designation": "CARPENTER",
+        "permanent_id": "MS-83",
+        "temporary_id": "TEM-83",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7508596587333327",
+        "department": "OTHER_SERVICES",
+        "designation": "CCTV TECHNICIAN",
+        "permanent_id": "MS-84",
+        "temporary_id": "TEM-84",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3125703729673759",
+        "department": "OTHER_SERVICES",
+        "designation": "CHILLER OPERATOR",
+        "permanent_id": "MS-85",
+        "temporary_id": "TEM-85",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.0360550314331991",
+        "department": "OTHER_SERVICES",
+        "designation": "DG ENGINEER",
+        "permanent_id": "MS-86",
+        "temporary_id": "TEM-86",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8805867621124069",
+        "department": "OTHER_SERVICES",
+        "designation": "DRIVER",
+        "permanent_id": "MS-87",
+        "temporary_id": "TEM-87",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.26811117990466937",
+        "department": "OTHER_SERVICES",
+        "designation": "EHS EXECUTIVE",
+        "permanent_id": "MS-88",
+        "temporary_id": "TEM-88",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4618789496190877",
+        "department": "OTHER_SERVICES",
+        "designation": "FIRE ALARM TECHNICIAN",
+        "permanent_id": "MS-89",
+        "temporary_id": "TEM-89",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.20377207287944066",
+        "department": "OTHER_SERVICES",
+        "designation": "FIRE WARDEN",
+        "permanent_id": "MS-90",
+        "temporary_id": "TEM-90",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6341164913458143",
+        "department": "OTHER_SERVICES",
+        "designation": "HV/AC TECHNICIAN",
+        "permanent_id": "MS-91",
+        "temporary_id": "TEM-91",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6670120659295637",
+        "department": "OTHER_SERVICES",
+        "designation": "INTERCOM TECHNICIAN",
+        "permanent_id": "MS-92",
+        "temporary_id": "TEM-92",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8323792595582149",
+        "department": "OTHER_SERVICES",
+        "designation": "KAIPOND",
+        "permanent_id": "MS-93",
+        "temporary_id": "TEM-93",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9505071383987885",
+        "department": "OTHER_SERVICES",
+        "designation": "LIFE GUARD",
+        "permanent_id": "MS-94",
+        "temporary_id": "TEM-94",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7583522144166825",
+        "department": "OTHER_SERVICES",
+        "designation": "EXECUTIVE - LIFT & PLUMBING",
+        "permanent_id": "MS-95",
+        "temporary_id": "TEM-95",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.15260841300503114",
+        "department": "OTHER_SERVICES",
+        "designation": "LIFT TECHNICIAN",
+        "permanent_id": "MS-96",
+        "temporary_id": "TEM-96",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4826060038211516",
+        "department": "OTHER_SERVICES",
+        "designation": "MAIL ROOM",
+        "permanent_id": "MS-97",
+        "temporary_id": "TEM-97",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9128936962942189",
+        "department": "OTHER_SERVICES",
+        "designation": "MAISON",
+        "permanent_id": "MS-98",
+        "temporary_id": "TEM-98",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8452620088272671",
+        "department": "OTHER_SERVICES",
+        "designation": "NETWORK ADMINISTRATOR",
+        "permanent_id": "MS-99",
+        "temporary_id": "TEM-99",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.049497970371351174",
+        "department": "OTHER_SERVICES",
+        "designation": "PAINTER",
+        "permanent_id": "MS-100",
+        "temporary_id": "TEM-100",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8270047155415728",
+        "department": "OTHER_SERVICES",
+        "designation": "STACK OPERATOR",
+        "permanent_id": "MS-101",
+        "temporary_id": "TEM-101",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9893232518119878",
+        "department": "OTHER_SERVICES",
+        "designation": "TANK CLEANER",
+        "permanent_id": "MS-102",
+        "temporary_id": "TEM-102",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6945186277193295",
+        "department": "SWIMMING_POOL_MAINTENANCE",
+        "designation": "POOL OPERATOR",
+        "permanent_id": "MS-103",
+        "temporary_id": "TEM-103",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2788454932690482",
+        "department": "SWIMMING_POOL_MAINTENANCE",
+        "designation": "SWIMMING POOL CUM WTP OPERATOR",
+        "permanent_id": "MS-104",
+        "temporary_id": "TEM-104",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.042551061018652137",
+        "department": "SWIMMING_POOL_MAINTENANCE",
+        "designation": "WATERBODY OPERATOR",
+        "permanent_id": "MS-105",
+        "temporary_id": "TEM-105",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.1558816010865821",
+        "department": "SWIMMING_POOL_MAINTENANCE",
+        "designation": "POOL OPERATOR - FULL TIME",
+        "permanent_id": "MS-106",
+        "temporary_id": "TEM-106",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8857486593566721",
+        "department": "SWIMMING_POOL_MAINTENANCE",
+        "designation": "POOL OPERATOR - REQUIRED HOURS",
+        "permanent_id": "MS-107",
+        "temporary_id": "TEM-107",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8915499642529401",
+        "department": "PEST_CONTROL_SERVICES",
+        "designation": "PEST CONTROL OPERATOR",
+        "permanent_id": "MS-108",
+        "temporary_id": "TEM-108",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.818575479072085",
+        "department": "PEST_CONTROL_SERVICES",
+        "designation": "PEST CONTROL OPERATOR - FULL TIME",
+        "permanent_id": "MS-109",
+        "temporary_id": "TEM-109",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.005745163126685382",
+        "department": "PEST_CONTROL_SERVICES",
+        "designation": "PEST CONTROL OPERATOR - REQUIRED HOURS",
+        "permanent_id": "MS-110",
+        "temporary_id": "TEM-110",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4409403909816739",
+        "department": "HK_SERVICES",
+        "designation": "EQUIPMENTS  - HK CLEANERS",
+        "permanent_id": "MS-111",
+        "temporary_id": "TEM-111",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.845341269922764",
+        "department": "HK_SERVICES",
+        "designation": "FLOOR SCRUBBER",
+        "permanent_id": "MS-112",
+        "temporary_id": "TEM-112",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2123286364438124",
+        "department": "HK_SERVICES",
+        "designation": "GARBAGE COLLECTION",
+        "permanent_id": "MS-113",
+        "temporary_id": "TEM-113",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9738499314346973",
+        "department": "HK_SERVICES",
+        "designation": "GATE KEEPER",
+        "permanent_id": "MS-114",
+        "temporary_id": "TEM-114",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7194980335158911",
+        "department": "HK_SERVICES",
+        "designation": "HK - FEMALE",
+        "permanent_id": "MS-115",
+        "temporary_id": "TEM-115",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8446927488023657",
+        "department": "HK_SERVICES",
+        "designation": "HK - MALE",
+        "permanent_id": "MS-116",
+        "temporary_id": "TEM-116",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4346291941123399",
+        "department": "HK_SERVICES",
+        "designation": "HK - OFFICE ASSISTANT",
+        "permanent_id": "MS-117",
+        "temporary_id": "TEM-117",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7231930335305997",
+        "department": "HK_SERVICES",
+        "designation": "HK - RELIEVER",
+        "permanent_id": "MS-118",
+        "temporary_id": "TEM-118",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9130655377525213",
+        "department": "HK_SERVICES",
+        "designation": "HK - COMMON AREA",
+        "permanent_id": "MS-119",
+        "temporary_id": "TEM-119",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.08277576245847074",
+        "department": "HK_SERVICES",
+        "designation": "HK CLEANER",
+        "permanent_id": "MS-120",
+        "temporary_id": "TEM-120",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8955567146494282",
+        "department": "HK_SERVICES",
+        "designation": "HK CLEANER SENIOR",
+        "permanent_id": "MS-121",
+        "temporary_id": "TEM-121",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.20343379862963928",
+        "department": "HK_SERVICES",
+        "designation": "HK CLUB HOUSE",
+        "permanent_id": "MS-122",
+        "temporary_id": "TEM-122",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.04831478123921473",
+        "department": "HK_SERVICES",
+        "designation": "HK CLUB HOUSE - FEMALE",
+        "permanent_id": "MS-123",
+        "temporary_id": "TEM-123",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.07052351997899442",
+        "department": "HK_SERVICES",
+        "designation": "HK EXECUTIVE",
+        "permanent_id": "MS-124",
+        "temporary_id": "TEM-124",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.1378073835073651",
+        "department": "HK_SERVICES",
+        "designation": "HK FLOOR SUPERVISOR",
+        "permanent_id": "MS-125",
+        "temporary_id": "TEM-125",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.949303970592059",
+        "department": "HK_SERVICES",
+        "designation": "HK SUPERVISOR",
+        "permanent_id": "MS-126",
+        "temporary_id": "TEM-126",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.42273116646226594",
+        "department": "HK_SERVICES",
+        "designation": "HK SUPERVISOR - JUNIOR",
+        "permanent_id": "MS-127",
+        "temporary_id": "TEM-127",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.05683177108268689",
+        "department": "HK_SERVICES",
+        "designation": "HK SUPERVISOR - SENIOR",
+        "permanent_id": "MS-128",
+        "temporary_id": "TEM-128",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3934078525746344",
+        "department": "HK_SERVICES",
+        "designation": "OFFICE ASSISTANT",
+        "permanent_id": "MS-129",
+        "temporary_id": "TEM-129",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.39777388413914283",
+        "department": "HK_SERVICES",
+        "designation": "OFFICE ASSISTANT CUM HK CLEANER",
+        "permanent_id": "MS-130",
+        "temporary_id": "TEM-130",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.17101048378280248",
+        "department": "HK_SERVICES",
+        "designation": "OFFICE ASSISTANT CUM HK LADY",
+        "permanent_id": "MS-131",
+        "temporary_id": "TEM-131",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.5956284505240116",
+        "department": "HK_SERVICES",
+        "designation": "OWC OPERATOR",
+        "permanent_id": "MS-132",
+        "temporary_id": "TEM-132",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9979449646230528",
+        "department": "HK_SERVICES",
+        "designation": "PANTRY BOY",
+        "permanent_id": "MS-133",
+        "temporary_id": "TEM-133",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7519200637471994",
+        "department": "HK_SERVICES",
+        "designation": "SWEEPER",
+        "permanent_id": "MS-134",
+        "temporary_id": "TEM-134",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.464647267975445",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "GARDENER",
+        "permanent_id": "MS-135",
+        "temporary_id": "TEM-135",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.16322106057014063",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "GARDENER - HELPER",
+        "permanent_id": "MS-136",
+        "temporary_id": "TEM-136",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.17984299973946338",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "GARDENER SPRINKLER OPERATOR",
+        "permanent_id": "MS-137",
+        "temporary_id": "TEM-137",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.06622187008439584",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "GARDENING SUPERVISOR",
+        "permanent_id": "MS-138",
+        "temporary_id": "TEM-138",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.034361387556171685",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "HEAD GARDENER",
+        "permanent_id": "MS-139",
+        "temporary_id": "TEM-139",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6050312086247202",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "HORTICULTURIST",
+        "permanent_id": "MS-140",
+        "temporary_id": "TEM-140",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3661399988419166",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "SENIOR GARDENER",
+        "permanent_id": "MS-141",
+        "temporary_id": "TEM-141",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3921022578029517",
+        "department": "LANDSCAPING_SERVICES",
+        "designation": "SPRINKLER",
+        "permanent_id": "MS-142",
+        "temporary_id": "TEM-142",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.782459764904336",
+        "department": "SECURITY_SERVICES",
+        "designation": "ASST. SECURITY SUPERVISOR",
+        "permanent_id": "MS-143",
+        "temporary_id": "TEM-143",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6572693869606123",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY EXECUTIVE",
+        "permanent_id": "MS-144",
+        "temporary_id": "TEM-144",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.2751430769065979",
+        "department": "SECURITY_SERVICES",
+        "designation": "ASST.SECURITY OFFICER",
+        "permanent_id": "MS-145",
+        "temporary_id": "TEM-145",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6326896007362123",
+        "department": "SECURITY_SERVICES",
+        "designation": "CHIEF SECURITY OFFICER",
+        "permanent_id": "MS-146",
+        "temporary_id": "TEM-146",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.8515623200667375",
+        "department": "SECURITY_SERVICES",
+        "designation": "FIELD OFFICER",
+        "permanent_id": "MS-147",
+        "temporary_id": "TEM-147",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.5623244531806778",
+        "department": "SECURITY_SERVICES",
+        "designation": "HEAD GUARD",
+        "permanent_id": "MS-148",
+        "temporary_id": "TEM-148",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6918190741854795",
+        "department": "SECURITY_SERVICES",
+        "designation": "JUNIOR SECURITY GUARD",
+        "permanent_id": "MS-149",
+        "temporary_id": "TEM-149",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.3050716171443483",
+        "department": "SECURITY_SERVICES",
+        "designation": "JUNIOR SECURITY SUPERVISOR",
+        "permanent_id": "MS-150",
+        "temporary_id": "TEM-150",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9273846520938694",
+        "department": "SECURITY_SERVICES",
+        "designation": "LADY GUARD",
+        "permanent_id": "MS-151",
+        "temporary_id": "TEM-151",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6265696273674453",
+        "department": "SECURITY_SERVICES",
+        "designation": "LIFE  GUARD",
+        "permanent_id": "MS-152",
+        "temporary_id": "TEM-152",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6439361636784939",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY - RELIEVER",
+        "permanent_id": "MS-153",
+        "temporary_id": "TEM-153",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.09140838821926367",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY GUARD",
+        "permanent_id": "MS-154",
+        "temporary_id": "TEM-154",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.6131392897398142",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY GUARD EXIT GATE",
+        "permanent_id": "MS-155",
+        "temporary_id": "TEM-155",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.12528689740361088",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY GUARD MAIN GATE",
+        "permanent_id": "MS-156",
+        "temporary_id": "TEM-156",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.392458423326947",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY GUARD WITH GUN",
+        "permanent_id": "MS-157",
+        "temporary_id": "TEM-157",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.45237013320924124",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY INTELLIGENCE OFFICER",
+        "permanent_id": "MS-158",
+        "temporary_id": "TEM-158",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.9788193764368476",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY OFFICER",
+        "permanent_id": "MS-159",
+        "temporary_id": "TEM-159",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.4126613199936643",
+        "department": "SECURITY_SERVICES",
+        "designation": "SECURITY SUPERVISOR",
+        "permanent_id": "MS-160",
+        "temporary_id": "TEM-160",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.19862178516442197",
+        "department": "SECURITY_SERVICES",
+        "designation": "SENIOR HEAD GUARD",
+        "permanent_id": "MS-161",
+        "temporary_id": "TEM-161",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.7443668921006618",
+        "department": "SECURITY_SERVICES",
+        "designation": "SENIOR SECURITY GUARD",
+        "permanent_id": "MS-162",
+        "temporary_id": "TEM-162",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.25775608914764603",
+        "department": "SECURITY_SERVICES",
+        "designation": "SENIOR SECURITY SUPERVISOR",
+        "permanent_id": "MS-163",
+        "temporary_id": "TEM-163",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.35817189690023954",
+        "department": "SECURITY_SERVICES",
+        "designation": "PATROLLING SECURITY GUARD",
+        "permanent_id": "MS-164",
+        "temporary_id": "TEM-164",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "imported_1769252328947_0.10492849296062945",
+        "department": "SECURITY_SERVICES",
+        "designation": "TRAINEE GUARD",
+        "permanent_id": "MS-165",
+        "temporary_id": "TEM-165",
+        "monthly_salary": 25000
+      },
+      {
+        "id": "new_1774534765924",
+        "department": "SECURITY_SERVICES",
+        "designation": "TRAINEE GUARD-1",
+        "permanent_id": "MS-166",
+        "temporary_id": "TEM-166",
+        "monthly_salary": 25001
+      }
+    ],
+    "max_violations_per_month": 3,
+    "site_management_settings": {
+      "enable_provisional_sites": false
+    },
+    "approval_workflow_settings": {
+      "final_confirmation_role": "reporting_manager"
+    },
+    "geofencing_verification_enabled": true
+  },
+  "gmc_policy": [
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    },
+    {
+      "provider": "Star Health Insurance",
+      "plan_name": "Standard Plan",
+      "valid_from": "2026-01-01",
+      "valid_till": "2026-12-31",
+      "company_name": "AP Security Services Pvt Ltd",
+      "premium_amount": 5000,
+      "coverage_amount": 200000
+    }
+  ],
+  "enrollment_rules": {
+    "enable_esi_rule": false,
+    "enable_gmc_rule": false,
+    "salary_threshold": 21000,
+    "allow_salary_edit": false,
+    "esi_ctc_threshold": 21000,
+    "manpower_limit_rule": "warn",
+    "rules_by_designation": {},
+    "default_policy_single": "1L",
+    "default_policy_married": "2L",
+    "enforce_manpower_limit": false,
+    "enforce_family_validation": true
+  },
+  "api_settings": {
+    "app_version": "16.6",
+    "backup_schedule": {
+      "interval": 1,
+      "frequency": "weekly",
+      "start_time": "00:00",
+      "day_of_week": 0,
+      "day_of_month": 1,
+      "month_of_year": 1
+    },
+    "one_signal_app_id": "bf3d8830-1a71-439c-ae14-a6efaa0b62c6",
+    "automated_tracking": {
+      "enabled": true,
+      "interval_minutes": 5
+    },
+    "auto_backup_enabled": true
+  },
+  "verification_costs": null,
+  "back_office_id_series": [
+    {
+      "id": "imported_1769252484975_0.09697388375970528",
+      "department": "Back Office",
+      "designation": "Field Staff",
+      "permanent_id": "MSD-01",
+      "temporary_id": "Temp-BO-01"
+    },
+    {
+      "id": "imported_1769252484975_0.13511766755145105",
+      "department": "Back Office",
+      "designation": "Ops manager",
+      "permanent_id": "MSD-02",
+      "temporary_id": "Temp-BO-02"
+    },
+    {
+      "id": "imported_1769252484975_0.668631388759156",
+      "department": "Back Office",
+      "designation": "Finance",
+      "permanent_id": "MSD-03",
+      "temporary_id": "Temp-BO-03"
+    },
+    {
+      "id": "imported_1769252484975_0.5063852020790964",
+      "department": "Back Office",
+      "designation": "Hr",
+      "permanent_id": "MSD-04",
+      "temporary_id": "Temp-BO-04"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    },
+    {
+      "site_name": "Prestige Lakeside",
+      "department": "Security",
+      "designation": "Security Guard",
+      "permanent_id": "AP-SEC-0001",
+      "temporary_id": "AP-SEC-T0001"
+    }
+  ],
+  "site_staff_designations": [
+    {
+      "id": "imported_1769252328947_0.14184333170282082",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "AFM - SOFT",
+      "permanent_id": "MS-01",
+      "temporary_id": "TEM-01",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8320790125038932",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ASSOCIATE FACILITY MANAGER",
+      "permanent_id": "MS-02",
+      "temporary_id": "TEM-02",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.1920484908460912",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "AFM - TECHNICAL",
+      "permanent_id": "MS-03",
+      "temporary_id": "TEM-03",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.417967209081341",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ASST FACILITY MANAGER OPERATIONS",
+      "permanent_id": "MS-04",
+      "temporary_id": "TEM-04",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6557260146227275",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ASST FACILITY MANAGER",
+      "permanent_id": "MS-05",
+      "temporary_id": "TEM-05",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6642433344640143",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ASST MANAGER CIVIL ENGINEER",
+      "permanent_id": "MS-06",
+      "temporary_id": "TEM-06",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9700466347288172",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ASST PROPERTY MANAGER",
+      "permanent_id": "MS-07",
+      "temporary_id": "TEM-07",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4809905007218622",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "CIVIL ENGINEER",
+      "permanent_id": "MS-08",
+      "temporary_id": "TEM-08",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8735279569699577",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "CLUB HOUSE MANAGER",
+      "permanent_id": "MS-09",
+      "temporary_id": "TEM-09",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8401269365230608",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "ESTATE MANAGER",
+      "permanent_id": "MS-10",
+      "temporary_id": "TEM-10",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6666069825945358",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "FACILITY MANAGER - SOFT SERVICE",
+      "permanent_id": "MS-11",
+      "temporary_id": "TEM-11",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.27365453096285275",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "FACILITY MANAGER - TECHNICAL",
+      "permanent_id": "MS-12",
+      "temporary_id": "TEM-12",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.1485410357700282",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "FACILITY MANAGER",
+      "permanent_id": "MS-13",
+      "temporary_id": "TEM-13",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6851412880154982",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "SENIOR FACILITY MANAGER",
+      "permanent_id": "MS-14",
+      "temporary_id": "TEM-14",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.11715072981873442",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "FIRE AND SAFETY OFFICER",
+      "permanent_id": "MS-15",
+      "temporary_id": "TEM-15",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.04152648708502449",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "GENERAL MANAGER",
+      "permanent_id": "MS-16",
+      "temporary_id": "TEM-16",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6406475563515043",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "MIS PROCUREMENT MANAGER",
+      "permanent_id": "MS-17",
+      "temporary_id": "TEM-17",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3800877593850659",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "PROPERTY MANAGER",
+      "permanent_id": "MS-18",
+      "temporary_id": "TEM-18",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.40415163016343103",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "SHIFT ENGINEER",
+      "permanent_id": "MS-19",
+      "temporary_id": "TEM-19",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4818353022864875",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "TECHNICAL MANAGER",
+      "permanent_id": "MS-20",
+      "temporary_id": "TEM-20",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.04221070297978413",
+      "department": "ADMINISTRATION_LEVEL_1",
+      "designation": "CUSTOMER RELATIONSHIP MANAGER",
+      "permanent_id": "MS-21",
+      "temporary_id": "TEM-21",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.03911310291501302",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "ACCOUNTANT",
+      "permanent_id": "MS-22",
+      "temporary_id": "TEM-22",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9337382540918053",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "ADMIN ASSISTANT",
+      "permanent_id": "MS-23",
+      "temporary_id": "TEM-23",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.1550625258316335",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "ASST FACILITY EXECUTIVE",
+      "permanent_id": "MS-24",
+      "temporary_id": "TEM-24",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8862335184902408",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "CLUB HOUSE ATTENDANT",
+      "permanent_id": "MS-25",
+      "temporary_id": "TEM-25",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8666107202076042",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "CLUB HOUSE EXECUTIVE",
+      "permanent_id": "MS-26",
+      "temporary_id": "TEM-26",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.02066119454688531",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "CLUB HOUSE SUPERVISOR",
+      "permanent_id": "MS-27",
+      "temporary_id": "TEM-27",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.39158823752411964",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "CUSTOMER RELATION EXECUTIVE",
+      "permanent_id": "MS-28",
+      "temporary_id": "TEM-28",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.059946201808317556",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "FACILITY EXECUTIVE",
+      "permanent_id": "MS-29",
+      "temporary_id": "TEM-29",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.39360741043903913",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "FACILITY EXECUTIVE-CIVIL BACKGROUND",
+      "permanent_id": "MS-30",
+      "temporary_id": "TEM-30",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2839552137022765",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "FIRE AND SAFETY EXECUTIVE",
+      "permanent_id": "MS-31",
+      "temporary_id": "TEM-31",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3552523138862006",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "FRONT OFFICE EXECUTIVE",
+      "permanent_id": "MS-32",
+      "temporary_id": "TEM-32",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.27983892458216597",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "HELP DESK CUM HK SUPERVISOR",
+      "permanent_id": "MS-33",
+      "temporary_id": "TEM-33",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.050494358051702104",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "HELP DESK FEMALE",
+      "permanent_id": "MS-34",
+      "temporary_id": "TEM-34",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8369926125782817",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "HELP DESK MALE",
+      "permanent_id": "MS-35",
+      "temporary_id": "TEM-35",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.5777619148417711",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "HELPDESK",
+      "permanent_id": "MS-36",
+      "temporary_id": "TEM-36",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.329541869820704",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "HELPDESK  SENIOR",
+      "permanent_id": "MS-37",
+      "temporary_id": "TEM-37",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4052460450846458",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "OFFICE ASSISTANT",
+      "permanent_id": "MS-38",
+      "temporary_id": "TEM-38",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.00337147084764966",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "PROPERTY EXECUTIVE",
+      "permanent_id": "MS-39",
+      "temporary_id": "TEM-39",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7770672656753655",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "SOFT SERVICE EXECUTIVE",
+      "permanent_id": "MS-40",
+      "temporary_id": "TEM-40",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2963556695310142",
+      "department": "ADMINISTRATION_LEVEL_2",
+      "designation": "TECHNICAL EXECUTIVE",
+      "permanent_id": "MS-41",
+      "temporary_id": "TEM-41",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.007908643764424794",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "DG OPERATOR",
+      "permanent_id": "MS-42",
+      "temporary_id": "TEM-42",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3507146110637085",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "ELECTRICAL SUPERVISOR - Reliever",
+      "permanent_id": "MS-43",
+      "temporary_id": "TEM-43",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.21135277958965215",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "ELECTRICAL SUPERVISOR",
+      "permanent_id": "MS-44",
+      "temporary_id": "TEM-44",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6228210016253629",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "ELECTRICIAN",
+      "permanent_id": "MS-45",
+      "temporary_id": "TEM-45",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4136116506655443",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "JUNIOR ELECTRICIAN",
+      "permanent_id": "MS-46",
+      "temporary_id": "TEM-46",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.5178504968650336",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "JUNIOR TECHNICIAN",
+      "permanent_id": "MS-47",
+      "temporary_id": "TEM-47",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2433530500071579",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "LEAD ELECTRICIAN",
+      "permanent_id": "MS-48",
+      "temporary_id": "TEM-48",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6333299988897604",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "SENIOR ELECTRICIAN",
+      "permanent_id": "MS-49",
+      "temporary_id": "TEM-49",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.004059388439237033",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "SENIOR ELECTRICIAN CUM PLUMBER",
+      "permanent_id": "MS-50",
+      "temporary_id": "TEM-50",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7793101767741633",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "TECHNICAL EXECUTIVE.",
+      "permanent_id": "MS-51",
+      "temporary_id": "TEM-51",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7890602338395575",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "SENIOR TECHNICIAN",
+      "permanent_id": "MS-52",
+      "temporary_id": "TEM-52",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6914441946346322",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "TECHNICAL SUPERVISOR",
+      "permanent_id": "MS-53",
+      "temporary_id": "TEM-53",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4946321288037012",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "TECHNICIAN",
+      "permanent_id": "MS-54",
+      "temporary_id": "TEM-54",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4310157749735197",
+      "department": "ELECTRICAL_DEPT",
+      "designation": "GYM TRAINER",
+      "permanent_id": "MS-55",
+      "temporary_id": "TEM-55",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.0321512113037008",
+      "department": "PLUMBING_DEPT",
+      "designation": "HANDYMAN",
+      "permanent_id": "MS-56",
+      "temporary_id": "TEM-56",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6875246290050853",
+      "department": "PLUMBING_DEPT",
+      "designation": "JUNIOR PLUMBER",
+      "permanent_id": "MS-57",
+      "temporary_id": "TEM-57",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4924870326922215",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBER",
+      "permanent_id": "MS-58",
+      "temporary_id": "TEM-58",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.38908892051669963",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBER CUM POOL OPERATOR",
+      "permanent_id": "MS-59",
+      "temporary_id": "TEM-59",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.776820409770333",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBER CUM CARPENTER",
+      "permanent_id": "MS-60",
+      "temporary_id": "TEM-60",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6907482529890021",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBER CUM POOL OPERATOR & WTP OPERATOR",
+      "permanent_id": "MS-61",
+      "temporary_id": "TEM-61",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9186106923067314",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBER CUM WTP OPERATOR",
+      "permanent_id": "MS-62",
+      "temporary_id": "TEM-62",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7193881878175402",
+      "department": "PLUMBING_DEPT",
+      "designation": "PLUMBING SUPERVISOR",
+      "permanent_id": "MS-63",
+      "temporary_id": "TEM-63",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6749895963869",
+      "department": "PLUMBING_DEPT",
+      "designation": "RELIEVER - PLUMBING",
+      "permanent_id": "MS-64",
+      "temporary_id": "TEM-64",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3428010509223749",
+      "department": "PLUMBING_DEPT",
+      "designation": "SENIOR PLUMBER",
+      "permanent_id": "MS-65",
+      "temporary_id": "TEM-65",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8670952156958555",
+      "department": "STP_WTP",
+      "designation": "JUNIOR STP",
+      "permanent_id": "MS-66",
+      "temporary_id": "TEM-66",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.46638227198659965",
+      "department": "STP_WTP",
+      "designation": "JUNIOR WTP",
+      "permanent_id": "MS-67",
+      "temporary_id": "TEM-67",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3988325952936467",
+      "department": "STP_WTP",
+      "designation": "SCAVENGER",
+      "permanent_id": "MS-68",
+      "temporary_id": "TEM-68",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3673731744796839",
+      "department": "STP_WTP",
+      "designation": "SENIOR STP",
+      "permanent_id": "MS-69",
+      "temporary_id": "TEM-69",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.31324224535159007",
+      "department": "STP_WTP",
+      "designation": "SENIOR WTP",
+      "permanent_id": "MS-70",
+      "temporary_id": "TEM-70",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3347313829335846",
+      "department": "STP_WTP",
+      "designation": "STP CUM WTP OPERATOR",
+      "permanent_id": "MS-71",
+      "temporary_id": "TEM-71",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.38996700810723806",
+      "department": "STP_WTP",
+      "designation": "STP OPERATOR",
+      "permanent_id": "MS-72",
+      "temporary_id": "TEM-72",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6397912137405785",
+      "department": "STP_WTP",
+      "designation": "STP SUPERVISOR",
+      "permanent_id": "MS-73",
+      "temporary_id": "TEM-73",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.19175554014207963",
+      "department": "STP_WTP",
+      "designation": "WTP OPERATOR",
+      "permanent_id": "MS-74",
+      "temporary_id": "TEM-74",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6067611063302808",
+      "department": "STP_WTP",
+      "designation": "WTP/RO OPERATOR",
+      "permanent_id": "MS-75",
+      "temporary_id": "TEM-75",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.06493623909408341",
+      "department": "MULTI_TECHNICIAN",
+      "designation": "JUNIOR MULTI TECHNICIAN",
+      "permanent_id": "MS-76",
+      "temporary_id": "TEM-76",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.01706091450813374",
+      "department": "MULTI_TECHNICIAN",
+      "designation": "MEP SUPERVISOR",
+      "permanent_id": "MS-77",
+      "temporary_id": "TEM-77",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.40610570636488175",
+      "department": "MULTI_TECHNICIAN",
+      "designation": "MULTI TECHNICIAN",
+      "permanent_id": "MS-78",
+      "temporary_id": "TEM-78",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.03436144200365687",
+      "department": "MULTI_TECHNICIAN",
+      "designation": "SENIOR MULTI TECHNICIAN",
+      "permanent_id": "MS-79",
+      "temporary_id": "TEM-79",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.06149561003164683",
+      "department": "OTHER_SERVICES",
+      "designation": "BMS OPERATOR",
+      "permanent_id": "MS-80",
+      "temporary_id": "TEM-80",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.5437020642099045",
+      "department": "OTHER_SERVICES",
+      "designation": "BOWLING ALLEY OPERATOR",
+      "permanent_id": "MS-81",
+      "temporary_id": "TEM-81",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.555864700067033",
+      "department": "OTHER_SERVICES",
+      "designation": "BUGGY DRIVERS",
+      "permanent_id": "MS-82",
+      "temporary_id": "TEM-82",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6068125554793412",
+      "department": "OTHER_SERVICES",
+      "designation": "CARPENTER",
+      "permanent_id": "MS-83",
+      "temporary_id": "TEM-83",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7508596587333327",
+      "department": "OTHER_SERVICES",
+      "designation": "CCTV TECHNICIAN",
+      "permanent_id": "MS-84",
+      "temporary_id": "TEM-84",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3125703729673759",
+      "department": "OTHER_SERVICES",
+      "designation": "CHILLER OPERATOR",
+      "permanent_id": "MS-85",
+      "temporary_id": "TEM-85",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.0360550314331991",
+      "department": "OTHER_SERVICES",
+      "designation": "DG ENGINEER",
+      "permanent_id": "MS-86",
+      "temporary_id": "TEM-86",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8805867621124069",
+      "department": "OTHER_SERVICES",
+      "designation": "DRIVER",
+      "permanent_id": "MS-87",
+      "temporary_id": "TEM-87",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.26811117990466937",
+      "department": "OTHER_SERVICES",
+      "designation": "EHS EXECUTIVE",
+      "permanent_id": "MS-88",
+      "temporary_id": "TEM-88",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4618789496190877",
+      "department": "OTHER_SERVICES",
+      "designation": "FIRE ALARM TECHNICIAN",
+      "permanent_id": "MS-89",
+      "temporary_id": "TEM-89",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.20377207287944066",
+      "department": "OTHER_SERVICES",
+      "designation": "FIRE WARDEN",
+      "permanent_id": "MS-90",
+      "temporary_id": "TEM-90",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6341164913458143",
+      "department": "OTHER_SERVICES",
+      "designation": "HV/AC TECHNICIAN",
+      "permanent_id": "MS-91",
+      "temporary_id": "TEM-91",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6670120659295637",
+      "department": "OTHER_SERVICES",
+      "designation": "INTERCOM TECHNICIAN",
+      "permanent_id": "MS-92",
+      "temporary_id": "TEM-92",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8323792595582149",
+      "department": "OTHER_SERVICES",
+      "designation": "KAIPOND",
+      "permanent_id": "MS-93",
+      "temporary_id": "TEM-93",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9505071383987885",
+      "department": "OTHER_SERVICES",
+      "designation": "LIFE GUARD",
+      "permanent_id": "MS-94",
+      "temporary_id": "TEM-94",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7583522144166825",
+      "department": "OTHER_SERVICES",
+      "designation": "EXECUTIVE - LIFT & PLUMBING",
+      "permanent_id": "MS-95",
+      "temporary_id": "TEM-95",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.15260841300503114",
+      "department": "OTHER_SERVICES",
+      "designation": "LIFT TECHNICIAN",
+      "permanent_id": "MS-96",
+      "temporary_id": "TEM-96",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4826060038211516",
+      "department": "OTHER_SERVICES",
+      "designation": "MAIL ROOM",
+      "permanent_id": "MS-97",
+      "temporary_id": "TEM-97",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9128936962942189",
+      "department": "OTHER_SERVICES",
+      "designation": "MAISON",
+      "permanent_id": "MS-98",
+      "temporary_id": "TEM-98",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8452620088272671",
+      "department": "OTHER_SERVICES",
+      "designation": "NETWORK ADMINISTRATOR",
+      "permanent_id": "MS-99",
+      "temporary_id": "TEM-99",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.049497970371351174",
+      "department": "OTHER_SERVICES",
+      "designation": "PAINTER",
+      "permanent_id": "MS-100",
+      "temporary_id": "TEM-100",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8270047155415728",
+      "department": "OTHER_SERVICES",
+      "designation": "STACK OPERATOR",
+      "permanent_id": "MS-101",
+      "temporary_id": "TEM-101",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9893232518119878",
+      "department": "OTHER_SERVICES",
+      "designation": "TANK CLEANER",
+      "permanent_id": "MS-102",
+      "temporary_id": "TEM-102",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6945186277193295",
+      "department": "SWIMMING_POOL_MAINTENANCE",
+      "designation": "POOL OPERATOR",
+      "permanent_id": "MS-103",
+      "temporary_id": "TEM-103",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2788454932690482",
+      "department": "SWIMMING_POOL_MAINTENANCE",
+      "designation": "SWIMMING POOL CUM WTP OPERATOR",
+      "permanent_id": "MS-104",
+      "temporary_id": "TEM-104",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.042551061018652137",
+      "department": "SWIMMING_POOL_MAINTENANCE",
+      "designation": "WATERBODY OPERATOR",
+      "permanent_id": "MS-105",
+      "temporary_id": "TEM-105",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.1558816010865821",
+      "department": "SWIMMING_POOL_MAINTENANCE",
+      "designation": "POOL OPERATOR - FULL TIME",
+      "permanent_id": "MS-106",
+      "temporary_id": "TEM-106",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8857486593566721",
+      "department": "SWIMMING_POOL_MAINTENANCE",
+      "designation": "POOL OPERATOR - REQUIRED HOURS",
+      "permanent_id": "MS-107",
+      "temporary_id": "TEM-107",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8915499642529401",
+      "department": "PEST_CONTROL_SERVICES",
+      "designation": "PEST CONTROL OPERATOR",
+      "permanent_id": "MS-108",
+      "temporary_id": "TEM-108",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.818575479072085",
+      "department": "PEST_CONTROL_SERVICES",
+      "designation": "PEST CONTROL OPERATOR - FULL TIME",
+      "permanent_id": "MS-109",
+      "temporary_id": "TEM-109",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.005745163126685382",
+      "department": "PEST_CONTROL_SERVICES",
+      "designation": "PEST CONTROL OPERATOR - REQUIRED HOURS",
+      "permanent_id": "MS-110",
+      "temporary_id": "TEM-110",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4409403909816739",
+      "department": "HK_SERVICES",
+      "designation": "EQUIPMENTS  - HK CLEANERS",
+      "permanent_id": "MS-111",
+      "temporary_id": "TEM-111",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.845341269922764",
+      "department": "HK_SERVICES",
+      "designation": "FLOOR SCRUBBER",
+      "permanent_id": "MS-112",
+      "temporary_id": "TEM-112",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2123286364438124",
+      "department": "HK_SERVICES",
+      "designation": "GARBAGE COLLECTION",
+      "permanent_id": "MS-113",
+      "temporary_id": "TEM-113",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9738499314346973",
+      "department": "HK_SERVICES",
+      "designation": "GATE KEEPER",
+      "permanent_id": "MS-114",
+      "temporary_id": "TEM-114",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7194980335158911",
+      "department": "HK_SERVICES",
+      "designation": "HK - FEMALE",
+      "permanent_id": "MS-115",
+      "temporary_id": "TEM-115",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8446927488023657",
+      "department": "HK_SERVICES",
+      "designation": "HK - MALE",
+      "permanent_id": "MS-116",
+      "temporary_id": "TEM-116",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4346291941123399",
+      "department": "HK_SERVICES",
+      "designation": "HK - OFFICE ASSISTANT",
+      "permanent_id": "MS-117",
+      "temporary_id": "TEM-117",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7231930335305997",
+      "department": "HK_SERVICES",
+      "designation": "HK - RELIEVER",
+      "permanent_id": "MS-118",
+      "temporary_id": "TEM-118",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9130655377525213",
+      "department": "HK_SERVICES",
+      "designation": "HK - COMMON AREA",
+      "permanent_id": "MS-119",
+      "temporary_id": "TEM-119",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.08277576245847074",
+      "department": "HK_SERVICES",
+      "designation": "HK CLEANER",
+      "permanent_id": "MS-120",
+      "temporary_id": "TEM-120",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8955567146494282",
+      "department": "HK_SERVICES",
+      "designation": "HK CLEANER SENIOR",
+      "permanent_id": "MS-121",
+      "temporary_id": "TEM-121",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.20343379862963928",
+      "department": "HK_SERVICES",
+      "designation": "HK CLUB HOUSE",
+      "permanent_id": "MS-122",
+      "temporary_id": "TEM-122",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.04831478123921473",
+      "department": "HK_SERVICES",
+      "designation": "HK CLUB HOUSE - FEMALE",
+      "permanent_id": "MS-123",
+      "temporary_id": "TEM-123",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.07052351997899442",
+      "department": "HK_SERVICES",
+      "designation": "HK EXECUTIVE",
+      "permanent_id": "MS-124",
+      "temporary_id": "TEM-124",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.1378073835073651",
+      "department": "HK_SERVICES",
+      "designation": "HK FLOOR SUPERVISOR",
+      "permanent_id": "MS-125",
+      "temporary_id": "TEM-125",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.949303970592059",
+      "department": "HK_SERVICES",
+      "designation": "HK SUPERVISOR",
+      "permanent_id": "MS-126",
+      "temporary_id": "TEM-126",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.42273116646226594",
+      "department": "HK_SERVICES",
+      "designation": "HK SUPERVISOR - JUNIOR",
+      "permanent_id": "MS-127",
+      "temporary_id": "TEM-127",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.05683177108268689",
+      "department": "HK_SERVICES",
+      "designation": "HK SUPERVISOR - SENIOR",
+      "permanent_id": "MS-128",
+      "temporary_id": "TEM-128",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3934078525746344",
+      "department": "HK_SERVICES",
+      "designation": "OFFICE ASSISTANT",
+      "permanent_id": "MS-129",
+      "temporary_id": "TEM-129",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.39777388413914283",
+      "department": "HK_SERVICES",
+      "designation": "OFFICE ASSISTANT CUM HK CLEANER",
+      "permanent_id": "MS-130",
+      "temporary_id": "TEM-130",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.17101048378280248",
+      "department": "HK_SERVICES",
+      "designation": "OFFICE ASSISTANT CUM HK LADY",
+      "permanent_id": "MS-131",
+      "temporary_id": "TEM-131",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.5956284505240116",
+      "department": "HK_SERVICES",
+      "designation": "OWC OPERATOR",
+      "permanent_id": "MS-132",
+      "temporary_id": "TEM-132",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9979449646230528",
+      "department": "HK_SERVICES",
+      "designation": "PANTRY BOY",
+      "permanent_id": "MS-133",
+      "temporary_id": "TEM-133",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7519200637471994",
+      "department": "HK_SERVICES",
+      "designation": "SWEEPER",
+      "permanent_id": "MS-134",
+      "temporary_id": "TEM-134",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.464647267975445",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "GARDENER",
+      "permanent_id": "MS-135",
+      "temporary_id": "TEM-135",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.16322106057014063",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "GARDENER - HELPER",
+      "permanent_id": "MS-136",
+      "temporary_id": "TEM-136",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.17984299973946338",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "GARDENER SPRINKLER OPERATOR",
+      "permanent_id": "MS-137",
+      "temporary_id": "TEM-137",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.06622187008439584",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "GARDENING SUPERVISOR",
+      "permanent_id": "MS-138",
+      "temporary_id": "TEM-138",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.034361387556171685",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "HEAD GARDENER",
+      "permanent_id": "MS-139",
+      "temporary_id": "TEM-139",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6050312086247202",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "HORTICULTURIST",
+      "permanent_id": "MS-140",
+      "temporary_id": "TEM-140",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3661399988419166",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "SENIOR GARDENER",
+      "permanent_id": "MS-141",
+      "temporary_id": "TEM-141",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3921022578029517",
+      "department": "LANDSCAPING_SERVICES",
+      "designation": "SPRINKLER",
+      "permanent_id": "MS-142",
+      "temporary_id": "TEM-142",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.782459764904336",
+      "department": "SECURITY_SERVICES",
+      "designation": "ASST. SECURITY SUPERVISOR",
+      "permanent_id": "MS-143",
+      "temporary_id": "TEM-143",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6572693869606123",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY EXECUTIVE",
+      "permanent_id": "MS-144",
+      "temporary_id": "TEM-144",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.2751430769065979",
+      "department": "SECURITY_SERVICES",
+      "designation": "ASST.SECURITY OFFICER",
+      "permanent_id": "MS-145",
+      "temporary_id": "TEM-145",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6326896007362123",
+      "department": "SECURITY_SERVICES",
+      "designation": "CHIEF SECURITY OFFICER",
+      "permanent_id": "MS-146",
+      "temporary_id": "TEM-146",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.8515623200667375",
+      "department": "SECURITY_SERVICES",
+      "designation": "FIELD OFFICER",
+      "permanent_id": "MS-147",
+      "temporary_id": "TEM-147",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.5623244531806778",
+      "department": "SECURITY_SERVICES",
+      "designation": "HEAD GUARD",
+      "permanent_id": "MS-148",
+      "temporary_id": "TEM-148",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6918190741854795",
+      "department": "SECURITY_SERVICES",
+      "designation": "JUNIOR SECURITY GUARD",
+      "permanent_id": "MS-149",
+      "temporary_id": "TEM-149",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.3050716171443483",
+      "department": "SECURITY_SERVICES",
+      "designation": "JUNIOR SECURITY SUPERVISOR",
+      "permanent_id": "MS-150",
+      "temporary_id": "TEM-150",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9273846520938694",
+      "department": "SECURITY_SERVICES",
+      "designation": "LADY GUARD",
+      "permanent_id": "MS-151",
+      "temporary_id": "TEM-151",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6265696273674453",
+      "department": "SECURITY_SERVICES",
+      "designation": "LIFE  GUARD",
+      "permanent_id": "MS-152",
+      "temporary_id": "TEM-152",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6439361636784939",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY - RELIEVER",
+      "permanent_id": "MS-153",
+      "temporary_id": "TEM-153",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.09140838821926367",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY GUARD",
+      "permanent_id": "MS-154",
+      "temporary_id": "TEM-154",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.6131392897398142",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY GUARD EXIT GATE",
+      "permanent_id": "MS-155",
+      "temporary_id": "TEM-155",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.12528689740361088",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY GUARD MAIN GATE",
+      "permanent_id": "MS-156",
+      "temporary_id": "TEM-156",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.392458423326947",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY GUARD WITH GUN",
+      "permanent_id": "MS-157",
+      "temporary_id": "TEM-157",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.45237013320924124",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY INTELLIGENCE OFFICER",
+      "permanent_id": "MS-158",
+      "temporary_id": "TEM-158",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.9788193764368476",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY OFFICER",
+      "permanent_id": "MS-159",
+      "temporary_id": "TEM-159",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.4126613199936643",
+      "department": "SECURITY_SERVICES",
+      "designation": "SECURITY SUPERVISOR",
+      "permanent_id": "MS-160",
+      "temporary_id": "TEM-160",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.19862178516442197",
+      "department": "SECURITY_SERVICES",
+      "designation": "SENIOR HEAD GUARD",
+      "permanent_id": "MS-161",
+      "temporary_id": "TEM-161",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.7443668921006618",
+      "department": "SECURITY_SERVICES",
+      "designation": "SENIOR SECURITY GUARD",
+      "permanent_id": "MS-162",
+      "temporary_id": "TEM-162",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.25775608914764603",
+      "department": "SECURITY_SERVICES",
+      "designation": "SENIOR SECURITY SUPERVISOR",
+      "permanent_id": "MS-163",
+      "temporary_id": "TEM-163",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.35817189690023954",
+      "department": "SECURITY_SERVICES",
+      "designation": "PATROLLING SECURITY GUARD",
+      "permanent_id": "MS-164",
+      "temporary_id": "TEM-164",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "imported_1769252328947_0.10492849296062945",
+      "department": "SECURITY_SERVICES",
+      "designation": "TRAINEE GUARD",
+      "permanent_id": "MS-165",
+      "temporary_id": "TEM-165",
+      "monthly_salary": 25000
+    },
+    {
+      "id": "new_1774534765924",
+      "department": "SECURITY_SERVICES",
+      "designation": "TRAINEE GUARD-1",
+      "permanent_id": "MS-166",
+      "temporary_id": "TEM-166",
+      "monthly_salary": 25001
+    }
+  ],
+  "master_tools": null,
+  "master_gents_uniforms": null,
+  "master_ladies_uniforms": null,
+  "approval_workflow_settings": {
+    "final_confirmation_role": "reporting_manager"
+  },
+  "geofencing_verification_enabled": true,
+  "max_violations_per_month": 3,
+  "address_settings": {
+    "enable_pincode_verification": true
+  },
+  "gemini_api_settings": {
+    "enabled": false
+  },
+  "perfios_api_settings": {
+    "enabled": false,
+    "client_id": "admin@paradigmfms.com",
+    "client_secret": "Paradigm@123"
+  },
+  "otp_settings": {
+    "enabled": true
+  },
+  "site_management_settings": {
+    "enable_provisional_sites": false
+  },
+  "notification_settings": {
+    "email": {
+      "enabled": false
+    }
+  },
+  "offline_ocr_settings": {
+    "enabled": true
+  },
+  "email_config": {
+    "host": "smtp.gmail.com",
+    "pass": "jkwq aqfl qbkv jauc",
+    "port": 465,
+    "user": "noreply@paradigmfms.com",
+    "secure": true,
+    "enabled": true,
+    "reply_to": "Noreply@Paradigmfms.Com",
+    "from_name": "Paradigm Fms ",
+    "from_email": "Sudhan@Paradigmfms.Com"
+  },
+  "voip_settings": {}
+}

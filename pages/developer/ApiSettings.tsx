@@ -8,6 +8,17 @@ import { useSettingsStore } from '../../store/settingsStore';
 import Checkbox from '../../components/ui/Checkbox';
 import PageInterfaceSettingsModal from '../../components/developer/PageInterfaceSettingsModal';
 import { useDevice } from '../../hooks/useDevice';
+import { useAuthStore } from '../../store/authStore';
+
+const LastUpdated = ({ updatedBy, updatedAt }: { updatedBy?: string, updatedAt?: string }) => {
+    if (!updatedBy && !updatedAt) return null;
+    return (
+        <div className="mt-4 pt-3 border-t border-border flex items-center justify-between text-[11px] text-muted">
+            <span>Updated by: <span className="font-medium text-primary-text">{updatedBy || '-'}</span></span>
+            <span>{updatedAt ? new Date(updatedAt).toLocaleString() : '-'}</span>
+        </div>
+    );
+};
 
 
 const SettingsCard: React.FC<{ title: string; icon: React.ElementType, children: React.ReactNode, className?: string }> = ({ title, icon: Icon, children, className }) => (
@@ -29,12 +40,24 @@ const SettingsCard: React.FC<{ title: string; icon: React.ElementType, children:
 
 export const ApiSettings: React.FC = () => {
     const { isMobile } = useDevice();
+    const { user } = useAuthStore();
     const store = useSettingsStore();
 
     const [isExporting, setIsExporting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isInterfaceModalOpen, setIsInterfaceModalOpen] = useState(false);
     const [backups, setBackups] = useState<any[]>([]);
+    const [activeTab, setActiveTab] = useState('Authentication Settings');
+
+    const TabButton = ({ tabName }: { tabName: string }) => (
+        <button
+            type="button"
+            onClick={() => setActiveTab(tabName)}
+            className={`relative whitespace-nowrap px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-all flex items-center gap-2 ${activeTab === tabName ? 'border-accent text-accent bg-accent/5' : 'border-transparent text-muted hover:text-primary-text'}`}
+        >
+            <span>{tabName}</span>
+        </button>
+    );
 
     const loadBackups = async () => {
         try {
@@ -85,6 +108,8 @@ export const ApiSettings: React.FC = () => {
                                 await api.saveGeminiApiSettings(store.geminiApi);
                                 await api.saveOfflineOcrSettings(store.offlineOcr);
                                 await api.savePerfiosApiSettings(store.perfiosApi);
+                                await api.saveKycApiSettings(store.kycApi);
+                                await api.saveEsignApiSettings(store.esignApi);
                                 await api.saveOtpSettings(store.otp);
                                 await api.saveSiteManagementSettings(store.siteManagement);
                                 await api.saveAddressSettings(store.address);
@@ -105,17 +130,29 @@ export const ApiSettings: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                {/* --- COLUMN 1: INTERFACE & INTEGRATIONS --- */}
-                <div className="space-y-8">
-                    <SettingsCard title="Page Interface" icon={Image}>
+            <div className="border-b border-border overflow-x-auto no-scrollbar mb-8">
+                <nav className="-mb-px flex space-x-1 sm:space-x-4 min-w-max pb-1 text-base">
+                    <TabButton tabName="Authentication Settings" />
+                    <TabButton tabName="Client & Site Management" />
+                    <TabButton tabName="Notification Settings" />
+                    <TabButton tabName="Page Interface" />
+                    <TabButton tabName="System & Data" />
+                    <TabButton tabName="Verification APIs" />
+                </nav>
+            </div>
+
+            <div className="flex-1 py-2 min-h-[60vh]">
+                {activeTab === 'Page Interface' && (
+                    <SettingsCard title="Page Interface" icon={Image} className="w-full">
                         <p className="text-sm text-muted -mt-2">Customize the application's branding, login screen, and user interaction settings.</p>
                         <div className="pt-4">
                             <Button type="button" onClick={() => setIsInterfaceModalOpen(true)}>Open Interface Settings</Button>
                         </div>
                     </SettingsCard>
+                )}
 
-                    <SettingsCard title="Verification APIs" icon={ShieldCheck}>
+                {activeTab === 'Verification APIs' && (
+                    <SettingsCard title="Verification APIs" icon={ShieldCheck} className="w-full">
                         <p className="text-sm text-muted -mt-2">Configure third-party services for employee verification.</p>
                         <div className="space-y-6 pt-4">
                             {/* Gemini API */}
@@ -125,8 +162,19 @@ export const ApiSettings: React.FC = () => {
                                     label="Enable Gemini API OCR Verification"
                                     description="Use Google's Gemini API for document data extraction. This is a powerful fallback or primary OCR. API key must be configured on the backend."
                                     checked={store.geminiApi.enabled}
-                                    onChange={e => store.updateGeminiApiSettings({ enabled: e.target.checked })}
+                                    onChange={e => store.updateGeminiApiSettings({ enabled: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                                 />
+                                <div className={`mt-4 transition-opacity ${store.geminiApi.enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                                    <Input 
+                                        label="Gemini API Key" 
+                                        type="password"
+                                        className="w-full" 
+                                        value={store.geminiApi.apiKey || ''} 
+                                        onChange={e => store.updateGeminiApiSettings({ apiKey: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} 
+                                        autoCapitalizeCustom={false}
+                                    />
+                                </div>
+                                <LastUpdated updatedBy={store.geminiApi.updatedBy} updatedAt={store.geminiApi.updatedAt} />
                             </div>
                             {/* Offline OCR (Tesseract.js) */}
                             <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
@@ -135,8 +183,9 @@ export const ApiSettings: React.FC = () => {
                                     label="Enable Offline OCR (Tesseract.js)"
                                     description="Use browser-side Tesseract.js for document data extraction. Works offline and requires no API key, but may be less accurate for complex layouts."
                                     checked={store.offlineOcr.enabled}
-                                    onChange={e => store.updateOfflineOcrSettings({ enabled: e.target.checked })}
+                                    onChange={e => store.updateOfflineOcrSettings({ enabled: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                                 />
+                                <LastUpdated updatedBy={store.offlineOcr.updatedBy} updatedAt={store.offlineOcr.updatedAt} />
                             </div>
                             {/* Perfios API */}
                             <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
@@ -145,14 +194,14 @@ export const ApiSettings: React.FC = () => {
                                     label="Enable Perfios API Verification"
                                     description="Use Perfios for Bank, Aadhaar, and UAN verification."
                                     checked={store.perfiosApi.enabled}
-                                    onChange={e => store.updatePerfiosApiSettings({ enabled: e.target.checked })}
+                                    onChange={e => store.updatePerfiosApiSettings({ enabled: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                                 />
                                 <div className={`mt-4 space-y-4 transition-opacity ${store.perfiosApi.enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
                                     <Input 
                                         label="Perfios Client ID" 
                                         className="w-full" 
                                         value={store.perfiosApi.clientId} 
-                                        onChange={e => store.updatePerfiosApiSettings({ clientId: e.target.value })} 
+                                        onChange={e => store.updatePerfiosApiSettings({ clientId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} 
                                         autoCapitalizeCustom={false}
                                     />
                                     <Input 
@@ -160,14 +209,102 @@ export const ApiSettings: React.FC = () => {
                                         type="password" 
                                         className="w-full"
                                         value={store.perfiosApi.clientSecret} 
-                                        onChange={e => store.updatePerfiosApiSettings({ clientSecret: e.target.value })} 
+                                        onChange={e => store.updatePerfiosApiSettings({ clientSecret: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} 
                                     />
                                 </div>
+                                <LastUpdated updatedBy={store.perfiosApi.updatedBy} updatedAt={store.perfiosApi.updatedAt} />
+                            </div>
+                            
+                            {/* KYC Gateway */}
+                            <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
+                                <h4 className="font-semibold text-primary-text mb-2">KYC Gateway Configuration (BLUE-GUARD-2026)</h4>
+                                <p className="text-sm text-muted mb-4">Select and configure your primary KYC vendor.</p>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <label htmlFor="kyc-vendor" className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isMobile ? 'text-white/70' : 'text-muted'}`}>KYC Vendor</label>
+                                        <select 
+                                            id="kyc-vendor"
+                                            className={`w-full h-10 px-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-accent/40 ${isMobile ? 'border-white/10 bg-[#062b1a] text-white' : 'border-border bg-white text-primary-text'}`}
+                                            value={store.kycApi.vendor}
+                                            onChange={e => store.updateKycApiSettings({ vendor: e.target.value as any })}
+                                        >
+                                            <option value="hyperverge">HyperVerge</option>
+                                            <option value="signzy">Signzy</option>
+                                            <option value="decentro">Decentro</option>
+                                        </select>
+                                    </div>
+                                    
+                                    {store.kycApi.vendor === 'hyperverge' && (
+                                        <>
+                                            <Input label="HyperVerge App ID" className="w-full" value={store.kycApi.hypervergeAppId || ''} onChange={e => store.updateKycApiSettings({ hypervergeAppId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="HyperVerge App Key" type="password" className="w-full" value={store.kycApi.hypervergeAppKey || ''} onChange={e => store.updateKycApiSettings({ hypervergeAppKey: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                    {store.kycApi.vendor === 'signzy' && (
+                                        <>
+                                            <Input label="Signzy API Key" type="password" className="w-full" value={store.kycApi.signzyApiKey || ''} onChange={e => store.updateKycApiSettings({ signzyApiKey: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="Signzy Patient ID" className="w-full" value={store.kycApi.signzyPatientId || ''} onChange={e => store.updateKycApiSettings({ signzyPatientId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                    {store.kycApi.vendor === 'decentro' && (
+                                        <>
+                                            <Input label="Decentro Client ID" className="w-full" value={store.kycApi.decentroClientId || ''} onChange={e => store.updateKycApiSettings({ decentroClientId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="Decentro Client Secret" type="password" className="w-full" value={store.kycApi.decentroClientSecret || ''} onChange={e => store.updateKycApiSettings({ decentroClientSecret: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="Decentro Module Secret" type="password" className="w-full" value={store.kycApi.decentroModuleSecret || ''} onChange={e => store.updateKycApiSettings({ decentroModuleSecret: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="Decentro Provider Secret" type="password" className="w-full" value={store.kycApi.decentroProviderSecret || ''} onChange={e => store.updateKycApiSettings({ decentroProviderSecret: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                </div>
+                                <LastUpdated updatedBy={store.kycApi.updatedBy} updatedAt={store.kycApi.updatedAt} />
+                            </div>
+
+                            {/* e-Sign Gateway */}
+                            <div className={`p-4 border rounded-lg ${isMobile ? 'border-[#1f3d2b] bg-[#041b0f]' : 'border-border bg-gray-50'}`}>
+                                <h4 className="font-semibold text-primary-text mb-2">e-Sign Gateway Configuration (BLUE-GUARD-2026)</h4>
+                                <p className="text-sm text-muted mb-4">Select and configure your primary e-Sign vendor.</p>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <label htmlFor="esign-vendor" className={`block text-xs font-bold uppercase tracking-wider mb-2 ${isMobile ? 'text-white/70' : 'text-muted'}`}>e-Sign Vendor</label>
+                                        <select 
+                                            id="esign-vendor"
+                                            className={`w-full h-10 px-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-accent/40 ${isMobile ? 'border-white/10 bg-[#062b1a] text-white' : 'border-border bg-white text-primary-text'}`}
+                                            value={store.esignApi.vendor}
+                                            onChange={e => store.updateEsignApiSettings({ vendor: e.target.value as any, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
+                                        >
+                                            <option value="digio">Digio</option>
+                                            <option value="leegality">Leegality</option>
+                                            <option value="signdesk">SignDesk</option>
+                                        </select>
+                                    </div>
+                                    
+                                    {store.esignApi.vendor === 'digio' && (
+                                        <>
+                                            <Input label="Digio Client ID" className="w-full" value={store.esignApi.digioClientId || ''} onChange={e => store.updateEsignApiSettings({ digioClientId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="Digio Client Secret" type="password" className="w-full" value={store.esignApi.digioClientSecret || ''} onChange={e => store.updateEsignApiSettings({ digioClientSecret: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                    {store.esignApi.vendor === 'leegality' && (
+                                        <>
+                                            <Input label="Leegality Auth Token" type="password" className="w-full" value={store.esignApi.leegalityAuthToken || ''} onChange={e => store.updateEsignApiSettings({ leegalityAuthToken: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                    {store.esignApi.vendor === 'signdesk' && (
+                                        <>
+                                            <Input label="SignDesk App ID" className="w-full" value={store.esignApi.signdeskAppId || ''} onChange={e => store.updateEsignApiSettings({ signdeskAppId: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                            <Input label="SignDesk API Key" type="password" className="w-full" value={store.esignApi.signdeskApiKey || ''} onChange={e => store.updateEsignApiSettings({ signdeskApiKey: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })} autoCapitalizeCustom={false} />
+                                        </>
+                                    )}
+                                </div>
+                                <LastUpdated updatedBy={store.esignApi.updatedBy} updatedAt={store.esignApi.updatedAt} />
                             </div>
                         </div>
                     </SettingsCard>
+                )}
 
-                    <SettingsCard title="Authentication Settings" icon={Phone}>
+                {activeTab === 'Authentication Settings' && (
+                    <SettingsCard title="Authentication Settings" icon={Phone} className="w-full">
                         <p className="text-sm text-muted -mt-2">Manage how users sign in to the application.</p>
                         <div className="space-y-6 pt-4">
                             <Checkbox
@@ -175,15 +312,15 @@ export const ApiSettings: React.FC = () => {
                                 label="Enable OTP Phone Sign-In"
                                 description="Allow users to sign in using a one-time password sent via SMS."
                                 checked={store.otp.enabled}
-                                onChange={e => store.updateOtpSettings({ enabled: e.target.checked })}
+                                onChange={e => store.updateOtpSettings({ enabled: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                             />
                         </div>
+                        <LastUpdated updatedBy={store.otp.updatedBy} updatedAt={store.otp.updatedAt} />
                     </SettingsCard>
-                </div>
-
-                {/* --- COLUMN 2: SYSTEM & DATA --- */}
-                <div className="space-y-8">
-                    <SettingsCard title="Client & Site Management" icon={Building}>
+                )}
+                
+                {activeTab === 'Client & Site Management' && (
+                    <SettingsCard title="Client & Site Management" icon={Building} className="w-full">
                         <p className="text-sm text-muted -mt-2">Control workflows for site creation and management.</p>
                         <div className="space-y-6 pt-4">
                             <Checkbox
@@ -191,11 +328,15 @@ export const ApiSettings: React.FC = () => {
                                 label="Enable Provisional Site Creation"
                                 description="Allows HR/Admins to create a site with just a name, providing a 90-day grace period to complete the full configuration for easier onboarding."
                                 checked={store.siteManagement.enableProvisionalSites}
-                                onChange={e => store.updateSiteManagementSettings({ enableProvisionalSites: e.target.checked })}
+                                onChange={e => store.updateSiteManagementSettings({ enableProvisionalSites: e.target.checked, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                             />
                         </div>
+                        <LastUpdated updatedBy={store.siteManagement.updatedBy} updatedAt={store.siteManagement.updatedAt} />
                     </SettingsCard>
-                    <SettingsCard title="System & Data" icon={Settings}>
+                )}
+
+                {activeTab === 'System & Data' && (
+                    <SettingsCard title="System & Data" icon={Settings} className="w-full">
                         <p className="text-sm text-muted -mt-2">Manage core system settings and data operations.</p>
                         <div className="space-y-6 pt-4">
                             <Checkbox id="pincode-verification" label="Enable Pincode API Verification" description="Auto-fill City/State from pincode during onboarding." checked={store.address.enablePincodeVerification} onChange={e => store.updateAddressSettings({ enablePincodeVerification: e.target.checked })} />
@@ -208,7 +349,7 @@ export const ApiSettings: React.FC = () => {
                                         placeholder="e.g., 7.0.0" 
                                         className="max-w-[150px]"
                                         value={store.apiSettings.appVersion || ''} 
-                                        onChange={e => store.updateApiSettings({ appVersion: e.target.value })}
+                                        onChange={e => store.updateApiSettings({ appVersion: e.target.value, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                                     />
                                     <p className="text-xs text-muted italic">Users with an app version older than this will be forced to update from app.paradigmfms.com. Set this to the latest released APK version.</p>
                                 </div>
@@ -224,7 +365,9 @@ export const ApiSettings: React.FC = () => {
                                         automatedTracking: { 
                                             ...(store.apiSettings.automatedTracking || { intervalMinutes: 15 }), 
                                             enabled: e.target.checked 
-                                        } 
+                                        },
+                                        updatedBy: user?.name,
+                                        updatedAt: new Date().toISOString()
                                     })} 
                                 />
                                 
@@ -529,9 +672,12 @@ export const ApiSettings: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                        <LastUpdated updatedBy={store.apiSettings.updatedBy} updatedAt={store.apiSettings.updatedAt} />
                     </SettingsCard>
+                )}
 
-                    <SettingsCard title="Notification Settings" icon={Mail}>
+                {activeTab === 'Notification Settings' && (
+                    <SettingsCard title="Notification Settings" icon={Mail} className="w-full">
                         <p className="text-sm text-muted -mt-2">Configure how the system sends notifications.</p>
                         <div className="space-y-6 pt-4">
                             <Checkbox
@@ -539,11 +685,12 @@ export const ApiSettings: React.FC = () => {
                                 label="Enable Email Notifications"
                                 description="Send emails for important events like task assignments. SMTP must be configured on the backend."
                                 checked={store.notifications.email.enabled}
-                                onChange={e => store.updateNotificationSettings({ email: { enabled: e.target.checked } })}
+                                onChange={e => store.updateNotificationSettings({ email: { enabled: e.target.checked }, updatedBy: user?.name, updatedAt: new Date().toISOString() })}
                             />
                         </div>
+                        <LastUpdated updatedBy={store.notifications.updatedBy} updatedAt={store.notifications.updatedAt} />
                     </SettingsCard>
-                </div>
+                )}
             </div>
         </div>
     );

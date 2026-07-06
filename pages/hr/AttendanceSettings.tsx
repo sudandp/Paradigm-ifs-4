@@ -289,7 +289,7 @@ const AttendanceSettings: React.FC = () => {
     // Load geofencing settings
     // No extra loading here, it's part of attendance settings
 
-    const currentRules = activeTab === 'selections' ? localAttendance.office : localAttendance[activeTab as 'office' | 'field' | 'site' | 'admin' | 'management'];
+    const currentRules = (activeTab === 'selections' ? localAttendance?.office : localAttendance?.[activeTab as 'office' | 'field' | 'site' | 'admin' | 'management']) || {} as any;
     const currentHolidaysFromStore = activeTab === 'office' || activeTab === 'admin' || activeTab === 'management' 
         ? officeHolidays // Admin/Management share office holidays generally, or we could separate them. For now, sharing seems appropriate or they can be configured separately if the backend supported it. Actually the `type` field in holidays supports 'office', 'field', 'site'. Let's stick to 'office' holidays for Admin/Mgmt for now unless we add specific holiday lists. 
         : activeTab === 'field' ? fieldHolidays : siteHolidays;
@@ -568,7 +568,7 @@ const AttendanceSettings: React.FC = () => {
     }
 
     return (
-        <div className="p-4 border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full pb-40">
+        <div className="p-4 md:p-6 space-y-6 pb-40">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* ── Rule Version Impact Modal ───────────────────────────────────────── */}
@@ -668,96 +668,130 @@ const AttendanceSettings: React.FC = () => {
                 </div>
             )}
 
-
-            <AdminPageHeader title="Attendance & Leave Rules">
-                <div className="flex items-center gap-3 flex-wrap">
-                    <div className="w-48">
-                         <Select
-                            id="location-filter"
-                            value={selectedLocation}
-                            onChange={(e) => handleLocationChange(e.target.value)}
-                        >
-                            <option value="global">Global Rules</option>
-                            {locations.map(loc => (
-                                <option key={loc} value={loc}>{loc}</option>
-                            ))}
-                        </Select>
-                    </div>
-
-                    <div className="w-48 animate-in slide-in-from-right-2 duration-300">
-                        <Select
-                            id="society-filter"
-                            value={selectedCompanyId}
-                            onChange={(e) => handleCompanyChange(e.target.value)}
-                        >
-                            <option value="">All Societies</option>
-                            {availableCompanies.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </Select>
-                    </div>
-
-                    <div className="w-48 animate-in slide-in-from-right-2 duration-300">
-                        <Select
-                            id="entity-filter"
-                            value={selectedEntityId}
-                            onChange={(e) => setSelectedEntityId(e.target.value)}
-                        >
-                            <option value="">All Entities</option>
-                            {selectedCompanyId && (
-                                <option value={`${selectedCompanyId}_head_office`}>Head Office</option>
-                            )}
-                            {availableEntities.map(ent => (
-                                <option key={ent.id} value={ent.id}>{ent.name}</option>
-                            ))}
-                        </Select>
-                    </div>
-
-                    <Button onClick={handleSave} isLoading={isSaving} disabled={!isDirty} size="md" className="py-2 px-6">
-                        <Save className="mr-2 h-4 w-4" /> Save Rules
-                    </Button>
+            {/* ── Page Header ─────────────────────────────────────────────────────── */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-primary-text">Attendance & Leave Rules</h1>
+                    <p className="text-muted mt-1">Set company-wide rules for attendance and leave calculation.</p>
                 </div>
-            </AdminPageHeader>
-            <p className="text-muted -mt-4 mb-6">Set company-wide rules for attendance and leave calculation.</p>
-
-
-            <div className="mb-6 border-b border-border">
-                <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-                    {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && (
-                        <>
-                            <button onClick={() => handleTabChange('office')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'office' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                                Office Staff
-                            </button>
-                            <button onClick={() => handleTabChange('field')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'field' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                                Field Staff
-                            </button>
-                        </>
-                    )}
-                    {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && (
-                        <button onClick={() => handleTabChange('site')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'site' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                            Site Staff
-                        </button>
-                    )}
-                    <button onClick={() => handleTabChange('admin')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'admin' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Admin
-                    </button>
-                    <button onClick={() => handleTabChange('management')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'management' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Management
-                    </button>
-                    <button onClick={() => handleTabChange('selections')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'selections' ? 'border-accent text-accent-dark' : 'border-transparent text-muted hover:text-accent-dark hover:border-accent'}`}>
-                        Staff Selections
-                    </button>
-                </nav>
+                <Button onClick={handleSave} isLoading={isSaving} disabled={!isDirty} size="md" className="py-2 px-6 shrink-0">
+                    <Save className="mr-2 h-4 w-4" /> Save Rules
+                </Button>
             </div>
 
-            {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'office' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Receptionist, Accountant, and general Office Staff.</p>}
-            {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'field' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Field Staff and Field Managers.</p>}
-            {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && activeTab === 'site' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Site Staff (e.g. Site Managers, Security Guards).</p>}
-            {activeTab === 'admin' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to System Administrators and HR Admins.</p>}
-            {activeTab === 'management' && <p className="text-sm text-muted -mt-4 mb-4">These rules apply to Top Management, CEO, GM, etc.</p>}
-            
-            {activeTab !== 'selections' && (
-                <div className="mb-6 flex flex-wrap gap-2">
+            {/* ── Scope Filters Card ───────────────────────────────────────────────── */}
+            <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
+                <div className="flex flex-col md:flex-row gap-3 items-start md:items-center flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-muted uppercase tracking-wider shrink-0">
+                        <Settings className="h-3.5 w-3.5" /> Scope
+                    </div>
+                    <div className="flex flex-wrap gap-3 flex-1">
+                        <div className="min-w-[180px]">
+                            <Select
+                                id="location-filter"
+                                value={selectedLocation}
+                                onChange={(e) => handleLocationChange(e.target.value)}
+                            >
+                                <option value="global">🌐 Global Rules</option>
+                                {locations.map(loc => (
+                                    <option key={loc} value={loc}>{loc}</option>
+                                ))}
+                            </Select>
+                        </div>
+                        <div className="min-w-[180px] animate-in slide-in-from-right-2 duration-300">
+                            <Select
+                                id="society-filter"
+                                value={selectedCompanyId}
+                                onChange={(e) => handleCompanyChange(e.target.value)}
+                            >
+                                <option value="">All Societies</option>
+                                {availableCompanies.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </Select>
+                        </div>
+                        <div className="min-w-[180px] animate-in slide-in-from-right-2 duration-300">
+                            <Select
+                                id="entity-filter"
+                                value={selectedEntityId}
+                                onChange={(e) => setSelectedEntityId(e.target.value)}
+                            >
+                                <option value="">All Entities</option>
+                                {selectedCompanyId && (
+                                    <option value={`${selectedCompanyId}_head_office`}>Head Office</option>
+                                )}
+                                {availableEntities.map(ent => (
+                                    <option key={ent.id} value={ent.id}>{ent.name}</option>
+                                ))}
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Staff Type Tabs ─────────────────────────────────────────────── */}
+                <div className="mt-5 border-t border-border pt-4">
+                    <nav className="flex flex-wrap gap-1" aria-label="Staff type tabs">
+                        {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && (
+                            <>
+                                <button onClick={() => handleTabChange('office')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                                    activeTab === 'office'
+                                        ? 'bg-accent text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text hover:bg-page'
+                                }`}>
+                                    Office Staff
+                                </button>
+                                <button onClick={() => handleTabChange('field')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                                    activeTab === 'field'
+                                        ? 'bg-accent text-white shadow-sm'
+                                        : 'text-muted hover:text-primary-text hover:bg-page'
+                                }`}>
+                                    Field Staff
+                                </button>
+                            </>
+                        )}
+                        {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && (
+                            <button onClick={() => handleTabChange('site')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                                activeTab === 'site'
+                                    ? 'bg-accent text-white shadow-sm'
+                                    : 'text-muted hover:text-primary-text hover:bg-page'
+                            }`}>
+                                Site Staff
+                            </button>
+                        )}
+                        <button onClick={() => handleTabChange('admin')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                            activeTab === 'admin'
+                                ? 'bg-accent text-white shadow-sm'
+                                : 'text-muted hover:text-primary-text hover:bg-page'
+                        }`}>
+                            Admin
+                        </button>
+                        <button onClick={() => handleTabChange('management')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                            activeTab === 'management'
+                                ? 'bg-accent text-white shadow-sm'
+                                : 'text-muted hover:text-primary-text hover:bg-page'
+                        }`}>
+                            Management
+                        </button>
+                        <button onClick={() => handleTabChange('selections')} className={`whitespace-nowrap py-2 px-4 rounded-lg font-medium text-sm transition-all duration-200 ${
+                            activeTab === 'selections'
+                                ? 'bg-accent text-white shadow-sm'
+                                : 'text-muted hover:text-primary-text hover:bg-page'
+                        }`}>
+                            Staff Selections
+                        </button>
+                    </nav>
+                    <div className="mt-2">
+                        {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'office' && <p className="text-xs text-muted">Applies to Receptionist, Accountant, and general Office Staff.</p>}
+                        {(!selectedEntityId || selectedEntityId === `${selectedCompanyId}_head_office`) && activeTab === 'field' && <p className="text-xs text-muted">Applies to Field Staff and Field Managers.</p>}
+                        {(!selectedEntityId || (selectedEntityId && selectedEntityId !== `${selectedCompanyId}_head_office`)) && activeTab === 'site' && <p className="text-xs text-muted">Applies to Site Staff (e.g. Site Managers, Security Guards).</p>}
+                        {activeTab === 'admin' && <p className="text-xs text-muted">Applies to System Administrators and HR Admins.</p>}
+                        {activeTab === 'management' && <p className="text-xs text-muted">Applies to Top Management, CEO, GM, etc.</p>}
+                    </div>
+                </div>
+
+                {/* ── Sub-Tab Pills ───────────────────────────────────────────────── */}
+                {activeTab !== 'selections' && (
+                    <div className="mt-4 flex flex-wrap gap-2">
                     {[
                         { key: 'general', label: 'General', icon: Settings },
                         { key: 'calc_rules', label: 'Calculation Rules', icon: BarChart3 },
@@ -800,9 +834,10 @@ const AttendanceSettings: React.FC = () => {
                         );
                     })}
                 </div>
-            )}
+                )}
+            </div>
 
-            {activeTab === 'selections' && <p className="text-sm text-muted -mt-4 mb-4">Select staff groups to include in automated actions like missed check-out triggers.</p>}
+            {activeTab === 'selections' && <p className="text-sm text-muted">Select staff groups to include in automated actions like missed check-out triggers.</p>}
 
 
             <div className="space-y-6">

@@ -278,7 +278,7 @@ const reportGenerators = {
           status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
         }
 
-        if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
+        if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'C/O', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
         tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: ${color}; background: ${cellBg}; font-weight: 700; font-size: 8px;">${status || '—'}</td>`;
       }
 

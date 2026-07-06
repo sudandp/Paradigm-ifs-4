@@ -812,7 +812,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
       }
 
-      if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'H'].some(s => status.includes(s))) {
+      if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'C/O', 'H'].some(s => status.includes(s))) {
         daysPresentInWeek++;
       }
       

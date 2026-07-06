@@ -24,6 +24,8 @@ export interface GmcPolicySettings {
 
 export interface OtpSettings {
   enabled: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface BackupSchedule {
@@ -45,12 +47,16 @@ export interface ApiSettings {
     enabled: boolean;
     intervalMinutes: number;
   };
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface NotificationSettings {
   email: {
     enabled: boolean;
   };
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface EmailConfig {

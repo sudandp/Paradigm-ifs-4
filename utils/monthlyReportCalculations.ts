@@ -218,17 +218,18 @@ export function processEmployeeMonth(
 
       if (hasActivityCheck || hasApprovedLeaveCheck || isHolidayCheck) {
           daysActiveInCurrentWeek++;
-          const isWfh = allLeaves.some(l => {
+          const isWfhOrCompOff = allLeaves.some(l => {
               if (String(l.userId) !== String(user.id)) return false;
               if (!l.startDate || !l.endDate) return false;
               try {
+                  const type = (l.leaveType || '').toLowerCase();
                   return isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                  (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh');
+                  (type.includes('work from home') || type === 'wfh' || type === 'w/h' || type.includes('comp') || type === 'c/o' || type === 'co');
               } catch (e) {
                   return false;
               }
           });
-          if (hasActivityCheck || isHolidayCheck || isWfh) {
+          if (hasActivityCheck || isHolidayCheck || isWfhOrCompOff) {
               daysPresentInCurrentWeek++;
           }
       }
@@ -472,8 +473,8 @@ export function processEmployeeMonth(
       status = 'A';
     }
 
-    const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
-    const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H';
+    const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H' || status.includes('CO');
+    const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('CO');
     
     if (isPresence || isApprovedLeave) {
       const val = (status.includes('0.5') || status === 'Half Day') ? 0.5 : 1;

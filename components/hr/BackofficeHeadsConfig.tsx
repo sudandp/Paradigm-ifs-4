@@ -88,7 +88,7 @@ const BackofficeHeadsConfig: React.FC = () => {
                             </div>
                             <div className="space-y-3 p-4">
                                 {Array.isArray(items) && items.map(item => (
-                                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-center">
+                                    <div key={fields[item.originalIndex]?.id || item.id || item.originalIndex} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-center">
                                         <div className="md:col-span-3">
                                             <Input placeholder="Designation" aria-label={`Designation for ${department}`} id={`series.${item.originalIndex}.designation`} {...register(`series.${item.originalIndex}.designation`)} />
                                         </div>

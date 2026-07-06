@@ -220,9 +220,14 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
             const isActiveInPreviousWeek = daysPresentInPreviousWeek >= threshold;
             const meetsThreshold = daysPresentInWeek >= threshold;
+            const isCompOff = !!(foundLeave && (
+                String(foundLeave.leaveType || '').toLowerCase().includes('comp') ||
+                String(foundLeave.leaveType || '').toLowerCase() === 'c/o' ||
+                String(foundLeave.leaveType || '').toLowerCase() === 'co'
+            ));
 
             let finalStatus = 'neutral';
-            let presenceVal = 0;
+            const presenceVal = 0;
 
             // Remove future assumptions - strictly follow activity threshold
             const visuallyActivePrev = (daysPresentInPreviousWeek >= threshold);
@@ -250,7 +255,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             }
 
             // Update Counters
-            const isPresenceForThreshold = ['present', 'holiday-present', 'weekend-present'].includes(finalStatus) || (isCompanyHoliday && !isPast);
+            const isPresenceForThreshold = ['present', 'holiday-present', 'weekend-present'].includes(finalStatus) || (isCompanyHoliday && !isPast) || isCompOff;
             const isLeaveForActivity = finalStatus === 'leave' && !['loss of pay', 'lop'].includes((foundLeave?.leaveType || '').toLowerCase());
             
             if (isPresenceForThreshold || isLeaveForActivity) {

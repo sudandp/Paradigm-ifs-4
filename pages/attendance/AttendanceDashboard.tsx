@@ -1356,8 +1356,8 @@ const AttendanceDashboard: React.FC = () => {
                     });
 
                     // Track presence for threshold-based rules (like Weekend Off eligibility)
-                    const isPresence = statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H';
-                    const isApprovedLeave = statusRaw.includes('L') && !statusRaw.includes('LOP');
+                    const isPresence = statusRaw.includes('P') || statusRaw === 'Present' || statusRaw === 'Half Day' || statusRaw === 'H' || statusRaw.includes('CO');
+                    const isApprovedLeave = (statusRaw.includes('L') && !statusRaw.includes('LOP')) || statusRaw.includes('CO');
                     
                     if (isPresence || isApprovedLeave) {
                         const val = (statusRaw.includes('1/2') ? 0.5 : 1);
@@ -2132,11 +2132,15 @@ const AttendanceDashboard: React.FC = () => {
                     if (hasActivityCheck || hasApprovedLeaveCheck || isConfiguredHolidayCheck) {
                         daysActiveInWeek++;
                         // Only physical presence, holidays, or WFH count towards Sunday W/O
-                        const isWFH = userLeaves.some(l => 
+                        const isWFHOrCompOff = userLeaves.some(l => 
                             isWithinInterval(checkDate, { start: startOfDay(new Date(l.startDate)), end: endOfDay(new Date(l.endDate)) }) &&
-                            (String(l.leaveType || '').toLowerCase().includes('work from home') || String(l.leaveType || '').toLowerCase() === 'wfh')
+                            (String(l.leaveType || '').toLowerCase().includes('work from home') || 
+                             String(l.leaveType || '').toLowerCase() === 'wfh' ||
+                             String(l.leaveType || '').toLowerCase().includes('comp') ||
+                             String(l.leaveType || '').toLowerCase() === 'c/o' ||
+                             String(l.leaveType || '').toLowerCase() === 'co')
                         );
-                        if (hasActivityCheck || isConfiguredHolidayCheck || isWFH) {
+                        if (hasActivityCheck || isConfiguredHolidayCheck || isWFHOrCompOff) {
                             daysPresentInWeek++;
                         }
                     }
@@ -2199,8 +2203,8 @@ const AttendanceDashboard: React.FC = () => {
                     userLocation: user.location || user.locationName || user.organizationName || user.societyName
                 });
 
-                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H';
-                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status === 'RP' || status === 'RC' || status.includes('RP') || status.includes('RC');
+                const isPresence = status.includes('P') || status === 'Present' || status === 'Half Day' || status === 'H' || status === 'W/H' || status.includes('CO');
+                const isApprovedLeave = (status.includes('L') && !status.includes('LOP')) || status === 'W/H' || status.includes('C/C') || status === 'RP' || status === 'RC' || status.includes('RP') || status.includes('RC') || status.includes('CO');
                 
                 if (isPresence || isApprovedLeave) {
                     const val = (status.includes('1/2') ? 0.5 : 1);

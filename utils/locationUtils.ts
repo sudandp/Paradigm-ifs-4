@@ -36,6 +36,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
     const data = await res.json();
     if (data.address) {
       const { 
+        house_number, house_name,
         hotel, school, university, college, 
         apartment, apartments, mall, supermarket,
         bus_stop, fuel, petrol_pump,
@@ -44,11 +45,12 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
         attraction, tourism, historic,
         building, amenity, shop, office, 
         park, garden,
-        road, suburb, city, village, town, state, postcode 
+        road, residential, neighbourhood, suburb, city_district,
+        city, village, town, county, state, postcode, country
       } = data.address;
       
       // Get the most descriptive "name" of the place first
-      const poiName = hotel || school || university || college || 
+      const poiName = house_name || hotel || school || university || college || 
                       apartment || apartments || mall || supermarket ||
                       bus_stop || fuel || petrol_pump ||
                       hospital || clinic || doctors ||
@@ -57,8 +59,19 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
                       building || amenity || shop || office || 
                       park || garden;
       
-      const parts = [road, suburb, city || village || town, state, postcode]
-        .filter(Boolean);
+      const parts = [
+        house_number, 
+        road, 
+        residential,
+        neighbourhood,
+        suburb, 
+        city_district,
+        city || village || town, 
+        county,
+        state, 
+        postcode,
+        country
+      ].filter(Boolean);
       
       const shortAddress = parts.join(', ');
       

@@ -63,7 +63,9 @@ export type Permission =
   | 'view_management_dashboard'
   | 'view_hr_call_queue'
   | 'view_letter_templates'
-  | 'view_reports_dashboard';
+  | 'view_reports_dashboard'
+  | 'view_snag_audit'
+  | 'view_snag_report';
 
 export interface TaskGroup {
   id: string;

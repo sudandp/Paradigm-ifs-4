@@ -103,6 +103,8 @@ export const allNavLinks: NavLinkConfig[] = [
     { to: '/tasks', label: 'Task Manager', icon: ListTodo, permission: 'view_profile', category: 'Operations & Team' },
     { to: '/my-team/field-reports', label: 'Field Reports', icon: ClipboardList, permission: 'view_field_reports', category: 'Operations & Team' },
     { to: '/my-team', label: 'My Team', icon: Users, permission: 'view_my_team', category: 'Operations & Team' },
+    { to: '/operations/snag-audit', label: 'Snag Audit', icon: ClipboardCheck, permission: 'view_snag_audit', category: 'Operations & Team' },
+    { to: '/operations/snag-report', label: 'Report', icon: FileSpreadsheet, permission: 'view_snag_report', category: 'Operations & Team' },
 
     // Uniforms & Kit
     { to: '/uniforms', label: 'Uniform Management', icon: Shirt, permission: 'manage_uniforms', category: 'Uniforms & Kit' },

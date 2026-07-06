@@ -233,7 +233,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
             {isCameraOpen && <CameraCaptureModal isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} onCapture={handleCapture} captureGuidance={captureGuidance} autoConfirm={true} />}
 
             <div className="flex items-center gap-2 mb-2">
-                <label className="block text-sm font-medium text-muted" htmlFor={inputId}>{label}</label>
+                <label className="block text-sm font-medium text-white/70 md:text-muted" htmlFor={inputId}>{label}</label>
                 {verificationStatus === true && <span title="Verified"><CheckCircle className="h-4 w-4 text-green-400" /></span>}
                 {verificationStatus === false && <span title="Verification Failed"><XCircle className="h-4 w-4 text-red-400" /></span>}
             </div>
@@ -244,7 +244,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         w-full flex flex-col rounded-2xl relative overflow-hidden justify-center transition-all duration-300
                         ${transparent 
                             ? 'bg-transparent border-0' 
-                            : 'bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-xl hover:border-white/30'}
+                            : 'bg-white/5 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.1)] backdrop-blur-xl hover:border-white/30 md:bg-white md:border-border md:hover:border-accent/40 md:shadow-sm'}
                         ${variant === 'compact' ? 'min-h-[120px] p-3' : 'min-h-[160px] p-4'} justify-center
                      `}>
                         <div className="absolute inset-0 z-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none mix-blend-overlay">
@@ -351,30 +351,30 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
                         cursor-pointer flex flex-col items-center justify-center
                         p-6 rounded-2xl transition-all duration-300
                         ${transparent 
-                            ? 'bg-transparent border-0 hover:bg-white/5' 
-                            : 'bg-white/5 border border-dashed border-white/10 hover:border-accent/50 hover:bg-white/10'}
+                            ? 'bg-transparent border-0 hover:bg-white/5 md:hover:bg-gray-50' 
+                            : 'bg-white/5 border border-dashed border-white/10 hover:border-accent/50 hover:bg-white/10 md:bg-white md:border-dashed md:border-gray-200 md:hover:border-accent md:hover:bg-accent/5'}
                         ${displayError ? '!border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : ''}
                         ${variant === 'compact' ? 'min-h-[100px] p-4' : 'min-h-[180px] p-6'}
                     `}>
                         <div className={`transition-all duration-300 ${variant === 'compact' ? 'mb-1' : 'mb-3'} text-accent group-hover:scale-110`}>
                             <Icon className={`${variant === 'compact' ? 'h-6 w-6' : 'h-10 w-10'}`} />
                         </div>
-                        <p className={`font-bold text-white transition-colors ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
-                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider text-white/50`}>or drag & drop</p>}
+                        <p className={`font-bold text-white md:text-primary-text transition-colors ${variant === 'compact' ? 'mt-1 text-sm' : 'mt-2'}`}>Click to upload</p>
+                        {variant !== 'compact' && <p className={`text-[10px] font-semibold mt-1 uppercase tracking-wider text-white/50 md:text-muted`}>or drag & drop</p>}
                         
                         {allowCapture && (
                             <div className="w-full flex flex-col items-center mt-5">
                                 <div className="flex items-center w-full max-w-[140px] mb-4">
-                                    <div className="h-px flex-1 bg-white/10"></div>
-                                    <span className="px-3 text-[10px] font-semibold text-white/40">OR</span>
-                                    <div className="h-px flex-1 bg-white/10"></div>
+                                    <div className="h-px flex-1 bg-white/10 md:bg-gray-200"></div>
+                                    <span className="px-3 text-[10px] font-semibold text-white/40 md:text-muted">OR</span>
+                                    <div className="h-px flex-1 bg-white/10 md:bg-gray-200"></div>
                                 </div>
                                 <button 
                                     type="button" 
                                     onClick={(e) => { e.preventDefault(); setIsCameraOpen(true); }} 
-                                    className="flex items-center justify-center font-bold text-white hover:text-white/80 transition-colors text-sm"
+                                    className="flex items-center justify-center font-bold text-white hover:text-white/80 md:text-accent md:hover:text-accent-dark transition-colors text-sm"
                                 >
-                                    <Camera className="h-4 w-4 mr-2 text-red-500" />
+                                    <Camera className="h-4 w-4 mr-2 text-red-500 md:text-accent" />
                                     Capture with Camera
                                 </button>
                             </div>

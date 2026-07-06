@@ -373,21 +373,65 @@ export interface BillingRates {
   [designation: string]: {
     ratePerDay: number;
     ratePerMonth: number;
-  }
+  };
+}
+
+export interface AddressSettings {
+  enablePincodeVerification: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface PerfiosApiSettings {
   enabled: boolean;
   clientId?: string;
   clientSecret?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface GeminiApiSettings {
   enabled: boolean;
+  apiKey?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface SiteManagementSettings {
+  enableProvisionalSites: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface KycApiSettings {
+  vendor: 'hyperverge' | 'signzy' | 'decentro';
+  hypervergeAppId?: string;
+  hypervergeAppKey?: string;
+  signzyApiKey?: string;
+  signzyPatientId?: string;
+  decentroClientId?: string;
+  decentroClientSecret?: string;
+  decentroModuleSecret?: string;
+  decentroProviderSecret?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface EsignApiSettings {
+  vendor: 'digio' | 'leegality' | 'signdesk';
+  digioClientId?: string;
+  digioClientSecret?: string;
+  leegalityAuthToken?: string;
+  signdeskAppId?: string;
+  signdeskApiKey?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface OfflineOcrSettings {
   enabled: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
 }
 
 export interface VerificationResult {

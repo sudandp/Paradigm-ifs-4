@@ -157,6 +157,8 @@ const QuotationBuilder = lazyWithRetry(() => import('./pages/crm/QuotationBuilde
 const HelpdeskTickets = lazyWithRetry(() => import('./pages/operations/HelpdeskTickets'));
 const MaintenanceScheduler = lazyWithRetry(() => import('./pages/operations/MaintenanceScheduler'));
 const ContractManager = lazyWithRetry(() => import('./pages/operations/ContractManager'));
+const SnagAuditPage = lazyWithRetry(() => import('./pages/operations/SnagAuditPage'));
+const SnagReportPage = lazyWithRetry(() => import('./pages/operations/SnagReportPage'));
 
 // Finance Module (Phase 3)
 const ProfitabilityDashboard = lazyWithRetry(() => import('./pages/finance/ProfitabilityDashboard'));
@@ -1162,6 +1164,8 @@ const App: React.FC = () => {
             apiSettings: settings.apiSettings,
             addressSettings: settings.addressSettings,
             geminiApiSettings: settings.geminiApiSettings,
+            kycApiSettings: settings.kycApiSettings,
+            esignApiSettings: settings.esignApiSettings,
             offlineOcrSettings: settings.offlineOcrSettings,
             perfiosApiSettings: settings.perfiosApiSettings,
             otpSettings: settings.otpSettings,
@@ -1441,6 +1445,12 @@ const App: React.FC = () => {
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_field_reports" />}>
             <Route path="my-team/field-reports" element={<FieldReports />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_snag_audit" />}>
+            <Route path="operations/snag-audit" element={<SnagAuditPage />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="view_snag_report" />}>
+            <Route path="operations/snag-report" element={<SnagReportPage />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="view_site_dashboard" />}>
             <Route path="site/dashboard" element={<SiteDashboard />} />

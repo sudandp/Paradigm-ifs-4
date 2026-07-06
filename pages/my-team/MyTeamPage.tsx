@@ -107,13 +107,29 @@ const MyTeamPage: React.FC = () => {
     styleSheet.type = "text/css";
     styleSheet.innerText = markerStyles;
     document.head.appendChild(styleSheet);
-    
     fetchTeamData();
     fetchUnlockRequests();
     fetchSettings(); // Call fetchSettings here
     
+    // Set up polling to refresh the dashboard automatically every minute
+    const pollInterval = setInterval(() => {
+        if (user) {
+            // Re-fetch only the latest locations so the map updates
+            setTeamMembers(prevMembers => {
+                if (prevMembers.length > 0) {
+                    const userIds = prevMembers.map(m => m.id);
+                    api.getLatestLocations(userIds).then(locations => {
+                        setLatestLocations(locations);
+                    }).catch(console.error);
+                }
+                return prevMembers;
+            });
+        }
+    }, 60000);
+    
     return () => {
       document.head.removeChild(styleSheet);
+      clearInterval(pollInterval);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -168,9 +184,24 @@ const MyTeamPage: React.FC = () => {
         
         // Group cities by state
         const grouped: Record<string, string[]> = {};
+        
+        // Add from locMap
         Object.values(locMap).forEach(({ state, city }) => {
           if (!grouped[state]) grouped[state] = [];
           if (!grouped[state].includes(city)) grouped[state].push(city);
+        });
+
+        // Add from member fallbacks if missing
+        members.forEach(member => {
+            if (!locMap[member.id]) {
+                const fallbackCity = member.locationName || member.location;
+                if (fallbackCity) {
+                    const state = 'Other'; // Or a guessed state
+                    locMap[member.id] = { state, city: fallbackCity };
+                    if (!grouped[state]) grouped[state] = [];
+                    if (!grouped[state].includes(fallbackCity)) grouped[state].push(fallbackCity);
+                }
+            }
         });
 
         // Sort states and cities
@@ -179,6 +210,7 @@ const MyTeamPage: React.FC = () => {
           sortedGrouped[state] = grouped[state].sort();
         });
 
+        setMemberLocations({...locMap});
         setAvailableLocations(sortedGrouped);
       }).catch(err => {
         console.error('Error fetching team locations:', err);
@@ -229,34 +261,34 @@ const MyTeamPage: React.FC = () => {
       // So we should fetch, update, and save.
       const { settings } = await api.getInitialAppData();
       
-      // Clone settings to avoid mutation
-      const newSettings = { ...settings };
+      // Clone attendanceSettings to avoid mutation
+      const attendanceSettings = { ...settings.attendanceSettings };
       
       // Update office if exists
-      if (newSettings.office) {
-          newSettings.office = {
-              ...newSettings.office,
+      if (attendanceSettings.office) {
+          attendanceSettings.office = {
+              ...attendanceSettings.office,
               trackingIntervalMinutes: trackingInterval
           };
       }
 
       // Update field if exists (avoids error if column is missing)
-      if (newSettings.field) {
-          newSettings.field = {
-              ...newSettings.field,
+      if (attendanceSettings.field) {
+          attendanceSettings.field = {
+              ...attendanceSettings.field,
               trackingIntervalMinutes: trackingInterval
           };
       }
 
       // Update site if exists
-      if (newSettings.site) {
-          newSettings.site = {
-              ...newSettings.site,
+      if (attendanceSettings.site) {
+          attendanceSettings.site = {
+              ...attendanceSettings.site,
               trackingIntervalMinutes: trackingInterval
           };
       }
 
-      await api.updateAttendanceSettings(newSettings);
+      await api.updateAttendanceSettings(attendanceSettings);
       
       // Update local tracking immediately
       if (user) {
@@ -299,7 +331,7 @@ const MyTeamPage: React.FC = () => {
         
         // Add Tile Layer
         const tiles = L.tileLayer(tileUrl, { 
-          maxZoom: 18,
+          maxZoom: 22,
           maxNativeZoom: 18,
           zIndex: 1,
           detectRetina: true,
@@ -449,9 +481,9 @@ const MyTeamPage: React.FC = () => {
             ${member.phone ? `
               <a href="https://wa.me/91${member.phone.replace(/\D/g,'')}" target="_blank" class="mt-2 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all no-underline">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                WhatsApp
-              </a>
-            ` : ''}
+              WhatsApp
+            </a>
+          ` : ''}
           </div>
         `;
         
@@ -461,17 +493,26 @@ const MyTeamPage: React.FC = () => {
       }
     });
 
-    if (markerInstances.length > 0 && !hasInitiallyFitted.current) {
+    if (markerInstances.length > 0) {
       const group = L.featureGroup(markerInstances);
       mapRef.current.fitBounds(group.getBounds().pad(0.3), {
         animate: true,
-        duration: 2.5, // Slower, more majestic entrance
+        duration: !hasInitiallyFitted.current ? 2.5 : 0.8, 
         easeLinearity: 0.1
       });
       hasInitiallyFitted.current = true;
-    } else if (markerInstances.length > 0) {
-      // For subsequent updates, be much faster or don't move camera at all
-      // mapRef.current.fitBounds(group.getBounds().pad(0.3), { animate: true, duration: 0.5 });
+    } else if (selectedLocation !== 'All' && selectedLocation.startsWith('city:')) {
+      const city = selectedLocation.split(':')[2];
+      if (city) {
+         fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&format=json&limit=1`)
+           .then(res => res.json())
+           .then(data => {
+              if (data && data.length > 0) {
+                 mapRef.current.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 12, { animate: true, duration: 1.0 });
+              }
+           })
+           .catch(err => console.error("Could not fetch city location", err));
+      }
     }
   }, [filteredMembers, latestLocations, mapLoaded]);
 
@@ -506,14 +547,14 @@ const MyTeamPage: React.FC = () => {
               className="w-full px-4 py-3 bg-[#091c13] border border-[#2a4536]/30 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-transparent outline-none transition-all text-xs text-white appearance-none cursor-pointer font-semibold shadow-sm"
             >
               <option value="All">All Locations</option>
-              {Object.entries(availableLocations).map(([state, cities]) => (
-                <optgroup key={state} label={state} className="bg-[#091c13]">
-                  <option value={`state:${state}`}>All {state}</option>
-                  {cities.map(city => (
-                    <option key={`${state}-${city}`} value={`city:${state}:${city}`}>{city}</option>
-                  ))}
-                </optgroup>
-              ))}
+              {Object.entries(availableLocations).flatMap(([state, cities]) => [
+                <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-[#00a859]">All {state}</option>,
+                ...cities.map(city => (
+                  <option key={`${state}-${city}`} value={`city:${state}:${city}`}>
+                    {city} ({state})
+                  </option>
+                ))
+              ])}
             </select>
           </div>
 
@@ -781,14 +822,14 @@ const MyTeamPage: React.FC = () => {
                 className="w-full sm:w-48 px-3 py-2 bg-card border border-border rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent outline-none transition-all text-sm appearance-none cursor-pointer"
               >
                 <option value="All">All Locations</option>
-                {Object.entries(availableLocations).map(([state, cities]) => (
-                  <optgroup key={state} label={state}>
-                    <option value={`state:${state}`}>All {state}</option>
-                    {cities.map(city => (
-                      <option key={`${state}-${city}`} value={`city:${state}:${city}`}>{city}</option>
-                    ))}
-                  </optgroup>
-                ))}
+                {Object.entries(availableLocations).flatMap(([state, cities]) => [
+                  <option key={`state-${state}`} value={`state:${state}`} className="font-bold text-accent">All {state}</option>,
+                  ...cities.map(city => (
+                    <option key={`${state}-${city}`} value={`city:${state}:${city}`}>
+                      {city} ({state})
+                    </option>
+                  ))
+                ])}
               </select>
  
               <div className="relative w-full md:w-64">
