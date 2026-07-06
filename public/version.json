@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 88,
-  "latestVersionName": "17.8.0",
+  "latestVersionCode": 89,
+  "latestVersionName": "17.9.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement Gemini API key rotation system and add local route history utilities\nfeat: bump application version to 17.7.0 and integrate release notes, version tracking, and Android build configuration\nfeat: implement MonthlyHoursReport component with automated payroll filtering and record analysis services\nfix: sick leave opening balance only applies to genuine mid-year joiners (explicit date strictly after Jan 1)\nchore: add .vercel to .gitignore to prevent accidental tracking",
+  "releaseNotes": "feat: implement comprehensive onboarding module including multi-vendor KYC/e-Sign integrations, document management, and progressive employee registration flows.\ncca1c56\nfeat: add ProfilePage component with attendance metrics and user management features\nfeat: bump application version to 17.8.0, integrate version tracking, and configure Android build settings\nfeat: implement Gemini API key rotation system and add local route history utilities",
   "isMandatory": true
 }
