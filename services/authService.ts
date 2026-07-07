@@ -27,7 +27,11 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
                 name: supabaseUser.user_metadata.name || 'New User',
                 email: supabaseUser.email!,
                 role_id: 'unverified',
-                passcode: randomPasscode
+                passcode: randomPasscode,
+                // Save Google profile picture on first login
+                photo_url: supabaseUser.user_metadata?.avatar_url
+                    || supabaseUser.user_metadata?.picture
+                    || null,
             };
 
             const { data: createdData, error: insertError } = await supabase
@@ -77,7 +81,11 @@ export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<App
             reportingManagerId: data.reporting_manager_id,
             reportingManager2Id: data.reporting_manager_2_id,
             reportingManager3Id: data.reporting_manager_3_id,
-            photoUrl: data.photo_url,
+            // Use custom uploaded photo first; fall back to Google OAuth profile picture
+            photoUrl: data.photo_url
+                || supabaseUser.user_metadata?.avatar_url
+                || supabaseUser.user_metadata?.picture
+                || null,
             gender: data.gender,
             biometricId: data.biometric_id,
             salaryHold: data.salary_hold,

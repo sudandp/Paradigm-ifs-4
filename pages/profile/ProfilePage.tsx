@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import type { User, UploadedFile, EmployeeScore, UserChild } from '../../types';
 import type { GateUser } from '../../types/gate';
 import Input from '../../components/ui/Input';
+import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
@@ -540,9 +541,9 @@ const ProfilePage: React.FC = () => {
         ]
     };
     
-    const isSiteStaffRole = (roleMapping.site || []).includes(user?.role || '') || isTechnicalReliever;
-    const isFieldStaffRole = (roleMapping.field || []).includes(user?.role || '');
-    const isOfficeStaffRole = (roleMapping.office || []).includes(user?.role || '');
+    const isSiteStaffRole = (roleMapping.site || []).includes(user?.role || '') || (roleMapping.site || []).includes(user?.roleId || '') || isTechnicalReliever;
+    const isFieldStaffRole = (roleMapping.field || []).includes(user?.role || '') || (roleMapping.field || []).includes(user?.roleId || '');
+    const isOfficeStaffRole = (roleMapping.office || []).includes(user?.role || '') || (roleMapping.office || []).includes(user?.roleId || '');
 
     // Check for existing unlock request
     // Check for existing unlock request on mount/update
@@ -1848,6 +1849,12 @@ const ProfilePage: React.FC = () => {
                                             <div className="space-y-4">
                                                 <Input label="Name" id="name" registration={register('name')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold placeholder:text-white/20" />
                                                 <Input label="Phone" id="phone" type="tel" registration={register('phone')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold placeholder:text-white/20" />
+                                                <Select label="Gender" id="gender" registration={register('gender')} className="bg-black/40 border-white/10 text-white !rounded-xl !h-12 text-sm font-bold placeholder:text-white/20">
+                                                    <option value="" disabled className="text-gray-500 bg-[#041b0f]">Select Gender</option>
+                                                    <option value="Male" className="bg-[#041b0f] text-white">Male</option>
+                                                    <option value="Female" className="bg-[#041b0f] text-white">Female</option>
+                                                    <option value="Other" className="bg-[#041b0f] text-white">Other</option>
+                                                </Select>
                                             </div>
                                             <Button type="submit" isLoading={isSaving} disabled={!isDirty} className="w-full !bg-emerald-600 !h-14 rounded-2xl font-black uppercase tracking-[0.2em] text-[11px] mt-2 italic shadow-lg shadow-emerald-900/20 active:scale-95 transition-all">Update Identity</Button>
                                         </form>

@@ -8,6 +8,7 @@ export * from './settings';
 export * from './attendance';
 export * from './common';
 export * from './crm';
+export * from './operations';
 
 import { UploadedFile } from './common';
 

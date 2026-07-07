@@ -147,3 +147,35 @@ export interface OpsContract {
   createdAt: string;
   updatedAt: string;
 }
+
+// ============================================================================
+// Snag Audits
+// ============================================================================
+
+export type Criticality = 'High' | 'Medium' | 'Low';
+
+export type PurposeOfVisit =
+  | 'Monthly Audit'
+  | 'Quarterly Audit'
+  | 'Breakdown Visit'
+  | 'Training'
+  | 'Other';
+
+export type Department = 'MEP' | 'House Keeping' | 'Security' | 'Landscaping' | 'Fire and Safety' | 'Other';
+
+export interface SnagEntry {
+  id: string;
+  timestamp: string;
+  emailAddress: string;
+  nameOfSite: string;
+  purposeOfVisit: PurposeOfVisit[];
+  department: Department[];
+  snagPictureUrl?: string;
+  snagPictureName?: string;
+  criticality: Criticality;
+  snagDescription: string;
+  actionToBeTaken: string;
+  remarks?: string;
+  status: 'Open' | 'In Progress' | 'Resolved';
+  submittedBy?: string;
+}

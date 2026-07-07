@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -23,15 +23,11 @@ import {
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
-import type { SnagEntry } from './SnagAuditPage';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type Criticality = 'High' | 'Medium' | 'Low';
-type Department = 'MEP' | 'House Keeping' | 'Security' | 'Landscaping' | 'Fire and Safety' | 'Other';
+import { opsApi } from '../../services/opsApi';
+import type { SnagEntry, Criticality, Department } from '../../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -166,53 +162,8 @@ const ReportRow: React.FC<{ entry: SnagEntry; index: number }> = ({ entry, index
 
 const SnagReportPage: React.FC = () => {
   const today = new Date();
-  const [entries, setEntries] = useState<SnagEntry[]>([
-    {
-      id: 'sample-1',
-      timestamp: '2024-09-26T13:38:19.000Z',
-      emailAddress: 'nithingowda2807@gmail.com',
-      nameOfSite: 'Sark 2 Villas',
-      purposeOfVisit: ['Monthly Audit'],
-      department: ['Security'],
-      snagPictureUrl: '',
-      criticality: 'High',
-      snagDescription: 'Compound wall height is less and there is no solar fencing in west line',
-      actionToBeTaken: 'Solar fencing needs to be installed at boundary wall near west line. Anyone can cross the boundary wall from Fakeers or Sark 1 land.',
-      remarks: 'Need to close the gate after inspection',
-      status: 'Open',
-      submittedBy: 'Nithin Gowda',
-    },
-    {
-      id: 'sample-2',
-      timestamp: '2024-09-20T10:15:00.000Z',
-      emailAddress: 'manager@paradigm.com',
-      nameOfSite: 'Sark 1 Phase',
-      purposeOfVisit: ['Quarterly Audit'],
-      department: ['MEP', 'Fire and Safety'],
-      snagPictureUrl: '',
-      criticality: 'Medium',
-      snagDescription: 'Fire extinguisher expired in basement parking. MEP panel door latch broken.',
-      actionToBeTaken: 'Replace fire extinguishers and fix panel door latch immediately.',
-      remarks: '',
-      status: 'In Progress',
-      submittedBy: 'Ravi Kumar',
-    },
-    {
-      id: 'sample-3',
-      timestamp: '2024-09-18T09:00:00.000Z',
-      emailAddress: 'supervisor@paradigm.com',
-      nameOfSite: 'Sark Grand',
-      purposeOfVisit: ['Breakdown Visit'],
-      department: ['House Keeping'],
-      snagPictureUrl: '',
-      criticality: 'Low',
-      snagDescription: 'Common area carpet stains near lobby entrance. Waste bins overflowing.',
-      actionToBeTaken: 'Deep clean lobby carpet and increase waste collection frequency.',
-      remarks: 'Noted for monthly review',
-      status: 'Resolved',
-      submittedBy: 'Priya S',
-    },
-  ]);
+  const [entries, setEntries] = useState<SnagEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [filterSite, setFilterSite] = useState('');
@@ -224,6 +175,74 @@ const SnagReportPage: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  const fetchEntries = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await opsApi.getSnagEntries();
+      if (data.length > 0) {
+        setEntries(data);
+      } else {
+        // Fallback mock entries
+        setEntries([
+          {
+            id: 'sample-1',
+            timestamp: '2024-09-26T13:38:19.000Z',
+            emailAddress: 'nithingowda2807@gmail.com',
+            nameOfSite: 'Sark 2 Villas',
+            purposeOfVisit: ['Monthly Audit'],
+            department: ['Security'],
+            snagPictureUrl: '',
+            criticality: 'High',
+            snagDescription: 'Compound wall height is less and there is no solar fencing in west line',
+            actionToBeTaken: 'Solar fencing needs to be installed at boundary wall near west line. Anyone can cross the boundary wall from Fakeers or Sark 1 land.',
+            remarks: 'Need to close the gate after inspection',
+            status: 'Open',
+            submittedBy: 'Nithin Gowda',
+          },
+          {
+            id: 'sample-2',
+            timestamp: '2024-09-20T10:15:00.000Z',
+            emailAddress: 'manager@paradigm.com',
+            nameOfSite: 'Sark 1 Phase',
+            purposeOfVisit: ['Quarterly Audit'],
+            department: ['MEP', 'Fire and Safety'],
+            snagPictureUrl: '',
+            criticality: 'Medium',
+            snagDescription: 'Fire extinguisher expired in basement parking. MEP panel door latch broken.',
+            actionToBeTaken: 'Replace fire extinguishers and fix panel door latch immediately.',
+            remarks: '',
+            status: 'In Progress',
+            submittedBy: 'Ravi Kumar',
+          },
+          {
+            id: 'sample-3',
+            timestamp: '2024-09-18T09:00:00.000Z',
+            emailAddress: 'supervisor@paradigm.com',
+            nameOfSite: 'Sark Grand',
+            purposeOfVisit: ['Breakdown Visit'],
+            department: ['House Keeping'],
+            snagPictureUrl: '',
+            criticality: 'Low',
+            snagDescription: 'Common area carpet stains near lobby entrance. Waste bins overflowing.',
+            actionToBeTaken: 'Deep clean lobby carpet and increase waste collection frequency.',
+            remarks: 'Noted for monthly review',
+            status: 'Resolved',
+            submittedBy: 'Priya S',
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error('Failed to load snag entries for report:', err);
+      toast.error('Failed to load snag data from database.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
@@ -281,20 +300,32 @@ const SnagReportPage: React.FC = () => {
     if (!file) return;
     setImporting(true);
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = async ev => {
       const text = ev.target?.result as string;
       const parsed = parseExcelData(text);
       if (parsed.length === 0) {
         toast.error('No data found. Ensure file is tab-separated from Google Sheets.');
       } else {
-        setEntries(prev => [...parsed, ...prev]);
-        toast.success(`${parsed.length} records imported`);
+        try {
+          let count = 0;
+          for (const item of parsed) {
+            const { id, ...saveItem } = item;
+            await opsApi.saveSnagEntry(saveItem);
+            count++;
+          }
+          toast.success(`${count} records imported and saved to Supabase successfully`);
+          fetchEntries();
+        } catch (err) {
+          console.error('Failed to save imported entries:', err);
+          toast.error('Failed to save some imported snag entries.');
+          setEntries(prev => [...parsed, ...prev]);
+        }
       }
       setImporting(false);
     };
     reader.readAsText(file);
     e.target.value = '';
-  }, []);
+  }, [fetchEntries]);
 
   const exportCSV = () => {
     const headers = [
@@ -382,8 +413,15 @@ const SnagReportPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:hidden">
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-32 text-teal-600 gap-3 bg-card rounded-xl border border-border shadow-sm print:hidden">
+          <Loader2 className="h-10 w-10 animate-spin" />
+          <p className="text-sm font-semibold">Loading snag report data from Supabase...</p>
+        </div>
+      ) : (
+        <>
+          {/* Stats Overview */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:hidden">
         <StatCard
           label="Total Snags"
           value={stats.total}
@@ -620,6 +658,8 @@ const SnagReportPage: React.FC = () => {
             Use Export CSV or Print/PDF to share reports with your team.
           </div>
         </div>
+      </>
+      )}
 
       {/* Print styles */}
       <style>{`

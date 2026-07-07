@@ -5,6 +5,15 @@ import Modal from '../ui/Modal';
 import Toast from '../ui/Toast';
 import { ShieldCheck } from 'lucide-react';
 
+/** Normalize role display names to Title Case regardless of DB storage format */
+const toTitleCase = (str: string): string =>
+    str
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase())
+        .trim();
+
+
 interface BulkRoleUpdateModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -38,18 +47,36 @@ const BulkRoleUpdateModal: React.FC<BulkRoleUpdateModalProps> = ({
                 api.getSiteStaffDesignations()
             ]);
 
+            // Deduplicate systemRoles by displayName (in case DB has two entries for same role)
+            const seenRoleNames = new Set<string>();
+            const dedupedRoles = systemRoles.filter(r => {
+                const key = (r.displayName || r.id).toLowerCase();
+                if (seenRoleNames.has(key)) return false;
+                seenRoleNames.add(key);
+                return true;
+            });
+
             // Merge system roles with site staff designations (matches AttendanceSettings.tsx logic)
-            const merged: Role[] = [...systemRoles];
+            const merged: Role[] = [...dedupedRoles];
             designations.forEach(desig => {
                 if (!desig.designation) return;
                 const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
-                // Only add if it doesn't already exist as a role ID
-                if (!merged.some(r => r.id === slug)) {
+                const nameNorm = desig.designation.toLowerCase();
+                // Deduplicate by both slug-id AND displayName (DB roles use UUID ids, not slugs)
+                const alreadyExists = merged.some(r =>
+                    r.id === slug || (r.displayName || '').toLowerCase() === nameNorm
+                );
+                if (!alreadyExists) {
                     merged.push({
                         id: slug,
                         displayName: desig.designation
                     });
                 }
+            });
+
+            // Normalize ALL displayNames to Title Case (DB may store them in ALL CAPS)
+            merged.forEach(r => {
+                if (r.displayName) r.displayName = toTitleCase(r.displayName);
             });
 
             // Sort roles A-Z

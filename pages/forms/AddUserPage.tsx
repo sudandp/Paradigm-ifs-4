@@ -13,8 +13,17 @@ import { api } from '../../services/api';
 import { UserPlus, ArrowLeft, Calendar } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
+/** Normalize role display names to Title Case regardless of DB storage format */
+const toTitleCase = (str: string): string =>
+  str
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+
 
 const createUserSchema = yup.object({
+
   id: yup.string().optional(),
   name: yup.string().required('Name is required'),
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -148,12 +157,26 @@ const AddUserPage: React.FC = () => {
           api.getSiteStaffDesignations()
         ]);
         
+        // Deduplicate fetchedRoles by displayName (in case DB has two entries for same role)
+        const seenRoleNames = new Set<string>();
+        const dedupedRoles = fetchedRoles.filter(r => {
+          const key = (r.displayName || r.id).toLowerCase();
+          if (seenRoleNames.has(key)) return false;
+          seenRoleNames.add(key);
+          return true;
+        });
+
         // Merge system roles with site staff designations
-        const mergedRoles: Role[] = [...fetchedRoles];
+        const mergedRoles: Role[] = [...dedupedRoles];
         designations.forEach(desig => {
           if (!desig.designation) return;
           const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
-          if (!mergedRoles.some(r => r.id === slug)) {
+          const nameNorm = desig.designation.toLowerCase();
+          // Deduplicate by both slug-id AND displayName (DB roles use UUID ids, not slugs)
+          const alreadyExists = mergedRoles.some(r =>
+            r.id === slug || (r.displayName || '').toLowerCase() === nameNorm
+          );
+          if (!alreadyExists) {
             mergedRoles.push({
               id: slug,
               displayName: desig.designation
@@ -161,8 +184,13 @@ const AddUserPage: React.FC = () => {
           }
         });
 
+        // Normalize ALL displayNames to Title Case (DB may store them in ALL CAPS)
+        mergedRoles.forEach(r => {
+          if (r.displayName) r.displayName = toTitleCase(r.displayName);
+        });
+
         // Sort roles A-Z
-        const sortedRoles = mergedRoles.sort((a, b) => 
+        const sortedRoles = mergedRoles.sort((a, b) =>
           (a.displayName || a.id).localeCompare(b.displayName || b.id)
         );
 

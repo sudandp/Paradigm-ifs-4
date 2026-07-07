@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   AlertTriangle,
   Building,
@@ -27,34 +27,8 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type Criticality = 'High' | 'Medium' | 'Low';
-type PurposeOfVisit =
-  | 'Monthly Audit'
-  | 'Quarterly Audit'
-  | 'Breakdown Visit'
-  | 'Training'
-  | 'Other';
-type Department = 'MEP' | 'House Keeping' | 'Security' | 'Landscaping' | 'Fire and Safety' | 'Other';
-
-export interface SnagEntry {
-  id: string;
-  timestamp: string;
-  emailAddress: string;
-  nameOfSite: string;
-  purposeOfVisit: PurposeOfVisit[];
-  department: Department[];
-  snagPictureUrl?: string;
-  snagPictureName?: string;
-  criticality: Criticality;
-  snagDescription: string;
-  actionToBeTaken: string;
-  remarks?: string;
-  status: 'Open' | 'In Progress' | 'Resolved';
-  submittedBy?: string;
-}
+import { opsApi } from '../../services/opsApi';
+import type { SnagEntry, Criticality, PurposeOfVisit, Department } from '../../types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -117,7 +91,7 @@ const StatusBadge: React.FC<{ value: string }> = ({ value }) => (
 // ─── New Snag Form ────────────────────────────────────────────────────────────
 
 interface SnagFormProps {
-  onSave: (entry: SnagEntry) => void;
+  onSave: (entry: SnagEntry, file?: File) => void;
   onCancel: () => void;
 }
 
@@ -134,6 +108,7 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
     snagPictureName: '',
     snagPictureUrl: '',
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -143,10 +118,11 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
     const reader = new FileReader();
     reader.onload = ev => {
       setImagePreview(ev.target?.result as string);
-      setForm(f => ({ ...f, snagPictureName: file.name, snagPictureUrl: ev.target?.result as string }));
+      setForm(f => ({ ...f, snagPictureName: file.name }));
     };
     reader.readAsDataURL(file);
   };
@@ -165,8 +141,7 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
       status: 'Open',
       ...form,
     };
-    onSave(entry);
-    toast.success('Snag entry added successfully');
+    onSave(entry, selectedFile || undefined);
   };
 
   const purposeOptions: PurposeOfVisit[] = ['Monthly Audit', 'Quarterly Audit', 'Breakdown Visit', 'Training', 'Other'];
@@ -428,24 +403,9 @@ const InfoRow: React.FC<{ icon: React.ReactNode; label: string; value: string }>
 
 const SnagAuditPage: React.FC = () => {
   const { user } = useAuthStore();
-  const [entries, setEntries] = useState<SnagEntry[]>([
-    // Sample data
-    {
-      id: 'sample-1',
-      timestamp: '2024-09-26T13:38:19.000Z',
-      emailAddress: 'nithingowda2807@gmail.com',
-      nameOfSite: 'Sark 2 Villas',
-      purposeOfVisit: ['Monthly Audit'],
-      department: ['Security'],
-      snagPictureUrl: '',
-      criticality: 'High',
-      snagDescription: 'Compound wall height is less and there is no solar fencing in west line',
-      actionToBeTaken: 'Solar fencing needs to be installed at boundary wall near west line. Anyone can cross the boundary wall from Fakeers or Sark 1 land. It\'s location is reflecting high chances for people entry.',
-      remarks: 'Need to close the gate after inspection',
-      status: 'Open',
-      submittedBy: 'Nithin Gowda',
-    },
-  ]);
+  const [entries, setEntries] = useState<SnagEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<SnagEntry | null>(null);
@@ -455,6 +415,44 @@ const SnagAuditPage: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [importing, setImporting] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+
+  const fetchEntries = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await opsApi.getSnagEntries();
+      if (data.length > 0) {
+        setEntries(data);
+      } else {
+        // Default fallback mock entry
+        setEntries([
+          {
+            id: 'sample-1',
+            timestamp: '2024-09-26T13:38:19.000Z',
+            emailAddress: 'nithingowda2807@gmail.com',
+            nameOfSite: 'Sark 2 Villas',
+            purposeOfVisit: ['Monthly Audit'],
+            department: ['Security'],
+            snagPictureUrl: '',
+            criticality: 'High',
+            snagDescription: 'Compound wall height is less and there is no solar fencing in west line',
+            actionToBeTaken: 'Solar fencing needs to be installed at boundary wall near west line. Anyone can cross the boundary wall from Fakeers or Sark 1 land. It\'s location is reflecting high chances for people entry.',
+            remarks: 'Need to close the gate after inspection',
+            status: 'Open',
+            submittedBy: 'Nithin Gowda',
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error('Failed to load snag entries:', err);
+      toast.error('Failed to fetch snag entries from database.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
 
   const filtered = entries.filter(e => {
     const q = search.toLowerCase();
@@ -480,30 +478,65 @@ const SnagAuditPage: React.FC = () => {
     if (!file) return;
     setImporting(true);
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = async ev => {
       const text = ev.target?.result as string;
       const parsed = parseExcelData(text);
       if (parsed.length === 0) {
         toast.error('No data found. Make sure the file is tab-separated (exported from Google Sheets).');
       } else {
-        setEntries(prev => [...parsed, ...prev]);
-        toast.success(`${parsed.length} snag entries imported successfully`);
+        try {
+          let count = 0;
+          for (const item of parsed) {
+            const { id, ...saveItem } = item;
+            await opsApi.saveSnagEntry(saveItem);
+            count++;
+          }
+          toast.success(`${count} snag entries imported successfully`);
+          fetchEntries();
+        } catch (err) {
+          console.error('Failed to save imported entries:', err);
+          toast.error('Failed to save some imported snag entries.');
+          setEntries(prev => [...parsed, ...prev]);
+        }
       }
       setImporting(false);
     };
     reader.readAsText(file);
     e.target.value = '';
-  }, []);
+  }, [fetchEntries]);
 
-  const handleStatusChange = useCallback((id: string, status: SnagEntry['status']) => {
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, status } : e));
-  }, []);
+  const handleStatusChange = useCallback(async (id: string, status: SnagEntry['status']) => {
+    if (id.startsWith('sample-')) {
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, status } : e));
+      toast.success('Mock status updated locally');
+      return;
+    }
+    try {
+      await opsApi.updateSnagStatus(id, status);
+      toast.success('Status updated successfully');
+      fetchEntries();
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      toast.error('Failed to update status in database.');
+    }
+  }, [fetchEntries]);
 
-  const handleDelete = useCallback((id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this snag entry?')) return;
-    setEntries(prev => prev.filter(e => e.id !== id));
-    toast.success('Entry deleted');
-  }, []);
+    if (id.startsWith('sample-')) {
+      setEntries(prev => prev.filter(e => e.id !== id));
+      toast.success('Mock entry deleted locally');
+      return;
+    }
+    try {
+      await opsApi.deleteSnagEntry(id);
+      toast.success('Entry deleted');
+      fetchEntries();
+    } catch (err) {
+      console.error('Failed to delete snag:', err);
+      toast.error('Failed to delete snag from database.');
+    }
+  }, [fetchEntries]);
 
   const exportCSV = () => {
     const headers = ['Timestamp', 'Email', 'Site Name', 'Purpose of Visit', 'Department', 'Snag Picture', 'Criticality', 'Snag Description', 'Action To Be Taken', 'Remarks', 'Status', 'Submitted By'];
@@ -660,7 +693,12 @@ const SnagAuditPage: React.FC = () => {
 
       {/* Table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-teal-600 gap-3">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <p className="text-sm font-medium">Loading snag entries from database...</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gray-400">
               <ClipboardCheck size={40} className="mb-3 opacity-30" />
               <p className="font-medium">No snag entries found</p>
@@ -749,10 +787,30 @@ const SnagAuditPage: React.FC = () => {
               </div>
             </div>
             <div className="p-5">
-              <SnagForm
-                onSave={entry => { setEntries(prev => [entry, ...prev]); setShowForm(false); }}
-                onCancel={() => setShowForm(false)}
-              />
+              {isSaving ? (
+                <div className="flex flex-col items-center justify-center py-20 text-teal-600 gap-3">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <p className="text-sm font-semibold">Saving snag & uploading image...</p>
+                </div>
+              ) : (
+                <SnagForm
+                  onSave={async (entry, file) => {
+                    setIsSaving(true);
+                    try {
+                      await opsApi.saveSnagEntry(entry, file);
+                      toast.success('Snag entry saved successfully');
+                      setShowForm(false);
+                      fetchEntries();
+                    } catch (err) {
+                      console.error('Failed to save snag entry:', err);
+                      toast.error('Failed to save snag to database.');
+                    } finally {
+                      setIsSaving(false);
+                    }
+                  }}
+                  onCancel={() => setShowForm(false)}
+                />
+              )}
             </div>
           </div>
         </div>

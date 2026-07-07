@@ -102,14 +102,27 @@ const AttendanceSettings: React.FC = () => {
                     api.getOrganizationStructure()
                 ]);
                 
+                // Deduplicate fetchedRoles by displayName (in case DB has two entries for same role)
+                const seenRoleNames = new Set<string>();
+                const dedupedRoles = roles.filter(r => {
+                    const key = (r.displayName || r.id).toLowerCase();
+                    if (seenRoleNames.has(key)) return false;
+                    seenRoleNames.add(key);
+                    return true;
+                });
+
                 // Merge system roles with site staff designations
-                const mergedRoles: Role[] = [...roles];
+                const mergedRoles: Role[] = [...dedupedRoles];
                 
                 designations.forEach(desig => {
                     if (!desig.designation) return;
                     const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
-                    // Only add if it doesn't already exist as a role ID
-                    if (!mergedRoles.some(r => r.id === slug)) {
+                    const nameNorm = desig.designation.toLowerCase();
+                    // Deduplicate by both slug-id AND displayName (DB roles use UUID ids, not slugs)
+                    const alreadyExists = mergedRoles.some(r =>
+                        r.id === slug || (r.displayName || '').toLowerCase() === nameNorm
+                    );
+                    if (!alreadyExists) {
                         mergedRoles.push({
                             id: slug,
                             displayName: toTitleCase(desig.designation)

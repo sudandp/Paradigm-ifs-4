@@ -138,6 +138,28 @@ const ApplyLeave: React.FC = () => {
 
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [permissionMinutes, setPermissionMinutes] = React.useState<number>(120); // default to 2 hours
+    const [permissionSession, setPermissionSession] = React.useState<'morning' | 'evening'>('evening');
+    const [hasPunchInLog, setHasPunchInLog] = React.useState<boolean>(true);
+    const [basePunchInTime, setBasePunchInTime] = React.useState<string>('09:00');
+    
+    const getAdjustedPunchIn = (baseTime: string, permissionMins: number) => {
+        if (!baseTime) return '09:00';
+        const [hours, minutes] = baseTime.split(':').map(Number);
+        const date = new Date();
+        date.setHours(hours, minutes, 0, 0);
+        date.setMinutes(date.getMinutes() - permissionMins);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+
+    const getAdjustedPunchOut = (baseTime: string, permissionMins: number) => {
+        if (!baseTime) return '19:30';
+        const [hours, minutes] = baseTime.split(':').map(Number);
+        const date = new Date();
+        date.setHours(hours, minutes, 0, 0);
+        date.setMinutes(date.getMinutes() + permissionMins);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+    
     const [basePunchOutTime, setBasePunchOutTime] = React.useState<string>('19:30');
     const [currentTime, setCurrentTime] = React.useState<string>(() => {
         const now = new Date();
@@ -280,22 +302,7 @@ const ApplyLeave: React.FC = () => {
          }
      }, [watchLeaveType, watchStartDate, isCheckedIn, setValue]);
 
-     const getAdjustedPunchOut = (baseTime: string, permissionMins: number) => {
-         if (!baseTime) return '19:30';
-         const [hours, minutes] = baseTime.split(':').map(Number);
-         let totalMinutes = hours * 60 + minutes + permissionMins;
-         totalMinutes = totalMinutes % (24 * 60); // handle 24-hour wrap around
-         const adjHours = Math.floor(totalMinutes / 60);
-         const adjMins = totalMinutes % 60;
-         return `${String(adjHours).padStart(2, '0')}:${String(adjMins).padStart(2, '0')}`;
-     };
 
-     React.useEffect(() => {
-         if (watchLeaveType === 'Permission') {
-             const adjustedOut = getAdjustedPunchOut(currentTime, permissionMinutes);
-             setValue('punchOut', adjustedOut, { shouldValidate: true });
-         }
-     }, [watchLeaveType, currentTime, permissionMinutes, setValue]);
 
      const watchPunchIn = watch('punchIn') || '09:00';
      const watchPunchOut = watch('punchOut') || '19:30';
@@ -378,8 +385,13 @@ const ApplyLeave: React.FC = () => {
                         const earliestIn = punchInEvents.reduce((prev, curr) => 
                             new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
                         );
-                        setValue('punchIn', format(new Date(earliestIn.timestamp), 'HH:mm'), { shouldValidate: true });
+                        const formattedIn = format(new Date(earliestIn.timestamp), 'HH:mm');
+                        setValue('punchIn', formattedIn, { shouldValidate: true });
+                        setBasePunchInTime(formattedIn);
+                        setHasPunchInLog(true);
                         if (earliestIn.locationName) setValue('locationName', earliestIn.locationName);
+                    } else {
+                        setHasPunchInLog(false);
                     }
 
                     // Punch Out: Latest
@@ -634,6 +646,21 @@ const ApplyLeave: React.FC = () => {
                 return;
             }
 
+            // Correction restriction: Only present day (up until midnight)
+            if (formData.leaveType === 'Correction') {
+                const now = new Date();
+                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const targetDate = new Date(formData.startDate.replace(/-/g, '/'));
+                
+                const diffDays = differenceInCalendarDays(todayMidnight, targetDate);
+                
+                if (diffDays !== 0) {
+                    setToast({ message: 'Corrections can only be applied for the present day (up until midnight). Previous days and future dates are not allowed.', type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
             // Check balance before submitting
             // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
             if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
@@ -699,13 +726,26 @@ const ApplyLeave: React.FC = () => {
                     return;
                 }
 
-                // Verify duration
-                const maxHours = rules?.maxPermissionDurationHours || 3;
-                const durationHours = permissionMinutes / 60;
-                if (durationHours > maxHours) {
-                    setToast({ message: `Permission requests cannot exceed ${maxHours} hours. You requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
-                    setIsSubmitting(false);
-                    return;
+                // Verify the user has worked on the permission date
+                const targetDate = new Date(formData.startDate.replace(/-/g, '/'));
+                const now = new Date();
+                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+                // We only check for attendance records on past or current days.
+                if (targetDate <= todayMidnight) {
+                    const checkDateStart = `${formData.startDate}T00:00:00Z`;
+                    const checkDateEnd = `${formData.startDate}T23:59:59Z`;
+                    const dayEvents = await api.getAttendanceEvents(user.id, checkDateStart, checkDateEnd);
+                    
+                    const hasPunchedIn = dayEvents && dayEvents.some((e: any) => 
+                        ['punch-in', 'site-in', 'punch_in', 'site_in', 'site-ot-in', 'site_ot_in'].includes(e.type)
+                    );
+                    
+                    if (!hasPunchedIn) {
+                        setToast({ message: 'Permission can only be applied for days where you have an active attendance record (you must check in to work first).', type: 'error' });
+                        setIsSubmitting(false);
+                        return;
+                    }
                 }
 
                 const currentMonthStart = formData.startDate.substring(0, 7);
@@ -722,6 +762,34 @@ const ApplyLeave: React.FC = () => {
                 const maxPerms = rules.maxPermissionsPerMonth || 3;
                 if (monthPerms.length >= maxPerms) {
                     setToast({ message: `You have reached the maximum allowed permissions (${maxPerms}) for this month.`, type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                // Calculate existing permission minutes for this month
+                let totalExistingPermMins = 0;
+                monthPerms.forEach(r => {
+                    if (r.correctionDetails?.punchIn && r.correctionDetails?.punchOut) {
+                        const getMinutes = (timeStr: string) => {
+                            if (!timeStr) return 0;
+                            const [h, m] = timeStr.split(':').map(Number);
+                            return h * 60 + m;
+                        };
+                        const start = getMinutes(r.correctionDetails.punchIn);
+                        const end = getMinutes(r.correctionDetails.punchOut);
+                        let diff = end - start;
+                        if (diff < 0) diff += 24 * 60;
+                        totalExistingPermMins += diff;
+                    }
+                });
+
+                // Verify duration and monthly total hours
+                const maxHours = rules?.maxPermissionDurationHours || 3;
+                const durationHours = permissionMinutes / 60;
+                const totalMonthPermHours = (totalExistingPermMins + permissionMinutes) / 60;
+
+                if (totalMonthPermHours > maxHours) {
+                    setToast({ message: `Total permission time cannot exceed ${maxHours} hours per month. You have already used ${(totalExistingPermMins / 60).toFixed(1)} hours and requested ${durationHours.toFixed(1)} hours.`, type: 'error' });
                     setIsSubmitting(false);
                     return;
                 }
@@ -849,34 +917,59 @@ const ApplyLeave: React.FC = () => {
             
             <div className={`w-full ${isMobile ? '' : 'md:bg-card md:p-8 md:rounded-2xl md:shadow-card md:border md:border-border'}`}>
                 <header 
-                    className={`p-4 flex items-center gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f]/80 backdrop-blur-lg border-b border-emerald-500/10' : 'mb-8'}`}
+                    className={`p-4 flex items-center justify-between gap-4 ${isMobile ? 'fixed top-0 left-0 right-0 z-50 bg-[#041b0f]/80 backdrop-blur-lg border-b border-emerald-500/10' : 'mb-8'}`}
                     style={isMobile ? { paddingTop: 'calc(1rem + env(safe-area-inset-top))' } : {}}
                 >
-                    {isMobile && (
-                        <Button 
-                            variant="secondary" 
-                            onClick={() => navigate(-1)} 
-                            className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                        >
-                            <ArrowLeft className="h-6 w-6" />
-                        </Button>
-                    )}
-                    <div>
-                        <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
-                            {isEditMode ? 'Edit Request' : `Applying for Leave`}
-                            {isOffline && (
-                                <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
-                                    <CloudOff className="w-3 h-3" />
-                                    OFFLINE
-                                </span>
-                            )}
-                        </h1>
-                        {!isEditMode && (
-                            <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
-                                Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
-                            </p>
+                    <div className="flex items-center gap-4">
+                        {isMobile && (
+                            <Button 
+                                variant="secondary" 
+                                onClick={() => navigate(-1)} 
+                                className="p-2 rounded-full h-10 w-10 flex items-center justify-center bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
+                            >
+                                <ArrowLeft className="h-6 w-6" />
+                            </Button>
                         )}
+                        <div>
+                            <h1 className="text-2xl font-black text-primary-text tracking-tight uppercase text-lg flex items-center gap-2">
+                                {isEditMode ? 'Edit Request' : `Applying for Leave`}
+                                {isOffline && (
+                                    <span className="bg-orange-500/10 border border-orange-500/20 text-orange-500 px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-1 shrink-0">
+                                        <CloudOff className="w-3 h-3" />
+                                        OFFLINE
+                                    </span>
+                                )}
+                            </h1>
+                            {!isEditMode && (
+                                <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
+                                    Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
+                                </p>
+                            )}
+                        </div>
                     </div>
+                    
+                    {watchLeaveType === 'Permission' && (
+                        <div className="flex bg-emerald-500/10 p-1 rounded-lg shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setPermissionSession('morning')}
+                                className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
+                                    permissionSession === 'morning' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
+                                }`}
+                            >
+                                1st Half
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPermissionSession('evening')}
+                                className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
+                                    permissionSession === 'evening' ? 'bg-emerald-500 text-white shadow-sm' : 'text-emerald-600 hover:bg-emerald-500/20'
+                                }`}
+                            >
+                                2nd Half
+                            </button>
+                        </div>
+                    )}
                 </header>
 
                 <div 
@@ -938,9 +1031,14 @@ const ApplyLeave: React.FC = () => {
                                         <Clock className="w-5 h-5" />
                                         <h4 className="font-bold text-sm">Monthly Permission Limit</h4>
                                     </div>
-                                    <p className="text-xs opacity-90 leading-relaxed mb-2">
-                                        You have used <strong>{permissionUsage.used}</strong> out of <strong>{permissionUsage.limit}</strong> allowed permissions this month.
-                                    </p>
+                                    <div className="text-xs opacity-90 leading-relaxed mb-2 space-y-2">
+                                        <p>
+                                            You have used <strong>{permissionUsage.used}</strong> out of <strong>{permissionUsage.limit}</strong> allowed permissions this month.
+                                        </p>
+                                        <p className="bg-amber-500/15 border border-amber-500/30 p-2.5 rounded-lg">
+                                            <strong>💡 Friendly Note:</strong> You have a monthly limit of <strong>3 hours</strong>. You can use it all in one day or split it — e.g., 1 hour per day across 3 days. Note that this is a <strong>permitted absence</strong>, not a granted leave.
+                                        </p>
+                                    </div>
                                     {permissionUsage.used >= permissionUsage.limit && (
                                         <div className="text-[11px] font-black uppercase tracking-widest bg-rose-500/20 p-2 rounded-lg mt-2">
                                             Limit Exceeded. Please contact admin for manual permission.
@@ -1063,12 +1161,65 @@ const ApplyLeave: React.FC = () => {
                                         )}
                                     </div>
 
+                                    <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''} ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-gray-50 border-gray-100'}`}>
+                                        {isFetchingLogs && (
+                                            <div className="absolute inset-0 flex items-center justify-center z-10">
+                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
+                                            </div>
+                                        )}
+                                        <Controller 
+                                            name="punchIn" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
+                                                    </label>
+                                                    <input type="time" {...field} readOnly={watchLeaveType === 'Permission'} className={`w-full p-2.5 rounded-lg border text-sm ${watchLeaveType === 'Permission' ? 'opacity-75 cursor-not-allowed bg-emerald-500/5 border-emerald-500/20 text-emerald-400 font-bold' : isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
+                                                    {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
+                                                </div>
+                                            )} 
+                                        />
+                                        <Controller 
+                                            name="punchOut" 
+                                            control={control} 
+                                            render={({ field }) => (
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
+                                                        <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
+                                                    </label>
+                                                    <input 
+                                                        type="time" 
+                                                        {...field} 
+                                                        readOnly={watchLeaveType === 'Permission'}
+                                                        className={`w-full p-2.5 rounded-lg border text-sm ${
+                                                            watchLeaveType === 'Permission' 
+                                                                ? 'opacity-75 cursor-not-allowed bg-emerald-500/5 border-emerald-500/20 text-emerald-400 font-bold' 
+                                                                : isMobile 
+                                                                    ? 'bg-[#041b0f] border-emerald-500/20 text-white' 
+                                                                    : 'bg-white border-gray-200 text-gray-900'
+                                                        }`} 
+                                                    />
+                                                    {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
+                                                </div>
+                                            )} 
+                                        />
+                                    </div>
+
+                                    {watchLeaveType === 'Permission' && !hasPunchInLog && (
+                                        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-200 text-sm font-medium mb-4 flex items-center gap-2">
+                                            <CloudOff className="w-5 h-5" />
+                                            Please punch in from your office first, then raise a request for permission.
+                                        </div>
+                                    )}
+
                                     {watchLeaveType === 'Permission' && (
                                         <div className={`p-6 rounded-2xl border space-y-5 transition-all duration-300 ${
                                             isMobile 
                                                 ? 'bg-emerald-500/5 border-emerald-500/10' 
                                                 : 'bg-white border-gray-200 shadow-sm'
                                         }`}>
+
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className={`p-1.5 rounded-lg ${isMobile ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
@@ -1116,40 +1267,71 @@ const ApplyLeave: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            <div className={`p-4 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-3 text-xs ${
+
+
+                                            <div className={`rounded-xl border text-xs ${
                                                 isMobile 
                                                     ? 'bg-[#041b0f]/50 border-emerald-500/10 text-primary-text' 
                                                     : 'bg-gray-50 border-gray-200 text-gray-700'
                                             }`}>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`font-semibold flex items-center gap-1.5 ${isMobile ? 'opacity-60' : 'text-gray-500'}`}>
-                                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Now:
-                                                    </span>
-                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border ${
-                                                        isMobile
-                                                            ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20'
-                                                            : 'bg-white text-gray-800 border-gray-300 shadow-xs'
-                                                    }`}>
-                                                        {currentTime}
-                                                    </span>
+                                                {/* Time flow row */}
+                                                <div className="flex items-center justify-between gap-2 px-4 py-3">
+                                                    {permissionSession === 'evening' ? (
+                                                        <>
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50' : 'text-gray-400'}`}>Now</span>
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg border ${
+                                                                    isMobile
+                                                                        ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20'
+                                                                        : 'bg-white text-gray-800 border-gray-300 shadow-xs'
+                                                                }`}>
+                                                                    {currentTime}
+                                                                </span>
+                                                            </div>
+                                                            <div className={`text-lg font-bold ${isMobile ? 'opacity-30' : 'text-gray-300'}`}>→</div>
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50' : 'text-gray-400'}`}>Adjusted Out</span>
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg border ${
+                                                                    isMobile 
+                                                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                                                                        : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                                                }`}>
+                                                                    {getAdjustedPunchOut(currentTime, permissionMinutes)}
+                                                                </span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50' : 'text-gray-400'}`}>Base In</span>
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg border ${
+                                                                    isMobile
+                                                                        ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20'
+                                                                        : 'bg-white text-gray-800 border-gray-300 shadow-xs'
+                                                                }`}>
+                                                                    {basePunchInTime || '09:00'}
+                                                                </span>
+                                                            </div>
+                                                            <div className={`text-lg font-bold ${isMobile ? 'opacity-30' : 'text-gray-300'}`}>→</div>
+                                                            <div className="flex flex-col items-center gap-1">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50' : 'text-gray-400'}`}>Adjusted In</span>
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg border ${
+                                                                    isMobile 
+                                                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                                                                        : 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                                                }`}>
+                                                                    {getAdjustedPunchIn(basePunchInTime || '09:00', permissionMinutes)}
+                                                                </span>
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
-                                                <div className={`hidden md:block font-bold ${isMobile ? 'opacity-40' : 'text-gray-300'}`}>➔</div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`font-semibold ${isMobile ? 'opacity-60' : 'text-gray-500'}`}>Adjusted Out:</span>
-                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border ${
-                                                        isMobile 
-                                                            ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/20'
-                                                            : 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                                                    }`}>
-                                                        {getAdjustedPunchOut(currentTime, permissionMinutes)}
-                                                    </span>
-                                                </div>
-                                                <div className={`hidden md:block font-bold ${isMobile ? 'opacity-40' : 'text-gray-300'}`}>|</div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`font-semibold flex items-center gap-1 ${isMobile ? 'opacity-60 text-emerald-500' : 'text-gray-500'}`}>
+                                                {/* Worked hours row */}
+                                                <div className={`flex items-center justify-center gap-2 px-4 py-2.5 border-t ${isMobile ? 'border-emerald-500/10' : 'border-gray-200'}`}>
+                                                    <span className={`flex items-center gap-1.5 font-semibold ${isMobile ? 'opacity-60 text-emerald-400' : 'text-gray-500'}`}>
                                                         <Clock className="w-3.5 h-3.5" /> Worked Hours:
                                                     </span>
-                                                    <span className={`font-bold text-sm px-2.5 py-1 rounded-lg border transition-all ${
+                                                    <span className={`font-bold text-sm px-3 py-1 rounded-lg border transition-all ${
                                                         workedHours.hours >= 8 
                                                             ? isMobile ? 'bg-green-500/15 text-green-400 border-green-500/20' : 'bg-green-50 text-green-700 border-green-300'
                                                             : isMobile ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-300'
@@ -1160,51 +1342,6 @@ const ApplyLeave: React.FC = () => {
                                             </div>
                                         </div>
                                     )}
-
-                                    <div className={`grid grid-cols-2 gap-4 p-5 rounded-2xl border relative transition-all ${isFetchingLogs ? 'opacity-50 pointer-events-none' : ''} ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-gray-50 border-gray-100'}`}>
-                                        {isFetchingLogs && (
-                                            <div className="absolute inset-0 flex items-center justify-center z-10">
-                                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
-                                            </div>
-                                        )}
-                                        <Controller 
-                                            name="punchIn" 
-                                            control={control} 
-                                            render={({ field }) => (
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
-                                                        <Clock className="w-3.5 h-3.5 text-green-500" /> Punch In
-                                                    </label>
-                                                    <input type="time" {...field} className={`w-full p-2.5 rounded-lg border text-sm ${isMobile ? 'bg-[#041b0f] border-emerald-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'}`} />
-                                                    {errors.punchIn && <p className="text-xs text-red-500">{errors.punchIn.message}</p>}
-                                                </div>
-                                            )} 
-                                        />
-                                        <Controller 
-                                            name="punchOut" 
-                                            control={control} 
-                                            render={({ field }) => (
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-semibold text-muted flex items-center gap-1.5 uppercase tracking-wider">
-                                                        <Clock className="w-3.5 h-3.5 text-red-500" /> Punch Out
-                                                    </label>
-                                                    <input 
-                                                        type="time" 
-                                                        {...field} 
-                                                        readOnly={watchLeaveType === 'Permission'}
-                                                        className={`w-full p-2.5 rounded-lg border text-sm ${
-                                                            watchLeaveType === 'Permission' 
-                                                                ? 'opacity-75 cursor-not-allowed bg-emerald-500/5 border-emerald-500/20 text-emerald-400 font-bold' 
-                                                                : isMobile 
-                                                                    ? 'bg-[#041b0f] border-emerald-500/20 text-white' 
-                                                                    : 'bg-white border-gray-200 text-gray-900'
-                                                        }`} 
-                                                    />
-                                                    {errors.punchOut && <p className="text-xs text-red-500">{errors.punchOut.message}</p>}
-                                                </div>
-                                            )} 
-                                        />
-                                    </div>
 
                                     <div className="space-y-3 pt-4 border-t border-emerald-500/10">
                                         <div className="flex items-center gap-2">

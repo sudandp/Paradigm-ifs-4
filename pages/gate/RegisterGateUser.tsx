@@ -4,6 +4,15 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+/** Normalize role display names to Title Case regardless of DB storage format */
+const toTitleCase = (str: string): string =>
+  str
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+
 import { supabase } from '../../services/supabase';
 import {
   registerGateUser, fetchAllGateUsers, deleteGateUser, uploadGatePhoto,
@@ -158,14 +167,33 @@ const RegisterGateUser: React.FC = () => {
         api.getAttendanceSettings()
       ]);
 
+      // Deduplicate fetchedRoles by displayName (in case DB has two entries for same role)
+      const seenRoleNames = new Set<string>();
+      const dedupedRoles = roles.filter(r => {
+        const key = (r.displayName || r.id).toLowerCase();
+        if (seenRoleNames.has(key)) return false;
+        seenRoleNames.add(key);
+        return true;
+      });
+
       // Resolve roles and designations into a flat list of display names
-      const mergedRoles: Role[] = [...roles];
+      const mergedRoles: Role[] = [...dedupedRoles];
       designations.forEach(desig => {
         if (!desig.designation) return;
         const slug = desig.designation.toLowerCase().replace(/\s+/g, '_');
-        if (!mergedRoles.some(r => r.id === slug)) {
+        const nameNorm = desig.designation.toLowerCase();
+        // Deduplicate by both slug-id AND displayName (DB roles use UUID ids, not slugs)
+        const alreadyExists = mergedRoles.some(r =>
+          r.id === slug || (r.displayName || '').toLowerCase() === nameNorm
+        );
+        if (!alreadyExists) {
           mergedRoles.push({ id: slug, displayName: desig.designation });
         }
+      });
+
+      // Normalize ALL displayNames to Title Case (DB may store them in ALL CAPS)
+      mergedRoles.forEach(r => {
+        if (r.displayName) r.displayName = toTitleCase(r.displayName);
       });
 
       const mapping = attendanceSettings.missedCheckoutConfig?.roleMapping || { 

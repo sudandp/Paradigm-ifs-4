@@ -1,10 +1,12 @@
 import { supabase } from './supabase';
+import { api } from './api';
 import type { 
   OpsTicket, 
   OpsMaintenanceSchedule, 
   OpsMaintenanceLog, 
   OpsContract,
-  TicketPriority
+  TicketPriority,
+  SnagEntry
 } from '../types/operations';
 
 // Helper to convert snake_case DB fields to camelCase TS fields
@@ -223,6 +225,104 @@ export const opsApi = {
 
   deleteContract: async (id: string): Promise<void> => {
     const { error } = await supabase.from('ops_contracts').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // ==========================================================================
+  // SNAG AUDITS
+  // ==========================================================================
+
+  getSnagEntries: async (): Promise<SnagEntry[]> => {
+    const { data, error } = await supabase
+      .from('snag_audits')
+      .select('*')
+      .order('timestamp', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []).map((row: any) => toCamelCase(row));
+  },
+
+  saveSnagEntry: async (entry: Partial<SnagEntry>, fileToUpload?: File): Promise<SnagEntry> => {
+    let pictureUrl = entry.snagPictureUrl;
+    let pictureName = entry.snagPictureName;
+
+    // Upload picture to storage if present
+    if (fileToUpload) {
+      try {
+        const uploadResult = await api.uploadDocument(fileToUpload, 'support-attachments');
+        pictureUrl = uploadResult.url;
+        pictureName = fileToUpload.name;
+      } catch (err) {
+        console.error('Failed to upload snag picture to cloud:', err);
+      }
+    }
+
+    const snagData = {
+      ...entry,
+      snagPictureUrl: pictureUrl,
+      snagPictureName: pictureName
+    };
+
+    const { id, createdAt, updatedAt, ...rest } = snagData as any;
+    let query;
+
+    if (id && !id.startsWith('snag-')) {
+      query = supabase.from('snag_audits').update(toSnakeCase(rest)).eq('id', id);
+    } else {
+      const { id: _, ...insertRest } = rest;
+      query = supabase.from('snag_audits').insert(toSnakeCase(insertRest));
+    }
+
+    const { data, error } = await query.select('*').single();
+    if (error) throw error;
+
+    const saved = toCamelCase(data) as SnagEntry;
+
+    // Trigger critical notifications to all managers if criticality is High
+    if (saved.criticality === 'High') {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: submittingUser, error: userFetchError } = await supabase
+            .from('users')
+            .select('reporting_manager_id, reporting_manager_2_id, reporting_manager_3_id')
+            .eq('id', user.id)
+            .single();
+
+          if (submittingUser && !userFetchError) {
+            const managers = [
+              submittingUser.reporting_manager_id,
+              submittingUser.reporting_manager_2_id,
+              submittingUser.reporting_manager_3_id
+            ].filter(Boolean) as string[];
+
+            for (const managerId of managers) {
+              await api.createNotification({
+                userId: managerId,
+                message: `Critical Snag: "${saved.snagDescription}" reported at "${saved.nameOfSite}" by ${saved.submittedBy || 'staff'}.`,
+                type: 'warning',
+                severity: 'High',
+                linkTo: '/operations/snag-audit',
+                metadata: { snagId: saved.id }
+              });
+            }
+          }
+        }
+      } catch (notifyErr) {
+        console.error('Failed to trigger critical snag notification to managers:', notifyErr);
+      }
+    }
+
+    return saved;
+  },
+
+  deleteSnagEntry: async (id: string): Promise<void> => {
+    const { error } = await supabase.from('snag_audits').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  updateSnagStatus: async (id: string, status: SnagEntry['status']): Promise<void> => {
+    const { error } = await supabase.from('snag_audits').update({ status }).eq('id', id);
     if (error) throw error;
   }
 };
