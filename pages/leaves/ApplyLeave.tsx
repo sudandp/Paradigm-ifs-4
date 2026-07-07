@@ -51,7 +51,11 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
             if (!startDate || !value) return true;
             return new Date(value.replace(/-/g, '/')) >= new Date(startDate.replace(/-/g, '/'));
         }),
-    reason: yup.string().required('A reason for the leave is required').min(10, 'Please provide a more detailed reason.'),
+    reason: yup.string().when('leaveType', {
+        is: (val: string) => val === 'Pink Leave',
+        then: schema => schema.nullable().optional(),
+        otherwise: schema => schema.required('A reason for the leave is required').min(10, 'Please provide a more detailed reason.')
+    }),
     dayOption: yup.string().oneOf(['full', 'half']).optional(),
     // Doctor certificate is MANDATORY for Sick Leave — must be submitted with the request.
     doctorCertificate: yup.mixed<UploadedFile | null>().when('leaveType', {
@@ -849,7 +853,7 @@ const ApplyLeave: React.FC = () => {
                 startDate,
                 endDate: ['Correction', 'Permission'].includes(leaveType) ? startDate : endDate,
                 dayOption,
-                reason,
+                reason: leaveType === 'Pink Leave' ? 'Pink Leave Request (Menstrual Leave)' : reason,
                 doctorCertificate,
                 userId: user.id,
                 userName: user.name
@@ -982,31 +986,50 @@ const ApplyLeave: React.FC = () => {
                         className={`space-y-8 ${isMobile ? 'bg-[#0d2c18]/30 backdrop-blur-xl rounded-[2.5rem] p-8 border border-emerald-500/10 shadow-2xl' : ''}`}
                     >
                         <div className="space-y-6">
-                            <Controller 
-                                name="leaveType" 
-                                control={control} 
-                                render={({ field }) => (
-                                    <Select 
-                                        label="Leave Type" 
-                                        {...field} 
-                                        error={errors.leaveType?.message} 
-                                        className={isMobile ? 'pro-select pro-select-arrow' : ''}
-                                    >
-                                        <option value="Earned">Earned</option>
-                                        <option value="Sick">Sick</option>
-                                        <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
-                                        <option value="Comp Off">Comp Off</option>
-                                        <option value="Loss of Pay">Loss of Pay</option>
-                                        {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
-                                        {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
-                                        <option value="WFH">Work From Home (WFH)</option>
-                                        <option value="Correction">Request for Correction (RC)</option>
-                                        {(rules?.enablePermission || rules?.enablePermission === undefined) && (
-                                            <option value="Permission">Request for Permission (RP)</option>
-                                        )}
-                                    </Select>
-                                )} 
-                            />
+                            <div className={`grid gap-4 ${showHalfDayOption ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                                <Controller 
+                                    name="leaveType" 
+                                    control={control} 
+                                    render={({ field }) => (
+                                        <Select 
+                                            label="Leave Type" 
+                                            {...field} 
+                                            error={errors.leaveType?.message} 
+                                            className={isMobile ? 'pro-select pro-select-arrow' : ''}
+                                        >
+                                            <option value="Earned">Earned</option>
+                                            <option value="Sick">Sick</option>
+                                            <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
+                                            <option value="Comp Off">Comp Off</option>
+                                            <option value="Loss of Pay">Loss of Pay</option>
+                                            {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
+                                            {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
+                                            <option value="WFH">Work From Home (WFH)</option>
+                                            <option value="Correction">Request for Correction (RC)</option>
+                                            {(rules?.enablePermission || rules?.enablePermission === undefined) && (
+                                                <option value="Permission">Request for Permission (RP)</option>
+                                            )}
+                                        </Select>
+                                    )} 
+                                />
+
+                                {showHalfDayOption && (
+                                    <Controller 
+                                        name="dayOption" 
+                                        control={control} 
+                                        render={({ field }) => (
+                                            <Select 
+                                                label="Day Option" 
+                                                {...field} 
+                                                className={isMobile ? 'pro-select pro-select-arrow' : ''}
+                                            >
+                                                <option value="full">Full Day</option>
+                                                <option value="half">Half Day</option>
+                                            </Select>
+                                        )} 
+                                    />
+                                )}
+                            </div>
 
                             {watchLeaveType === 'Correction' && correctionUsage.enabled && (
                                 <div className={`p-4 rounded-xl border ${correctionUsage.used >= correctionUsage.limit ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-amber-500/10 border-amber-500/20 text-amber-500'}`}>
@@ -1112,22 +1135,7 @@ const ApplyLeave: React.FC = () => {
                                 </div>
                             )}
 
-                            {showHalfDayOption && (
-                                <Controller 
-                                    name="dayOption" 
-                                    control={control} 
-                                    render={({ field }) => (
-                                        <Select 
-                                            label="Day Option" 
-                                            {...field} 
-                                            className={isMobile ? 'pro-select pro-select-arrow' : ''}
-                                        >
-                                            <option value="full">Full Day</option>
-                                            <option value="half">Half Day</option>
-                                        </Select>
-                                    )} 
-                                />
-                            )}
+
 
                             {['Correction', 'Permission'].includes(watchLeaveType) && (
                                 <div className="space-y-4 pt-4 border-t border-emerald-500/10">
@@ -1496,18 +1504,20 @@ const ApplyLeave: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="space-y-3">
-                                <label className="block text-sm font-medium text-muted mb-2 tracking-wide uppercase text-[10px] font-black">
-                                    {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
-                                </label>
-                                <textarea 
-                                    {...register('reason')} 
-                                    rows={4} 
-                                    placeholder="Please provide details about your leave request..."
-                                    className={`w-full p-5 rounded-2xl border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10 placeholder:text-white/10' : 'bg-white border-gray-200 placeholder:text-gray-400'} ${errors.reason ? 'border-red-500' : ''}`} 
-                                />
-                                {errors.reason && <p className="mt-2 text-xs text-red-500 font-bold">{errors.reason.message}</p>}
-                            </div>
+                            {watchLeaveType !== 'Pink Leave' && (
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-medium text-muted mb-2 tracking-wide uppercase text-[10px] font-black">
+                                        {watchLeaveType === 'Correction' ? 'Reason for requesting Correction' : `Reason for applying ${getLeaveTypeDisplay(watchLeaveType)}`}
+                                    </label>
+                                    <textarea 
+                                        {...register('reason')} 
+                                        rows={4} 
+                                        placeholder="Please provide details about your leave request..."
+                                        className={`w-full p-5 rounded-2xl border text-primary-text focus:ring-2 focus:ring-accent outline-none transition-all ${isMobile ? 'bg-emerald-500/5 border-emerald-500/10 placeholder:text-white/10' : 'bg-white border-gray-200 placeholder:text-gray-400'} ${errors.reason ? 'border-red-500' : ''}`} 
+                                    />
+                                    {errors.reason && <p className="mt-2 text-xs text-red-500 font-bold">{errors.reason.message}</p>}
+                                </div>
+                            )}
 
                             {watchLeaveType === 'Sick' && (
                                 <div className={`p-4 rounded-xl border ${isMobile ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'}`}>

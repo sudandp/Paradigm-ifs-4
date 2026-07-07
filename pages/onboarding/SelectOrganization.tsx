@@ -114,8 +114,64 @@ const SelectOrganization = () => {
     // Designations unlock once a site (or manual site) is chosen
     useEffect(() => {
         setSelectedDesignation('');
-        const hasSite = !!entities.find(e => e.id === selectedEntityId) || isManualSite;
-        setDesignationsForSite(hasSite ? siteStaffDesignations : []);
+        const selectedEntity = entities.find(e => e.id === selectedEntityId);
+        const hasSite = !!selectedEntity || isManualSite;
+
+        if (hasSite) {
+            let verificationData = selectedEntity?.verificationData || (selectedEntity as any)?.verification_data;
+            if (typeof verificationData === 'string') {
+                try {
+                    verificationData = JSON.parse(verificationData);
+                } catch (e) {
+                    console.error('Failed to parse verificationData', e);
+                }
+            }
+
+            if (verificationData?.categories) {
+                // Extract unique roles from the site's verificationData configuration
+                const rolesMap = new Map<string, SiteStaffDesignation>();
+                let roleIdCounter = 1;
+                verificationData.categories.forEach((cat: any) => {
+                    cat.roles?.forEach((role: any) => {
+                        const roleName = role.roleName || role.role_name;
+                        if (roleName && !rolesMap.has(roleName)) {
+                            rolesMap.set(roleName, {
+                                id: `role_${roleIdCounter++}`,
+                                designation: roleName,
+                                department: cat.name || '',
+                                permanentId: '',
+                                temporaryId: '',
+                            });
+                        }
+                    });
+                });
+                setDesignationsForSite(Array.from(rolesMap.values()));
+            } else {
+                // Default fallback: show all site staff designations and append common back-office designations
+                const rolesMap = new Map<string, SiteStaffDesignation>();
+                siteStaffDesignations.forEach(d => {
+                    rolesMap.set(d.designation, d);
+                });
+
+                // Add common back-office designations (Admin, HR, Finance, etc.)
+                const commonBackOffice = ['Admin', 'HR', 'Finance', 'Ops manager', 'Field Staff', 'Administrator'];
+                let addIdCounter = 1;
+                commonBackOffice.forEach(desig => {
+                    if (!rolesMap.has(desig)) {
+                        rolesMap.set(desig, {
+                            id: `bo_${addIdCounter++}`,
+                            designation: desig,
+                            department: 'Back Office',
+                            permanentId: '',
+                            temporaryId: '',
+                        });
+                    }
+                });
+                setDesignationsForSite(Array.from(rolesMap.values()));
+            }
+        } else {
+            setDesignationsForSite([]);
+        }
     }, [selectedEntityId, entities, siteStaffDesignations, isManualSite]);
 
     // Manpower limit check

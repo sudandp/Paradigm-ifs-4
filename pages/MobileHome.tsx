@@ -198,7 +198,7 @@ const toDisplayLabel = (str: string): string => {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const MobileHome: React.FC = () => {
-    const { user } = useAuthStore();
+    const user = useAuthStore(state => state.user);
     const { permissions } = usePermissionsStore();
     const navigate = useNavigate();
     const { isMobile } = useDevice();

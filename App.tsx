@@ -322,7 +322,8 @@ const shouldStorePath = (path: string) => {
 
 // This wrapper component protects all main application routes
 const MainLayoutWrapper: React.FC = () => {
-  const { user, isInitialized } = useAuthStore();
+  const user = useAuthStore(state => state.user);
+  const isInitialized = useAuthStore(state => state.isInitialized);
   const location = useLocation();
   // IMPORTANT: All hooks must be called before any conditional returns
   const { isMobile } = useDevice();
@@ -382,7 +383,13 @@ const MainLayoutWrapper: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const { user, isInitialized, setUser, setInitialized, resetAttendance, setLoading, isLoginAnimationPending } = useAuthStore();
+  const user = useAuthStore(state => state.user);
+  const isInitialized = useAuthStore(state => state.isInitialized);
+  const setUser = useAuthStore(state => state.setUser);
+  const setInitialized = useAuthStore(state => state.setInitialized);
+  const resetAttendance = useAuthStore(state => state.resetAttendance);
+  const setLoading = useAuthStore(state => state.setLoading);
+  const isLoginAnimationPending = useAuthStore(state => state.isLoginAnimationPending);
   const { init: initEnrollmentRules } = useEnrollmentRulesStore();
   const { initRoles } = usePermissionsStore();
   const { initSettings } = useSettingsStore();
@@ -413,7 +420,7 @@ const App: React.FC = () => {
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
   const { isKioskMode, setKioskMode: updateKioskMode, setDeviceId, isKioskSkipped, setKioskSkipped } = useGateStore();
-  const { setIsOffline } = useAuthStore();
+  const setIsOffline = useAuthStore(state => state.setIsOffline);
 
   // ── Network Status Tracking ────────────────────────────────────────────────
   useEffect(() => {

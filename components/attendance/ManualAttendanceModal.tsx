@@ -41,6 +41,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingEventIds, setExistingEventIds] = useState<string[]>([]);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const isToday = date === format(new Date(), 'yyyy-MM-dd');
 
     // Enhanced State
     const [userCategory, setUserCategory] = useState<'office' | 'field' | 'site'>('office');
@@ -231,7 +232,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             return;
         }
 
-        if (includeBreak) {
+        if (includeBreak && !isToday) {
             if (!breakInTime || !breakOutTime) {
                 setToast({ message: 'Please provide both break in and break out times.', type: 'error' });
                 return;
@@ -265,7 +266,6 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             if (status === 'Present' || status === 'W/H' || status === 'Site Visit') {
                 // A. Main Attendance Session (Always needed for overall duration)
                 const mainInDate = new Date(`${timestampBase}T${checkInTime}:00`);
-                const mainOutDate = new Date(`${timestampBase}T${checkOutTime}:00`);
                 
                 eventsToInsert.push({
                     user_id: selectedUserId,
@@ -278,19 +278,22 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     reason: reason
                 });
 
-                eventsToInsert.push({
-                    user_id: selectedUserId,
-                    timestamp: mainOutDate.toISOString(),
-                    type: 'punch-out',
-                    location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? locationName : 'Site Deployment'),
-                    work_type: 'office',
-                    is_manual: true,
-                    created_by: currentUserId,
-                    reason: reason
-                });
+                if (!isToday) {
+                    const mainOutDate = new Date(`${timestampBase}T${checkOutTime}:00`);
+                    eventsToInsert.push({
+                        user_id: selectedUserId,
+                        timestamp: mainOutDate.toISOString(),
+                        type: 'punch-out',
+                        location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? locationName : 'Site Deployment'),
+                        work_type: 'office',
+                        is_manual: true,
+                        created_by: currentUserId,
+                        reason: reason
+                    });
+                }
 
                 // B. Field/Site Visit Session (For Field Staff)
-                if (userCategory !== 'office' && status === 'Site Visit') {
+                if (userCategory !== 'office' && status === 'Site Visit' && !isToday) {
                     siteVisits.forEach(visit => {
                         const siteInDate = new Date(`${timestampBase}T${visit.in}:00`);
                         const siteOutDate = new Date(`${timestampBase}T${visit.out}:00`);
@@ -320,7 +323,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 }
 
                 // C. Site Overtime (Optional for Field Staff)
-                if (userCategory !== 'office' && includeSiteOt) {
+                if (userCategory !== 'office' && includeSiteOt && !isToday) {
                     const otInDate = new Date(`${timestampBase}T${siteOtInTime}:00`);
                     const otOutDate = new Date(`${timestampBase}T${siteOtOutTime}:00`);
                     
@@ -348,7 +351,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 }
 
                 // D. Break Events
-                if (includeBreak) {
+                if (includeBreak && !isToday) {
                     const breakInDate = new Date(`${timestampBase}T${breakInTime}:00`);
                     const breakOutDate = new Date(`${timestampBase}T${breakOutTime}:00`);
                     
@@ -573,21 +576,23 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                        Last Punch Out <span className="text-red-500 ml-1">*</span>
+                                        Last Punch Out {!isToday && <span className="text-red-500 ml-1">*</span>}
                                     </label>
                                     <input
                                         type="time"
-                                        value={checkOutTime}
+                                        value={isToday ? '' : checkOutTime}
                                         onChange={(e) => setCheckOutTime(e.target.value)}
-                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
-                                        required
+                                        disabled={isToday}
+                                        placeholder={isToday ? 'N/A' : ''}
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100 disabled:text-gray-400 bg-white text-sm"
+                                        required={!isToday}
                                     />
                                 </div>
                             </div>
                         </div>
 
                         {/* 2. Site Visit Section (Eligibility Based) */}
-                        {userCategory !== 'office' && status === 'Site Visit' && (
+                        {userCategory !== 'office' && status === 'Site Visit' && !isToday && (
                             <div className="space-y-4 pt-2 border-t border-gray-100">
                                 <h3 className="text-sm font-bold text-gray-800 flex items-center">
                                     <FileText className="w-4 h-4 mr-2 text-green-600" /> Site Deployment Details
@@ -655,56 +660,58 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         )}
 
                         {/* 3. Break Selection */}
-                        <div className="space-y-4 pt-2 border-t border-gray-100">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-bold text-gray-800">Lunch Break</h3>
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="includeBreak"
-                                        checked={includeBreak}
-                                        onChange={(e) => setIncludeBreak(e.target.checked)}
-                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                    />
-                                    <label htmlFor="includeBreak" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                        {includeBreak ? 'Remove' : 'Add Break'}
-                                    </label>
+                        {!isToday && (
+                            <div className="space-y-4 pt-2 border-t border-gray-100">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-gray-800">Lunch Break</h3>
+                                    <div className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="includeBreak"
+                                            checked={includeBreak}
+                                            onChange={(e) => setIncludeBreak(e.target.checked)}
+                                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="includeBreak" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                            {includeBreak ? 'Remove' : 'Add Break'}
+                                        </label>
+                                    </div>
                                 </div>
+
+                                {includeBreak && (
+                                    <div className="grid grid-cols-2 gap-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                                Break In <span className="text-red-500 ml-1">*</span>
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={breakInTime}
+                                                onChange={(e) => setBreakInTime(e.target.value)}
+                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                                Break Out <span className="text-red-500 ml-1">*</span>
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={breakOutTime}
+                                                onChange={(e) => setBreakOutTime(e.target.value)}
+                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-
-                            {includeBreak && (
-                                <div className="grid grid-cols-2 gap-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Break In <span className="text-red-500 ml-1">*</span>
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={breakInTime}
-                                            onChange={(e) => setBreakInTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                            required
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1.5">
-                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                            Break Out <span className="text-red-500 ml-1">*</span>
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={breakOutTime}
-                                            onChange={(e) => setBreakOutTime(e.target.value)}
-                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                            required
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        )}
 
                         {/* 4. Site OT Selection (Field Staff only) */}
-                        {userCategory !== 'office' && (
+                        {userCategory !== 'office' && !isToday && (
                             <div className="space-y-4 pt-2 border-t border-gray-100">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-bold text-gray-800">Site Overtime</h3>

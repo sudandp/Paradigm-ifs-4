@@ -769,14 +769,24 @@ const LeaveDashboard: React.FC = () => {
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <div className="flex justify-between items-center">
-                <div className="flex flex-col">
-                    <h2 className="text-2xl font-bold text-primary-text">My Leave Requests</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-primary-text leading-none">
+                    My Leave Requests
+                </h2>
+                <div className="flex items-center gap-2">
+                    {isMobile ? (
+                        <button 
+                            onClick={handleNewRequest}
+                            className="relative overflow-hidden bg-gradient-to-b from-[#008f53] to-[#004d2e] border border-[#00a862]/30 text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_3px_8px_rgba(0,77,46,0.4)] px-3.5 hover:brightness-110 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(0,77,46,0.5)] active:translate-y-[2px] active:shadow-[inset_0_3px_6px_rgba(0,0,0,0.4),0_1px_2px_rgba(0,77,46,0.2)] transition-all before:absolute before:top-0 before:left-0 before:right-0 before:h-[45%] before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                        >
+                            <Plus className="w-3.5 h-3.5 text-[#00ff9d] stroke-[3] relative z-10" />
+                            <span className="relative z-10">Request</span>
+                        </button>
+                    ) : (
+                        <Button onClick={handleNewRequest}>
+                            <Plus className="mr-2 h-4" /> New Request
+                        </Button>
+                    )}
                 </div>
-                {!isMobile && (
-                    <div className="flex gap-2">
-                        <Button onClick={handleNewRequest}><Plus className="mr-2 h-4" /> New Request</Button>
-                    </div>
-                )}
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
@@ -935,13 +945,7 @@ const LeaveDashboard: React.FC = () => {
                 )}
             </div>
 
-            {isMobile && (
-                <div className="my-4 w-full">
-                    <Button onClick={handleNewRequest} size="lg" className="w-full justify-center text-lg">
-                        <Plus className="mr-2 h-5" /> New Request
-                    </Button>
-                </div>
-            )}
+
 
             <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full md:w-full">
                 <div className="mb-6">
