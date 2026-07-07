@@ -934,9 +934,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             {leaveRequests.map(req => (
                                                 <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-orange-50/30 border-orange-100'}`}>
                                                     <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center font-bold text-orange-700 overflow-hidden relative text-xs">
-                                                            {req.userName.charAt(0)}
-                                                            <Calendar className="w-4 h-4" />
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                photoUrl={req.userPhotoUrl}
+                                                                seed={req.userId}
+                                                            />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center justify-between">
@@ -952,6 +955,17 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                         <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>"{req.reason}"</p>
                                                     </div>
                                                     <div className="flex gap-2">
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
+                                                            onClick={() => {
+                                                                onClose();
+                                                                navigate(`/hr/leave-management?employeeId=${req.userId}`);
+                                                            }}
+                                                        >
+                                                            <FileText className="w-3 h-3 mr-1" /> Direct
+                                                        </Button>
                                                         <Button 
                                                             size="sm" 
                                                             disabled={isActionLoading === req.id}
@@ -1012,9 +1026,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             {extraWorkClaims.map(claim => (
                                                 <div key={claim.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-blue-50/30 border-blue-100'}`}>
                                                     <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center font-bold text-blue-700 overflow-hidden relative text-xs">
-                                                            {claim.userName.charAt(0)}
-                                                            <FileText className="w-4 h-4" />
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                photoUrl={claim.userPhotoUrl}
+                                                                seed={claim.userId}
+                                                            />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center justify-between">
@@ -1154,9 +1171,11 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                             {financeRequests.map(req => (
                                                 <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-rose-50/30 border-rose-100'}`}>
                                                     <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center font-bold text-rose-700 overflow-hidden relative text-xs">
-                                                            {req.createdByName?.charAt(0) || 'F'}
-                                                            <IndianRupee className="w-4 h-4" />
+                                                        <div className={`overflow-hidden rounded-lg flex-shrink-0 w-8 h-8 ${isMobile ? 'bg-white/10' : 'bg-gray-100'}`}>
+                                                            <ProfilePlaceholder 
+                                                                className="w-8 h-8"
+                                                                seed={req.createdBy}
+                                                            />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center justify-between">

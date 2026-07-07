@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
 import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2 } from 'lucide-react';
@@ -95,6 +95,8 @@ const ClaimStatusChip: React.FC<{ status: ExtraWorkLog['status'] }> = ({ status 
 
 const LeaveManagement: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const urlEmployeeId = searchParams.get('employeeId') || searchParams.get('userId');
     const { user } = useAuthStore();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [claims, setClaims] = useState<ExtraWorkLog[]>([]);
@@ -102,15 +104,67 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'>('pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [correctionRequestId, setCorrectionRequestId] = useState<string | null>(null);
     const [userHolidays, setUserHolidays] = useState<(UserHoliday & { userName?: string })[]>([]);
     const [poolHolidays, setPoolHolidays] = useState<any[]>([]);
-    const [selectedUserId, setSelectedUserId] = useState<string>('all');
+    const [selectedUserId, setSelectedUserId] = useState<string>(urlEmployeeId || 'all');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+
+    const [activePreset, setActivePreset] = useState<string>('This Month');
+
+    const handleApplyPreset = useCallback((preset: string) => {
+        setActivePreset(preset);
+        const today = new Date();
+        let start: Date | null = startOfDay(today);
+        let end: Date | null = endOfDay(today);
+
+        switch (preset) {
+            case 'Today':
+                start = startOfDay(today);
+                end = endOfDay(today);
+                break;
+            case 'Yesterday':
+                start = startOfDay(subDays(today, 1));
+                end = endOfDay(subDays(today, 1));
+                break;
+            case 'This Month':
+                start = startOfMonth(today);
+                end = endOfDay(today);
+                break;
+            case 'Last Month':
+                const lastMonth = subMonths(today, 1);
+                start = startOfMonth(lastMonth);
+                end = endOfMonth(lastMonth);
+                break;
+            case 'This Year':
+                start = startOfYear(today);
+                end = endOfDay(today);
+                break;
+            case 'All Time':
+                start = null;
+                end = null;
+                break;
+            default:
+                return;
+        }
+
+        setStartDate(start ? format(start, 'yyyy-MM-dd') : '');
+        setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
+    }, []);
+
+    // Sync URL search parameters if they change (e.g. clicking Direct from notification panel)
+    useEffect(() => {
+        const urlEmployeeId = searchParams.get('employeeId') || searchParams.get('userId');
+        if (urlEmployeeId) {
+            setSelectedUserId(urlEmployeeId);
+            setFilter('all');
+            handleApplyPreset('This Year');
+        }
+    }, [searchParams, handleApplyPreset]);
 
     // Helper for safe date parsing and formatting
     const parseSafeDate = (d: any): Date | null => {
@@ -133,7 +187,6 @@ const LeaveManagement: React.FC = () => {
             return fallback;
         }
     };
-    const [activePreset, setActivePreset] = useState<string>('This Month');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [actioningId, setActioningId] = useState<string | null>(null);
     const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -451,46 +504,6 @@ const LeaveManagement: React.FC = () => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    const handleApplyPreset = (preset: string) => {
-        setActivePreset(preset);
-        const today = new Date();
-        let start: Date | null = startOfDay(today);
-        let end: Date | null = endOfDay(today);
-
-        switch (preset) {
-            case 'Today':
-                start = startOfDay(today);
-                end = endOfDay(today);
-                break;
-            case 'Yesterday':
-                start = startOfDay(subDays(today, 1));
-                end = endOfDay(subDays(today, 1));
-                break;
-            case 'This Month':
-                start = startOfMonth(today);
-                end = endOfDay(today);
-                break;
-            case 'Last Month':
-                const lastMonth = subMonths(today, 1);
-                start = startOfMonth(lastMonth);
-                end = endOfMonth(lastMonth);
-                break;
-            case 'This Year':
-                start = startOfYear(today);
-                end = endOfDay(today);
-                break;
-            case 'All Time':
-                start = null;
-                end = null;
-                break;
-            default:
-                return;
-        }
-
-        setStartDate(start ? format(start, 'yyyy-MM-dd') : '');
-        setEndDate(end ? format(end, 'yyyy-MM-dd') : '');
-    };
 
     const fetchAllForExport = async (statusFilter: any): Promise<LeaveRequest[]> => {
         if (!user) return [];

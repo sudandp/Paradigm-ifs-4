@@ -30,8 +30,34 @@ export interface NotificationData {
  */
 export const dispatchNotificationFromRules = async (eventType: string, data: NotificationData) => {
     try {
+        // Resolve actor photo URL dynamically if not provided
+        if (data.actor && !data.actor.photoUrl) {
+            try {
+                // 1. Try to get photo from current auth user metadata (handles Google photo fallback)
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user && authData.user.id === data.actor.id) {
+                    data.actor.photoUrl = authData.user.user_metadata?.avatar_url || authData.user.user_metadata?.picture || undefined;
+                }
+                
+                // 2. If still not found, fetch from the database users table
+                if (!data.actor.photoUrl) {
+                    const { data: dbUser } = await supabase
+                        .from('users')
+                        .select('photo_url')
+                        .eq('id', data.actor.id)
+                        .maybeSingle();
+                    if (dbUser?.photo_url) {
+                        data.actor.photoUrl = dbUser.photo_url;
+                    }
+                }
+            } catch (photoErr) {
+                console.warn('Failed to resolve notification actor photo:', photoErr);
+            }
+        }
+
         // Fetch rules directly instead of using api.getNotificationRules
         const { data: rulesData, error: rulesError } = await supabase
+
             .from('notification_rules')
             .select('*')
             .order('created_at', { ascending: false });
