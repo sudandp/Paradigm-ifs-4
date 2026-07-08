@@ -1964,6 +1964,9 @@ const AttendanceDashboard: React.FC = () => {
                     inactiveCount: 0,
                     attendanceTrend: { labels: [], present: [], absent: [], wfh: [], onLeave: [] },
                     productivityTrend: { labels: [], hours: [] },
+                    lateArrivalsToday: 0,
+                    pendingLeavesToday: 0,
+                    approvedLeavesToday: 0,
                 });
             } finally {
                 const duration = Date.now() - startTime;
