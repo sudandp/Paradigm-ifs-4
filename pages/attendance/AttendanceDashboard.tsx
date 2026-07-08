@@ -1777,6 +1777,7 @@ const AttendanceDashboard: React.FC = () => {
                 // --- Client/Manager Metrics Calculation ---
                 let lateArrivalsToday = 0;
                 let roleDistribution: { labels: string[], values: number[] } | undefined;
+                let departmentDistribution: { labels: string[], values: number[] } | undefined;
                 let topPerformers: { name: string, role: string, value: string }[] | undefined;
                 let pendingLeavesToday = 0;
                 let approvedLeavesToday = 0;
@@ -1832,7 +1833,7 @@ const AttendanceDashboard: React.FC = () => {
 
                     const deptLabels = Object.keys(deptCounts).map(k => k.charAt(0).toUpperCase() + k.slice(1));
                     const deptValues = Object.values(deptCounts);
-                    let departmentDistribution = { labels: deptLabels, values: deptValues };
+                    departmentDistribution = { labels: deptLabels, values: deptValues };
 
                     // Top Performers (Total hours worked in range)
                     const userTotalHours: Record<string, number> = {};
