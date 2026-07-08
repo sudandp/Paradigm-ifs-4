@@ -4,9 +4,17 @@ import { useAuthStore } from '../store/authStore';
 import { Device } from '@capacitor/device';
 import { Network } from '@capacitor/network';
 import { registerPlugin, Capacitor } from '@capacitor/core';
+import { supabaseUrl, supabaseAnonKey } from './supabase';
 
 interface TrackingPlugin {
-  startForegroundService(options: { title: string; text: string }): Promise<void>;
+  startForegroundService(options: {
+    title: string;
+    text: string;
+    userId: string;
+    supabaseUrl: string;
+    supabaseKey: string;
+    intervalMinutes: number;
+  }): Promise<void>;
   stopForegroundService(): Promise<void>;
 }
 
@@ -17,28 +25,42 @@ class RouteTrackingService {
   private isTracking: boolean = false;
   private isRecording: boolean = false;
 
-  public async startTracking(userId: string, intervalMinutes: number = 10) {
+  public async startTracking(userId: string, intervalMinutes: number = 15) {
     if (this.isTracking) return;
     
     console.log(`[RouteTracking] Starting tracking for user ${userId} every ${intervalMinutes} minutes`);
     this.isTracking = true;
 
-    // Launch foreground service on Android to prevent app from being killed
+    // Launch foreground service on Android.
+    // The native service handles GPS collection + Supabase upload DIRECTLY,
+    // so it keeps running even when the WebView JS runtime is paused in background.
     if (Capacitor.getPlatform() === 'android') {
       try {
+        // Read Supabase connection details from the exported constants so the
+        // native service can POST directly to Supabase REST without going through JS.
         await Tracking.startForegroundService({
-          title: "Paradigm Field Ops",
-          text: "Location and shift tracking is active"
+          title: 'Paradigm Field Ops',
+          text:  'Location tracking is active',
+          userId,
+          supabaseUrl:  supabaseUrl  || '',
+          supabaseKey:  supabaseAnonKey || '',
+          intervalMinutes,
         });
+        console.log('[RouteTracking] Native Android foreground service started — GPS handled natively');
       } catch (err) {
         console.error('[RouteTracking] Failed to start foreground service:', err);
       }
+      // On Android the native service handles GPS; JS interval is not needed.
+      // Still record an immediate first ping via JS as a warm-up.
+      this.recordPosition(userId);
+      return;
     }
 
+    // ── Web / iOS fallback: JS-based interval ─────────────────────────────
     // Immediate first ping
     this.recordPosition(userId);
 
-    // Set up interval
+    // Set up JS interval (works fine when app is in foreground / iOS with background modes)
     const intervalMs = intervalMinutes * 60 * 1000;
     this.intervalId = setInterval(() => {
       this.recordPosition(userId);

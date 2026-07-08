@@ -5,14 +5,8 @@ import { Link } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
-import { NativeBridge } from '../../utils/nativeBridge';
 import { useDevice } from '../../hooks/useDevice';
 import MapSkeleton from '../../components/ui/MapSkeleton';
-
-// ... existing imports
-
-// ... inside component
-
 
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -100,6 +94,27 @@ const MyTeamPage: React.FC = () => {
   const tileLayerRef = useRef<any>(null);
   const LRef = useRef<any>(null);
   const hasInitiallyFitted = useRef(false);
+  // Ref to hold the current dashboard poll interval ID so we can restart it
+  const dashboardPollRef = useRef<any>(null);
+
+  // Helper: start (or restart) the dashboard location poll at the given interval
+  const startDashboardPoll = (intervalMinutes: number) => {
+    if (dashboardPollRef.current) clearInterval(dashboardPollRef.current);
+    const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
+    dashboardPollRef.current = setInterval(() => {
+      // Re-fetch only the latest locations so the map & list stay current
+      setTeamMembers(prevMembers => {
+        if (prevMembers.length > 0) {
+          const userIds = prevMembers.map(m => m.id);
+          api.getLatestLocations(userIds).then(locations => {
+            setLatestLocations(locations);
+          }).catch(console.error);
+        }
+        return prevMembers;
+      });
+    }, intervalMs);
+    console.log(`[MyTeam] Dashboard poll started — every ${intervalMinutes} min(s)`);
+  };
 
   useEffect(() => {
     // Inject custom marker styles
@@ -109,27 +124,11 @@ const MyTeamPage: React.FC = () => {
     document.head.appendChild(styleSheet);
     fetchTeamData();
     fetchUnlockRequests();
-    fetchSettings(); // Call fetchSettings here
-    
-    // Set up polling to refresh the dashboard automatically every minute
-    const pollInterval = setInterval(() => {
-        if (user) {
-            // Re-fetch only the latest locations so the map updates
-            setTeamMembers(prevMembers => {
-                if (prevMembers.length > 0) {
-                    const userIds = prevMembers.map(m => m.id);
-                    api.getLatestLocations(userIds).then(locations => {
-                        setLatestLocations(locations);
-                    }).catch(console.error);
-                }
-                return prevMembers;
-            });
-        }
-    }, 60000);
+    fetchSettings(); // Loads interval from DB, then starts poll inside
     
     return () => {
       document.head.removeChild(styleSheet);
-      clearInterval(pollInterval);
+      if (dashboardPollRef.current) clearInterval(dashboardPollRef.current);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -139,20 +138,26 @@ const MyTeamPage: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
+      // getInitialAppData returns the full settings row; attendance config is
+      // nested under attendanceSettings (maps to attendance_settings column).
       const { settings } = await api.getInitialAppData();
-      if (settings?.office?.trackingIntervalMinutes) {
-        const interval = settings.office.trackingIntervalMinutes;
-        setTrackingInterval(interval);
-        
-        // Start tracking automatically if we have an interval and user is valid
-        // NOTE: Real implementation might check if user is actually checked-in first.
-        // For now, we enforce tracking if the user is a field staff or similar.
-        if (user) {
-             NativeBridge.startTracking(interval, user.id);
-        }
+      const attendanceSettings = settings?.attendanceSettings;
+      const savedInterval = attendanceSettings?.trackingIntervalMinutes;
+      if (savedInterval && savedInterval > 0) {
+        setTrackingInterval(savedInterval);
+        // Start the dashboard poll at the saved interval so admins see
+        // fresh data without manual refresh. Field-staff device tracking is
+        // handled by routeTrackingService in authStore — NOT from here.
+        startDashboardPoll(savedInterval);
+        console.log(`[MyTeam] Loaded tracking interval from DB: ${savedInterval} min(s)`);
+      } else {
+        // Fall back to default 15-minute poll if no interval is configured yet
+        startDashboardPoll(15);
       }
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      console.error('[MyTeam] Error fetching settings:', err);
+      // Still start a default poll so the dashboard doesn't go stale
+      startDashboardPoll(15);
     }
   };
 
@@ -253,52 +258,37 @@ const MyTeamPage: React.FC = () => {
 
   const handleUpdateInterval = async () => {
     if (!user || user.role !== 'admin') return;
+    if (!trackingInterval || trackingInterval < 1 || trackingInterval > 120) {
+      alert('Please enter a valid interval between 1 and 120 minutes.');
+      return;
+    }
     setIsUpdatingInterval(true);
     try {
-      // We need to fetch current settings first to not overwrite other things, or just patch.
-      // api.updateAttendanceSettings expects the whole object or we need a specific patch method.
-      // The `updateAttendanceSettings` we added takes `AttendanceSettings`.
-      // So we should fetch, update, and save.
+      // Fetch current full attendance settings so we don't clobber other fields.
+      // The correct key path is attendanceSettings (maps to attendance_settings column).
       const { settings } = await api.getInitialAppData();
-      
-      // Clone attendanceSettings to avoid mutation
-      const attendanceSettings = { ...settings.attendanceSettings };
-      
-      // Update office if exists
-      if (attendanceSettings.office) {
-          attendanceSettings.office = {
-              ...attendanceSettings.office,
-              trackingIntervalMinutes: trackingInterval
-          };
-      }
+      const currentAttendance = settings?.attendanceSettings || {};
 
-      // Update field if exists (avoids error if column is missing)
-      if (attendanceSettings.field) {
-          attendanceSettings.field = {
-              ...attendanceSettings.field,
-              trackingIntervalMinutes: trackingInterval
-          };
-      }
+      // trackingIntervalMinutes is a TOP-LEVEL key on AttendanceSettings.
+      // It is NOT nested under .office / .field / .site sub-objects.
+      const updatedAttendance = {
+        ...currentAttendance,
+        trackingIntervalMinutes: trackingInterval,
+      };
 
-      // Update site if exists
-      if (attendanceSettings.site) {
-          attendanceSettings.site = {
-              ...attendanceSettings.site,
-              trackingIntervalMinutes: trackingInterval
-          };
-      }
+      await api.updateAttendanceSettings(updatedAttendance);
 
-      await api.updateAttendanceSettings(attendanceSettings);
-      
-      // Update local tracking immediately
-      if (user) {
-         NativeBridge.startTracking(trackingInterval, user.id);
-      }
-      
-      alert('Tracking interval updated successfully');
+      // Restart the dashboard poll at the new interval so it takes effect immediately.
+      // NOTE: Field-staff DEVICE tracking is managed by routeTrackingService in authStore.
+      //       We must NOT call NativeBridge.startTracking() with the admin's own userId here,
+      //       as that would incorrectly track the admin's location instead of field staff.
+      startDashboardPoll(trackingInterval);
+
+      console.log(`[MyTeam] Tracking interval saved: ${trackingInterval} min(s). Dashboard poll restarted.`);
+      alert(`Tracking interval updated to ${trackingInterval} minute(s). Field devices will apply this on their next check-in.`);
     } catch (err) {
-      console.error('Failed to update interval:', err);
-      alert('Failed to update tracking interval');
+      console.error('[MyTeam] Failed to update interval:', err);
+      alert('Failed to update tracking interval. Please try again.');
     } finally {
       setIsUpdatingInterval(false);
     }

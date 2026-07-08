@@ -1972,29 +1972,56 @@ export const api = {
   },
   getLatestLocations: async (userIds: string[]): Promise<Record<string, { latitude: number; longitude: number; timestamp: string; locationName?: string }>> => {
     if (userIds.length === 0) return {};
-    
-    // Fetch latest attendance event for each user in parallel.
-    // We no longer filter out events without GPS coordinates so that
-    // office staff punches (which often lack lat/lng) still appear
-    // as recent activity on the My Team page.
-    const results = await Promise.all(
-      userIds.map(id => 
-        supabase
-          .from('attendance_events')
-          .select('user_id, latitude, longitude, timestamp, location_name')
-          .eq('user_id', id)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      )
-    );
+
+    // Query BOTH tables in parallel for each user:
+    //   attendance_events  → punch-in/out events (may carry lat/lng)
+    //   route_history      → periodic GPS pings from routeTrackingService on devices
+    // We pick whichever record is MORE RECENT per user so the map stays accurate.
+    const [attendanceResults, routeResults] = await Promise.all([
+      Promise.all(
+        userIds.map(id =>
+          supabase
+            .from('attendance_events')
+            .select('user_id, latitude, longitude, timestamp, location_name')
+            .eq('user_id', id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        )
+      ),
+      Promise.all(
+        userIds.map(id =>
+          supabase
+            .from('route_history')
+            .select('user_id, latitude, longitude, timestamp')
+            .eq('user_id', id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        )
+      ),
+    ]);
 
     const latest: Record<string, any> = {};
-    results.forEach(({ data }) => {
+
+    // Seed with attendance_events data first
+    attendanceResults.forEach(({ data }) => {
       if (data) {
         latest[data.user_id] = toCamelCase(data);
       }
     });
+
+    // Override with route_history entry only when it is newer AND has GPS coordinates
+    routeResults.forEach(({ data }) => {
+      if (!data || !data.latitude || !data.longitude) return;
+      const existing = latest[data.user_id];
+      const routeTs  = new Date(data.timestamp).getTime();
+      const existTs  = existing ? new Date(existing.timestamp).getTime() : 0;
+      if (routeTs > existTs) {
+        latest[data.user_id] = toCamelCase(data);
+      }
+    });
+
     return latest;
   },
   getLocationHistory: async (userId: string, startTs: string, endTs: string): Promise<AttendanceEvent[]> => {

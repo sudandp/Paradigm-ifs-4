@@ -349,8 +349,10 @@ export const useAuthStore = create<AuthState>()(
         },
 
         syncRouteTracking: async () => {
-            const { user, isFieldCheckedIn } = get();
-            if (!user || !isFieldCheckedIn) {
+            const { user, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn } = get();
+            // Track any employee who is actively checked in (field, site, or office with GPS)
+            const isAnyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
+            if (!user || !isAnyCheckedIn) {
                 routeTrackingService.stopTracking();
                 return;
             }
@@ -359,11 +361,14 @@ export const useAuthStore = create<AuthState>()(
 
             try {
                 const settings = await api.getAttendanceSettings();
-                const interval = settings.field.trackingIntervalMinutes || 10;
+                // trackingIntervalMinutes is a TOP-LEVEL key on AttendanceSettings,
+                // NOT nested under .field / .office / .site sub-objects.
+                const interval = (settings as any).trackingIntervalMinutes || settings.field?.trackingIntervalMinutes || 15;
+                console.log(`[authStore] Starting route tracking: every ${interval} min(s) for user ${user.id}`);
                 routeTrackingService.startTracking(user.id, interval);
             } catch (e) {
-                console.warn('Failed to fetch tracking interval, defaulting to 10m', e);
-                routeTrackingService.startTracking(user.id, 10);
+                console.warn('[authStore] Failed to fetch tracking interval, defaulting to 15m', e);
+                routeTrackingService.startTracking(user.id, 15);
             }
         },
 

@@ -123,11 +123,11 @@ const OrgWorkflowCard: React.FC<OrgWorkflowCardProps> = ({ users }) => {
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 to-indigo-600 border border-white shadow-sm flex-shrink-0" />
+                                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 shadow-sm flex-shrink-0" />
                                 <span>Team Member</span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-600">
-                                <div className="w-4 h-4 rounded bg-gradient-to-br from-emerald-400 to-emerald-600 border border-white shadow-sm flex-shrink-0" />
+                                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-sm flex-shrink-0" />
                                 <span>Search Match</span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-600">

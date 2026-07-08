@@ -118,10 +118,10 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
         nodes: WorkflowNode[];
         bounds: { minX: number; maxX: number; minY: number; maxY: number };
     } => {
-        const HORIZONTAL_SPACING = 20; // Reduced from 40 for more compact layout
-        const VERTICAL_SPACING = 120;  // Reduced from 150 for better fit
-        const NODE_HEIGHT = 120;
-        const NODE_WIDTH = 180;
+        const HORIZONTAL_SPACING = 40; // Spacing between spheres
+        const VERTICAL_SPACING = 150;  // Spacing between levels
+        const NODE_HEIGHT = 100;
+        const NODE_WIDTH = 100;
 
         let currentX = startX;
         const allNodes: WorkflowNode[] = [];
@@ -182,10 +182,13 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     const drawConnection = (ctx: CanvasRenderingContext2D, from: WorkflowNode, to: WorkflowNode, time: number) => {
         if (from.x === undefined || from.y === undefined || to.x === undefined || to.y === undefined) return;
 
-        const fromX = (from.x + 90) * zoom + offset.x;  // Center X of parent
-        const fromY = (from.y + 120) * zoom + offset.y; // Bottom of parent
-        const toX = (to.x + 90) * zoom + offset.x;      // Center X of child  
-        const toY = (to.y) * zoom + offset.y;           // Top of child
+        const NODE_WIDTH = 100;
+        const NODE_HEIGHT = 100;
+
+        const fromX = (from.x + NODE_WIDTH / 2) * zoom + offset.x;  // Center X of parent
+        const fromY = (from.y + NODE_HEIGHT / 2 + 30) * zoom + offset.y; // Bottom of parent sphere
+        const toX = (to.x + NODE_WIDTH / 2) * zoom + offset.x;      // Center X of child  
+        const toY = (to.y + NODE_HEIGHT / 2 - 30) * zoom + offset.y; // Top of child sphere
 
         // Animated gradient
         const gradient = ctx.createLinearGradient(fromX, fromY, toX, toY);
@@ -240,7 +243,7 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
         ctx.restore();
     };
 
-    // Draw enhanced node with premium UI
+    // Draw enhanced node with premium UI (3D Spheres)
     const drawNode = (
         ctx: CanvasRenderingContext2D,
         node: WorkflowNode,
@@ -250,150 +253,97 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
     ): { x: number; y: number; width: number; height: number } | null => {
         if (node.x === undefined || node.y === undefined) return null;
 
+        const NODE_WIDTH = 100;
+        const NODE_HEIGHT = 100;
+
         const x = node.x * zoom + offset.x;
         const y = node.y * zoom + offset.y;
-        const width = 180 * zoom;
-        const height = 120 * zoom;
-        const avatarSize = 48 * zoom;
+        
+        const centerX = x + (NODE_WIDTH / 2) * zoom;
+        const centerY = y + (NODE_HEIGHT / 2) * zoom;
+        
+        // Scale the radius based on level (level 0 is bigger)
+        const baseRadius = node.level === 0 ? 35 : 25;
+        const radius = baseRadius * zoom;
 
         const isMatch = !!searchQuery && node.name.toLowerCase().includes(searchQuery.toLowerCase());
 
-        // Card Shadow & background
         ctx.save();
-        ctx.shadowColor = isSelected ? 'rgba(99, 102, 241, 0.4)' : 'rgba(0, 0, 0, 0.08)';
-        ctx.shadowBlur = (isSelected ? 24 : 12) * zoom;
-        ctx.shadowOffsetY = (isSelected ? 8 : 4) * zoom;
-
-        const cardGradient = ctx.createLinearGradient(x, y, x, y + height);
-        cardGradient.addColorStop(0, '#FFFFFF');
-        cardGradient.addColorStop(1, '#FAFAFA');
-        ctx.fillStyle = cardGradient;
-
-        const radius = 16 * zoom;
-        ctx.beginPath();
-        if ((ctx as any).roundRect) {
-            (ctx as any).roundRect(x, y, width, height, radius);
-        } else {
-            ctx.moveTo(x + radius, y);
-            ctx.lineTo(x + width - radius, y);
-            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-            ctx.lineTo(x + width, y + height - radius);
-            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-            ctx.lineTo(x + radius, y + height);
-            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-            ctx.lineTo(x, y + radius);
-            ctx.quadraticCurveTo(x, y, x + radius, y);
+        
+        // Draw translucent glass halo
+        if (isHovered || isSelected || isMatch || node.level === 0) {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius + (node.level === 0 ? 15 * zoom : 10 * zoom), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+            ctx.shadowBlur = 10 * zoom;
+            ctx.fill();
+            
+            ctx.lineWidth = 1 * zoom;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.stroke();
         }
+
+        // Draw 3D sphere
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        
+        // Create 3D radial gradient
+        const gradient = ctx.createRadialGradient(
+            centerX - radius * 0.3, 
+            centerY - radius * 0.3, 
+            radius * 0.1, 
+            centerX, 
+            centerY, 
+            radius
+        );
+        
+        if (isMatch) {
+             gradient.addColorStop(0, '#86efac'); // light green
+             gradient.addColorStop(1, '#166534'); // dark green
+        } else {
+             gradient.addColorStop(0, '#c4b5fd'); // light purple
+             gradient.addColorStop(0.5, '#8b5cf6'); // purple
+             gradient.addColorStop(1, '#4c1d95'); // dark purple
+        }
+        
+        ctx.fillStyle = gradient;
+        
+        // Shadow for sphere
+        ctx.shadowColor = isMatch ? 'rgba(22, 101, 52, 0.4)' : 'rgba(76, 29, 149, 0.4)';
+        ctx.shadowBlur = (isSelected ? 20 : 15) * zoom;
+        ctx.shadowOffsetY = 5 * zoom;
+        
         ctx.fill();
-
-        ctx.lineWidth = (isSelected ? 2 : 1) * zoom;
-        ctx.strokeStyle = isSelected ? '#6366F1' : isHovered ? '#A5B4FC' : isMatch ? '#22C55E' : '#E5E7EB';
-        ctx.stroke();
         ctx.restore();
 
-        // Selection/Match Overlay
-        if (isSelected || isMatch) {
-            ctx.save();
-            ctx.globalAlpha = 0.05;
-            ctx.fillStyle = isSelected ? '#6366F1' : '#22C55E';
-            ctx.beginPath();
-            if ((ctx as any).roundRect) (ctx as any).roundRect(x, y, width, height, radius);
-            ctx.fill();
-            ctx.restore();
-        }
-
-        // Avatar
-        const avatarX = x + (width - avatarSize) / 2;
-        const avatarY = y + 16 * zoom;
-
+        // Draw Name below the sphere
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.clip();
-
-        const img = imageCache.current.get(node.id);
-        if (img && img.complete) {
-            ctx.drawImage(img, avatarX, avatarY, avatarSize, avatarSize);
-        } else {
-            const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-            avatarGradient.addColorStop(0, '#818CF8');
-            avatarGradient.addColorStop(1, '#4F46E5');
-            ctx.fillStyle = avatarGradient;
-            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
-
-            ctx.fillStyle = '#FFF';
-            ctx.font = `600 ${Math.max(12, 16 * zoom)}px "Inter", sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            const initials = node.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase();
-            ctx.fillText(initials, avatarX + avatarSize / 2, avatarY + avatarSize / 2 + 1 * zoom);
-        }
-        ctx.restore();
-
-        // Avatar Ring
-        ctx.save();
-        ctx.strokeStyle = isSelected ? '#6366F1' : '#FFF';
-        ctx.lineWidth = 2 * zoom;
-        ctx.beginPath();
-        ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-
-        // Level Badge
-        if (node.level !== undefined && node.level > 0) {
-            const badgeSize = 18 * zoom;
-            const badgeX = avatarX + avatarSize - badgeSize / 2;
-            const badgeY = avatarY + avatarSize - badgeSize / 2;
-
-            ctx.save();
-            ctx.fillStyle = '#10B981';
-            ctx.shadowColor = 'rgba(16, 185, 129, 0.4)';
-            ctx.shadowBlur = 4 * zoom;
-            ctx.beginPath();
-            ctx.arc(badgeX, badgeY, badgeSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#FFF';
-            ctx.font = `700 ${Math.max(8, 9 * zoom)}px "Inter", sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`L${node.level}`, badgeX, badgeY + 1 * zoom);
-            ctx.restore();
-        }
-
-        // Name and Role
-        ctx.save();
-        ctx.fillStyle = '#111827';
-        ctx.font = `600 ${Math.max(11, 13 * zoom)}px "Inter", sans-serif`;
+        ctx.fillStyle = '#4b5563'; // slate-600
+        ctx.font = `600 ${Math.max(10, 12 * zoom)}px "Inter", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        const nameY = avatarY + avatarSize + 12 * zoom;
-
+        const nameY = centerY + radius + (node.level === 0 ? 20 * zoom : 15 * zoom);
+        
         let displayName = node.name;
-        const maxTextWidth = width - 24 * zoom;
+        const maxTextWidth = 100 * zoom;
         if (ctx.measureText(displayName).width > maxTextWidth) {
             while (ctx.measureText(displayName + '...').width > maxTextWidth && displayName.length > 0) {
                 displayName = displayName.substring(0, displayName.length - 1);
             }
             displayName += '...';
         }
-        ctx.fillText(displayName, x + width / 2, nameY);
-
-        ctx.fillStyle = '#6B7280';
-        ctx.font = `500 ${Math.max(9, 11 * zoom)}px "Inter", sans-serif`;
-        const roleY = nameY + 18 * zoom;
-        let displayRole = (node.role || '').replace(/_/g, ' ');
-        displayRole = displayRole ? displayRole.charAt(0).toUpperCase() + displayRole.slice(1).toLowerCase() : '';
-        if (ctx.measureText(displayRole).width > maxTextWidth) {
-            while (ctx.measureText(displayRole + '...').width > maxTextWidth && displayRole.length > 0) {
-                displayRole = displayRole.substring(0, displayRole.length - 1);
-            }
-            displayRole += '...';
-        }
-        ctx.fillText(displayRole, x + width / 2, roleY);
+        ctx.fillText(displayName, centerX, nameY);
         ctx.restore();
 
-        return { x, y, width, height };
+        // Return a bounding box for hover/click detection
+        const hitRadius = radius + 15 * zoom;
+        return { 
+            x: centerX - hitRadius, 
+            y: centerY - hitRadius, 
+            width: hitRadius * 2, 
+            height: hitRadius * 2 + 30 * zoom 
+        };
     };
 
     // Draw the entire tree
@@ -431,24 +381,23 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
         const layout = calculateLayout(hierarchy);
         const bounds = layout.bounds;
 
-        // Add padding to content dimensions
-        const NODE_WIDTH = 180;
-        const NODE_HEIGHT = 120;
-        const contentWidth = Math.max(1, bounds.maxX - bounds.minX + NODE_WIDTH);
-        const contentHeight = Math.max(1, bounds.maxY - bounds.minY + NODE_HEIGHT);
+        // True dimensions of the nodes bounding box
+        const bboxWidth = bounds.maxX - bounds.minX + 100; // NODE_WIDTH is 100
+        const bboxHeight = bounds.maxY - bounds.minY + 150; // Extra 50 for text below nodes
 
-        // Calculate true center of content including node dimensions
-        const contentCenterX = bounds.minX + contentWidth / 2;
-        const contentCenterY = bounds.minY + contentHeight / 2;
+        // Center of the bounding box
+        const contentCenterX = bounds.minX + bboxWidth / 2;
+        const contentCenterY = bounds.minY + bboxHeight / 2;
 
-        // Use CSS pixels (rect.width/height)
-        const paddingFactor = 0.98; // Maximize viewport usage - use 98% of available space
-        const zoomX = (rect.width * paddingFactor) / contentWidth;
-        const zoomY = (rect.height * paddingFactor) / contentHeight;
+        // Use CSS pixels (rect.width/height) with explicit padding
+        const paddingX = 100;
+        const paddingY = 150;
+        const zoomX = rect.width / (bboxWidth + paddingX);
+        const zoomY = rect.height / (bboxHeight + paddingY);
         let newZoom = Math.min(zoomX, zoomY);
 
         // Clamp zoom to reasonable range
-        newZoom = Math.max(0.3, Math.min(newZoom, 1.5));
+        newZoom = Math.max(0.2, Math.min(newZoom, 1.5));
 
         // If using external zoom, use that but still center properly
         const actualZoom = externalZoom !== undefined ? externalZoom : newZoom;
@@ -710,8 +659,8 @@ const WorkflowChart2D: React.FC<WorkflowChart2DProps> = ({
                 <div
                     className="absolute pointer-events-none z-10 transform -translate-x-1/2 transition-all duration-200"
                     style={{
-                        left: `${hoveredNode.x * zoom + offset.x + (90 * zoom)}px`, // Center X of node
-                        top: `${Math.max(10, hoveredNode.y * zoom + offset.y - 10)}px`, // Above node with min margin
+                        left: `${(hoveredNode.x + 50) * zoom + offset.x}px`, // Center X of node (NODE_WIDTH / 2)
+                        top: `${Math.max(10, (hoveredNode.y + 10) * zoom + offset.y - 100)}px`, // Above node
                     }}
                 >
                     <div className="bg-white/95 backdrop-blur-xl border border-indigo-200 rounded-2xl shadow-2xl p-5 min-w-[320px] animate-fade-in-scale">
