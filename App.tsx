@@ -99,6 +99,7 @@ const RequestUnlockPage = lazyWithRetry(() => import('./pages/attendance/Request
 const AttendanceSettings = lazyWithRetry(() => import('./pages/hr/AttendanceSettings'));
 const NotificationsControl = lazyWithRetry(() => import('./pages/hr/NotificationsControl'));
 const LeaveDashboard = lazyWithRetry(() => import('./pages/leaves/LeaveDashboard'));
+const ActivityTimelinePage = lazyWithRetry(() => import('./pages/leaves/ActivityTimelinePage'));
 const ApplyLeave = lazyWithRetry(() => import('./pages/leaves/ApplyLeave'));
 const HolidaySelectionPage = lazyWithRetry(() => import('./pages/leaves/HolidaySelectionPage'));
 const LeaveManagement = lazyWithRetry(() => import('./pages/hr/LeaveManagement'));
@@ -1488,6 +1489,7 @@ const App: React.FC = () => {
 
           <Route element={<ProtectedRoute requiredPermission="apply_for_leave" />}>
             <Route path="leaves/dashboard" element={<LeaveDashboard />} />
+            <Route path="leaves/activity-timeline" element={<ActivityTimelinePage />} />
             <Route path="leaves/apply" element={<ApplyLeave />} />
             <Route path="leaves/holiday-selection" element={<HolidaySelectionPage />} />
           </Route>

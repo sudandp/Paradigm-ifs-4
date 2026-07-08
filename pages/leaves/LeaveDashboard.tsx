@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -41,16 +41,25 @@ import LoadingScreen from '../../components/ui/LoadingScreen';
 
 // --- Reusable Components ---
 
-const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean }> = ({ title, value, icon: Icon, isExpired, description, isLoading }) => {
+const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean; onViewDetails?: () => void }> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails }) => {
     const isMobileCard = useMediaQuery('(max-width: 767px)');
     return (
-    <div className={`p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
+    <div className={`relative p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
         isExpired
             ? 'border-amber-500/50 bg-amber-500/5'
             : isMobileCard
                 ? 'bg-transparent border-transparent'
                 : 'bg-card border-border'
     }`}>
+        {onViewDetails && !isLoading && (
+            <button 
+                onClick={onViewDetails} 
+                className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-black/5 text-muted-foreground hover:text-primary transition-colors z-10"
+                title="View Timeline"
+            >
+                <Eye className="w-4 h-4 md:w-5 md:h-5 text-red-500" />
+            </button>
+        )}
         <div className={`${isExpired ? 'bg-amber-100' : isMobileCard ? 'bg-white/10' : 'bg-accent-light'} p-2 md:p-3 rounded-full flex-shrink-0`}>
             {isLoading ? (
                 <div className="h-5 w-5 md:h-6 md:w-6 animate-pulse bg-gray-200 rounded-full" />
@@ -235,6 +244,7 @@ const LeaveDashboard: React.FC = () => {
     const [monthlyTravelKm, setMonthlyTravelKm] = useState<number>(0);
     const [monthlyTravelDuration, setMonthlyTravelDuration] = useState<number>(0);
     const [monthlySteps, setMonthlySteps] = useState<number>(0);
+    const [dailyActivityRecords, setDailyActivityRecords] = useState<{dateStr: string, travelKm: number, travelDuration: number, steps: number, sqft: number, startTime: string | null, endTime: string | null, startLocation: string | null, endLocation: string | null}[]>([]);
     const [snapshotData, setSnapshotData] = useState<any | null>(null);
     const currentYear = viewingDate.getFullYear();
 
@@ -441,6 +451,8 @@ const LeaveDashboard: React.FC = () => {
 
             const viewMonthStart = startOfMonth(viewingDate);
             const viewMonthEnd = endOfMonth(viewingDate);
+            
+            const dailyRecords: any[] = [];
 
             Object.entries(dayLogs).forEach(([dateStr, dayEvents]) => {
                 const date = new Date(dateStr);
@@ -454,7 +466,37 @@ const LeaveDashboard: React.FC = () => {
                     const daySteps = (dayEvents as AttendanceEvent[])
                         .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
                         .reduce((sum, e) => sum + (e.steps || 0), 0);
+                    
+                    const daySqft = (dayEvents as AttendanceEvent[])
+                        .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.sqft != null)
+                        .reduce((sum, e) => sum + (e.sqft || 0), 0);
+                        
                     totalMonthlySteps += daySteps;
+                    
+                    const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    let startTime = null;
+                    let endTime = null;
+                    let startLocation = null;
+                    let endLocation = null;
+                    
+                    if (sortedEvents.length > 0) {
+                        startTime = sortedEvents[0].timestamp;
+                        startLocation = sortedEvents[0].locationName || 'Unknown Location';
+                        endTime = sortedEvents[sortedEvents.length - 1].timestamp;
+                        endLocation = sortedEvents[sortedEvents.length - 1].locationName || 'Unknown Location';
+                    }
+                    
+                    dailyRecords.push({
+                        dateStr,
+                        travelKm: travelRes.distance,
+                        travelDuration: travelRes.duration,
+                        steps: daySteps,
+                        sqft: daySqft,
+                        startTime,
+                        endTime,
+                        startLocation,
+                        endLocation
+                    });
                 }
 
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
@@ -475,7 +517,7 @@ const LeaveDashboard: React.FC = () => {
             setMonthlyTravelKm(Number(totalTravelKm.toFixed(2)));
             setMonthlyTravelDuration(totalTravelDurationMins);
             setMonthlySteps(totalMonthlySteps);
-            setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays ?? true);
+            setDailyActivityRecords(dailyRecords.sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime()));
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
@@ -717,7 +759,8 @@ const LeaveDashboard: React.FC = () => {
                 : monthlyTravelKm).toFixed(2)} KM`,
             description: `Cumulative site-to-site travel for ${format(viewingDate, 'MMMM yyyy')}.${(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration) > 0 ? ` Duration: ${formatDuration(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration)}` : ''}`,
             icon: MapPin,
-            isExpired: false
+            isExpired: false,
+            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'travel' } })
         },
         {
             title: 'Monthly Footsteps',
@@ -726,7 +769,8 @@ const LeaveDashboard: React.FC = () => {
                 : monthlySteps).toLocaleString()} steps`,
             description: `Total footsteps tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Footprints,
-            isExpired: false
+            isExpired: false,
+            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'steps' } })
         },
         ...(isTechnicalRole(user?.role) ? [{
             title: 'Site OT Days',
@@ -1041,7 +1085,7 @@ const LeaveDashboard: React.FC = () => {
                                                                 <Loader2 className="h-4 w-4 animate-spin text-accent" />
                                                             ) : (
                                                                 <>
-                                                                    <button onClick={() => handleEditRequest(req.id)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
+                                                                    <button onClick={() => navigate(`/leaves/edit/${req.id}`)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
                                                                         <Edit className="h-4 w-4" />
                                                                     </button>
                                                                     {req.status === 'pending_manager_approval' ? (

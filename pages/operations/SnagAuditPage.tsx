@@ -377,10 +377,20 @@ const SnagDetailView: React.FC<{ entry: SnagEntry; onBack: () => void; onStatusC
           {activeTab === 'details' ? (
             <>
               {entry.snagPictureUrl && (
-            <div className="rounded-xl overflow-hidden border border-gray-100">
-              <img src={entry.snagPictureUrl} alt="Snag" className="w-full object-cover max-h-48" />
-            </div>
-          )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {entry.snagPictureUrl.split(',').map((url, idx) => (
+                    <a 
+                      key={idx} 
+                      href={url.trim()} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block rounded-xl overflow-hidden border border-gray-100 bg-gray-100 hover:opacity-90 transition-opacity"
+                    >
+                      <img src={url.trim()} alt={`Snag ${idx + 1}`} className="w-full h-64 object-contain bg-gray-50" />
+                    </a>
+                  ))}
+                </div>
+              )}
 
           <InfoRow icon={<MapPin size={14} />} label="Site" value={entry.nameOfSite} />
           <InfoRow icon={<UserIcon size={14} />} label="Submitted By" value={entry.submittedBy || entry.emailAddress} />
