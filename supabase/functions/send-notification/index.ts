@@ -129,13 +129,13 @@ serve(async (req: Request) => {
     const results = await Promise.all(tokens.map(async (t: { token: string, user_id?: string }) => {
       const userUnreadCount = t.user_id ? (unreadMap.get(t.user_id) || 0) : 0;
       
-      const payload: any = {
+      const payload: Record<string, any> = {
         token: t.token,
         // data-only payload — always present for all message types
         data: {
           ...data,
-          title: finalTitle,
-          body: finalMessage,
+          ...(isSilentPing ? {} : { title: finalTitle }),
+          ...(!isSilentPing && finalMessage ? { body: finalMessage } : {}),
           notification_count: userUnreadCount.toString(),
           badge: userUnreadCount.toString(),
           type: data?.type || 'info',

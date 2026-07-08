@@ -178,4 +178,6 @@ export interface SnagEntry {
   remarks?: string;
   status: 'Open' | 'In Progress' | 'Resolved';
   submittedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

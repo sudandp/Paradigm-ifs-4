@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getStaffCategory, isTechnicalRole } from '../../utils/attendanceCalculations';
+import { getStaffCategory, isTechnicalRole, calculateWorkingHours } from '../../utils/attendanceCalculations';
 
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
-import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus } from '../../types';
+import type { LeaveType, UploadedFile, LeaveBalance, UserChild, StaffAttendanceRules, LeaveRequestStatus, AttendanceEvent } from '../../types';
 import { ArrowLeft, Clock, CloudOff, X } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -44,7 +44,18 @@ type LeaveRequestFormData = {
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
     leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction', 'Permission']).required('Leave type is required'),
-    startDate: yup.string().required('Start date is required'),
+    startDate: yup.string().required('Start date is required')
+        .test('is-valid-correction-date', 'Correction can only be raised for the same day (today) or within the last 48 hours', function (value) {
+            const { leaveType } = this.parent as { leaveType?: string };
+            if (leaveType !== 'Correction' || !value) return true;
+            
+            const now = new Date();
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const targetDate = new Date(value.replace(/-/g, '/'));
+            const diffDays = differenceInCalendarDays(todayMidnight, targetDate);
+            
+            return diffDays >= 0 && diffDays <= 2;
+        }),
     endDate: yup.string().required('End date is required')
         .test('is-after-start', 'End date must be on or after start date', function (value) {
             const { startDate } = this.parent as { startDate?: string };
@@ -139,6 +150,7 @@ const ApplyLeave: React.FC = () => {
     const [correctionUsage, setCorrectionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
     const [permissionUsage, setPermissionUsage] = React.useState({ used: 0, limit: 3, enabled: false });
     const [allLeaveRequests, setAllLeaveRequests] = React.useState<any[]>([]);
+    const [dayEvents, setDayEvents] = React.useState<AttendanceEvent[]>([]);
 
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [permissionMinutes, setPermissionMinutes] = React.useState<number>(120); // default to 2 hours
@@ -193,7 +205,7 @@ const ApplyLeave: React.FC = () => {
             dayOption: 'full',
             correctionStatus: 'Present',
             punchIn: '09:00',
-            punchOut: '19:30',
+            punchOut: isSameDay(new Date(initialStartDate.replace(/-/g, '/')), new Date()) ? format(new Date(), 'HH:mm') : '19:30',
             includeBreak: false,
             breakIn: '13:00',
             breakOut: '14:00',
@@ -375,6 +387,7 @@ const ApplyLeave: React.FC = () => {
                 const events = await api.getAttendanceEvents(user.id, startDate, endDate);
                 
                 if (events && events.length > 0) {
+                    setDayEvents(events);
                     const punchInEvents = events.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
                     const punchOutEvents = events.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
                     const breakInEvents = events.filter(e => e.type === 'break-in' || (e as any).type === 'break_in');
@@ -409,6 +422,13 @@ const ApplyLeave: React.FC = () => {
                         // If no punch-in location, try punch-out location
                         if (!punchInEvents[0]?.locationName && latestOut.locationName) {
                             setValue('locationName', latestOut.locationName);
+                        }
+                    } else {
+                        const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+                        if (isToday) {
+                            const nowTime = format(new Date(), 'HH:mm');
+                            setValue('punchOut', nowTime, { shouldValidate: true });
+                            setBasePunchOutTime(nowTime);
                         }
                     }
 
@@ -466,11 +486,19 @@ const ApplyLeave: React.FC = () => {
                         setValue('siteVisits', visits, { shouldValidate: true });
                     }
                 } else {
+                    setDayEvents([]);
                     // FALLBACK: If no events found, pre-fill with configured office hours from rules
                     if (rules?.fixedOfficeHours) {
                         setValue('punchIn', rules.fixedOfficeHours.checkInTime, { shouldValidate: true });
-                        setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
-                        setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
+                        const isToday = isSameDay(new Date(watchStartDate.replace(/-/g, '/')), new Date());
+                        if (isToday) {
+                            const nowTime = format(new Date(), 'HH:mm');
+                            setValue('punchOut', nowTime, { shouldValidate: true });
+                            setBasePunchOutTime(nowTime);
+                        } else {
+                            setValue('punchOut', rules.fixedOfficeHours.checkOutTime, { shouldValidate: true });
+                            setBasePunchOutTime(rules.fixedOfficeHours.checkOutTime);
+                        }
                         
                         // Fill Breaks if configured
                         if (rules.fixedOfficeHours.breakInTime) {
@@ -495,6 +523,7 @@ const ApplyLeave: React.FC = () => {
                 }
             } catch (err) {
                 console.error('Failed to fetch attendance logs:', err);
+                setDayEvents([]);
                 // Non-blocking error, just keep as is or log it
             } finally {
                 setIsFetchingLogs(false);
@@ -650,7 +679,7 @@ const ApplyLeave: React.FC = () => {
                 return;
             }
 
-            // Correction restriction: Only present day (up until midnight)
+            // Correction restriction: Same day or within 48 hours. If today is selected, check logs & duration.
             if (formData.leaveType === 'Correction') {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -658,10 +687,42 @@ const ApplyLeave: React.FC = () => {
                 
                 const diffDays = differenceInCalendarDays(todayMidnight, targetDate);
                 
-                if (diffDays !== 0) {
-                    setToast({ message: 'Corrections can only be applied for the present day (up until midnight). Previous days and future dates are not allowed.', type: 'error' });
+                // 1. Same day or last 48 hours restriction (diffDays: 0 = today, 1 = yesterday, 2 = day before)
+                if (diffDays < 0 || diffDays > 2) {
+                    setToast({ message: 'Corrections can only be raised for the same day (today) or within the last 48 hours.', type: 'error' });
                     setIsSubmitting(false);
                     return;
+                }
+
+                // 2. If present day (today) is selected
+                if (diffDays === 0) {
+                    // Check if there are any events/logs at all
+                    if (dayEvents.length === 0) {
+                        setToast({ message: 'No attendance logs found for today. You cannot raise a correction for today if there are no logs.', type: 'error' });
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    
+                    // Count punch-in and punch-out events
+                    const punchIns = dayEvents.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
+                    const punchOuts = dayEvents.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
+                    const hasPunchIn = punchIns.length > 0;
+                    const hasPunchOut = punchOuts.length > 0;
+                    const forgotPunchOut = hasPunchIn && !hasPunchOut;
+                    
+                    // Calculate working hours
+                    const hoursData = calculateWorkingHours(dayEvents);
+                    const hoursWorked = hoursData.workingHours;
+                    
+                    // Validate: must have worked >= 4 hours OR forgot to punch out (has punch-in but no punch-out)
+                    if (hoursWorked < 4 && !forgotPunchOut) {
+                        setToast({ 
+                            message: `You can only raise a correction for today if you have worked more than 4 hours (currently ${hoursWorked.toFixed(2)} hours) or if you have incomplete punch logs (forgot to punch out).`, 
+                            type: 'error' 
+                        });
+                        setIsSubmitting(false);
+                        return;
+                    }
                 }
             }
 
@@ -861,6 +922,31 @@ const ApplyLeave: React.FC = () => {
 
             // Add correction details only for Correction and Permission types
             if (['Correction', 'Permission'].includes(leaveType)) {
+                // Extract original times from dayEvents
+                const origPunchIn = dayEvents.filter(e => e.type === 'punch-in' || (e as any).type === 'punch_in');
+                const origPunchOut = dayEvents.filter(e => e.type === 'punch-out' || (e as any).type === 'punch_out');
+                const origBreakIn = dayEvents.filter(e => e.type === 'break-in' || (e as any).type === 'break_in');
+                const origBreakOut = dayEvents.filter(e => e.type === 'break-out' || (e as any).type === 'break_out');
+                
+                const getEarliestTime = (eventsList: any[]) => {
+                    if (eventsList.length === 0) return null;
+                    const earliest = eventsList.reduce((prev, curr) => 
+                        new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev
+                    );
+                    return format(new Date(earliest.timestamp), 'HH:mm');
+                };
+                
+                const getLatestTime = (eventsList: any[]) => {
+                    if (eventsList.length === 0) return null;
+                    const latest = eventsList.reduce((prev, curr) => 
+                        new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev
+                    );
+                    return format(new Date(latest.timestamp), 'HH:mm');
+                };
+
+                const originalPunchInTime = getEarliestTime(origPunchIn);
+                const originalPunchOutTime = getLatestTime(origPunchOut);
+
                 basePayload.correctionDetails = {
                     status: correctionStatus,
                     punchIn,
@@ -870,7 +956,19 @@ const ApplyLeave: React.FC = () => {
                     locationName,
                     includeSiteOt,
                     siteOtIn,
-                    siteOtOut
+                    siteOtOut,
+                    originalLogs: {
+                        punchIn: originalPunchInTime,
+                        punchOut: originalPunchOutTime,
+                        breakIn: getEarliestTime(origBreakIn),
+                        breakOut: getLatestTime(origBreakOut),
+                        locationName: (origPunchIn[0]?.locationName || origPunchOut[0]?.locationName) || null,
+                        rawEvents: dayEvents.map(e => ({
+                            type: e.type,
+                            timestamp: e.timestamp,
+                            locationName: e.locationName
+                        }))
+                    }
                 };
             }
 
@@ -1045,6 +1143,23 @@ const ApplyLeave: React.FC = () => {
                                             Limit Exceeded. Please contact admin for manual corrections.
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {watchLeaveType === 'Correction' && (
+                                <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/10 text-emerald-500 space-y-2">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Clock className="w-5 h-5 text-emerald-500" />
+                                        <h4 className="font-bold text-sm">Correction Request Guidelines</h4>
+                                    </div>
+                                    <div className="text-xs opacity-95 leading-relaxed space-y-1.5">
+                                        <p>
+                                            • Corrections can only be raised for the <strong>same day (today)</strong> or within the last <strong>48 hours</strong>.
+                                        </p>
+                                        <p>
+                                            • For the <strong>present day (today)</strong>, corrections are only allowed if you have existing attendance logs (e.g., you forgot to punch out) or if you have worked for <strong>4 hours or more</strong>.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
 

@@ -105,15 +105,16 @@ async function fetchAttendanceSummaryFallback(
   const startStr = format(startDate, 'yyyy-MM-dd');
   const endStr   = format(endDate,   'yyyy-MM-dd');
 
-  // 1. Get total active staff count (role_id IS NOT NULL = active)
+  // 1. Get active staff count & profiles
   let staffQuery = supabase
     .from('users')
-    .select('id', { count: 'exact', head: true })
+    .select('id, role_id, role, organization_id, society_id')
     .not('role_id', 'is', null);
   if (societyId) staffQuery = staffQuery.eq('society_id', societyId);
   if (siteIds?.length) staffQuery = staffQuery.in('organization_id', siteIds);
-  const { count: totalActiveStaff } = await staffQuery;
-  const staffCount = totalActiveStaff ?? 0;
+  const { data: activeUsers } = await staffQuery;
+  const staff = activeUsers || [];
+  const staffCount = staff.length;
 
   // 2. Fetch punch-in / punch-out events for the date window
   let evQuery = supabase
@@ -122,6 +123,19 @@ async function fetchAttendanceSummaryFallback(
     .gte('timestamp', `${startStr}T00:00:00+05:30`)
     .lte('timestamp', `${endStr}T23:59:59+05:30`)
     .in('type', ['punch-in', 'punch-out']);
+
+  // Fetch leaves in period
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('user_id, start_date, end_date, leave_type')
+    .in('status', ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'])
+    .lte('start_date', endStr)
+    .gte('end_date', startStr);
+
+  // Fetch holidays
+  const { data: holidays } = await supabase
+    .from('user_holidays')
+    .select('user_id, holiday_date');
 
   const { data: events, error: evErr } = await evQuery;
   if (evErr) throw evErr;
@@ -185,19 +199,58 @@ async function fetchAttendanceSummaryFallback(
   while (cursor <= endDate) {
     const dayStr     = format(cursor, 'yyyy-MM-dd');
     const isToday    = dayStr === todayStr;
-    const presentSet = dayPresentMap[dayStr] ?? new Set();
     const hoursInfo  = dayHoursMap[dayStr];
     
-    let presentCnt = presentSet.size;
+    let presentCnt = 0;
     let wfhCnt = 0;
     let onLeaveCnt = 0;
-    let absentCnt  = Math.max(0, staffCount - presentCnt);
+    let absentCnt  = 0;
 
     if (isToday && todayMetrics) {
         presentCnt = todayMetrics.present_today;
         wfhCnt = todayMetrics.wfh_today;
         onLeaveCnt = todayMetrics.on_leave_today;
         absentCnt = todayMetrics.absent_today;
+    } else {
+        for (const user of staff) {
+            const userId = user.id;
+            const hasActivity = dayPresentMap[dayStr]?.has(userId);
+            
+            const hasWFH = (leaves || []).some(l => 
+                l.user_id === userId && 
+                dayStr >= l.start_date && 
+                dayStr <= l.end_date &&
+                (String(l.leave_type || '').toLowerCase().includes('work from home') || 
+                 String(l.leave_type || '').toLowerCase() === 'wfh')
+            );
+
+            const hasApprovedLeave = (leaves || []).some(l => 
+                l.user_id === userId && 
+                dayStr >= l.start_date && 
+                dayStr <= l.end_date &&
+                !(String(l.leave_type || '').toLowerCase().includes('work from home') || 
+                  String(l.leave_type || '').toLowerCase() === 'wfh')
+            );
+
+            const isHoliday = (holidays || []).some(h => 
+                h.user_id === userId && 
+                format(new Date(h.holiday_date), 'yyyy-MM-dd') === dayStr
+            );
+
+            const isSunday = cursor.getDay() === 0;
+
+            if (hasActivity) {
+                presentCnt++;
+            } else if (hasWFH) {
+                wfhCnt++;
+            } else if (hasApprovedLeave) {
+                onLeaveCnt++;
+            } else if (isHoliday || isSunday) {
+                // Holiday / Week Off - not absent!
+            } else {
+                absentCnt++;
+            }
+        }
     }
 
     result.push({

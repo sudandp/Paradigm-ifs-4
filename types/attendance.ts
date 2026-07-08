@@ -478,6 +478,14 @@ export interface CorrectionDetails {
   siteOtOut?: string;
   includeSite?: boolean;
   siteVisits?: { in: string; out: string }[];
+  originalLogs?: {
+    punchIn?: string | null;
+    punchOut?: string | null;
+    breakIn?: string | null;
+    breakOut?: string | null;
+    locationName?: string | null;
+    rawEvents?: any[];
+  } | null;
 }
 
 export interface LeaveRequest {

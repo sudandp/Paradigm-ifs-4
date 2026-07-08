@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
-import * as path from 'path';
 
 dotenv.config({ path: '.env' });
 if (fs.existsSync('.env.local')) dotenv.config({ path: '.env.local', override: true });
@@ -56,6 +55,11 @@ BEGIN
   day_series AS (
     SELECT generate_series(p_start, p_end, '1 day'::INTERVAL)::DATE AS ds_day
   ),
+  staff_days AS (
+    SELECT s.staff_id, ds.ds_day
+    FROM active_staff s
+    CROSS JOIN day_series ds
+  ),
   daily_work AS (
     SELECT
       ae.user_id                                                        AS dw_uid,
@@ -96,33 +100,59 @@ BEGIN
     JOIN   active_staff   s ON s.staff_id = lr.user_id
     WHERE  lr.status IN ('approved','approved_by_reporting',
                          'approved_by_admin','correction_made')
+  ),
+  daily_holiday AS (
+    SELECT
+      ds.ds_day                                                         AS dh_day,
+      uh.user_id                                                        AS dh_uid
+    FROM day_series ds
+    JOIN user_holidays uh ON DATE(uh.holiday_date) = ds.ds_day
+    JOIN active_staff s ON s.staff_id = uh.user_id
+  ),
+  staff_day_status AS (
+    SELECT
+      sd.ds_day,
+      sd.staff_id,
+      dw.first_in IS NOT NULL AS has_activity,
+      dl_wfh.dl_uid IS NOT NULL AS has_wfh,
+      dl_leave.dl_uid IS NOT NULL AS has_leave,
+      (dh.dh_uid IS NOT NULL OR EXTRACT(DOW FROM sd.ds_day) = 0) AS is_holiday_or_weekend
+    FROM staff_days sd
+    LEFT JOIN daily_work dw ON dw.dw_uid = sd.staff_id AND dw.work_day = sd.ds_day
+    LEFT JOIN daily_leave dl_wfh ON dl_wfh.dl_uid = sd.staff_id AND dl_wfh.dl_day = sd.ds_day AND dl_wfh.leave_category = 'wfh'
+    LEFT JOIN daily_leave dl_leave ON dl_leave.dl_uid = sd.staff_id AND dl_leave.dl_day = sd.ds_day AND dl_leave.leave_category = 'leave'
+    LEFT JOIN daily_holiday dh ON dh.dh_uid = sd.staff_id AND dh.dh_day = sd.ds_day
+  ),
+  day_metrics AS (
+    SELECT
+      sds.ds_day,
+      COUNT(DISTINCT sds.staff_id) FILTER (WHERE sds.has_activity)::INT AS present_cnt,
+      COUNT(DISTINCT sds.staff_id) FILTER (WHERE NOT sds.has_activity AND sds.has_wfh)::INT AS wfh_cnt,
+      COUNT(DISTINCT sds.staff_id) FILTER (WHERE NOT sds.has_activity AND NOT sds.has_wfh AND sds.has_leave)::INT AS on_leave_cnt,
+      COUNT(DISTINCT sds.staff_id) FILTER (
+        WHERE NOT sds.has_activity 
+          AND NOT sds.has_wfh 
+          AND NOT sds.has_leave 
+          AND NOT sds.is_holiday_or_weekend
+      )::INT AS absent_cnt
+    FROM staff_day_status sds
+    GROUP BY sds.ds_day
   )
   SELECT
     ds.ds_day,
-    COUNT(DISTINCT dw.dw_uid) FILTER (WHERE dw.first_in IS NOT NULL)::INT,
-    COUNT(DISTINCT dl_wfh.dl_uid)::INT,
-    COUNT(DISTINCT dl_leave.dl_uid)::INT,
-    GREATEST(
-      v_active_staff_count
-        - COUNT(DISTINCT dw.dw_uid) FILTER (WHERE dw.first_in IS NOT NULL)
-        - COUNT(DISTINCT dl_leave.dl_uid),
-      0
-    )::INT,
+    dm.present_cnt,
+    dm.wfh_cnt,
+    dm.on_leave_cnt,
+    dm.absent_cnt,
     ROUND(COALESCE(AVG(dw.net_hours), 0)::NUMERIC, 1),
     COUNT(DISTINCT dw.dw_uid)
       FILTER (WHERE dw.first_in IS NOT NULL AND dw.first_in::TIME > v_shift_start)::INT,
     v_active_staff_count::INT
-  FROM      day_series                                    ds
-  LEFT JOIN daily_work                                    dw
-            ON  dw.work_day        = ds.ds_day
-  LEFT JOIN daily_leave                                   dl_wfh
-            ON  dl_wfh.dl_day      = ds.ds_day
-            AND dl_wfh.leave_category  = 'wfh'
-  LEFT JOIN daily_leave                                   dl_leave
-            ON  dl_leave.dl_day    = ds.ds_day
-            AND dl_leave.leave_category = 'leave'
-  GROUP BY  ds.ds_day
-  ORDER BY  ds.ds_day ASC;
+  FROM day_series ds
+  LEFT JOIN day_metrics dm ON dm.ds_day = ds.ds_day
+  LEFT JOIN daily_work dw ON dw.work_day = ds.ds_day
+  GROUP BY ds.ds_day, dm.present_cnt, dm.wfh_cnt, dm.on_leave_cnt, dm.absent_cnt
+  ORDER BY ds.ds_day ASC;
 END;
 $$;
   `.trim();

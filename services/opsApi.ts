@@ -249,7 +249,7 @@ export const opsApi = {
     // Upload picture to storage if present
     if (fileToUpload) {
       try {
-        const uploadResult = await api.uploadDocument(fileToUpload, 'support-attachments');
+        const uploadResult = await api.uploadDocument(fileToUpload, 'documents');
         pictureUrl = uploadResult.url;
         pictureName = fileToUpload.name;
       } catch (err) {
@@ -266,7 +266,7 @@ export const opsApi = {
     const { id, createdAt, updatedAt, ...rest } = snagData as any;
     let query;
 
-    if (id && !id.startsWith('snag-')) {
+    if (id && !id.startsWith('snag-') && !id.startsWith('sample-')) {
       query = supabase.from('snag_audits').update(toSnakeCase(rest)).eq('id', id);
     } else {
       const { id: _, ...insertRest } = rest;
@@ -274,7 +274,10 @@ export const opsApi = {
     }
 
     const { data, error } = await query.select('*').single();
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase saveSnagEntry error details:', error);
+      throw error;
+    }
 
     const saved = toCamelCase(data) as SnagEntry;
 

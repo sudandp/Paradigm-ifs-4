@@ -1,6 +1,19 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../../services/api';
+import {
+    Chart,
+    BarController,
+    BarElement,
+    DoughnutController,
+    ArcElement,
+    CategoryScale,
+    LinearScale,
+    Tooltip,
+    Legend,
+} from 'chart.js';
+
+Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
 import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2 } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
@@ -104,8 +117,9 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
+    const [chartRequests, setChartRequests] = useState<LeaveRequest[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [correctionRequestId, setCorrectionRequestId] = useState<string | null>(null);
     const [userHolidays, setUserHolidays] = useState<(UserHoliday & { userName?: string })[]>([]);
@@ -258,7 +272,7 @@ const LeaveManagement: React.FC = () => {
             
             // Determine filter based on role and current filter tab
             const leaveFilter: any = { 
-                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave') ? filter : undefined,
+                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave' && filter !== 'permission') ? filter : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
                 startDate: startDate || undefined,
                 endDate: endDate || undefined,
@@ -274,6 +288,8 @@ const LeaveManagement: React.FC = () => {
                 leaveFilter.leaveType = 'Loss of Pay';
             } else if (filter === 'comp_off_leave') {
                 leaveFilter.leaveType = 'Comp Off';
+            } else if (filter === 'permission') {
+                leaveFilter.leaveType = 'Permission';
             }
 
             // Admin / SuperAdmin / HR / Management see all requests.
@@ -299,7 +315,23 @@ const LeaveManagement: React.FC = () => {
                 pageSize: pageSize
             };
 
-            const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes] = await Promise.all([
+            // Stats filter (fetches all leaves for the selected range/employee without pagination)
+            const statsFilter: any = {
+                userId: selectedUserId !== 'all' ? selectedUserId : undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
+            };
+            if (!['admin', 'super_admin', 'hr', 'management'].includes(user.role)) {
+                const teamMembers = await api.getTeamMembers(user.id);
+                const teamIds = teamMembers.map(m => m.id);
+                if (selectedUserId !== 'all') {
+                    statsFilter.userId = teamIds.includes(selectedUserId) ? selectedUserId : 'none';
+                } else {
+                    statsFilter.userIds = teamIds;
+                }
+            }
+
+            const [leaveRes, claimsRes, allUserHolidaysRes, settingsRes, auditLogsRes, statsRes] = await Promise.all([
                 filter === 'corrections' 
                     ? api.getLeaveRequests({ 
                         ...leaveFilter, 
@@ -311,7 +343,8 @@ const LeaveManagement: React.FC = () => {
                 filter === 'claims' && isApprover ? api.getExtraWorkLogs(claimsFilter) : Promise.resolve({ data: [], total: 0 }),
                 filter === 'holiday_selection' ? api.getAllUserHolidays() : Promise.resolve([]),
                 filter === 'holiday_selection' ? api.getInitialAppData() : Promise.resolve(null),
-                filter === 'corrections' ? api.getAttendanceAuditLogs(startDate || startOfMonth(new Date()).toISOString(), endDate || endOfMonth(new Date()).toISOString()) : Promise.resolve([])
+                filter === 'corrections' ? api.getAttendanceAuditLogs(startDate || startOfMonth(new Date()).toISOString(), endDate || endOfMonth(new Date()).toISOString()) : Promise.resolve([]),
+                api.getLeaveRequests(statsFilter)
             ]);
 
             let finalRequests = leaveRes.data;
@@ -329,6 +362,7 @@ const LeaveManagement: React.FC = () => {
             }));
 
             setRequests(finalRequests);
+            setChartRequests(statsRes.data || []);
             setClaims(claimsRes.data);
             setUserHolidays(allUserHolidaysRes);
             setAuditLogs(mappedAuditLogs);
@@ -523,6 +557,9 @@ const LeaveManagement: React.FC = () => {
         } else if (statusFilter === 'comp_off_leave') {
             actualStatus = undefined;
             exportLeaveType = 'Comp Off';
+        } else if (statusFilter === 'permission') {
+            actualStatus = undefined;
+            exportLeaveType = 'Permission';
         } else {
             // Inherit from active filter if the current tab is category-specific
             if (filter === 'sick_leave') {
@@ -533,6 +570,8 @@ const LeaveManagement: React.FC = () => {
                 exportLeaveType = 'Loss of Pay';
             } else if (filter === 'comp_off_leave') {
                 exportLeaveType = 'Comp Off';
+            } else if (filter === 'permission') {
+                exportLeaveType = 'Permission';
             }
         }
 
@@ -736,12 +775,13 @@ const LeaveManagement: React.FC = () => {
         { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
     ];
 
-    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave'> = [
+    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission'> = [
         'pending_manager_approval', 
         'claims', 
         'pending_hr_confirmation', 
         'holiday_selection', 
         'corrections', 
+        'permission',
         'sick_leave',
         'earned_leave',
         'lop_leave',
@@ -889,8 +929,60 @@ const LeaveManagement: React.FC = () => {
         if (tab === 'comp_off_leave') return 'Comp Off';
         if (tab === 'sick_leave') return 'Sick Leave';
         if (tab === 'earned_leave') return 'Earned Leave';
+        if (tab === 'permission') return 'Permissions';
         return tab.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     };
+
+    const chartData = useMemo(() => {
+        const leaveTypeCounts: Record<string, number> = {};
+        const dateCounts: Record<string, number> = {};
+        const roleCounts: Record<string, number> = {};
+
+        const userRoleMap = new Map<string, string>();
+        allUsers.forEach(u => {
+            if (u.id && u.role) {
+                userRoleMap.set(u.id, u.role);
+            }
+        });
+
+        chartRequests.forEach(req => {
+            if (req.status === 'rejected' || req.status === 'cancelled' || req.status === 'withdrawn') {
+                return;
+            }
+
+            const type = req.leaveType || 'Other';
+            leaveTypeCounts[type] = (leaveTypeCounts[type] || 0) + 1;
+
+            if (req.startDate) {
+                const formattedDate = formatSafeDate(req.startDate, 'dd MMM');
+                dateCounts[formattedDate] = (dateCounts[formattedDate] || 0) + 1;
+            }
+
+            const rawRole = userRoleMap.get(req.userId) || 'Unknown';
+            const role = rawRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            roleCounts[role] = (roleCounts[role] || 0) + 1;
+        });
+
+        const types = Object.keys(leaveTypeCounts);
+        const typeValues = Object.values(leaveTypeCounts);
+
+        const dates = Object.keys(dateCounts).sort((a, b) => {
+            return new Date(a + ' ' + new Date().getFullYear()).getTime() - new Date(b + ' ' + new Date().getFullYear()).getTime();
+        });
+        const dateValues = dates.map(d => dateCounts[d]);
+
+        const roles = Object.keys(roleCounts).sort((a, b) => roleCounts[b] - roleCounts[a]);
+        const roleValues = roles.map(r => roleCounts[r]);
+
+        return {
+            types,
+            typeValues,
+            dates,
+            dateValues,
+            roles,
+            roleValues
+        };
+    }, [chartRequests, allUsers]);
 
     if (isLoading) {
         return <LoadingScreen message="Loading approval data..." />;
@@ -1121,6 +1213,42 @@ const LeaveManagement: React.FC = () => {
                 </div>
             </div>
 
+            {/* Analytics Dashboard Section */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                {/* Leave Types Card */}
+                <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-2 ml-1">Leave Type Distribution</h3>
+                        <p className="text-2xl font-black text-primary-text mb-4 ml-1">
+                            {chartRequests.filter(r => r.status !== 'rejected' && r.status !== 'cancelled' && r.status !== 'withdrawn').length} <span className="text-xs font-normal text-muted">Active Requests</span>
+                        </p>
+                    </div>
+                    <LeaveTypeChart labels={chartData.types} values={chartData.typeValues} />
+                </div>
+
+                {/* Daily Leave Trend Card */}
+                <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-2 ml-1">Daily Leave Trend</h3>
+                        <p className="text-2xl font-black text-primary-text mb-4 ml-1">
+                            {chartData.dates.length} <span className="text-xs font-normal text-muted">Unique Days</span>
+                        </p>
+                    </div>
+                    <LeaveTrendChart labels={chartData.dates} values={chartData.dateValues} />
+                </div>
+
+                {/* Leaves by Employee Role Card */}
+                <div className="bg-card p-5 rounded-2xl border border-border shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-2 ml-1">Leaves by Employee Category</h3>
+                        <p className="text-2xl font-black text-primary-text mb-4 ml-1">
+                            {chartData.roles.length} <span className="text-xs font-normal text-muted">Categories Active</span>
+                        </p>
+                    </div>
+                    <EmployeeRoleChart labels={chartData.roles} values={chartData.roleValues} />
+                </div>
+            </div>
+
             <div className="mb-6">
                 <div className="w-full sm:w-auto md:border-b border-border">
                     <nav className="flex flex-col md:flex-row md:space-x-6 md:overflow-x-auto space-y-1 md:space-y-0" aria-label="Tabs">
@@ -1202,7 +1330,23 @@ const LeaveManagement: React.FC = () => {
                                                         <span className="truncate max-w-[120px]" title={req.userName}>{req.userName}</span>
                                                     </div>
                                                 </td>
-                                                <td data-label="Type" className="px-4 py-3 text-muted">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</td>
+                                                <td data-label="Type" className="px-4 py-3 text-muted">
+                                             <div className="font-semibold text-primary-text">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</div>
+                                             {req.correctionDetails && (
+                                                 <div className="mt-1.5 text-[11px] space-y-0.5 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-emerald-600 font-medium">
+                                                     <div className="flex items-center gap-1.5">
+                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                         <strong>Requested:</strong> {req.correctionDetails.punchIn || '--'} - {req.correctionDetails.punchOut || '--'}
+                                                     </div>
+                                                     {req.correctionDetails.originalLogs && (
+                                                         <div className="flex items-center gap-1.5 text-muted/80">
+                                                             <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                                             <strong>Original:</strong> {req.correctionDetails.originalLogs.punchIn || '--'} - {req.correctionDetails.originalLogs.punchOut || '--'}
+                                                         </div>
+                                                     )}
+                                                 </div>
+                                             )}
+                                         </td>
                                                 <td data-label="Dates" className="px-4 py-3 text-muted">{formatSafeDate(req.startDate, 'dd MMM')} - {formatSafeDate(req.endDate, 'dd MMM')}</td>
                                                 <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                                 <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
@@ -1540,7 +1684,23 @@ const LeaveManagement: React.FC = () => {
                                                 <span className="truncate max-w-[120px]" title={req.userName}>{req.userName}</span>
                                             </div>
                                         </td>
-                                        <td data-label="Type" className="px-4 py-3 text-muted">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</td>
+                                        <td data-label="Type" className="px-4 py-3 text-muted">
+                                            <div className="font-semibold text-primary-text">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</div>
+                                            {req.correctionDetails && (
+                                                <div className="mt-1.5 text-[11px] space-y-0.5 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-emerald-600 font-medium">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                        <strong>Requested:</strong> {req.correctionDetails.punchIn || '--'} - {req.correctionDetails.punchOut || '--'}
+                                                    </div>
+                                                    {req.correctionDetails.originalLogs && (
+                                                        <div className="flex items-center gap-1.5 text-muted/80">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                                            <strong>Original:</strong> {req.correctionDetails.originalLogs.punchIn || '--'} - {req.correctionDetails.originalLogs.punchOut || '--'}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td data-label="Dates" className="px-4 py-3 text-muted">{formatSafeDate(req.startDate, 'dd MMM')} - {formatSafeDate(req.endDate, 'dd MMM')}</td>
                                         <td data-label="Raised On" className="px-4 py-3 text-muted">{formatSafeDate((req as any).createdAt, 'dd MMM, hh:mm a')}</td>
                                         <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
@@ -1613,6 +1773,233 @@ const LeaveManagement: React.FC = () => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+const LeaveTypeChart: React.FC<{ labels: string[]; values: number[] }> = ({ labels, values }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const instanceRef = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        if (instanceRef.current) instanceRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+
+        if (labels.length === 0) {
+            instanceRef.current = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [1], backgroundColor: ['#e2e8f0'], borderWidth: 0 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+            return;
+        }
+
+        instanceRef.current = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#10B981', '#3B82F6', '#F59E0B', '#EF4444',
+                        '#EC4899', '#06B6D4', '#8B5CF6', '#6B7280'
+                    ],
+                    borderWidth: 1,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                            boxWidth: 10,
+                            padding: 10,
+                            font: { family: "'Inter', sans-serif", size: 10 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 8,
+                        cornerRadius: 6
+                    }
+                }
+            }
+        });
+
+        return () => { instanceRef.current?.destroy(); };
+    }, [labels, values]);
+
+    return (
+        <div className="h-40 relative w-full flex items-center justify-center">
+            <canvas ref={canvasRef}></canvas>
+        </div>
+    );
+};
+
+const LeaveTrendChart: React.FC<{ labels: string[]; values: number[] }> = ({ labels, values }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const instanceRef = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        if (instanceRef.current) instanceRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+
+        if (labels.length === 0) {
+            instanceRef.current = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [0], backgroundColor: ['#e2e8f0'] }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { display: false }, x: { display: false } },
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+            return;
+        }
+
+        instanceRef.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Leaves Taken',
+                    data: values,
+                    backgroundColor: '#10B981',
+                    borderRadius: 4,
+                    maxBarThickness: 30
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(128,128,128,0.08)' },
+                        ticks: { precision: 0 }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 9 }, maxTicksLimit: 7 }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 8,
+                        cornerRadius: 6
+                    }
+                }
+            }
+        });
+
+        return () => { instanceRef.current?.destroy(); };
+    }, [labels, values]);
+
+    return (
+        <div className="h-40 relative w-full">
+            <canvas ref={canvasRef}></canvas>
+        </div>
+    );
+};
+
+const EmployeeRoleChart: React.FC<{ labels: string[]; values: number[] }> = ({ labels, values }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const instanceRef = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        if (instanceRef.current) instanceRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+
+        if (labels.length === 0) {
+            instanceRef.current = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [0], backgroundColor: ['#e2e8f0'] }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { display: false }, x: { display: false } },
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+            return;
+        }
+
+        instanceRef.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.slice(0, 5),
+                datasets: [{
+                    label: 'Leaves by Role',
+                    data: values.slice(0, 5),
+                    backgroundColor: '#3B82F6',
+                    borderRadius: 4,
+                    maxBarThickness: 12
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(128,128,128,0.08)' },
+                        ticks: { precision: 0 }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { font: { size: 9 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 8,
+                        cornerRadius: 6
+                    }
+                }
+            }
+        });
+
+        return () => { instanceRef.current?.destroy(); };
+    }, [labels, values]);
+
+    return (
+        <div className="h-40 relative w-full">
+            <canvas ref={canvasRef}></canvas>
         </div>
     );
 };

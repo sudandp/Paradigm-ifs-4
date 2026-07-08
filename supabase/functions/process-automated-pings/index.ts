@@ -154,8 +154,6 @@ serve(async (req: Request) => {
         },
         body: JSON.stringify({
           userIds: [userId],
-          title: "Location Ping",
-          body: "Background ping request",
           data: {
             type: "SILENT_TRACKING_PING",
             requestId: requestId,   // ← Android reads via data.get("requestId")

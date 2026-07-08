@@ -699,9 +699,8 @@ export const useAuthStore = create<AuthState>()(
                 // --- 14-Day Offline Limit Check ---
                 const isSessionValid = await get().checkOfflineSession();
                 if (!isSessionValid) return;
-                // All non-office roles (Site, Field, and Unverified) need a long lookback (48h) 
-                // because site work and OT often cross midnight.
-                const siteShiftLookbackMs = !isOfficeStaffRole ? 48 * 60 * 60 * 1000 : 0;
+                // All roles now use a 48h lookback to detect missing punch-outs from previous days
+                const siteShiftLookbackMs = 48 * 60 * 60 * 1000;
                 
                 const startOfDayStr = siteShiftLookbackMs > 0
                     ? new Date(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).getTime() - siteShiftLookbackMs).toISOString()
@@ -789,7 +788,7 @@ export const useAuthStore = create<AuthState>()(
                 let hasPreviousDayOpenSession = false;
                 let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
 
-                if (!isOfficeStaffRole && lastEvent) {
+                if (lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
                     const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
                     

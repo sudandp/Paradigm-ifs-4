@@ -105,6 +105,7 @@ const ProfilePage: React.FC = () => {
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+    const [missingPunchReason, setMissingPunchReason] = useState('');
     const [todayMetrics, setTodayMetrics] = useState({
         totalDistance: '0.00',
         travelTime: '0h 0m',
@@ -1199,7 +1200,7 @@ const ProfilePage: React.FC = () => {
                     {/* ═══ COMMAND CENTER ═══ */}
                     {user.role !== 'management' && (
                         <section className="flex flex-col items-center justify-center py-8 relative">
-                            {/* ── Previous Day Open Session Banner (Technical Reliever) ── */}
+                            {/* ── Previous Day Open Session Banner ── */}
                             {hasPreviousDayOpenSession && previousDaySessionInfo && (
                                 <div className="w-full max-w-sm mb-6 px-4">
                                     <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-900/40 to-orange-900/30 backdrop-blur-xl p-4 shadow-lg">
@@ -1207,58 +1208,49 @@ const ProfilePage: React.FC = () => {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-2">
                                                 <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">Open Session Detected</h4>
+                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">Missed Punch Out</h4>
                                             </div>
                                             <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
-                                                You have an unclosed session from <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
-                                                Last activity: <span className="font-semibold text-amber-100">{previousDaySessionInfo.lastEventType.replace(/-/g, ' ')} at {previousDaySessionInfo.lastEventTime}</span>
+                                                You forgot to punch out on <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
+                                                Please provide a reason to close the previous session and continue.
                                             </p>
-                                            <p className="text-[10px] text-amber-300/60 mb-3 uppercase tracking-widest font-bold">
-                                                Close session below or apply for correction
-                                            </p>
-                                            <div className="flex gap-2">
-                                                {isSiteOtCheckedIn && (
-                                                    <button
-                                                        onClick={() => {
-                                                            triggerHaptic(ImpactStyle.Medium);
-                                                            navigate('/attendance/check-out?workType=field&forcedType=site-ot-out');
-                                                        }}
-                                                        className="flex-1 py-2 px-3 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <Clock className="w-3.5 h-3.5" /> Site OT Out
-                                                    </button>
-                                                )}
-                                                {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
-                                                    <button
-                                                        onClick={() => {
-                                                            triggerHaptic(ImpactStyle.Medium);
-                                                            const wt = isFieldCheckedIn ? 'field' : 'office';
-                                                            navigate(`/attendance/check-out?workType=${wt}`);
-                                                        }}
-                                                        className="flex-1 py-2 px-3 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <LogOut className="w-3.5 h-3.5" /> Punch Out
-                                                    </button>
-                                                )}
+                                            <div className="space-y-3">
+                                                <textarea
+                                                    value={missingPunchReason}
+                                                    onChange={(e) => setMissingPunchReason(e.target.value)}
+                                                    placeholder="Reason for missing punch out..."
+                                                    className="w-full bg-black/20 border border-amber-500/30 rounded-lg p-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
+                                                    rows={2}
+                                                />
                                                 <button
+                                                    disabled={!missingPunchReason.trim() || isSubmittingAttendance}
                                                     onClick={async () => {
-                                                        triggerHaptic(ImpactStyle.Light);
-                                                        // Force close the session so they can start today
-                                                        if (effectivelyCheckedIn) {
-                                                            const wt = isFieldCheckedIn ? 'field' : 'office';
-                                                            await toggleCheckInStatus(
-                                                                'Closed for correction', 
-                                                                null, 
-                                                                wt as any, 
-                                                                undefined, 
-                                                                isSiteOtCheckedIn ? 'site-ot-out' : undefined
-                                                            );
+                                                        triggerHaptic(ImpactStyle.Medium);
+                                                        setIsSubmittingAttendance(true);
+                                                        try {
+                                                            if (effectivelyCheckedIn) {
+                                                                const wt = isFieldCheckedIn ? 'field' : 'office';
+                                                                const res = await toggleCheckInStatus(
+                                                                    `Missed punch closed: ${missingPunchReason}`, 
+                                                                    null, 
+                                                                    wt as any, 
+                                                                    undefined, 
+                                                                    isSiteOtCheckedIn ? 'site-ot-out' : undefined
+                                                                );
+                                                                if (res.success) {
+                                                                    setToast({ message: 'Previous session closed successfully.', type: 'success' });
+                                                                    setMissingPunchReason('');
+                                                                } else {
+                                                                    setToast({ message: res.message, type: 'error' });
+                                                                }
+                                                            }
+                                                        } finally {
+                                                            setIsSubmittingAttendance(false);
                                                         }
-                                                        navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
                                                     }}
-                                                    className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-amber-200 text-[13px] font-bold transition-all border border-amber-500/20 flex items-center justify-center gap-1.5"
+                                                    className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                                 >
-                                                    <FileText className="w-3.5 h-3.5" /> Correction
+                                                    {isSubmittingAttendance ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
                                                 </button>
                                             </div>
                                         </div>

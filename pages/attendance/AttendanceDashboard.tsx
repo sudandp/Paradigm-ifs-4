@@ -222,7 +222,7 @@ const ChartContainer: React.FC<{ title: string, icon: React.ElementType, childre
     </div>
 );
 
-const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number[], absent: number[] } }> = ({ data }) => {
+const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number[], absent: number[], wfh?: number[], onLeave?: number[] } }> = ({ data }) => {
     const chartRef = useRef<HTMLCanvasElement>(null);
     const chartInstance = useRef<Chart | null>(null);
 
@@ -241,8 +241,28 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                             {
                                 label: 'Present',
                                 data: data.present,
-                                backgroundColor: '#005D22',
-                                borderColor: '#004218',
+                                backgroundColor: '#006B3F',
+                                borderColor: '#005632',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                categoryPercentage: 0.85,
+                                barPercentage: 0.9,
+                            },
+                            {
+                                label: 'WFH',
+                                data: data.wfh || [],
+                                backgroundColor: '#3B82F6',
+                                borderColor: '#2563EB',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                categoryPercentage: 0.85,
+                                barPercentage: 0.9,
+                            },
+                            {
+                                label: 'On Leave',
+                                data: data.onLeave || [],
+                                backgroundColor: '#F59E0B',
+                                borderColor: '#D97706',
                                 borderWidth: 1,
                                 borderRadius: 4,
                                 categoryPercentage: 0.85,
@@ -378,6 +398,72 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                             }
                         }
                     }]
+                });
+            }
+        }
+        return () => {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(data)]);
+
+    return (
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <canvas ref={chartRef}></canvas>
+        </div>
+    );
+};
+
+const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: number[] } }> = ({ data }) => {
+    const chartRef = useRef<HTMLCanvasElement>(null);
+    const chartInstance = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (chartRef.current) {
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx) {
+                chartInstance.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: 'Present Employees',
+                            data: data.values,
+                            backgroundColor: '#10b981',
+                            borderRadius: 4,
+                            barPercentage: 0.6,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(128,128,128,0.1)' },
+                                ticks: { stepSize: 1, precision: 0 }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { maxRotation: 45, minRotation: 0 }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#0F172A',
+                                titleFont: { family: "'Manrope', sans-serif" },
+                                bodyFont: { family: "'Manrope', sans-serif" },
+                                cornerRadius: 8,
+                                padding: 12,
+                            }
+                        }
+                    }
                 });
             }
         }
@@ -593,13 +679,13 @@ interface DashboardData {
     absentToday: number;
     onLeaveToday: number;
     inactiveCount: number;
-    attendanceTrend: { labels: string[]; present: number[]; absent: number[] };
+    attendanceTrend: { labels: string[]; present: number[]; absent: number[]; wfh: number[]; onLeave: number[] };
     productivityTrend: { labels: string[]; hours: number[] };
-    // Client View specific
-    lateArrivalsToday?: number;
-    pendingLeavesToday?: number;
-    approvedLeavesToday?: number;
+    lateArrivalsToday: number;
+    pendingLeavesToday: number;
+    approvedLeavesToday: number;
     roleDistribution?: { labels: string[]; values: number[] };
+    departmentDistribution?: { labels: string[]; values: number[] };
     topPerformers?: { name: string; role: string; value: string }[];
 }
 
@@ -777,7 +863,13 @@ const AttendanceCharts = ({ data, loading }: { data: ReturnType<typeof buildChar
     if (loading || !data) return <BarChartSkeleton />;
     return (
         <div className="h-64 md:h-[320px] relative mt-4">
-            <AttendanceTrendChart data={{ labels: data.labels, present: data.presentTrend, absent: data.absentTrend }} />
+            <AttendanceTrendChart data={{ 
+                labels: data.labels, 
+                present: data.presentTrend, 
+                absent: data.absentTrend,
+                wfh: (data as any).wfhTrend,
+                onLeave: (data as any).onLeaveTrend
+            }} />
         </div>
     );
 };
@@ -1548,13 +1640,20 @@ const AttendanceDashboard: React.FC = () => {
                 const days = eachDayOfInterval({ start: startDate, end: endDate });
                 const isRangeLong = days.length > 1;
                 
+                let chartDays = days;
+                if (days.length === 1) {
+                    chartDays = eachDayOfInterval({ start: subDays(days[0], 2), end: days[0] });
+                }
+                
                 let totalPresentForRange = 0;
                 let totalOnLeaveForRange = 0;
                 let totalAbsentForRange = 0;
 
-                const labels = days.map(d => format(d, 'dd MMM'));
+                const labels = chartDays.map(d => format(d, 'dd MMM'));
                 const presentTrend: number[] = [];
                 const absentTrend: number[] = [];
+                const wfhTrend: number[] = [];
+                const onLeaveTrend: number[] = [];
                 const productivityTrend: number[] = [];
 
                 const todayDateStr = format(today, 'yyyy-MM-dd');
@@ -1564,7 +1663,7 @@ const AttendanceDashboard: React.FC = () => {
                 const todayAbsentCutoffHour = 11;
                 const showTodayAbsent = today.getHours() >= todayAbsentCutoffHour;
 
-                days.forEach(day => {
+                chartDays.forEach(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const isToday = dateStr === todayDateStr;
                     const rawDayEvents = eventsByDate.get(dateStr) || [];
@@ -1576,30 +1675,62 @@ const AttendanceDashboard: React.FC = () => {
                         return day >= start && day <= end && activeStaffIds.has(l.userId);
                     });
 
-                    const dayWFHUserIds = new Set(dayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId));
-                    const uniqueUsersPresent = new Set([...dayEvents.map(e => e.userId), ...Array.from(dayWFHUserIds)]).size;
-                    const usersOnLeave = new Set(dayLeaves.filter(l => l.leaveType !== 'WFH').map(l => l.userId)).size;
-                    // For today: only show absent if we're past the cut-off hour, to avoid inflating
-                    // the bar with employees who are simply yet to punch in during an in-progress day.
-                    const rawAbsent = Math.max(0, activeStaff.length - uniqueUsersPresent - usersOnLeave - inactiveCount);
-                    const absent = isToday && !showTodayAbsent ? 0 : rawAbsent;
+                    let presentCount = 0;
+                    let wfhCount = 0;
+                    let leaveCount = 0;
+                    let absentCount = 0;
 
-                    totalPresentForRange += uniqueUsersPresent;
-                    totalOnLeaveForRange += usersOnLeave;
+                    activeStaff.forEach(user => {
+                        const userId = String(user.id);
+                        const userEvents = dayEvents.filter(e => e.userId === userId);
+                        
+                        const isSundayCheck = day.getDay() === 0;
+                        
+                        // Resolve user category for holiday check
+                        let resolvedRole = user.role;
+                        if (user.role && user.role.length > 20 && allRoles.length > 0) {
+                            const roleObj = allRoles.find(r => r.id === user.role);
+                            if (roleObj) {
+                                resolvedRole = roleObj.displayName.toLowerCase().replace(/\s+/g, '_');
+                            }
+                        }
+                        const userCategory = getStaffCategory(resolvedRole || user.role);
+
+                        const isConfiguredHoliday = (userCategory === 'field' ? fieldHolidays : officeHolidays).some(h => {
+                            const hVal = String(h.date).split(' ')[0].split('T')[0];
+                            return hVal === dateStr;
+                        });
+
+                        const hasApprovedLeave = dayLeaves.some(l => l.userId === userId && l.leaveType !== 'WFH');
+                        const hasWFH = dayLeaves.some(l => l.userId === userId && l.leaveType === 'WFH');
+                        const hasActivity = userEvents.length > 0;
+
+                        if (hasActivity) {
+                            presentCount++;
+                        } else if (hasWFH) {
+                            wfhCount++;
+                        } else if (hasApprovedLeave) {
+                            leaveCount++;
+                        } else if (isConfiguredHoliday || isSundayCheck) {
+                            // Holiday / Week Off - not absent!
+                        } else {
+                            absentCount++;
+                        }
+                    });
+
+                    const absent = isToday && !showTodayAbsent ? 0 : absentCount;
+
+                    totalPresentForRange += presentCount + wfhCount;
+                    totalOnLeaveForRange += leaveCount;
                     totalAbsentForRange += absent;
-                    presentTrend.push(uniqueUsersPresent);
-                    absentTrend.push(absent);
 
+                    presentTrend.push(presentCount);
+                    wfhTrend.push(wfhCount);
+                    onLeaveTrend.push(leaveCount);
+                    absentTrend.push(absent);
                 });
 
-                let prodDays = days;
-                let prodLabels = labels;
-                if (days.length === 1) {
-                    prodDays = eachDayOfInterval({ start: subDays(days[0], 2), end: days[0] });
-                    prodLabels = prodDays.map(d => format(d, 'd MMM'));
-                }
-
-                prodDays.forEach(day => {
+                chartDays.forEach(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
                     const rawDayEvents = eventsByDate.get(dateStr) || [];
                     const dayEvents = rawDayEvents.filter(e => activeStaffIds.has(e.userId));
@@ -1678,6 +1809,7 @@ const AttendanceDashboard: React.FC = () => {
 
                     // Role Distribution (Donut Chart) for today's present users
                     const roleCounts: Record<string, number> = {};
+                    const deptCounts: Record<string, number> = {};
                     const presentUsers = new Set([...todayEvents.map(e => e.userId), ...Array.from(todayLeaves.filter(l => l.leaveType === 'WFH').map(l => l.userId))]);
                     presentUsers.forEach(uid => {
                         const u = activeStaff.find(st => st.id === uid);
@@ -1688,11 +1820,19 @@ const AttendanceDashboard: React.FC = () => {
                                 if (rObj) rName = rObj.displayName.replace(/_/g, ' ');
                             }
                             roleCounts[rName] = (roleCounts[rName] || 0) + 1;
+                            
+                            let dName = (u as any).department || rName || 'Unknown';
+                            dName = dName.replace(/_/g, ' ');
+                            deptCounts[dName] = (deptCounts[dName] || 0) + 1;
                         }
                     });
                     const labelsDist = Object.keys(roleCounts).map(k => k.charAt(0).toUpperCase() + k.slice(1));
                     const valuesDist = Object.values(roleCounts);
                     roleDistribution = { labels: labelsDist, values: valuesDist };
+
+                    const deptLabels = Object.keys(deptCounts).map(k => k.charAt(0).toUpperCase() + k.slice(1));
+                    const deptValues = Object.values(deptCounts);
+                    let departmentDistribution = { labels: deptLabels, values: deptValues };
 
                     // Top Performers (Total hours worked in range)
                     const userTotalHours: Record<string, number> = {};
@@ -1798,12 +1938,19 @@ const AttendanceDashboard: React.FC = () => {
                     absentToday: isRangeLong ? avgAbsent : Math.max(0, activeStaff.length - presentToday - onLeaveToday - inactiveCount),
                     onLeaveToday: isRangeLong ? avgOnLeave : onLeaveToday,
                     inactiveCount,
-                    attendanceTrend: { labels, present: presentTrend, absent: absentTrend },
-                    productivityTrend: { labels: prodLabels, hours: productivityTrend },
+                    attendanceTrend: { 
+                        labels, 
+                        present: presentTrend, 
+                        absent: absentTrend,
+                        wfh: wfhTrend,
+                        onLeave: onLeaveTrend
+                    },
+                    productivityTrend: { labels: labels, hours: productivityTrend },
                     lateArrivalsToday,
                     pendingLeavesToday,
                     approvedLeavesToday,
                     roleDistribution,
+                    departmentDistribution,
                     topPerformers
                 });
             } catch (error) {
@@ -1814,7 +1961,7 @@ const AttendanceDashboard: React.FC = () => {
                     absentToday: 0,
                     onLeaveToday: 0,
                     inactiveCount: 0,
-                    attendanceTrend: { labels: [], present: [], absent: [] },
+                    attendanceTrend: { labels: [], present: [], absent: [], wfh: [], onLeave: [] },
                     productivityTrend: { labels: [], hours: [] },
                 });
             } finally {
@@ -3360,6 +3507,77 @@ const AttendanceDashboard: React.FC = () => {
         }
     };
 
+    const advancedAnalyticsData = useMemo(() => {
+        if (users.length === 0) {
+            return {
+                performanceLabels: [],
+                performanceValues: [],
+                activeCount: 0,
+                inactiveCount: 0,
+            };
+        }
+
+        const roleHours: Record<string, { totalHours: number; count: number }> = {};
+        
+        const userEventsMap = new Map<string, Map<string, AttendanceEvent[]>>();
+        attendanceEvents.forEach(e => {
+            const userId = String(e.userId);
+            const dateStr = format(new Date(e.timestamp), 'yyyy-MM-dd');
+            if (!userEventsMap.has(userId)) userEventsMap.set(userId, new Map());
+            const dateMap = userEventsMap.get(userId)!;
+            if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
+            dateMap.get(dateStr)!.push(e);
+        });
+
+        users.forEach(user => {
+            const userId = String(user.id);
+            const userDays = userEventsMap.get(userId);
+            if (!userDays) return;
+
+            let resolvedRole = user.role || 'Other';
+            if (resolvedRole.length > 20 && allRoles.length > 0) {
+                const roleObj = allRoles.find(r => r.id === resolvedRole);
+                if (roleObj) resolvedRole = roleObj.displayName;
+            }
+            resolvedRole = resolvedRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+            if (!roleHours[resolvedRole]) {
+                roleHours[resolvedRole] = { totalHours: 0, count: 0 };
+            }
+
+            userDays.forEach((eventsList, dateStr) => {
+                const { workingHours } = processDailyEvents(eventsList, new Date(dateStr));
+                if (workingHours > 0) {
+                    roleHours[resolvedRole].totalHours += workingHours;
+                    roleHours[resolvedRole].count += 1;
+                }
+            });
+        });
+
+        const sortedRoles = Object.keys(roleHours)
+            .map(role => ({
+                role,
+                avgHours: roleHours[role].count > 0 
+                    ? parseFloat((roleHours[role].totalHours / roleHours[role].count).toFixed(1))
+                    : 0
+            }))
+            .filter(item => item.avgHours > 0)
+            .sort((a, b) => b.avgHours - a.avgHours);
+
+        const performanceLabels = sortedRoles.map(item => item.role);
+        const performanceValues = sortedRoles.map(item => item.avgHours);
+
+        const activeCount = users.filter(u => (u as any).isActive !== false).length;
+        const inactiveCount = users.filter(u => (u as any).isActive === false).length;
+
+        return {
+            performanceLabels,
+            performanceValues,
+            activeCount,
+            inactiveCount
+        };
+    }, [users, attendanceEvents, allRoles]);
+
     if (!isInitialLoadComplete || !user) {
         return <LoadingScreen message="Fetching attendance data..." />;
     }
@@ -4015,6 +4233,58 @@ const AttendanceDashboard: React.FC = () => {
                 </div>
             )}
 
+            {/* Advanced Analytics Section */}
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${isClientOrManagerView ? 'lg:grid-cols-3' : ''} gap-6 mt-6`}>
+                {/* Department Attendance (Present Count) */}
+                {isClientOrManagerView && (
+                    <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm">
+                        <div className="flex items-center mb-6">
+                            <Users className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
+                            <h3 className="font-semibold text-white md:text-primary-text">Department Attendance (Present)</h3>
+                        </div>
+                        <div className="h-64 relative">
+                            {isLoading || !dashboardData?.departmentDistribution ? (
+                                <BarChartSkeleton />
+                            ) : (
+                                <DepartmentAttendanceChart data={dashboardData.departmentDistribution} />
+                            )}
+                        </div>
+                    </div>
+                )}
+                
+                {/* Department Performance */}
+                <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm lg:col-span-1">
+                    <div className="flex items-center mb-6">
+                        <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
+                        <h3 className="font-semibold text-white md:text-primary-text">Department Performance (Avg Working Hours)</h3>
+                    </div>
+                    {isLoading ? (
+                        <BarChartSkeleton />
+                    ) : (
+                        <DepartmentPerformanceChart 
+                            labels={advancedAnalyticsData.performanceLabels} 
+                            values={advancedAnalyticsData.performanceValues} 
+                        />
+                    )}
+                </div>
+
+                {/* Staff Retention / Attrition Ratio */}
+                <div className="bg-[#0b291a] md:bg-card p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-border shadow-sm lg:col-span-1">
+                    <div className="flex items-center mb-6">
+                        <BarChart3 className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
+                        <h3 className="font-semibold text-white md:text-primary-text">Staff Retention & Attrition Ratio</h3>
+                    </div>
+                    {isLoading || !dashboardData ? (
+                        <LineChartSkeleton />
+                    ) : (
+                        <AttritionRatioChart 
+                            active={dashboardData.totalEmployees - dashboardData.inactiveCount} 
+                            inactive={dashboardData.inactiveCount} 
+                        />
+                    )}
+                </div>
+            </div>
+
             {/* Report Preview Section */}
             <div className="block bg-[#0b291a] md:bg-white p-4 md:p-6 rounded-2xl border border-[#1a3d2c] md:border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -4173,6 +4443,166 @@ const AttendanceDashboard: React.FC = () => {
                     onDismiss={() => setToast(null)}
                 />
             )}
+        </div>
+    );
+};
+
+const DepartmentPerformanceChart: React.FC<{ labels: string[]; values: number[] }> = ({ labels, values }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const instanceRef = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        if (instanceRef.current) instanceRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+
+        if (labels.length === 0) {
+            instanceRef.current = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [0], backgroundColor: ['#e2e8f0'] }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { display: false }, x: { display: false } },
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+            return;
+        }
+
+        instanceRef.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.slice(0, 7),
+                datasets: [{
+                    label: 'Avg Hours Worked / Day',
+                    data: values.slice(0, 7),
+                    backgroundColor: '#10B981',
+                    borderRadius: 6,
+                    maxBarThickness: 35
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(128, 128, 128, 0.08)' },
+                        title: {
+                            display: true,
+                            text: 'Hours',
+                            font: { family: "'Manrope', sans-serif", size: 10, weight: 'bold' }
+                        }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 10 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 10,
+                        cornerRadius: 6
+                    }
+                }
+            }
+        });
+
+        return () => { instanceRef.current?.destroy(); };
+    }, [labels, values]);
+
+    return (
+        <div className="h-64 md:h-[320px] relative w-full">
+            <canvas ref={canvasRef}></canvas>
+        </div>
+    );
+};
+
+const AttritionRatioChart: React.FC<{ active: number; inactive: number }> = ({ active, inactive }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const instanceRef = useRef<Chart | null>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        if (instanceRef.current) instanceRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+
+        const total = active + inactive;
+        if (total === 0) {
+            instanceRef.current = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [1], backgroundColor: ['#e2e8f0'], borderWidth: 0 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+            return;
+        }
+
+        instanceRef.current = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Active Staff', 'Inactive Staff (Last 30d)'],
+                datasets: [{
+                    data: [active, inactive],
+                    backgroundColor: ['#10B981', '#EF4444'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 15,
+                            font: { family: "'Manrope', sans-serif", size: 11 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 10,
+                        cornerRadius: 6
+                    }
+                }
+            }
+        });
+
+        return () => { instanceRef.current?.destroy(); };
+    }, [active, inactive]);
+
+    const total = active + inactive;
+    const rate = total > 0 ? Math.round((inactive / total) * 100) : 0;
+
+    return (
+        <div className="h-64 md:h-[320px] relative w-full flex items-center justify-center">
+            <canvas ref={canvasRef}></canvas>
+            <div className="absolute flex flex-col items-center justify-center translate-y-[-15px]">
+                <span className="text-2xl font-black text-gray-900 md:text-gray-800">{rate}%</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Turnover Rate</span>
+            </div>
         </div>
     );
 };

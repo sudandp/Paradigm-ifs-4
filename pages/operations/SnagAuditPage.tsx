@@ -13,6 +13,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Pencil,
   Search,
   Trash2,
   Upload,
@@ -20,6 +21,10 @@ import {
   Eye,
   Calendar,
   User as UserIcon,
+  History,
+  Clock,
+  Info,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
@@ -28,6 +33,7 @@ import Select from '../../components/ui/Select';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { opsApi } from '../../services/opsApi';
+import { api } from '../../services/api';
 import type { SnagEntry, Criticality, PurposeOfVisit, Department } from '../../types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -91,25 +97,26 @@ const StatusBadge: React.FC<{ value: string }> = ({ value }) => (
 // ─── New Snag Form ────────────────────────────────────────────────────────────
 
 interface SnagFormProps {
+  initialData?: SnagEntry;
   onSave: (entry: SnagEntry, file?: File) => void;
   onCancel: () => void;
 }
 
-const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
+const SnagForm: React.FC<SnagFormProps> = ({ initialData, onSave, onCancel }) => {
   const { user } = useAuthStore();
   const [form, setForm] = useState({
-    nameOfSite: '',
-    purposeOfVisit: [] as PurposeOfVisit[],
-    department: [] as Department[],
-    criticality: 'Medium' as Criticality,
-    snagDescription: '',
-    actionToBeTaken: '',
-    remarks: '',
-    snagPictureName: '',
-    snagPictureUrl: '',
+    nameOfSite: initialData?.nameOfSite || '',
+    purposeOfVisit: initialData?.purposeOfVisit || ([] as PurposeOfVisit[]),
+    department: initialData?.department || ([] as Department[]),
+    criticality: initialData?.criticality || 'Medium' as Criticality,
+    snagDescription: initialData?.snagDescription || '',
+    actionToBeTaken: initialData?.actionToBeTaken || '',
+    remarks: initialData?.remarks || '',
+    snagPictureName: initialData?.snagPictureUrl?.split('/').pop() || '',
+    snagPictureUrl: initialData?.snagPictureUrl || '',
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.snagPictureUrl || null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const toggleCheckbox = <T extends string>(arr: T[], val: T): T[] =>
@@ -134,12 +141,12 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
       return;
     }
     const entry: SnagEntry = {
-      id: generateId(),
-      timestamp: new Date().toISOString(),
-      emailAddress: user?.email || '',
-      submittedBy: user?.name || user?.email || '',
-      status: 'Open',
+      id: initialData?.id || generateId(),
+      timestamp: initialData?.timestamp || new Date().toISOString(),
+      emailAddress: initialData?.emailAddress || user?.email || '',
       ...form,
+      status: initialData?.status || 'Open',
+      submittedBy: initialData?.submittedBy || user?.name || user?.email || '',
     };
     onSave(entry, selectedFile || undefined);
   };
@@ -213,7 +220,14 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
         >
           {imagePreview ? (
             <div className="relative">
-              <img src={imagePreview} alt="Snag" className="max-h-40 mx-auto rounded-lg object-cover" />
+              {imagePreview.startsWith('data:image/') || imagePreview.startsWith('http') ? (
+                <img src={imagePreview} alt="Snag" className="max-h-40 mx-auto rounded-lg object-cover" />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-4 bg-teal-50 rounded-lg max-w-[200px] mx-auto border border-teal-100">
+                  <FileSpreadsheet size={32} className="text-teal-600 mb-2" />
+                  <span className="text-xs text-teal-800 font-medium">Document Attached</span>
+                </div>
+              )}
               <p className="text-xs text-gray-500 mt-2">{form.snagPictureName}</p>
             </div>
           ) : (
@@ -302,41 +316,67 @@ const SnagForm: React.FC<SnagFormProps> = ({ onSave, onCancel }) => {
   );
 };
 
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
+// ─── Detail View ─────────────────────────────────────────────────────────────
 
-const SnagDetailModal: React.FC<{ entry: SnagEntry; onClose: () => void; onStatusChange: (id: string, status: SnagEntry['status']) => void }> = ({
+const SnagDetailView: React.FC<{ entry: SnagEntry; onBack: () => void; onStatusChange: (id: string, status: SnagEntry['status']) => void; canEdit?: boolean }> = ({
   entry,
-  onClose,
+  onBack,
   onStatusChange,
+  canEdit = true,
 }) => {
+  const [activeTab, setActiveTab] = useState<'details' | 'log'>('details');
   const statusOptions: SnagEntry['status'][] = ['Open', 'In Progress', 'Resolved'];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <button 
+        onClick={onBack}
+        className="flex items-center text-sm text-gray-500 hover:text-teal-600 transition-colors bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 w-fit"
       >
+        <ArrowLeft size={16} className="mr-2" />
+        Back to Audit List
+      </button>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden w-full">
         {/* Header */}
-        <div className="bg-gradient-to-r from-teal-700 to-teal-500 rounded-t-2xl p-5 text-white">
+        <div className="bg-gradient-to-r from-teal-700 to-teal-500 p-6 text-white">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-lg font-bold">{entry.nameOfSite}</h2>
-              <p className="text-teal-100 text-xs mt-1">{format(new Date(entry.timestamp), 'dd MMM yyyy, hh:mm a')}</p>
+              <h2 className="text-2xl font-bold">{entry.nameOfSite}</h2>
+              <p className="text-teal-100 text-sm mt-1">{format(new Date(entry.timestamp), 'dd MMM yyyy, hh:mm a')}</p>
             </div>
-            <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors">
-              <X size={18} />
-            </button>
           </div>
-          <div className="flex flex-wrap gap-2 mt-3">
+          <div className="flex flex-wrap gap-3 mt-4">
             <CriticalityBadge value={entry.criticality} />
             <StatusBadge value={entry.status} />
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 px-5 pt-3">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'details' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Info size={16} /> Details
+          </button>
+          <button
+            onClick={() => setActiveTab('log')}
+            className={`ml-6 pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'log' ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <History size={16} /> Audit Log
+          </button>
+        </div>
+
         {/* Body */}
         <div className="p-5 space-y-4">
-          {entry.snagPictureUrl && (
+          {activeTab === 'details' ? (
+            <>
+              {entry.snagPictureUrl && (
             <div className="rounded-xl overflow-hidden border border-gray-100">
               <img src={entry.snagPictureUrl} alt="Snag" className="w-full object-cover max-h-48" />
             </div>
@@ -365,24 +405,54 @@ const SnagDetailModal: React.FC<{ entry: SnagEntry; onClose: () => void; onStatu
           )}
 
           {/* Status change */}
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1.5">Update Status</label>
-            <div className="flex gap-2">
-              {statusOptions.map(s => (
-                <button
-                  key={s}
-                  onClick={() => { onStatusChange(entry.id, s); onClose(); }}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all ${
-                    entry.status === s
-                      ? 'bg-teal-600 text-white border-teal-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-600'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+          {canEdit && (
+            <div>
+              <label className="block text-xs text-gray-500 font-medium mb-1.5">Update Status</label>
+              <div className="flex gap-2">
+                {statusOptions.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => { onStatusChange(entry.id, s); onBack(); }}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all ${
+                      entry.status === s
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-600'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          </>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 flex items-start gap-3">
+                <div className="p-2 bg-white rounded-lg shadow-sm text-teal-600 border border-gray-100">
+                  <Clock size={16} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Snag Created</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {entry.createdAt ? format(new Date(entry.createdAt), 'dd MMM yyyy, hh:mm:ss a') : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 flex items-start gap-3">
+                <div className="p-2 bg-white rounded-lg shadow-sm text-amber-600 border border-gray-100">
+                  <History size={16} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Last Updated</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {entry.updatedAt ? format(new Date(entry.updatedAt), 'dd MMM yyyy, hh:mm:ss a') : 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -404,10 +474,12 @@ const InfoRow: React.FC<{ icon: React.ReactNode; label: string; value: string }>
 const SnagAuditPage: React.FC = () => {
   const { user } = useAuthStore();
   const [entries, setEntries] = useState<SnagEntry[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<SnagEntry | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<SnagEntry | null>(null);
   const [search, setSearch] = useState('');
   const [filterCriticality, setFilterCriticality] = useState('');
@@ -452,7 +524,29 @@ const SnagAuditPage: React.FC = () => {
 
   useEffect(() => {
     fetchEntries();
+    
+    // Fetch users for manager validation
+    api.getUsers({ fetchAll: true }).then(data => {
+      if (Array.isArray(data)) setUsers(data);
+      else if (data && Array.isArray(data.users)) setUsers(data.users);
+    }).catch(console.error);
   }, [fetchEntries]);
+
+  const canDelete = useCallback((entry: SnagEntry) => {
+    return ['admin', 'super_admin', 'developer'].includes(user?.role || '');
+  }, [user]);
+
+  const canEdit = useCallback((entry: SnagEntry) => {
+    if (['admin', 'super_admin', 'developer'].includes(user?.role || '')) return true;
+    if (user?.email === entry.emailAddress) return true;
+    
+    const uploader = users.find(u => u.email === entry.emailAddress);
+    if (uploader) {
+       const managerIds = [uploader.reportingManagerId, uploader.reportingManager2Id, uploader.reportingManager3Id];
+       if (managerIds.includes(user?.id)) return true;
+    }
+    return false;
+  }, [user, users]);
 
   const filtered = entries.filter(e => {
     const q = search.toLowerCase();
@@ -577,15 +671,19 @@ const SnagAuditPage: React.FC = () => {
           <p className="text-muted mt-1">Site inspection & defect tracking</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => importRef.current?.click()}
-            disabled={importing}
-          >
-            {importing ? <Loader2 size={15} className="animate-spin mr-1.5" /> : <FileSpreadsheet size={15} className="mr-1.5" />}
-            Import Excel
-          </Button>
-          <input ref={importRef} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={handleImport} />
+          {user?.role === 'admin' && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => importRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? <Loader2 size={15} className="animate-spin mr-1.5" /> : <FileSpreadsheet size={15} className="mr-1.5" />}
+                Import Excel
+              </Button>
+              <input ref={importRef} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={handleImport} />
+            </>
+          )}
           <Button
             variant="outline"
             onClick={exportCSV}
@@ -602,8 +700,17 @@ const SnagAuditPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {selectedEntry ? (
+        <SnagDetailView
+          entry={selectedEntry}
+          onBack={() => setSelectedEntry(null)}
+          onStatusChange={handleStatusChange}
+          canEdit={canEdit(selectedEntry)}
+        />
+      ) : (
+        <>
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Total Snags', value: stats.total, textColor: 'text-primary-text' },
           { label: 'High Criticality', value: stats.high, textColor: 'text-red-600' },
@@ -684,12 +791,14 @@ const SnagAuditPage: React.FC = () => {
       </div>
 
       {/* Import hint */}
-      <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3 text-sm text-primary-text">
-        <FileSpreadsheet size={18} className="shrink-0 mt-0.5 text-accent" />
-        <div>
-          <strong className="text-accent-dark">Import from Google Form Excel:</strong> Download your Google Sheets response file as TSV (Tab-separated) and use "Import Excel" button to load all snag entries automatically.
+      {user?.role === 'admin' && (
+        <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex items-start gap-3 text-sm text-primary-text">
+          <FileSpreadsheet size={18} className="shrink-0 mt-0.5 text-accent" />
+          <div>
+            <strong className="text-accent-dark">Import from Google Form Excel:</strong> Download your Google Sheets response file as TSV (Tab-separated) and use "Import Excel" button to load all snag entries automatically.
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
@@ -748,13 +857,27 @@ const SnagAuditPage: React.FC = () => {
                           >
                             <Eye size={14} />
                           </button>
-                          <button
-                            onClick={() => handleDelete(entry.id)}
-                            className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {canEdit(entry) && (
+                            <button
+                              onClick={() => {
+                                setEditingEntry(entry);
+                                setShowForm(true);
+                              }}
+                              className="p-1.5 hover:bg-amber-50 text-gray-400 hover:text-amber-600 rounded-lg transition-colors"
+                              title="Edit snag"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                          )}
+                          {canDelete(entry) && (
+                            <button
+                              onClick={() => handleDelete(entry.id)}
+                              className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -769,6 +892,8 @@ const SnagAuditPage: React.FC = () => {
             </div>
           )}
         </div>
+      </>
+      )}
 
       {/* New Snag Slide-in Panel */}
       {showForm && (
@@ -781,7 +906,7 @@ const SnagAuditPage: React.FC = () => {
                   <ClipboardCheck size={18} />
                   <h2 className="font-bold">New Snag Entry</h2>
                 </div>
-                <button onClick={() => setShowForm(false)} className="hover:bg-white/20 p-1.5 rounded-lg transition-colors">
+                <button onClick={() => { setShowForm(false); setEditingEntry(null); }} className="hover:bg-white/20 p-1.5 rounded-lg transition-colors">
                   <X size={16} />
                 </button>
               </div>
@@ -794,12 +919,14 @@ const SnagAuditPage: React.FC = () => {
                 </div>
               ) : (
                 <SnagForm
+                  initialData={editingEntry || undefined}
                   onSave={async (entry, file) => {
                     setIsSaving(true);
                     try {
                       await opsApi.saveSnagEntry(entry, file);
-                      toast.success('Snag entry saved successfully');
+                      toast.success(editingEntry ? 'Snag entry updated' : 'Snag entry saved successfully');
                       setShowForm(false);
+                      setEditingEntry(null);
                       fetchEntries();
                     } catch (err) {
                       console.error('Failed to save snag entry:', err);
@@ -808,21 +935,12 @@ const SnagAuditPage: React.FC = () => {
                       setIsSaving(false);
                     }
                   }}
-                  onCancel={() => setShowForm(false)}
+                  onCancel={() => { setShowForm(false); setEditingEntry(null); }}
                 />
               )}
             </div>
           </div>
         </div>
-      )}
-
-      {/* Detail Modal */}
-      {selectedEntry && (
-        <SnagDetailModal
-          entry={selectedEntry}
-          onClose={() => setSelectedEntry(null)}
-          onStatusChange={handleStatusChange}
-        />
       )}
     </div>
   );
