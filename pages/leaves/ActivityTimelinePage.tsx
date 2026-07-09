@@ -1,8 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, MapPin, Clock, Footprints, Maximize } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Footprints, Maximize, Navigation } from 'lucide-react';
 import { format } from 'date-fns';
 import Button from '../../components/ui/Button';
+import { supabase } from '../../services/supabase';
+import { useAuthStore } from '../../store/authStore';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet default icon path issues in React bundles
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
 
 export type DetailedActivityRecord = {
     dateStr: string;
@@ -31,9 +44,116 @@ export const ActivityTimelinePage: React.FC = () => {
     const location = useLocation();
     
     // Safely parse state
-    const state = location.state as { records?: DetailedActivityRecord[], type?: 'travel' | 'steps' };
+    const state = location.state as { records?: DetailedActivityRecord[], type?: 'travel' | 'steps', userId?: string };
     const records = state?.records || [];
     const type = state?.type || 'travel';
+
+    const [selectedDateForMap, setSelectedDateForMap] = useState<string | null>(null);
+    const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
+    const [isMapLoading, setIsMapLoading] = useState(false);
+    const { user } = useAuthStore();
+    const mapRef = useRef<HTMLDivElement | null>(null);
+    const leafletMapRef = useRef<any>(null);
+
+    const handleToggleMap = async (dateStr: string) => {
+        if (selectedDateForMap === dateStr) {
+            setSelectedDateForMap(null);
+            setRouteCoords([]);
+            return;
+        }
+
+        setSelectedDateForMap(dateStr);
+        setIsMapLoading(true);
+        setRouteCoords([]);
+
+        try {
+            const targetUserId = state?.userId || user?.id;
+            if (!targetUserId) {
+                console.error("No user ID found for fetching route history");
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('route_history')
+                .select('latitude, longitude, timestamp')
+                .eq('user_id', targetUserId)
+                .gte('timestamp', dateStr + 'T00:00:00Z')
+                .lte('timestamp', dateStr + 'T23:59:59Z')
+                .order('timestamp', { ascending: true });
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                const coords: [number, number][] = data.map(pt => [pt.latitude, pt.longitude]);
+                setRouteCoords(coords);
+            }
+        } catch (err) {
+            console.error("Failed to fetch route history:", err);
+        } finally {
+            setIsMapLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        // Only run when map element and coordinates are loaded
+        if (!mapRef.current || routeCoords.length === 0) return;
+
+        // Destroy existing map instance to prevent initialization conflicts
+        if (leafletMapRef.current) {
+            try {
+                leafletMapRef.current.remove();
+            } catch (err) {
+                console.warn("Failed to destroy previous map:", err);
+            }
+            leafletMapRef.current = null;
+        }
+
+        try {
+            // Initialize Leaflet Map
+            const map = L.map(mapRef.current, {
+                zoomControl: true,
+                dragging: true,
+                touchZoom: true
+            }).setView(routeCoords[0], 14);
+            
+            leafletMapRef.current = map;
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Draw route line
+            const polyline = L.polyline(routeCoords, {
+                color: '#10b981',
+                weight: 4,
+                opacity: 0.8
+            }).addTo(map);
+
+            // Fit map display area to polyline path bounds
+            map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+
+            // Start marker
+            L.marker(routeCoords[0]).addTo(map).bindPopup('Punch-In / Route Start');
+
+            // End marker
+            if (routeCoords.length > 1) {
+                L.marker(routeCoords[routeCoords.length - 1]).addTo(map).bindPopup('Punch-Out / Route End');
+            }
+        } catch (err) {
+            console.error("Failed to initialize Leaflet Map:", err);
+        }
+
+        // Cleanup map instance on unmount or coordinates refresh
+        return () => {
+            if (leafletMapRef.current) {
+                try {
+                    leafletMapRef.current.remove();
+                } catch (ignored) {}
+                leafletMapRef.current = null;
+            }
+        };
+    }, [routeCoords]);
+
 
     return (
         <div className="min-h-screen bg-page p-4 md:p-6 pb-32">
@@ -110,7 +230,7 @@ export const ActivityTimelinePage: React.FC = () => {
                                     )}
 
                                     {/* Metrics Section */}
-                                    <div className="flex items-center gap-4 flex-wrap">
+                                    <div className="flex items-center gap-4 flex-wrap w-full">
                                         {type === 'travel' ? (
                                             <>
                                             <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
@@ -123,6 +243,14 @@ export const ActivityTimelinePage: React.FC = () => {
                                                     <span className="font-medium text-blue-800 text-sm">{formatDuration(record.travelDuration)}</span>
                                                 </div>
                                             )}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleMap(record.dateStr)}
+                                                className="flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors text-xs font-bold ml-auto shadow-sm"
+                                            >
+                                                <Navigation className="w-3.5 h-3.5 text-gray-500" />
+                                                {selectedDateForMap === record.dateStr ? 'Hide Route' : 'Show Route'}
+                                            </button>
                                             </>
                                         ) : (
                                             <>
@@ -137,6 +265,24 @@ export const ActivityTimelinePage: React.FC = () => {
                                             </>
                                         )}
                                     </div>
+
+                                    {/* Inline Map View */}
+                                    {type === 'travel' && selectedDateForMap === record.dateStr && (
+                                        <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden shadow-inner relative bg-gray-50/50">
+                                            {isMapLoading ? (
+                                                <div className="h-[250px] flex items-center justify-center text-gray-500 text-xs font-bold gap-2">
+                                                    <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                                    Loading GPS trail...
+                                                </div>
+                                            ) : routeCoords.length === 0 ? (
+                                                <div className="h-[120px] flex items-center justify-center text-gray-400 text-xs font-semibold">
+                                                    No route history coordinates recorded for this date.
+                                                </div>
+                                            ) : (
+                                                <div ref={mapRef} className="h-[250px] w-full z-10" />
+                                            )}
+                                        </div>
+                                    )}
                                     
                                 </div>
                             </div>

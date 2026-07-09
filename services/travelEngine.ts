@@ -85,7 +85,18 @@ function totalPathKm(points: GpsPoint[]): number {
   let total = 0;
   for (let i = 1; i < points.length; i++) {
     const seg = haversineKm(points[i-1].lat, points[i-1].lng, points[i].lat, points[i].lng);
-    if (seg > 0.01) total += seg; // filter stationary pings < 10m
+    if (seg > 0.01) {
+      // Speed check to filter out GPS bounces
+      const timeDiffHours = (new Date(points[i].timestamp).getTime() - new Date(points[i-1].timestamp).getTime()) / 3600000;
+      if (timeDiffHours > 0) {
+        const speedKmh = seg / timeDiffHours;
+        if (speedKmh > 150) {
+          console.warn(`[travelEngine] Skipping GPS bounce segment: distance=${seg.toFixed(3)}km speed=${speedKmh.toFixed(1)}km/h`);
+          continue;
+        }
+      }
+      total += seg;
+    }
   }
   return total;
 }
@@ -272,17 +283,60 @@ export async function runTravelEngine(opts: {
   const result: RunTravelEngineResult = { processed: 0, written: 0, skipped: 0, errors: [], results: [] };
   console.debug(`[travelEngine] run: users=${opts.userIds.length} range=${opts.startDate} to ${opts.endDate} dryRun=${opts.dryRun}`);
 
-  const { data: events, error } = await supabase
-    .from('attendance_events')
-    .select('user_id, timestamp, type, latitude, longitude')
+  const { data: routePoints, error } = await supabase
+    .from('route_history')
+    .select('user_id, timestamp, latitude, longitude')
     .in('user_id', opts.userIds)
     .gte('timestamp', opts.startDate + 'T00:00:00Z')
     .lte('timestamp', opts.endDate + 'T23:59:59Z')
     .not('latitude', 'is', null)
     .order('timestamp', { ascending: true });
 
-  if (error) { result.errors.push(`events fetch: ${error.message}`); return result; }
-  if (!events?.length) return result;
+  if (error) { result.errors.push(`route history fetch: ${error.message}`); return result; }
+  if (!routePoints?.length) return result;
+
+  // Fetch break events to exclude break-time travel
+  const { data: breakEvents } = await supabase
+    .from('attendance_events')
+    .select('user_id, timestamp, type')
+    .in('user_id', opts.userIds)
+    .in('type', ['break-in', 'break-out'])
+    .gte('timestamp', opts.startDate + 'T00:00:00Z')
+    .lte('timestamp', opts.endDate + 'T23:59:59Z')
+    .order('timestamp', { ascending: true });
+
+  const breakIntervalsByUser: Record<string, { start: Date; end: Date }[]> = {};
+  if (breakEvents && breakEvents.length > 0) {
+    const userBreakEvents: Record<string, typeof breakEvents> = {};
+    for (const e of breakEvents) {
+      if (!userBreakEvents[e.user_id]) userBreakEvents[e.user_id] = [];
+      userBreakEvents[e.user_id].push(e);
+    }
+
+    for (const [userId, events] of Object.entries(userBreakEvents)) {
+      breakIntervalsByUser[userId] = [];
+      let activeBreakStart: Date | null = null;
+      for (const ev of events) {
+        if (ev.type === 'break-in') {
+          activeBreakStart = new Date(ev.timestamp);
+        } else if (ev.type === 'break-out' && activeBreakStart) {
+          breakIntervalsByUser[userId].push({
+            start: activeBreakStart,
+            end: new Date(ev.timestamp)
+          });
+          activeBreakStart = null;
+        }
+      }
+      if (activeBreakStart) {
+        const clampEnd = new Date(activeBreakStart);
+        clampEnd.setHours(23, 59, 59, 999);
+        breakIntervalsByUser[userId].push({
+          start: activeBreakStart,
+          end: clampEnd
+        });
+      }
+    }
+  }
 
   const { data: users } = await supabase.from('users').select('id, vehicle_type').in('id', opts.userIds);
   const vehicleMap: Record<string, VehicleType> = {};
@@ -290,12 +344,25 @@ export async function runTravelEngine(opts: {
 
   // Group by user+date
   const grouped: Record<string, Record<string, GpsPoint[]>> = {};
-  for (const ev of events) {
-    const date = ev.timestamp.substring(0, 10);
-    if (!grouped[ev.user_id]) grouped[ev.user_id] = {};
-    if (!grouped[ev.user_id][date]) grouped[ev.user_id][date] = [];
-    if (ev.latitude && ev.longitude) {
-      grouped[ev.user_id][date].push({ lat: ev.latitude, lng: ev.longitude, timestamp: ev.timestamp, eventType: ev.type });
+  for (const pt of routePoints) {
+    const date = pt.timestamp.substring(0, 10);
+    const ptTime = new Date(pt.timestamp).getTime();
+
+    // Check if the point falls inside a break interval
+    const intervals = breakIntervalsByUser[pt.user_id] || [];
+    const isInsideBreak = intervals.some(interval => 
+      ptTime >= interval.start.getTime() && ptTime <= interval.end.getTime()
+    );
+
+    if (isInsideBreak) {
+      console.debug(`[travelEngine] Excluded GPS point during break for user ${pt.user_id} at ${pt.timestamp}`);
+      continue;
+    }
+
+    if (!grouped[pt.user_id]) grouped[pt.user_id] = {};
+    if (!grouped[pt.user_id][date]) grouped[pt.user_id][date] = [];
+    if (pt.latitude && pt.longitude) {
+      grouped[pt.user_id][date].push({ lat: pt.latitude, lng: pt.longitude, timestamp: pt.timestamp });
     }
   }
 

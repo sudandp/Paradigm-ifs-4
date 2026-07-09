@@ -226,98 +226,119 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
     useEffect(() => {
-        if (chartRef.current && !isLoading) {
-            if (chartInstance.current) {
-                chartInstance.current.destroy();
-            }
+        if (!chartRef.current || isLoading) return;
 
-            const ctx = chartRef.current.getContext('2d');
-            if (ctx) {
-                chartInstance.current = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: months,
-                        datasets: [
-                            {
-                                label: 'WORKED',
-                                data: stats.monthlyWorked,
-                                backgroundColor: '#6366f1', // Indigo 600
-                                stack: 'payable',
-                                borderRadius: 4,
-                            },
-                            {
-                                label: 'WH',
-                                data: stats.monthlyLeaves,
-                                backgroundColor: '#8b5cf6', // Violet 500
-                                stack: 'payable',
-                                borderRadius: 4,
-                            },
-                            {
-                                label: 'HOLIDAYS',
-                                data: stats.monthlyHolidays,
-                                backgroundColor: '#10b981', // Emerald 500
-                                stack: 'payable',
-                                borderRadius: 4,
-                            },
-                            {
-                                label: 'WEEK OFFS',
-                                data: stats.monthlySundays,
-                                backgroundColor: '#f59e0b', // Amber 500
-                                stack: 'payable',
-                                borderRadius: 4,
-                            }
-                        ]
+        const ctx = chartRef.current.getContext('2d');
+        if (!ctx) return;
+
+        const newData = [
+            stats.monthlyWorked,
+            stats.monthlyLeaves,
+            stats.monthlyHolidays,
+            stats.monthlySundays,
+        ];
+
+        // ── Update in-place if chart already exists (no destroy → no flicker) ──
+        if (chartInstance.current) {
+            chartInstance.current.data.datasets.forEach((ds, i) => {
+                ds.data = newData[i];
+            });
+            chartInstance.current.update('none'); // 'none' = instant, no animation
+            return;
+        }
+
+        // First mount: create the chart with animations disabled
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        chartInstance.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [
+                    {
+                        label: 'WORKED',
+                        data: stats.monthlyWorked,
+                        backgroundColor: '#6366f1',
+                        stack: 'payable',
+                        borderRadius: 4,
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'bottom',
-                                labels: {
-                                    boxWidth: 8,
-                                    padding: 10,
-                                    font: { size: 10, weight: 700 }
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: '#1e293b',
-                                padding: 10,
-                                cornerRadius: 8,
-                                callbacks: {
-                                    footer: (items) => {
-                                        const total = items.reduce((sum, item) => sum + (item.raw as number), 0);
-                                        return `Total Paydays: ${total} days`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                stacked: true,
-                                beginAtZero: true,
-                                max: 31,
-                                ticks: { stepSize: 5, font: { size: 10 } },
-                                grid: { color: 'rgba(0,0,0,0.05)' }
-                            },
-                            x: {
-                                stacked: true,
-                                grid: { display: false },
-                                ticks: { font: { size: 10, weight: 500 }, color: '#64748b' }
+                    {
+                        label: 'WH',
+                        data: stats.monthlyLeaves,
+                        backgroundColor: '#8b5cf6',
+                        stack: 'payable',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'HOLIDAYS',
+                        data: stats.monthlyHolidays,
+                        backgroundColor: '#10b981',
+                        stack: 'payable',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'WEEK OFFS',
+                        data: stats.monthlySundays,
+                        backgroundColor: '#f59e0b',
+                        stack: 'payable',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                // ── No animations — prevents the bar-grow flicker on every render ──
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            boxWidth: 8,
+                            padding: 10,
+                            font: { size: 10, weight: 700 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 10,
+                        cornerRadius: 8,
+                        callbacks: {
+                            footer: (items) => {
+                                const total = items.reduce((sum, item) => sum + (item.raw as number), 0);
+                                return `Total Paydays: ${total} days`;
                             }
                         }
                     }
-                });
+                },
+                scales: {
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        max: 31,
+                        ticks: { stepSize: 5, font: { size: 10 } },
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    x: {
+                        stacked: true,
+                        grid: { display: false },
+                        ticks: { font: { size: 10, weight: 500 }, color: '#64748b' }
+                    }
+                }
             }
-        }
+        });
+        // No cleanup returned here — cleanup is handled by the unmount-only effect below
+    }, [stats, isLoading]);
 
+    // Unmount-only cleanup — runs ONLY when component leaves the DOM, not on re-renders
+    useEffect(() => {
         return () => {
             if (chartInstance.current) {
                 chartInstance.current.destroy();
+                chartInstance.current = null;
             }
         };
-    }, [stats, isLoading]);
+    }, []);
 
     const changeYear = (delta: number) => {
         setCurrentYear(prev => prev + delta);

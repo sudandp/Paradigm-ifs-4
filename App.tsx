@@ -98,6 +98,7 @@ const AttendanceActionPage = lazyWithRetry(() => import('./pages/attendance/Atte
 const RequestUnlockPage = lazyWithRetry(() => import('./pages/attendance/RequestUnlockPage'));
 const AttendanceSettings = lazyWithRetry(() => import('./pages/hr/AttendanceSettings'));
 const NotificationsControl = lazyWithRetry(() => import('./pages/hr/NotificationsControl'));
+const UserVehiclesManagement = lazyWithRetry(() => import('./pages/admin/UserVehiclesManagement'));
 const LeaveDashboard = lazyWithRetry(() => import('./pages/leaves/LeaveDashboard'));
 const ActivityTimelinePage = lazyWithRetry(() => import('./pages/leaves/ActivityTimelinePage'));
 const ApplyLeave = lazyWithRetry(() => import('./pages/leaves/ApplyLeave'));
@@ -1410,6 +1411,7 @@ const App: React.FC = () => {
             <Route path="admin/users/add" element={<AddUserPage />} />
             <Route path="admin/users/edit/:id" element={<AddUserPage />} />
             <Route path="admin/users/bulk-update-leaves" element={<BulkEarnedLeavePage />} />
+            <Route path="admin/user-vehicles" element={<UserVehiclesManagement />} />
           </Route>
           <Route element={<ProtectedRoute requiredPermission="manage_biometric_devices" />}>
             <Route path="admin/devices" element={<ManageDevices />} />

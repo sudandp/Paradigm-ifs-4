@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProxyUrl, getCleanFilename } from '../utils/fileUrl';
 import type { UploadedFile } from '../types';
-import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, RefreshCw, Camera, Loader2, AlertTriangle, CheckCircle, Eye, Trash2, BadgeInfo, CreditCard, User as UserIcon, FileText, FileSignature, IndianRupee, GraduationCap, Fingerprint, XCircle, Maximize2, FileBarChart, FileSpreadsheet, FileArchive, HeartPulse } from 'lucide-react';
 import { api } from '../services/api';
 import Button from './ui/Button';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -221,6 +221,7 @@ const UploadDocument: React.FC<UploadDocumentProps> = ({
         if (lowerLabel.includes('bank proof')) return IndianRupee;
         if (lowerLabel.includes('signature')) return FileSignature;
         if (lowerLabel.includes('fingerprint')) return Fingerprint;
+        if (lowerLabel.includes('doctor') || lowerLabel.includes('medical') || lowerLabel.includes('prescription')) return HeartPulse;
         if (lowerLabel.includes('certificate')) return GraduationCap;
         return FileText;
     };

@@ -9266,5 +9266,79 @@ export const api = {
         .insert(recordsToInsert);
       if (insertError) throw insertError;
     }
+  },
+
+  getUserVehicles: async (userId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('user_vehicles')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  addUserVehicle: async (vehicle: {
+    userId: string;
+    vehicleType: string;
+    brandName: string;
+    engineCc?: number | null;
+    odometerReading: number;
+    odometerPictureUrl: string;
+    status?: 'approved' | 'pending';
+  }): Promise<any> => {
+    const dbRecord = {
+      user_id: vehicle.userId,
+      vehicle_type: vehicle.vehicleType,
+      brand_name: vehicle.brandName,
+      engine_cc: vehicle.engineCc || null,
+      odometer_reading: vehicle.odometerReading,
+      odometer_picture_url: vehicle.odometerPictureUrl,
+      status: vehicle.status || 'approved'
+    };
+    const { data, error } = await supabase
+      .from('user_vehicles')
+      .insert(dbRecord)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  updateUserVehicle: async (id: string, updates: any): Promise<any> => {
+    const dbUpdates = toSnakeCase(updates);
+    const { data, error } = await supabase
+      .from('user_vehicles')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  getAllUserVehicles: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('user_vehicles')
+      .select(`
+        *,
+        users (
+          id,
+          first_name,
+          last_name,
+          avatar_url
+        )
+      `)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  deleteUserVehicle: async (id: string): Promise<void> => {
+    const { error } = await supabase
+      .from('user_vehicles')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   }
 };

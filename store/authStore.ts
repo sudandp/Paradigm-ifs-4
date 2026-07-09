@@ -1063,6 +1063,43 @@ export const useAuthStore = create<AuthState>()(
                     await new Promise(resolve => setTimeout(resolve, 300));
                     await get().checkAttendanceStatus(true); // Silent refresh
 
+                    // Calculate travel logs on checkout
+                    if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
+                        import('../services/ruleEngine').then(async ({ resolveEffectiveRules }) => {
+                            try {
+                                const settings = await api.getAttendanceSettings();
+                                const { getStaffCategory } = await import('../utils/attendanceCalculations');
+                                const staffCategory = getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, settings);
+                                const { travelRules } = await resolveEffectiveRules({ userId: user.id, staffCategory });
+                                
+                                const { runTravelEngine } = await import('../services/travelEngine');
+                                const today = format(new Date(), 'yyyy-MM-dd');
+                                
+                                console.log(`[authStore] Running travel calculation for today (${today})...`);
+                                await runTravelEngine({
+                                    userIds: [user.id],
+                                    startDate: today,
+                                    endDate: today,
+                                    travelConfigMap: { [user.id]: travelRules }
+                                });
+                                console.log(`[authStore] Travel calculation completed.`);
+
+                                // Instant rollup of monthly reimbursement claims on checkout
+                                const { runReimbursementEngine } = await import('../services/reimbursementEngine');
+                                const currentMonth = format(new Date(), 'yyyy-MM');
+                                console.log(`[authStore] Running reimbursement claims rollup for month (${currentMonth})...`);
+                                await runReimbursementEngine({
+                                    userIds: [user.id],
+                                    month: currentMonth
+                                });
+                                console.log(`[authStore] Reimbursement rollup completed.`);
+                            } catch (travelErr) {
+                                console.warn('[authStore] Failed to calculate travel distance or update monthly reimbursement on checkout:', travelErr);
+                            }
+                        });
+                    }
+
+
                     // Self-notification is now handled by the dispatcher below with selfNotify: true
                     // This replaces the old hardcoded api.createNotification() call
                     

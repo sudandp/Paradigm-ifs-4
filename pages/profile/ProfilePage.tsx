@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
@@ -17,7 +17,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { registerGateUser, uploadGatePhoto } from '../../services/gateApi';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
-import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home } from 'lucide-react';
+import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2 } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -182,6 +182,13 @@ const ProfilePage: React.FC = () => {
     const newAddr = queryParams.get('address');
     const changeReasonParam = queryParams.get('reason');
 
+    const approveVehicleAdd = queryParams.get('approveVehicleAdd');
+    const vehicleTypeParam = queryParams.get('type');
+    const brandParam = queryParams.get('brand');
+    const ccParam = queryParams.get('cc');
+    const odoParam = queryParams.get('odo');
+    const imgParam = queryParams.get('img');
+
     const [gateUser, setGateUser] = useState<GateUser | null>(null);
     const [isGateUserLoading, setIsGateUserLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -244,6 +251,178 @@ const ProfilePage: React.FC = () => {
     const [isSyncingLocation, setIsSyncingLocation] = useState(false);
     const [isSavingLocation, setIsSavingLocation] = useState(false);
 
+    // Vehicle Type State
+    const [vehicleType, setVehicleType] = useState<string>(user?.vehicle_type || 'two_wheeler');
+    const [isSavingVehicle, setIsSavingVehicle] = useState(false);
+
+    const [isVehicleDetailsOpen, setIsVehicleDetailsOpen] = useState(false);
+    const [vehiclesList, setVehiclesList] = useState<any[]>([]);
+    const [isLoadingVehicles, setIsLoadingVehicles] = useState(true);
+
+    const [vehicleBrand, setVehicleBrand] = useState('');
+    const [vehicleCC, setVehicleCC] = useState('');
+    const [vehicleOdo, setVehicleOdo] = useState('');
+    const [vehicleOdoImage, setVehicleOdoImage] = useState<File | null>(null);
+    const [odoImagePreview, setOdoImagePreview] = useState<string | null>(null);
+    const [isSubmittingVehicle, setIsSubmittingVehicle] = useState(false);
+    const [vehicleChangeReason, setVehicleChangeReason] = useState('');
+
+    const [isOdometerCameraOpen, setIsOdometerCameraOpen] = useState(false);
+    const [isDraggingOdo, setIsDraggingOdo] = useState(false);
+
+    const base64ToFile = (base64String: string, filename: string): File => {
+        const arr = base64String.split(',');
+        const mime = arr[0].match(/:(.*?);/)![1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], filename, { type: mime });
+    };
+
+    const handleOdometerCapture = (base64Image: string, mimeType: string) => {
+        try {
+            const file = base64ToFile(base64Image, 'odometer.jpg');
+            setVehicleOdoImage(file);
+            setOdoImagePreview(base64Image);
+            setIsOdometerCameraOpen(false);
+            setToast({ message: 'Odometer picture captured successfully!', type: 'success' });
+        } catch (err) {
+            console.error('Failed to convert captured image:', err);
+            setToast({ message: 'Failed to process captured image.', type: 'error' });
+        }
+    };
+
+    const handleOdometerImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setVehicleOdoImage(file);
+            setOdoImagePreview(URL.createObjectURL(file));
+        }
+    };
+
+    const fetchVehicles = useCallback(async () => {
+        if (!user?.id) return;
+        setIsLoadingVehicles(true);
+        try {
+            const list = await api.getUserVehicles(user.id);
+            setVehiclesList(list);
+        } catch (err) {
+            console.error("Failed to fetch vehicles:", err);
+        } finally {
+            setIsLoadingVehicles(false);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
+        fetchVehicles();
+    }, [fetchVehicles]);
+
+    useEffect(() => {
+        if (user?.vehicle_type) setVehicleType(user.vehicle_type);
+    }, [user?.vehicle_type]);
+
+    const handleSaveVehicleType = async () => {
+        if (!user?.id) return;
+        setIsSavingVehicle(true);
+        try {
+            await api.updateUser(user.id, { vehicle_type: vehicleType as any });
+            await updateUserProfile({ vehicle_type: vehicleType as any });
+            setToast({ message: 'Vehicle type saved successfully!', type: 'success' });
+        } catch (err: any) {
+            setToast({ message: err.message || 'Failed to save vehicle type.', type: 'error' });
+        } finally {
+            setIsSavingVehicle(false);
+        }
+    };
+
+    const handleAddVehicle = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user?.id) return;
+        if (!vehicleBrand.trim() || !vehicleOdo.trim() || !vehicleOdoImage) {
+            setToast({ message: 'Please fill brand name, odometer reading, and upload odometer picture.', type: 'error' });
+            return;
+        }
+
+        setIsSubmittingVehicle(true);
+        try {
+            // 1. Upload odometer picture
+            const uploadRes = await api.uploadDocument(vehicleOdoImage, 'onboarding-documents', undefined, 'odometer_picture');
+            
+            // 2. Check if user already has an approved vehicle
+            const activeVehicles = vehiclesList.filter(v => v.status === 'approved');
+            const needsApproval = activeVehicles.length >= 1;
+
+            if (needsApproval) {
+                if (!vehicleChangeReason.trim()) {
+                    setToast({ message: 'Please provide a reason for adding more than 1 vehicle.', type: 'error' });
+                    setIsSubmittingVehicle(false);
+                    return;
+                }
+
+                // Create request notifications for admins and reporting managers
+                const { data: admins } = await supabase
+                    .from('users')
+                    .select('id')
+                    .in('role_id', ['admin', 'super_admin', 'developer']);
+
+                const notifyTargets = new Set<string>();
+                if (user.reportingManagerId) {
+                    notifyTargets.add(user.reportingManagerId);
+                }
+                if (admins) {
+                    admins.forEach(admin => notifyTargets.add(admin.id));
+                }
+
+                const notificationMsg = `[Vehicle Add Request] ${user.name} requested to add vehicle "${vehicleBrand}". Reason: "${vehicleChangeReason}"`;
+                const reqLink = `/profile?approveVehicleAdd=true&reqUserId=${user.id}&type=${vehicleType}&brand=${encodeURIComponent(vehicleBrand)}&cc=${vehicleCC}&odo=${vehicleOdo}&img=${encodeURIComponent(uploadRes.url)}&reason=${encodeURIComponent(vehicleChangeReason)}`;
+
+                const promises = Array.from(notifyTargets).map(targetId => {
+                    return api.createNotification({
+                        userId: targetId,
+                        message: notificationMsg,
+                        type: 'approval_request',
+                        linkTo: reqLink
+                    });
+                });
+
+                await Promise.all(promises);
+                setToast({ message: 'Vehicle addition request submitted for approval!', type: 'success' });
+            } else {
+                // Add directly as approved
+                await api.addUserVehicle({
+                    userId: user.id,
+                    vehicleType,
+                    brandName: vehicleBrand,
+                    engineCc: vehicleCC ? parseInt(vehicleCC) : null,
+                    odometerReading: parseInt(vehicleOdo),
+                    odometerPictureUrl: uploadRes.url,
+                    status: 'approved'
+                });
+
+                setToast({ message: 'Vehicle added successfully!', type: 'success' });
+                // Also update active vehicle type in profile
+                await api.updateUser(user.id, { vehicle_type: vehicleType as any });
+                await updateUserProfile({ vehicle_type: vehicleType as any });
+                fetchVehicles();
+            }
+
+            // Reset form
+            setVehicleBrand('');
+            setVehicleCC('');
+            setVehicleOdo('');
+            setVehicleOdoImage(null);
+            setOdoImagePreview(null);
+            setVehicleChangeReason('');
+        } catch (err: any) {
+            setToast({ message: err.message || 'Failed to submit vehicle.', type: 'error' });
+        } finally {
+            setIsSubmittingVehicle(false);
+        }
+    };
+
     useEffect(() => {
         if (user) {
             setHomeLocationName(user.name ? `${user.name} Home` : 'My Home');
@@ -275,15 +454,15 @@ const ProfilePage: React.FC = () => {
         }
     }, [isHomeLocationOpen, user?.id]);
 
-    // Check for location change approval query params on load (Manager/Admin view)
+    // Check for location/vehicle change approval query params on load (Manager/Admin view)
     useEffect(() => {
-        if (approveLocationChange && reqUserId) {
+        if ((approveLocationChange || approveVehicleAdd) && reqUserId) {
             api.getUsers().then(users => {
                 const found = users.find(u => u.id === reqUserId);
                 if (found) setRequestingUser(found);
             });
         }
-    }, [approveLocationChange, reqUserId]);
+    }, [approveLocationChange, approveVehicleAdd, reqUserId]);
 
     const syncHomeLocationToDashboard = async (userId: string, userName: string, lat: number, lon: number, address: string) => {
         try {
@@ -1016,6 +1195,14 @@ const ProfilePage: React.FC = () => {
                                 <Home className="w-3 h-3 text-sky-400" />
                                 Home
                             </button>
+                            <button 
+                                type="button"
+                                onClick={() => { triggerHaptic(); setIsVehicleDetailsOpen(true); }}
+                                className="px-2 py-1.5 bg-transparent border-none text-amber-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
+                            >
+                                <Bike className="w-3 h-3 text-amber-400" />
+                                Vehicle
+                            </button>
 
                         </div>
                     </motion.div>
@@ -1726,6 +1913,284 @@ const ProfilePage: React.FC = () => {
                                 </motion.div>
                             )}
                         </AnimatePresence>
+
+                    {/* ═══ VEHICLE DETAILS MODAL (MOBILE) ═══ */}
+                    <AnimatePresence>
+                        {isVehicleDetailsOpen && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 100 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 100 }}
+                                className="fixed inset-0 z-[110] bg-[#041b0f] flex flex-col overflow-hidden text-white"
+                            >
+                                {/* Header */}
+                                <div className="relative overflow-hidden pt-8 pb-6 px-6 bg-gradient-to-br from-[#0a2133] to-[#041b0f] rounded-b-[40px] shadow-2xl mb-4">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
+                                    <div className="relative z-10 flex items-center justify-between">
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-400 shadow-inner border border-amber-500/20">
+                                                <Bike className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-1.5 opacity-60 mb-0.5">
+                                                    <span className="text-[10px] uppercase font-black tracking-[0.2em] text-white">Vehicle Config</span>
+                                                </div>
+                                                <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic -mt-1">
+                                                    My Vehicle<span className="text-amber-400">.</span>
+                                                </h2>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => { triggerHaptic(); setIsVehicleDetailsOpen(false); }}
+                                            className="p-3 bg-white/5 rounded-2xl border border-white/10 active:scale-95 transition-all"
+                                        >
+                                            <ArrowLeft className="w-5 h-5 text-white" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Form & List Content */}
+                                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+                                    {/* Vehicles List */}
+                                    {isLoadingVehicles ? (
+                                        <div className="py-4 text-center text-xs text-gray-400">Loading vehicles...</div>
+                                    ) : vehiclesList.length === 0 ? (
+                                        <div className="py-6 text-center text-xs text-gray-400 border border-dashed border-white/10 rounded-2xl bg-white/5">
+                                            No vehicles registered. Please add one below.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Registered Vehicles</h3>
+                                            {vehiclesList.map((v) => (
+                                                <div key={v.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-white/10 rounded-xl">
+                                                            {v.vehicle_type === 'two_wheeler' ? <Bike className="w-5 h-5 text-amber-400" /> : <Car className="w-5 h-5 text-blue-400" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-white">{v.brand_name}</p>
+                                                            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mt-0.5">
+                                                                {v.vehicle_type.replace('_', ' ')} {v.engine_cc ? `• ${v.engine_cc}cc` : ''}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-bold text-white">{v.odometer_reading.toLocaleString()} km</p>
+                                                        <span className={`inline-block px-2 py-0.5 text-[8px] font-black uppercase rounded-md tracking-wider mt-1.5 ${
+                                                            v.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                                        }`}>
+                                                            {v.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Add Vehicle Form */}
+                                    {(vehiclesList.length === 0 || vehiclesList.filter(v => v.status === 'approved').length >= 1) && (
+                                        <form onSubmit={async (e) => {
+                                            await handleAddVehicle(e);
+                                            setIsVehicleDetailsOpen(false);
+                                        }} className="space-y-4 pt-4 border-t border-white/5">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                                                {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                    ? 'Request Another Vehicle' 
+                                                    : 'Add First Vehicle'}
+                                            </h3>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Vehicle Type</label>
+                                                <select
+                                                    value={vehicleType}
+                                                    onChange={e => setVehicleType(e.target.value)}
+                                                    className="w-full bg-black/20 border border-white/10 rounded-2xl text-white text-sm h-[48px] px-4"
+                                                >
+                                                    <option value="two_wheeler">Two Wheeler</option>
+                                                    <option value="four_wheeler_petrol">4W Petrol</option>
+                                                    <option value="four_wheeler_diesel">4W Diesel</option>
+                                                    <option value="public_transport">Public Transport</option>
+                                                    <option value="company_vehicle">Company Vehicle</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Brand Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={vehicleBrand}
+                                                    onChange={e => setVehicleBrand(e.target.value)}
+                                                    placeholder="e.g. Honda Activa, Suzuki Swift"
+                                                    className="w-full bg-black/20 border border-white/10 rounded-2xl text-white text-sm h-[48px] px-4"
+                                                    required
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {vehicleType === 'two_wheeler' && (
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Engine CC</label>
+                                                        <input
+                                                            type="number"
+                                                            value={vehicleCC}
+                                                            onChange={e => setVehicleCC(e.target.value)}
+                                                            placeholder="e.g. 125"
+                                                            className="w-full bg-black/20 border border-white/10 rounded-2xl text-white text-sm h-[48px] px-4"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <div className={vehicleType !== 'two_wheeler' ? 'col-span-2' : ''}>
+                                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Odometer Reading (KM)</label>
+                                                    <input
+                                                        type="number"
+                                                        value={vehicleOdo}
+                                                        onChange={e => setVehicleOdo(e.target.value)}
+                                                        placeholder="e.g. 8450"
+                                                        className="w-full bg-black/20 border border-white/10 rounded-2xl text-white text-sm h-[48px] px-4"
+                                                        required
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">Odometer Picture</label>
+                                                <input 
+                                                    id="odometer-file-input" 
+                                                    type="file" 
+                                                    className="sr-only" 
+                                                    onChange={handleOdometerImageChange} 
+                                                    accept="image/*"
+                                                />
+                                                {odoImagePreview ? (
+                                                    <div className="w-full bg-[#07160E] border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[180px] relative overflow-hidden group">
+                                                        <div className="relative w-full h-[150px] bg-black/40 rounded-xl overflow-hidden flex items-center justify-center border border-white/10">
+                                                            <img 
+                                                                src={odoImagePreview} 
+                                                                alt="Odometer Preview" 
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                                                <label 
+                                                                    htmlFor="odometer-file-input" 
+                                                                    className="p-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-xl cursor-pointer transition-all active:scale-95"
+                                                                    title="Change Photo"
+                                                                >
+                                                                    <RefreshCw className="h-5 w-5 text-white" />
+                                                                </label>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setVehicleOdoImage(null);
+                                                                        setOdoImagePreview(null);
+                                                                    }}
+                                                                    className="p-2.5 bg-rose-500/20 hover:bg-rose-500/30 backdrop-blur-md rounded-xl transition-all active:scale-95"
+                                                                    title="Remove Photo"
+                                                                >
+                                                                    <Trash2 className="h-5 w-5 text-rose-400" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full mt-2 flex justify-between items-center px-1 text-[10px] font-bold text-gray-400">
+                                                            <span className="truncate max-w-[180px]">{vehicleOdoImage?.name || 'odometer.jpg'}</span>
+                                                            <span>{vehicleOdoImage ? `${(vehicleOdoImage.size / (1024 * 1024)).toFixed(2)} MB` : 'Captured'}</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div 
+                                                        onDragOver={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(true);
+                                                        }}
+                                                        onDragLeave={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(false);
+                                                        }}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            setIsDraggingOdo(false);
+                                                            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                                const file = e.dataTransfer.files[0];
+                                                                setVehicleOdoImage(file);
+                                                                setOdoImagePreview(URL.createObjectURL(file));
+                                                            }
+                                                        }}
+                                                        className={`w-full bg-[#07160E] border border-dashed rounded-2xl p-6 flex flex-col items-center justify-center min-h-[180px] transition-all relative ${
+                                                            isDraggingOdo 
+                                                                ? 'border-emerald-500 bg-[#0C2417]' 
+                                                                : 'border-white/10 hover:border-emerald-500/50 hover:bg-[#091F14]'
+                                                        }`}
+                                                    >
+                                                        <label htmlFor="odometer-file-input" className="absolute inset-0 cursor-pointer z-0" />
+                                                        <div className="relative z-10 flex flex-col items-center text-center w-full pointer-events-none mb-1">
+                                                            <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 mb-3">
+                                                                <Camera className="h-8 w-8 text-emerald-400" />
+                                                            </div>
+                                                            <p className="font-bold text-white text-sm">Click to upload</p>
+                                                            <p className="text-[10px] font-semibold mt-1 uppercase tracking-wider text-gray-500">or drag & drop</p>
+                                                        </div>
+                                                        
+                                                        <div className="relative z-10 flex items-center w-full max-w-[140px] my-3 pointer-events-none">
+                                                            <div className="h-px flex-1 bg-white/10"></div>
+                                                            <span className="px-3 text-[10px] font-semibold text-gray-500">OR</span>
+                                                            <div className="h-px flex-1 bg-white/10"></div>
+                                                        </div>
+                                                        
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                setIsOdometerCameraOpen(true); 
+                                                            }} 
+                                                            className="relative z-10 flex items-center justify-center font-bold text-white hover:text-white/80 transition-colors text-xs py-1.5 px-4 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 active:scale-95"
+                                                        >
+                                                            <Camera className="h-4 w-4 mr-2 text-rose-500" />
+                                                            Capture with Camera
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {vehiclesList.filter(v => v.status === 'approved').length >= 1 && (
+                                                <div className="space-y-2 pt-2">
+                                                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl text-[11px] text-amber-300 space-y-1">
+                                                        <p className="font-bold flex items-center gap-1.5">⚠️ Limit Exceeded</p>
+                                                        <p>Adding another vehicle requires approval from your manager or admin.</p>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-amber-400 uppercase tracking-wider mb-1.5">Reason for Request</label>
+                                                        <textarea
+                                                            value={vehicleChangeReason}
+                                                            onChange={e => setVehicleChangeReason(e.target.value)}
+                                                            rows={2}
+                                                            className="w-full bg-black/20 border border-white/10 rounded-2xl text-white text-sm py-3 px-4 resize-none"
+                                                            placeholder="Why do you need to add an additional vehicle?"
+                                                            required
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="pt-4 border-t border-white/5">
+                                                <Button
+                                                    type="submit"
+                                                    isLoading={isSubmittingVehicle}
+                                                    className={`w-full !h-[48px] text-xs font-bold uppercase tracking-wider !rounded-2xl text-white ${
+                                                        vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                            ? '!bg-amber-600 hover:!bg-amber-700' 
+                                                            : '!bg-emerald-600 hover:!bg-emerald-700'
+                                                    }`}
+                                                >
+                                                    {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                        ? 'Request Approval' 
+                                                        : 'Save Vehicle'}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {/* ═══ SETTINGS MODAL (MOBILE) ═══ */}
 
@@ -2656,6 +3121,252 @@ const ProfilePage: React.FC = () => {
                             </form>
                         </div>
                     </div>
+
+                    {/* ── Vehicle Details Card (desktop) ── */}
+                    <div className="md:bg-white md:p-3 md:rounded-xl md:shadow-[0_4px_12px_rgba(0,0,0,0.06)] border border-gray-100 h-full transition-shadow flex flex-col justify-between">
+                        <div>
+                            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-50 rounded-lg">
+                                        <Bike className="h-5 w-5 text-amber-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-bold text-gray-900">My Vehicles</h3>
+                                        <p className="text-[10px] text-gray-400 font-medium">Reimbursement details</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Vehicles List */}
+                            {isLoadingVehicles ? (
+                                <div className="py-4 text-center text-xs text-gray-400">Loading vehicles...</div>
+                            ) : vehiclesList.length === 0 ? (
+                                <div className="py-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl mb-4 bg-gray-50/40">
+                                    No vehicles registered. Please add one below.
+                                </div>
+                            ) : (
+                                <div className="space-y-2.5 mb-4">
+                                    {vehiclesList.map((v) => (
+                                        <div key={v.id} className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-1.5 bg-white rounded-lg border border-gray-100">
+                                                    {v.vehicle_type === 'two_wheeler' ? <Bike className="w-4 h-4 text-amber-500" /> : <Car className="w-4 h-4 text-blue-500" />}
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-800">{v.brand_name}</p>
+                                                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                                                        {v.vehicle_type.replace('_', ' ')} {v.engine_cc ? `• ${v.engine_cc}cc` : ''}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-bold text-gray-900">{v.odometer_reading.toLocaleString()} km</p>
+                                                <span className={`inline-block px-1.5 py-0.5 text-[8px] font-black uppercase rounded-md tracking-wider mt-1 ${
+                                                    v.status === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                                                }`}>
+                                                    {v.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Add Vehicle Form */}
+                            {(vehiclesList.length === 0 || vehiclesList.filter(v => v.status === 'approved').length >= 1) && (
+                                <form onSubmit={handleAddVehicle} className="space-y-3 pt-2 border-t border-gray-100">
+                                    <h4 className="text-xs font-bold text-gray-700">
+                                        {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                            ? 'Request to Add Another Vehicle' 
+                                            : 'Register First Vehicle'}
+                                    </h4>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Vehicle Type</label>
+                                            <select
+                                                value={vehicleType}
+                                                onChange={e => setVehicleType(e.target.value)}
+                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2"
+                                            >
+                                                <option value="two_wheeler">Two Wheeler</option>
+                                                <option value="four_wheeler_petrol">4W Petrol</option>
+                                                <option value="four_wheeler_diesel">4W Diesel</option>
+                                                <option value="public_transport">Public Transport</option>
+                                                <option value="company_vehicle">Company Vehicle</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Brand Name</label>
+                                            <input
+                                                type="text"
+                                                value={vehicleBrand}
+                                                onChange={e => setVehicleBrand(e.target.value)}
+                                                placeholder="e.g. Honda, Suzuki"
+                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {vehicleType === 'two_wheeler' && (
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 mb-1">Engine CC</label>
+                                                <input
+                                                    type="number"
+                                                    value={vehicleCC}
+                                                    onChange={e => setVehicleCC(e.target.value)}
+                                                    placeholder="e.g. 150"
+                                                    className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                />
+                                            </div>
+                                        )}
+                                        <div className={vehicleType !== 'two_wheeler' ? 'col-span-2' : ''}>
+                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Reading (KM)</label>
+                                            <input
+                                                type="number"
+                                                value={vehicleOdo}
+                                                onChange={e => setVehicleOdo(e.target.value)}
+                                                placeholder="e.g. 12450"
+                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs h-[36px] px-2.5"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 mb-1">Odometer Picture</label>
+                                        <input 
+                                            id="odometer-file-input-edit" 
+                                            type="file" 
+                                            className="sr-only" 
+                                            onChange={handleOdometerImageChange} 
+                                            accept="image/*"
+                                        />
+                                        {odoImagePreview ? (
+                                            <div className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center min-h-[140px] relative overflow-hidden group">
+                                                <div className="relative w-full h-[110px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                                                    <img 
+                                                        src={odoImagePreview} 
+                                                        alt="Odometer Preview" 
+                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                                        <label 
+                                                            htmlFor="odometer-file-input-edit" 
+                                                            className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg cursor-pointer transition-all active:scale-95"
+                                                            title="Change Photo"
+                                                        >
+                                                            <RefreshCw className="h-4 w-4 text-white" />
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setVehicleOdoImage(null);
+                                                                setOdoImagePreview(null);
+                                                            }}
+                                                            className="p-2 bg-rose-500/20 hover:bg-rose-500/30 backdrop-blur-md rounded-lg transition-all active:scale-95"
+                                                            title="Remove Photo"
+                                                        >
+                                                            <Trash2 className="h-4 w-4 text-rose-400" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full mt-1.5 flex justify-between items-center px-0.5 text-[9px] font-bold text-gray-400">
+                                                    <span className="truncate max-w-[150px]">{vehicleOdoImage?.name || 'odometer.jpg'}</span>
+                                                    <span>{vehicleOdoImage ? `${(vehicleOdoImage.size / (1024 * 1024)).toFixed(2)} MB` : 'Captured'}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div 
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    setIsDraggingOdo(true);
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    e.preventDefault();
+                                                    setIsDraggingOdo(false);
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    setIsDraggingOdo(false);
+                                                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                        const file = e.dataTransfer.files[0];
+                                                        setVehicleOdoImage(file);
+                                                        setOdoImagePreview(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                className={`w-full bg-gray-50 border border-dashed rounded-xl p-4 flex flex-col items-center justify-center min-h-[140px] transition-all relative ${
+                                                    isDraggingOdo 
+                                                        ? 'border-emerald-500 bg-emerald-50/50' 
+                                                        : 'border-gray-200 hover:border-emerald-500/50 hover:bg-gray-100/50'
+                                                }`}
+                                            >
+                                                <label htmlFor="odometer-file-input-edit" className="absolute inset-0 cursor-pointer z-0" />
+                                                <div className="relative z-10 flex flex-col items-center text-center w-full pointer-events-none mb-0.5">
+                                                    <div className="p-2 bg-emerald-50 rounded-full text-emerald-600 mb-2">
+                                                        <Camera className="h-6 w-6 text-emerald-600" />
+                                                    </div>
+                                                    <p className="font-bold text-gray-700 text-xs">Click to upload</p>
+                                                    <p className="text-[9px] font-semibold mt-0.5 uppercase tracking-wider text-gray-400">or drag & drop</p>
+                                                </div>
+                                                
+                                                <div className="relative z-10 flex items-center w-full max-w-[100px] my-2 pointer-events-none">
+                                                    <div className="h-px flex-1 bg-gray-200"></div>
+                                                    <span className="px-2 text-[8px] font-semibold text-gray-400">OR</span>
+                                                    <div className="h-px flex-1 bg-gray-200"></div>
+                                                </div>
+                                                
+                                                <button 
+                                                    type="button" 
+                                                    onClick={(e) => { 
+                                                        e.stopPropagation(); 
+                                                        setIsOdometerCameraOpen(true); 
+                                                    }} 
+                                                    className="relative z-10 flex items-center justify-center font-bold text-gray-700 hover:bg-gray-100 transition-colors text-xs py-1 px-3 bg-white rounded-lg border border-gray-200 active:scale-95"
+                                                >
+                                                    <Camera className="h-3.5 w-3.5 mr-1.5 text-rose-500" />
+                                                    Capture with Camera
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {vehiclesList.filter(v => v.status === 'approved').length >= 1 && (
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-amber-600 mb-1 uppercase tracking-wider">Reason for Adding Vehicle</label>
+                                            <textarea
+                                                value={vehicleChangeReason}
+                                                onChange={e => setVehicleChangeReason(e.target.value)}
+                                                rows={2}
+                                                className="w-full bg-white border border-gray-200 rounded-lg text-xs p-2 resize-none"
+                                                placeholder="Explain why you need an additional vehicle..."
+                                                required
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end pt-2">
+                                        <Button
+                                            type="submit"
+                                            isLoading={isSubmittingVehicle}
+                                            className={`!h-[38px] text-xs font-bold w-full uppercase tracking-wider text-white ${
+                                                vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                    ? '!bg-amber-600 hover:!bg-amber-700' 
+                                                    : '!bg-emerald-600 hover:!bg-emerald-700'
+                                            }`}
+                                        >
+                                            {vehiclesList.filter(v => v.status === 'approved').length >= 1 
+                                                ? 'Request Approval to Add' 
+                                                : 'Save Vehicle'}
+                                        </Button>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+                    </div>
+
                     </div> {/* End Horizontal Grid Row */}
                 </div> {/* End col-span-12 container */}
 
@@ -2888,6 +3599,105 @@ const ProfilePage: React.FC = () => {
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {approveVehicleAdd === 'true' && requestingUser && (
+                <Modal
+                    isOpen={true}
+                    onClose={() => {
+                        navigate('/profile', { replace: true });
+                    }}
+                    title="Vehicle Addition Approval"
+                    hideFooter={true}
+                    containerClassName="bg-[#041b0f] text-white border border-[#1d422f] rounded-[24px] shadow-card max-w-md mx-auto"
+                >
+                    <div className="space-y-4 p-4 text-white">
+                        <div className="flex items-center gap-3 bg-[#0a1c13] p-4 rounded-xl border border-[#1d422f]">
+                            <Bike className="h-6 w-6 text-amber-400" />
+                            <div>
+                                <h4 className="font-bold text-white text-sm">Vehicle Request Details</h4>
+                                <p className="text-xs text-gray-400">Request from {requestingUser.name}</p>
+                            </div>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                            <p><strong className="text-gray-400">Vehicle Type:</strong> {vehicleTypeParam === 'two_wheeler' ? 'Two Wheeler' : 'Four Wheeler'}</p>
+                            <p><strong className="text-gray-400">Brand Name:</strong> {brandParam}</p>
+                            {ccParam && <p><strong className="text-gray-400">Engine CC:</strong> {ccParam} cc</p>}
+                            <p><strong className="text-gray-400">Odometer Reading:</strong> {odoParam} km</p>
+                            <p><strong className="text-amber-400">Reason for Request:</strong> {changeReasonParam}</p>
+                            {imgParam && (
+                                <div className="mt-2 border border-white/10 rounded-xl overflow-hidden bg-black/40">
+                                    <p className="p-2 bg-white/5 font-semibold text-gray-300">Odometer Reading Picture:</p>
+                                    <img src={imgParam} alt="Odometer" className="w-full h-auto object-cover max-h-[200px]" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-3 pt-4 border-t border-white/10">
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await api.addUserVehicle({
+                                            userId: reqUserId!,
+                                            vehicleType: vehicleTypeParam!,
+                                            brandName: brandParam!,
+                                            engineCc: ccParam ? parseInt(ccParam) : null,
+                                            odometerReading: parseInt(odoParam || '0'),
+                                            odometerPictureUrl: imgParam!,
+                                            status: 'approved'
+                                        });
+
+                                        // Also update active vehicle type in profile
+                                        await api.updateUser(reqUserId!, { vehicle_type: vehicleTypeParam as any });
+                                        
+                                        await api.createNotification({
+                                            userId: reqUserId!,
+                                            message: `Your request to add vehicle "${brandParam}" has been approved by ${user?.name}.`,
+                                            type: 'info'
+                                        });
+
+                                        setToast({ message: 'Vehicle addition approved successfully!', type: 'success' });
+                                    } catch (err: any) {
+                                        setToast({ message: err.message || 'Failed to approve vehicle.', type: 'error' });
+                                    } finally {
+                                        navigate('/profile', { replace: true });
+                                    }
+                                }}
+                                className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !bg-emerald-600 hover:!bg-emerald-700 text-white !rounded-2xl"
+                            >
+                                Approve
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    try {
+                                        await api.createNotification({
+                                            userId: reqUserId!,
+                                            message: `Your request to add vehicle "${brandParam}" has been rejected by ${user?.name}.`,
+                                            type: 'warning'
+                                        });
+
+                                        setToast({ message: 'Vehicle addition request rejected.', type: 'info' });
+                                    } catch (err: any) {
+                                        setToast({ message: err.message || 'Failed to reject request.', type: 'error' });
+                                    } finally {
+                                        navigate('/profile', { replace: true });
+                                    }
+                                }}
+                                className="flex-1 !h-[48px] text-xs font-bold uppercase tracking-wider !bg-rose-600 hover:!bg-rose-700 text-white !rounded-2xl"
+                            >
+                                Reject
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {isOdometerCameraOpen && (
+                <CameraCaptureModal
+                    isOpen={isOdometerCameraOpen}
+                    onClose={() => setIsOdometerCameraOpen(false)}
+                    onCapture={handleOdometerCapture}
+                    captureGuidance="document"
+                />
             )}
 
             <HelpTicketModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />

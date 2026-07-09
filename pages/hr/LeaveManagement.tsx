@@ -15,7 +15,7 @@ import {
 
 Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2 } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -30,6 +30,7 @@ import { isAdmin } from '../../utils/auth';
 import { HOLIDAY_SELECTION_POOL } from '../../utils/constants';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import EditLeaveTypeModal from '../../components/hr/EditLeaveTypeModal';
+import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 import { exportGenericReportToExcel, GenericReportColumn } from '../../utils/excelExport';
 import { exportLeaveReportToPDF, PDFReportColumn } from '../../utils/pdfExport';
 
@@ -220,6 +221,8 @@ const LeaveManagement: React.FC = () => {
     const [editHolidayUser, setEditHolidayUser] = useState<any | null>(null);
     const [editHolidaySelections, setEditHolidaySelections] = useState<{holidayName: string; holidayDate: string}[]>([]);
     const [isSavingHolidays, setIsSavingHolidays] = useState(false);
+    const [selectedLeaveRequest, setSelectedLeaveRequest] = useState<LeaveRequest | null>(null);
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -1027,6 +1030,15 @@ const LeaveManagement: React.FC = () => {
                 correctionRequestId={correctionRequestId || undefined}
             />
 
+            <LeaveDetailsModal
+                isOpen={isDetailsModalOpen}
+                onClose={() => {
+                    setIsDetailsModalOpen(false);
+                    setSelectedLeaveRequest(null);
+                }}
+                request={selectedLeaveRequest}
+            />
+
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-primary-text">Leave Approval Inbox</h2>
                 <div className="flex gap-2">
@@ -1351,7 +1363,16 @@ const LeaveManagement: React.FC = () => {
                                                 <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                                 <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
                                                 <td data-label="Actions" className="px-4 py-3">
-                                                    <div className="flex md:justify-start justify-end gap-2">
+                                                    <div className="flex md:justify-start justify-end gap-2 items-center">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="icon"
+                                                            onClick={() => { setSelectedLeaveRequest(req); setIsDetailsModalOpen(true); }}
+                                                            title="View Details"
+                                                            aria-label="View request details"
+                                                        >
+                                                            <Eye className="h-4 w-4 text-emerald-600" />
+                                                        </Button>
                                                         {actioningId === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ActionButtons request={req} />}
                                                     </div>
                                                 </td>
@@ -1706,7 +1727,16 @@ const LeaveManagement: React.FC = () => {
                                         <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                         <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
                                         <td data-label="Actions" className="px-4 py-3">
-                                            <div className="flex md:justify-start justify-end">
+                                            <div className="flex md:justify-start justify-end gap-2 items-center">
+                                                <Button
+                                                    size="sm"
+                                                    variant="icon"
+                                                    onClick={() => { setSelectedLeaveRequest(req); setIsDetailsModalOpen(true); }}
+                                                    title="View Details"
+                                                    aria-label="View request details"
+                                                >
+                                                    <Eye className="h-4 w-4 text-emerald-600" />
+                                                </Button>
                                                 {actioningId === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ActionButtons request={req} />}
                                             </div>
                                         </td>

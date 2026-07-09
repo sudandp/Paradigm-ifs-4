@@ -7,8 +7,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
@@ -26,6 +28,13 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.google.android.gms.location.ActivityRecognition;
+import com.google.android.gms.location.ActivityRecognitionClient;
+import com.google.android.gms.location.ActivityTransition;
+import com.google.android.gms.location.ActivityTransitionEvent;
+import com.google.android.gms.location.ActivityTransitionRequest;
+import com.google.android.gms.location.ActivityTransitionResult;
+import com.google.android.gms.location.DetectedActivity;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -39,7 +48,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
@@ -71,6 +82,15 @@ public class TrackingService extends Service implements SensorEventListener {
     public static final String EXTRA_STEPS          = "steps";
     public static final String EXTRA_TOTAL_STEPS    = "totalCumulativeSteps";
 
+    // ── Activity Recognition ───────────────────────────────────────────────
+    // isUserWalking gates step broadcasts: true = walking/running, false = vehicle/bike/still
+    // Default true so steps count if Activity Recognition is unavailable (graceful fallback)
+    private volatile boolean isUserWalking = true;
+    private ActivityRecognitionClient activityRecognitionClient;
+    private PendingIntent activityTransitionPendingIntent;
+    private BroadcastReceiver activityTransitionReceiver;
+    private static final String ACTION_ACTIVITY_TRANSITION = "com.paradigm.ifs.ACTIVITY_TRANSITION";
+
     // ── GPS / location ─────────────────────────────────────────────────────
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
@@ -100,6 +120,10 @@ public class TrackingService extends Service implements SensorEventListener {
         // GPS setup
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         networkExecutor     = Executors.newSingleThreadExecutor();
+
+        // Activity Recognition setup
+        activityRecognitionClient = ActivityRecognition.getClient(this);
+        setupActivityTransitionReceiver();
     }
 
     @Override
@@ -151,8 +175,12 @@ public class TrackingService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         stopLocationUpdates();
+        stopActivityTransitionUpdates();
         if (sensorManager != null) sensorManager.unregisterListener(this);
         if (networkExecutor != null) networkExecutor.shutdownNow();
+        if (activityTransitionReceiver != null) {
+            try { unregisterReceiver(activityTransitionReceiver); } catch (Exception ignored) {}
+        }
         super.onDestroy();
     }
 
@@ -323,6 +351,13 @@ public class TrackingService extends Service implements SensorEventListener {
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) return;
 
+        // Only count steps when user is actually walking or running.
+        // Skips sensor events caused by vehicle/bike vibration.
+        if (!isUserWalking) {
+            Log.d(TAG, "Step sensor fired but user is not walking — skipping broadcast.");
+            return;
+        }
+
         float rawCumulativeSteps = event.values[0];
         String todayDate   = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
         String savedDate   = prefs.getString(KEY_BASELINE_DATE, "");
@@ -356,4 +391,142 @@ public class TrackingService extends Service implements SensorEventListener {
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    // ── Activity Recognition ───────────────────────────────────────────────
+
+    /**
+     * Sets up the BroadcastReceiver that listens for activity transition events
+     * delivered via PendingIntent. When the user enters/exits WALKING, RUNNING,
+     * IN_VEHICLE, or ON_BICYCLE, we update the isUserWalking flag accordingly.
+     */
+    private void setupActivityTransitionReceiver() {
+        activityTransitionReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!ACTION_ACTIVITY_TRANSITION.equals(intent.getAction())) return;
+                if (!ActivityTransitionResult.hasResult(intent)) return;
+
+                ActivityTransitionResult result = ActivityTransitionResult.extractResult(intent);
+                if (result == null) return;
+
+                for (ActivityTransitionEvent event : result.getTransitionEvents()) {
+                    int activityType = event.getActivityType();
+                    int transitionType = event.getTransitionType();
+
+                    String activityName = getActivityName(activityType);
+
+                    if (transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
+                        // User just entered this activity
+                        switch (activityType) {
+                            case DetectedActivity.WALKING:
+                            case DetectedActivity.RUNNING:
+                            case DetectedActivity.ON_FOOT:
+                                isUserWalking = true;
+                                Log.i(TAG, "Activity detected: " + activityName + " — step counting ENABLED");
+                                break;
+
+                            case DetectedActivity.IN_VEHICLE:
+                            case DetectedActivity.ON_BICYCLE:
+                            case DetectedActivity.STILL:
+                                isUserWalking = false;
+                                Log.i(TAG, "Activity detected: " + activityName + " — step counting PAUSED");
+                                break;
+
+                            default:
+                                // UNKNOWN or TILTING — keep current state
+                                Log.d(TAG, "Activity detected (unhandled): " + activityName + " — keeping isUserWalking=" + isUserWalking);
+                                break;
+                        }
+                    }
+                }
+            }
+        };
+
+        // Register receiver for the custom action
+        IntentFilter filter = new IntentFilter(ACTION_ACTIVITY_TRANSITION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(activityTransitionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(activityTransitionReceiver, filter);
+        }
+
+        // Register activity transitions with Google Play Services
+        startActivityTransitionUpdates();
+    }
+
+    private void startActivityTransitionUpdates() {
+        // Check permission before requesting transitions (Android 10+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "ACTIVITY_RECOGNITION permission not granted — steps will count for all activities (fallback mode)");
+                // isUserWalking stays true (default) so steps still count — graceful fallback
+                return;
+            }
+        }
+
+        // Build the list of transitions we care about
+        List<ActivityTransition> transitions = new ArrayList<>();
+
+        int[] walkingTypes = {
+            DetectedActivity.WALKING,
+            DetectedActivity.RUNNING,
+            DetectedActivity.ON_FOOT
+        };
+        int[] vehicleTypes = {
+            DetectedActivity.IN_VEHICLE,
+            DetectedActivity.ON_BICYCLE,
+            DetectedActivity.STILL
+        };
+
+        for (int type : walkingTypes) {
+            transitions.add(new ActivityTransition.Builder()
+                .setActivityType(type)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                .build());
+        }
+        for (int type : vehicleTypes) {
+            transitions.add(new ActivityTransition.Builder()
+                .setActivityType(type)
+                .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                .build());
+        }
+
+        ActivityTransitionRequest request = new ActivityTransitionRequest(transitions);
+
+        Intent intent = new Intent(ACTION_ACTIVITY_TRANSITION);
+        activityTransitionPendingIntent = PendingIntent.getBroadcast(
+                this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        activityRecognitionClient
+            .requestActivityTransitionUpdates(request, activityTransitionPendingIntent)
+            .addOnSuccessListener(aVoid ->
+                Log.i(TAG, "Activity transition updates registered successfully"))
+            .addOnFailureListener(e ->
+                Log.w(TAG, "Failed to register activity transitions: " + e.getMessage() +
+                        " — steps will count for all activities (fallback mode)"));
+    }
+
+    private void stopActivityTransitionUpdates() {
+        if (activityRecognitionClient != null && activityTransitionPendingIntent != null) {
+            activityRecognitionClient
+                .removeActivityTransitionUpdates(activityTransitionPendingIntent)
+                .addOnFailureListener(e -> Log.w(TAG, "Failed to remove activity transitions: " + e.getMessage()));
+        }
+    }
+
+    private static String getActivityName(int activityType) {
+        switch (activityType) {
+            case DetectedActivity.WALKING:    return "WALKING";
+            case DetectedActivity.RUNNING:    return "RUNNING";
+            case DetectedActivity.ON_FOOT:    return "ON_FOOT";
+            case DetectedActivity.IN_VEHICLE: return "IN_VEHICLE";
+            case DetectedActivity.ON_BICYCLE: return "ON_BICYCLE";
+            case DetectedActivity.STILL:      return "STILL";
+            case DetectedActivity.TILTING:    return "TILTING";
+            default:                          return "UNKNOWN(" + activityType + ")";
+        }
+    }
 }

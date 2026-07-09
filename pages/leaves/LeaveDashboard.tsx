@@ -38,6 +38,7 @@ import Modal from '../../components/ui/Modal';
 import HolidayCalendar from './HolidayCalendar';
 import ShortfallCalendar from './ShortfallCalendar';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 
 // --- Reusable Components ---
 
@@ -147,6 +148,7 @@ const LeaveDashboard: React.FC = () => {
     const [attendanceSettings, setAttendanceSettings] = useState<AttendanceSettings | null>(null);
     const [recurringHolidays, setRecurringHolidays] = useState<RecurringHolidayRule[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isContentVisible, setIsContentVisible] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isCompOffHistoryDisabled, setIsCompOffHistoryDisabled] = useState(false);
     const [filter, setFilter] = useState<LeaveRequestStatus | 'all'>('all');
@@ -157,6 +159,8 @@ const LeaveDashboard: React.FC = () => {
     const [calculatedOTHours, setCalculatedOTHours] = useState<number>(0);
     const [calculatedShortfallMins, setCalculatedShortfallMins] = useState<number>(0);
     const [userChildren, setUserChildren] = useState<UserChild[]>([]);
+    const [selectedLeaveRequest, setSelectedLeaveRequest] = useState<LeaveRequest | null>(null);
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
     // Holiday Selection State
     const [userHolidays, setUserHolidays] = useState<UserHoliday[]>([]);
@@ -266,6 +270,10 @@ const LeaveDashboard: React.FC = () => {
 
     const fetchData = useCallback(async () => {
         if (!user) return;
+        // ── Industry standard: set loading TRUE first, before clearing any state ──
+        // This prevents the flash of empty/zero values that appear while data is wiped
+        // but the loading spinner hasn't appeared yet.
+        setIsLoading(true);
         setError(null);
         setBalance(null);
         setMonthlyPaydays(null);
@@ -283,27 +291,17 @@ const LeaveDashboard: React.FC = () => {
         const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
         const endStr = new Date(endOfMonth(viewingDate).getTime() + 36 * 60 * 60 * 1000).toISOString();
 
-        // ── Cache-first: render cached data instantly while live fetch runs ──
-        try {
-            // if (cachedEvents && Array.isArray(cachedEvents) && cachedEvents.length > 0) {
-            //     setEvents(cachedEvents);
-            //     // If we have cached events, allow the UI to render immediately
-            //     setIsLoading(false);
-            // }
-        } catch (cacheErr) {
-            // Cache miss is fine — we'll fetch live data below
-        }
-        
-        // Set loading only if we didn't get cache
-        if (events.length === 0) {
-            setIsLoading(true);
-        }
+        // ── Performance timer ──
+        const t0 = performance.now();
+        let tFetchStart = 0;
+        let tFetchEnd = 0;
 
         try {
             const startOfYearStr = startOfYear(viewingDate).toISOString();
             const endOfYearStr = endOfYear(viewingDate).toISOString();
 
             // Fetch base data points
+            tFetchStart = performance.now();
             const [balanceData, requestsData, compOffData, eventsData, settings, recurringData, selections, yearlyEvents, yearlyRequests, userChildrenData, routePointsData, snapshotDataRes] = await Promise.all([
                 // Use the selected calendar month for balance calculation
                 api.getLeaveBalancesForUser(user.id, format(endOfMonth(viewingDate), 'yyyy-MM-dd')).catch(err => { console.warn('Leave balance fetch failed (offline?):', err.message); return null; }),
@@ -327,6 +325,7 @@ const LeaveDashboard: React.FC = () => {
                 api.getRoutePoints(user.id, startStr, endStr).catch(() => [] as RoutePoint[]),
                 api.getMonthSnapshot(user.id, viewingDate.getFullYear(), viewingDate.getMonth() + 1).catch(() => null)
             ]);
+            tFetchEnd = performance.now();
 
             setBalance(balanceData);
             setRequests(requestsData);
@@ -531,6 +530,9 @@ const LeaveDashboard: React.FC = () => {
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
 
+            // ── ALL state is now set ── unlock the dashboard in the same React batch
+            setIsLoading(false);
+
         } catch (err: any) {
             console.error('Error fetching dashboard data:', err);
             let message = 'Failed to load leave data.';
@@ -543,8 +545,23 @@ const LeaveDashboard: React.FC = () => {
             }
             setError(message);
             setToast({ message, type: 'error' });
-        } finally {
+            // Also unlock on error so the page doesn’t stay stuck on loader
             setIsLoading(false);
+        } finally {
+            // Performance log only — no state changes here
+            const tTotal = performance.now() - t0;
+            const tFetch   = tFetchEnd - tFetchStart;
+            const tProcess = tFetchEnd > 0 ? tTotal - tFetch : null;
+
+            console.groupCollapsed(
+                `%c⏱ LeaveDashboard Load  %c${tTotal.toFixed(0)} ms total`,
+                'color:#888; font-weight:normal',
+                `color:${tTotal < 1500 ? '#22c55e' : tTotal < 3000 ? '#f59e0b' : '#ef4444'}; font-weight:bold`
+            );
+            if (tFetchEnd > 0)     console.log(`  📡 API fetch (Promise.all): ${tFetch.toFixed(0)} ms`);
+            if (tProcess !== null) console.log(`  ⚙️  Post-processing:         ${tProcess.toFixed(0)} ms`);
+            console.log(`  🕐 Total load time:         ${tTotal.toFixed(0)} ms`);
+            console.groupEnd();
         }
     }, [user?.id, user?.role, filter, viewingDate, isCheckedIn, dailyPunchCount]);
 
@@ -591,6 +608,18 @@ const LeaveDashboard: React.FC = () => {
         }
     };
 
+    // ── Smooth fade-in: double-rAF guarantees the opacity:0 frame is painted
+    // before we flip to opacity:1, so CSS transition always fires cleanly.
+    useEffect(() => {
+        if (!isLoading) {
+            setIsContentVisible(false);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => setIsContentVisible(true));
+            });
+        }
+    }, [isLoading]);
+
+    // Hard guard — content never renders while fetching, so no blank flash possible
     if (isLoading) {
         return <LoadingScreen message="Establishing secure uplink..." />;
     }
@@ -769,7 +798,7 @@ const LeaveDashboard: React.FC = () => {
             description: `Cumulative site-to-site travel for ${format(viewingDate, 'MMMM yyyy')}.${(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration) > 0 ? ` Duration: ${formatDuration(snapshotData?.summary?.totalTravelDuration !== undefined ? snapshotData.summary.totalTravelDuration : monthlyTravelDuration)}` : ''}`,
             icon: MapPin,
             isExpired: false,
-            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'travel' } })
+            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'travel', userId: user?.id } })
         },
         {
             title: 'Monthly Footsteps',
@@ -779,7 +808,7 @@ const LeaveDashboard: React.FC = () => {
             description: `Total footsteps tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Footprints,
             isExpired: false,
-            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'steps' } })
+            onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'steps', userId: user?.id } })
         },
         ...(isTechnicalRole(user?.role) ? [{
             title: 'Site OT Days',
@@ -818,7 +847,14 @@ const LeaveDashboard: React.FC = () => {
     ] : [];
 
     return (
-        <div className="p-4 space-y-6">
+        <div
+            className="p-4 space-y-6"
+            style={{
+                opacity: isContentVisible ? 1 : 0,
+                transform: isContentVisible ? 'translateY(0)' : 'translateY(8px)',
+                transition: 'opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+        >
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             <div className="flex justify-between items-center">
@@ -1087,7 +1123,17 @@ const LeaveDashboard: React.FC = () => {
                                                 <LeaveStatusChip status={req.status} />
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
-                                                <div className="flex justify-end gap-1 flex-wrap">
+                                                <div className="flex justify-end gap-1 flex-wrap items-center">
+                                                    <button 
+                                                        onClick={() => {
+                                                            setSelectedLeaveRequest(req);
+                                                            setIsDetailsModalOpen(true);
+                                                        }} 
+                                                        className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" 
+                                                        title="View Details"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </button>
                                                     {['pending_manager_approval', 'rejected', 'cancelled', 'withdrawn'].includes(req.status) ? (
                                                         <>
                                                             {actioningRequestId === req.id ? (
@@ -1169,6 +1215,16 @@ const LeaveDashboard: React.FC = () => {
 
             {/* Employee Attendance Log */}
             <EmployeeLog initialEvents={events} />
+
+            {/* Leave Details Modal */}
+            <LeaveDetailsModal
+                isOpen={isDetailsModalOpen}
+                onClose={() => {
+                    setIsDetailsModalOpen(false);
+                    setSelectedLeaveRequest(null);
+                }}
+                request={selectedLeaveRequest}
+            />
         </div>
     );
 };
