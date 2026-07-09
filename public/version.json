@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 90,
-  "latestVersionName": "18.0.0",
+  "latestVersionCode": 91,
+  "latestVersionName": "18.1.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement interactive organizational workflow visualization with team management and tracking services\nfeat: implement ActivityTimeline and LeaveDashboard pages for tracking travel and attendance logs.\nfeat: implement auth management, attendance tracking, and module-specific pages for onboarding system\nfeat: implement manual attendance management and add new onboarding and leave modules\nfeat: implement NotificationPanel, ProfilePlaceholder, LeaveManagement page, and notificationService",
+  "releaseNotes": "feat: implement user vehicle management system including database schemas, API services, and administrative UI components\nfeat: implement attendance management system including calendar, dashboards, and reporting modules\nfeat: add AttendanceDashboard with manual date entry, integer-constrained chart axes, and unified report generation workflow\nfeat: add AttendanceDashboard component with manual date entry, integer-enforced chart axes, and unified report generation\nfeat: upgrade app version to 18.0.0 and integrate background Firebase/Supabase services for improved tracking and attendance",
   "isMandatory": true
 }

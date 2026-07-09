@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '18.0.0',
-  date: '2026-07-08',
+  version: '18.1.0',
+  date: '2026-07-09',
   notes: [
-    "Interactive 2D & 3D organizational workflow charts and visual approval builders.",
-    "Redesigned Monthly Hours Report with a compact 31-day layout and gradient metrics cards.",
-    "Offline-first geofenced attendance engine with secure face verification.",
-    "Enhanced payroll logic to preserve Weekly Off when working on weekends (W/P).",
-    "Improved live field staff tracking, snag audits, and helpdesk support ticketing."
-  ]
+  "feat: implement user vehicle management system including database schemas, API services, and administrative UI components",
+  "feat: implement attendance management system including calendar, dashboards, and reporting modules",
+  "feat: add AttendanceDashboard with manual date entry, integer-constrained chart axes, and unified report generation workflow",
+  "feat: add AttendanceDashboard component with manual date entry, integer-enforced chart axes, and unified report generation",
+  "feat: upgrade app version to 18.0.0 and integrate background Firebase/Supabase services for improved tracking and attendance"
+]
 };

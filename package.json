@@ -1,7 +1,7 @@
 {
   "name": "paradigm-onboarding-frontend-prototype",
   "private": true,
-  "version": "18.0.0",
+  "version": "18.1.0",
   "type": "module",
   "description": "A frontend prototype for the Paradigm Employee Onboarding system, running entirely on mock data.",
   "scripts": {
@@ -78,6 +78,7 @@
     "react-hook-form": "^7.51.4",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.30.2",
+    "recharts": "^3.9.2",
     "tesseract.js": "^7.0.0",
     "yup": "^1.4.0",
     "zustand": "^4.5.2"

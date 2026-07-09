@@ -1647,7 +1647,7 @@ export const api = {
       'application/xml', 'text/xml'
     ];
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
-    const PUBLIC_BUCKETS = [LOGO_BUCKET, BACKGROUND_BUCKET, AVATAR_BUCKET];
+    const PUBLIC_BUCKETS = [LOGO_BUCKET, BACKGROUND_BUCKET, AVATAR_BUCKET, ONBOARDING_DOCS_BUCKET];
     const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
 
     try {
@@ -9324,9 +9324,8 @@ export const api = {
         *,
         users (
           id,
-          first_name,
-          last_name,
-          avatar_url
+          name,
+          photo_url
         )
       `)
       .order('created_at', { ascending: false });
@@ -9340,5 +9339,24 @@ export const api = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+  },
+
+  getUserTravelLogs: async (userId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('travel_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('log_date', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  getAllTravelLogs: async (): Promise<any[]> => {
+    const { data, error } = await supabase
+      .from('travel_logs')
+      .select('*')
+      .order('log_date', { ascending: true });
+    if (error) throw error;
+    return data || [];
   }
 };
