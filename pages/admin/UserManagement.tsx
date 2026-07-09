@@ -490,6 +490,21 @@ const UserManagement: React.FC = () => {
         setIsSaving(true);
         try {
             await api.approveUser(userId, newRole);
+            
+            // Auto-populate joining date and leave opening dates on approval if empty
+            const userObj = users.find(u => u.id === userId);
+            if (userObj && !userObj.joiningDate) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                await api.updateUser(userId, {
+                    joiningDate: todayStr,
+                    earnedLeaveOpeningDate: userObj.earnedLeaveOpeningDate || todayStr,
+                    sickLeaveOpeningDate: userObj.sickLeaveOpeningDate || todayStr,
+                    compOffOpeningDate: userObj.compOffOpeningDate || todayStr,
+                    floatingLeaveOpeningDate: userObj.floatingLeaveOpeningDate || todayStr,
+                    childCareLeaveOpeningDate: userObj.childCareLeaveOpeningDate || todayStr,
+                });
+            }
+            
             setToast({ message: 'User approved and email confirmed successfully!', type: 'success' });
             setIsApprovalModalOpen(false);
             

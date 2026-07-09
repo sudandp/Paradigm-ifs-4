@@ -127,7 +127,7 @@ export interface EmailLog {
   createdAt: string;
 }
 
-export type AttendanceReportType = 'basic' | 'monthly' | 'log' | 'work_hours' | 'site_ot' | 'audit';
+export type AttendanceReportType = 'basic' | 'monthly' | 'log' | 'work_hours' | 'site_ot' | 'audit' | 'leave_balance';
 
 export interface ReportEmailPayload {
   to: string | string[];

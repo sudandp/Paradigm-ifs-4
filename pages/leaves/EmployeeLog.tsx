@@ -41,19 +41,19 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
         switch (selectedRange) {
             case 'day':
-                // Expand 12 hours back to catch night shift starts, 12 hours forward to catch ends
+                // Expand 12 hours back to catch night shift starts, 36 hours forward to catch ends
                 startDate = new Date(startOfDay(selectedDate).getTime() - 12 * 60 * 60 * 1000);
-                endDate = new Date(endOfDay(selectedDate).getTime() + 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfDay(selectedDate).getTime() + 36 * 60 * 60 * 1000);
                 break;
             case 'week':
-                // Expand 12 hours back/forward for the week range
+                // Expand 12 hours back to catch night shift starts, 36 hours forward for the week range
                 startDate = new Date(startOfWeek(selectedDate, { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000);
-                endDate = new Date(endOfWeek(selectedDate, { weekStartsOn: 1 }).getTime() + 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfWeek(selectedDate, { weekStartsOn: 1 }).getTime() + 36 * 60 * 60 * 1000);
                 break;
             case 'month':
-                // Expand 12 hours back/forward for the month range
+                // Expand 12 hours back to catch night shift starts, 36 hours forward for the month range
                 startDate = new Date(startOfMonth(selectedDate).getTime() - 12 * 60 * 60 * 1000);
-                endDate = new Date(endOfMonth(selectedDate).getTime() + 12 * 60 * 60 * 1000);
+                endDate = new Date(endOfMonth(selectedDate).getTime() + 36 * 60 * 60 * 1000);
                 break;
         }
 

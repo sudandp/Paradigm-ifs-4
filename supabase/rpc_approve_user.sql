@@ -8,6 +8,7 @@ security definer
 as $$
 declare
   is_admin boolean;
+  new_joining_date date;
 begin
   -- Check if the executing user has admin privileges
   -- Allowed roles: admin, super_admin, superadmin
@@ -30,9 +31,21 @@ begin
       updated_at = now()
   where id = user_id;
 
-  -- 2. Update the user's role in public.users
+  -- 2. Fetch or compute the joining date
+  select coalesce(joining_date, current_date)
+  into new_joining_date
+  from public.users
+  where id = user_id;
+
+  -- 3. Update the user's role, joining date, and leave balance opening dates in public.users
   update public.users
   set role_id = role_text,
+      joining_date = new_joining_date,
+      earned_leave_opening_date = coalesce(earned_leave_opening_date, new_joining_date),
+      sick_leave_opening_date = coalesce(sick_leave_opening_date, new_joining_date),
+      comp_off_opening_date = coalesce(comp_off_opening_date, new_joining_date),
+      floating_leave_opening_date = coalesce(floating_leave_opening_date, new_joining_date),
+      child_care_leave_opening_date = coalesce(child_care_leave_opening_date, new_joining_date),
       updated_at = now()
   where id = user_id;
 end;

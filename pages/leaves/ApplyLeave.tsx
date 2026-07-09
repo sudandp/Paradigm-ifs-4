@@ -142,6 +142,22 @@ const ApplyLeave: React.FC = () => {
     const editId = searchParams.get('edit');
     const isEditMode = !!editId;
     const isFemale = ['female', 'ladies'].includes((user?.gender || '').toLowerCase());
+
+    const isProbation = React.useMemo(() => {
+        if (!user) return false;
+        const joinDateStr = user.joiningDate || user.createdAt;
+        if (!joinDateStr) return false;
+        
+        const joinDate = new Date(joinDateStr.split('T')[0].replace(/-/g, '/'));
+        const probationEnd = new Date(joinDate);
+        probationEnd.setMonth(probationEnd.getMonth() + 3);
+        
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        return todayMidnight < probationEnd;
+    }, [user]);
+
     const [isInitialLoading, setIsInitialLoading] = React.useState(isEditMode);
     const [isFetchingLogs, setIsFetchingLogs] = React.useState(false);
     const [userChildren, setUserChildren] = React.useState<UserChild[]>([]);
@@ -193,7 +209,7 @@ const ApplyLeave: React.FC = () => {
         return () => clearInterval(interval);
     }, []);
 
-    const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || 'Earned';
+    const initialLeaveType = (searchParams.get('leaveType') as LeaveType) || (isProbation ? 'Loss of Pay' : 'Earned');
     const initialStartDate = searchParams.get('startDate') || format(new Date(), 'yyyy-MM-dd');
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<LeaveRequestFormData>({
@@ -605,6 +621,12 @@ const ApplyLeave: React.FC = () => {
         if (!user || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            if (isProbation && ['Earned', 'Sick', 'Child Care'].includes(formData.leaveType)) {
+                setToast({ message: `You cannot apply for ${formData.leaveType} during your 3-month probation period.`, type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+
             // --- DUPLICATE CHECK ---
             // Fetch any existing requests for this user that overlap with the selected dates
             const { data: existingRequests } = await api.getLeaveRequests({ 
@@ -1095,12 +1117,12 @@ const ApplyLeave: React.FC = () => {
                                             error={errors.leaveType?.message} 
                                             className={isMobile ? 'pro-select pro-select-arrow' : ''}
                                         >
-                                            <option value="Earned">Earned</option>
-                                            <option value="Sick">Sick</option>
+                                            {!isProbation && <option value="Earned">Earned</option>}
+                                            {!isProbation && <option value="Sick">Sick</option>}
                                             <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
                                             <option value="Comp Off">Comp Off</option>
                                             <option value="Loss of Pay">Loss of Pay</option>
-                                            {(isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
+                                            {(!isProbation && isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                             {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
                                             <option value="WFH">Work From Home (WFH)</option>
                                             <option value="Correction">Request for Correction (RC)</option>

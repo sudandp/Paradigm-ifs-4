@@ -367,6 +367,46 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 2,
   },
+  notationSection: {
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 8,
+  },
+  notationTitle: {
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  notationGrid: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  notationCol: {
+    flex: 1,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  notationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  notationBadge: {
+    width: 25,
+    textAlign: 'center',
+    fontSize: 6,
+    fontWeight: 'bold',
+    borderRadius: 2,
+    padding: '1 2',
+  },
+  notationText: {
+    fontSize: 6.5,
+    color: '#475569',
+    fontWeight: 'bold',
+  },
 });
 
 export interface AppliedFilters {
@@ -405,6 +445,106 @@ const renderPDFHeaderCenter = (filters?: AppliedFilters) => {
           </Text>
         )}
       </View>
+    </View>
+  );
+};
+
+const renderPDFNotationReference = () => {
+  return (
+    <View style={styles.notationSection}>
+      <Text style={styles.notationTitle}>NOTATION REFERENCE</Text>
+      <View style={styles.notationGrid}>
+        {/* Column 1 */}
+        <View style={styles.notationCol}>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DCFCE7', color: '#059669' }]}>P</Text>
+            <Text style={styles.notationText}>PRESENT — Full day attendance</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DBEAFE', color: '#2563EB' }]}>0.5P</Text>
+            <Text style={styles.notationText}>HALF DAY — 50% attendance</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#D1FAE5', color: '#059669' }]}>0.75P</Text>
+            <Text style={styles.notationText}>THREE-QUARTER DAY — 75% attendance</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#E0F2FE', color: '#0369A1' }]}>0.25P</Text>
+            <Text style={styles.notationText}>QUARTER DAY — 25% attendance</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FEF3C7', color: '#92400E' }]}>H/P</Text>
+            <Text style={styles.notationText}>HOLIDAY PRESENT — Worked on holiday (1.5x)</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DBEAFE', color: '#1D4ED8' }]}>W/P</Text>
+            <Text style={styles.notationText}>WEEKEND PRESENT — Worked on week off (1.5x)</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#CCFBF1', color: '#0D9488' }]}>WH</Text>
+            <Text style={styles.notationText}>WORK FROM HOME — Remote working day</Text>
+          </View>
+        </View>
+
+        {/* Column 2 */}
+        <View style={styles.notationCol}>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#EDE9FE', color: '#9333EA' }]}>SL</Text>
+            <Text style={styles.notationText}>SICK LEAVE — Medical leave</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#E0E7FF', color: '#4F46E5' }]}>EL</Text>
+            <Text style={styles.notationText}>EARNED LEAVE — Accrued paid leave</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#EDE9FE', color: '#7C3AED' }]}>CL</Text>
+            <Text style={styles.notationText}>CASUAL LEAVE — Short-notice leave</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#CFFAFE', color: '#0891B2' }]}>C/O</Text>
+            <Text style={styles.notationText}>COMP OFF — Compensatory off day</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DBEAFE', color: '#1D4ED8' }]}>BL</Text>
+            <Text style={styles.notationText}>BLUE LEAVE — 3rd Saturday (male)</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FCE7F3', color: '#DB2777' }]}>PL</Text>
+            <Text style={styles.notationText}>PINK LEAVE — Female recurring holiday</Text>
+          </View>
+        </View>
+
+        {/* Column 3 */}
+        <View style={styles.notationCol}>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FEE2E2', color: '#DC2626' }]}>A</Text>
+            <Text style={styles.notationText}>ABSENT — No attendance recorded</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FEE2E2', color: '#DC2626' }]}>LOP</Text>
+            <Text style={styles.notationText}>LOSS OF PAY — Unpaid absence</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#F1F5F9', color: '#6B7280' }]}>W/O</Text>
+            <Text style={styles.notationText}>WEEKLY OFF — Scheduled day off (Sun)</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#FEF9C3', color: '#854D0E' }]}>H</Text>
+            <Text style={styles.notationText}>HOLIDAY — Declared public holiday</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#E0F2FE', color: '#0284C7' }]}>RP</Text>
+            <Text style={styles.notationText}>REQUEST PERMISSION — Late/early permission</Text>
+          </View>
+          <View style={styles.notationItem}>
+            <Text style={[styles.notationBadge, { backgroundColor: '#DCFCE7', color: '#16A34A' }]}>RC</Text>
+            <Text style={styles.notationText}>REQUEST CORRECTION — Punch correction</Text>
+          </View>
+        </View>
+      </View>
+      <Text style={{ fontSize: 6, color: '#94A3B8', marginTop: 5 }}>
+        * Profile 1/2 indicates half-day variant (e.g., 0.5P/L - Half Paid/Earned Leave). H/P and W/P attract 1.5x payable credit.
+      </Text>
     </View>
   );
 };
@@ -1009,7 +1149,7 @@ export const MonthlyReportDocument: React.FC<{
 }> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, days, filters }) => {
   const getStatusColor = (s: string) => {
     if (s.includes('+')) return '#0D9488';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#059669';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WH' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#059669';
     if (s === 'A' || s === 'Absent') return '#DC2626';
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
@@ -1021,7 +1161,7 @@ export const MonthlyReportDocument: React.FC<{
 
   const getStatusBg = (s: string) => {
     if (s.includes('+')) return '#F0FDFA';
-    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
+    if (s === 'P' || s === 'Present' || s === 'H/P' || s === 'W/P' || s === 'W/H' || s === 'WH' || s === 'WFH' || s === 'BL/P' || s === 'PL/P') return '#ECFDF5';
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
@@ -1187,6 +1327,8 @@ export const MonthlyReportDocument: React.FC<{
               )) || days.map((_, i) => <View key={i} style={[styles.matrixCell, { borderBottomWidth: 0 }]}><Text>-</Text></View>)}
             </View>
           </View>
+
+          {renderPDFNotationReference()}
 
           {/* Footer Metadata */}
           <View style={{ marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 8 }}>
@@ -1803,7 +1945,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s === 'W/O' || s === 'Weekly Off') return '#64748B';
     if (s === 'H' || s === 'Holiday') return '#4F46E5';
     if (s.includes('S/L') || s.includes('E/L') || s.includes('C/O')) return '#7C3AED';
-    if (s === 'W/H') return '#0D9488';
+    if (s === 'W/H' || s === 'WH') return '#0D9488';
     return '#475569';
   };
 
@@ -1812,7 +1954,7 @@ export const MonthlyMatrixReportDocument: React.FC<{
     if (s === 'A' || s === 'Absent') return '#FEF2F2';
     if (s === 'W/O' || s === 'Weekly Off') return '#F8FAFC';
     if (s === 'H' || s === 'Holiday') return '#EEF2FF';
-    if (s === 'W/H') return '#F0FDFA';
+    if (s === 'W/H' || s === 'WH') return '#F0FDFA';
     return '#FFFFFF';
   };
 
@@ -1916,6 +2058,8 @@ export const MonthlyMatrixReportDocument: React.FC<{
                 );
               })}
             </View>
+
+            {renderPDFNotationReference()}
             
             <Text style={styles.footer} fixed>
               Paradigm Services - {format(monthDate, 'MMMM yyyy')} - Page {pageIdx + 1} of {pages.length}
@@ -1923,6 +2067,133 @@ export const MonthlyMatrixReportDocument: React.FC<{
           </Page>
         ));
       })}
+    </Document>
+  );
+};
+
+export const LeaveBalanceTrackerDocument: React.FC<{
+  data: any[];
+  dateRange: { startDate: Date; endDate: Date };
+  generatedBy?: string;
+  generatedByRole?: string;
+  targetUserName?: string;
+  targetUserRole?: string;
+  logoUrl?: string;
+  filters?: AppliedFilters;
+}> = ({ data, dateRange, generatedBy, generatedByRole, targetUserName, targetUserRole, logoUrl, filters }) => {
+  const rowsPerPage = 18; 
+  const pages: any[][] = [];
+  for (let i = 0; i < data.length; i += rowsPerPage) {
+    pages.push(data.slice(i, i + rowsPerPage));
+  }
+
+  return (
+    <Document>
+      {pages.map((pageData, pageIndex) => (
+        <Page key={pageIndex} size="A4" orientation="landscape" style={styles.page}>
+          <View style={styles.header} fixed>
+            <View style={styles.headerLeft}>
+              {logoUrl && <Image src={logoUrl} style={styles.logo} />}
+              {targetUserName && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#111827' }}>{targetUserName}</Text>
+                  {targetUserRole && (
+                    <Text style={{ fontSize: 8, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold', marginTop: 2 }}>{targetUserRole.replace(/_/g, ' ')}</Text>
+                  )}
+                </View>
+              )}
+            </View>
+            {renderPDFHeaderCenter(filters)}
+            <View style={styles.headerRight}>
+              <Text style={styles.title}>Leave Balance Tracker</Text>
+              <Text style={styles.subtitle}>
+                {(dateRange?.startDate && dateRange?.endDate) ? `As of Date: ${format(dateRange.endDate, 'dd MMM yyyy')}` : 'As of Date: Not Specified'}
+              </Text>
+              <Text style={styles.metaText}>
+                Generated: {format(new Date(), 'dd MMM yyyy HH:mm')}
+              </Text>
+              {generatedBy && (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={styles.metaText}>Generated by: {generatedBy}</Text>
+                  {generatedByRole && (
+                    <Text style={[styles.metaText, { fontSize: 8, textTransform: 'uppercase' }]}>{generatedByRole}</Text>
+                  )}
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.table}>
+            <View style={[styles.tableRow, { backgroundColor: '#f3f4f6' }]}>
+              <View style={[styles.tableColHeader, { width: '16%' }]}><Text style={styles.tableCellHeader}>Employee</Text></View>
+              <View style={[styles.tableColHeader, { width: '14%' }]}><Text style={styles.tableCellHeader}>Role / Dept</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#ecfdf5' }]}><Text style={[styles.tableCellHeader, { color: '#047857' }]}>EL (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#eff6ff' }]}><Text style={[styles.tableCellHeader, { color: '#1d4ed8' }]}>SL (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#f0fdfa' }]}><Text style={[styles.tableCellHeader, { color: '#0f766e' }]}>CO (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#fffbeb' }]}><Text style={[styles.tableCellHeader, { color: '#b45309' }]}>FH (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#fdf2f8' }]}><Text style={[styles.tableCellHeader, { color: '#be185d' }]}>PL (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#ecfeff' }]}><Text style={[styles.tableCellHeader, { color: '#0e7490' }]}>CC (Earn/Bal)</Text></View>
+              <View style={[styles.tableColHeader, { width: '10%', backgroundColor: '#fff1f2' }]}><Text style={[styles.tableCellHeader, { color: '#be123c' }]}>ML (Earn/Bal)</Text></View>
+            </View>
+
+            {pageData.map((row, idx) => {
+              const b = row.balances || {};
+              const elBal = (b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0);
+              const slBal = (b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0);
+              const coBal = (b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0);
+              const fhBal = (b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0);
+              const plBal = (b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0);
+              const ccBal = (b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0);
+              const mlBal = (b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0);
+
+              return (
+                <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#fff' : '#fafafa' }]}>
+                  <View style={[styles.tableCol, { width: '16%' }]}><Text style={styles.tableCellLeft}>{row.userName}</Text></View>
+                  <View style={[styles.tableCol, { width: '14%' }]}><Text style={styles.tableCellLeft}>{String(row.role || row.department || 'Staff').replace(/_/g, ' ')}</Text></View>
+                  
+                  {/* EL */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#f9fbf9' }]}>
+                    <Text style={styles.tableCell}>{(b.earnedTotal || 0).toFixed(1)} / {elBal.toFixed(1)}</Text>
+                  </View>
+                  
+                  {/* SL */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#f8fafc' }]}>
+                    <Text style={styles.tableCell}>{(b.sickTotal || 0).toFixed(1)} / {slBal.toFixed(1)}</Text>
+                  </View>
+
+                  {/* CO */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#f9fafb' }]}>
+                    <Text style={styles.tableCell}>{(b.compOffTotal || 0).toFixed(1)} / {coBal.toFixed(1)}</Text>
+                  </View>
+
+                  {/* FH */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#fffdf9' }]}>
+                    <Text style={styles.tableCell}>{(b.floatingTotal || 0).toFixed(1)} / {fhBal.toFixed(1)}</Text>
+                  </View>
+
+                  {/* PL */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#fffbfa' }]}>
+                    <Text style={styles.tableCell}>{(b.pinkTotal || 0).toFixed(1)} / {plBal.toFixed(1)}</Text>
+                  </View>
+
+                  {/* CC */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#fbfcff' }]}>
+                    <Text style={styles.tableCell}>{(b.childCareTotal || 0).toFixed(1)} / {ccBal.toFixed(1)}</Text>
+                  </View>
+
+                  {/* ML */}
+                  <View style={[styles.tableCol, { width: '10%', backgroundColor: '#fffbfb' }]}>
+                    <Text style={styles.tableCell}>{(b.maternityTotal || 0).toFixed(1)} / {mlBal.toFixed(1)}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+          <Text style={styles.footer} fixed>
+            Paradigm Services - Page {pageIndex + 1} of {pages.length}
+          </Text>
+        </Page>
+      ))}
     </Document>
   );
 };

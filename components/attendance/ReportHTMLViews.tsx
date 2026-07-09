@@ -304,7 +304,7 @@ export const MonthlyStatusView: React.FC<{
         if (s.includes('ML') || s.includes('M/L')) return 'text-[#BE185D]'; // Maternity Pink
         if (s.includes('CC') || s.includes('C/C')) return 'text-[#0F766E]'; // Child Care Teal
         if (s.includes('OT')) return 'text-[#0D9488]'; // OT Teal
-        if (s === 'W/H') return 'text-[#0D9488]'; // WFH Teal
+        if (s === 'W/H' || s === 'WH') return 'text-[#0D9488]'; // WFH Teal
         if (s === 'W/P') return 'text-[#2563EB]'; // WP Blue
         if (s === 'RP' || s.includes('RP')) return 'text-[#0284C7]'; // Permission Blue
         if (s === 'RC' || s.includes('RC')) return 'text-[#16A34A]'; // Correction Green
@@ -600,6 +600,149 @@ export const WorkHoursReportView: React.FC<{
                 </table>
             </div>
             <Footer label="Paradigm Services - Productivity Report" />
+        </div>
+    );
+};
+
+export interface LeaveBalanceTrackerRow {
+    userId: string;
+    userName: string;
+    department: string;
+    role: string;
+    balances: any; // LeaveBalance
+}
+
+export const LeaveBalanceTrackerView: React.FC<{
+    data: LeaveBalanceTrackerRow[];
+    dateRange: { startDate: Date; endDate: Date };
+    logoUrl?: string;
+    generatedBy?: string;
+    generatedByRole?: string;
+    targetUserName?: string;
+    targetUserRole?: string;
+    filters?: AppliedFilters;
+}> = ({ data, dateRange, logoUrl, generatedBy, generatedByRole, targetUserName, targetUserRole, filters }) => {
+    const subtitle = (dateRange?.startDate && dateRange?.endDate)
+        ? `As of Date: ${format(dateRange.endDate, 'dd MMM yyyy')}`
+        : 'As of Date: Not Specified';
+
+    if (!data.length) return <EmptyState message="No leave balance data found." />;
+
+    return (
+        <div className="bg-white p-4 md:p-[24px] shadow-lg rounded-[16px] border border-gray-100 max-w-full mx-auto overflow-hidden space-y-6">
+            <ReportHeader 
+                title="Leave Balance Tracker" 
+                subtitle={subtitle} 
+                logoUrl={logoUrl} 
+                generatedBy={generatedBy} 
+                generatedByRole={generatedByRole} 
+                targetUserName={targetUserName} 
+                targetUserRole={targetUserRole} 
+                filters={filters} 
+            />
+            
+            <div className="overflow-x-auto custom-scrollbar relative border border-gray-100 rounded-xl">
+                <table className="w-full text-xs border-collapse">
+                    <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                            <th rowSpan={2} className="px-3 py-3 border-r border-gray-200 font-bold text-left text-[11px] text-gray-700 sticky left-0 bg-gray-50 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[120px]">Employee</th>
+                            <th rowSpan={2} className="px-3 py-3 border-r border-gray-200 font-bold text-center text-[11px] text-gray-700">Role / Dept</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-emerald-700 bg-emerald-50/40">Earned Leave (EL)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-blue-700 bg-blue-50/40">Sick Leave (SL)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-teal-700 bg-teal-50/40">Comp Off (CO)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-amber-700 bg-amber-50/40">Floating (FH)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-pink-700 bg-pink-50/40">Pink Leave (PL)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-r border-b border-gray-200 font-bold text-center text-[10px] text-cyan-700 bg-cyan-50/40">Child Care (CC)</th>
+                            <th colSpan={3} className="px-2 py-1.5 border-b border-gray-200 font-bold text-center text-[10px] text-rose-700 bg-rose-50/40">Maternity (ML)</th>
+                        </tr>
+                        <tr className="bg-gray-50/80 border-b border-gray-200">
+                            {/* EL */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-emerald-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-emerald-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-emerald-600 bg-emerald-50/20">Bal</th>
+                            {/* SL */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-blue-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-blue-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-blue-600 bg-blue-50/20">Bal</th>
+                            {/* CO */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-teal-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-teal-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-teal-600 bg-teal-50/20">Bal</th>
+                            {/* FH */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-amber-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-amber-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-amber-600 bg-amber-50/20">Bal</th>
+                            {/* PL */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-pink-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-pink-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-pink-600 bg-pink-50/20">Bal</th>
+                            {/* CC */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-cyan-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-cyan-50/10">Used</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-bold text-center text-[10px] text-cyan-600 bg-cyan-50/20">Bal</th>
+                            {/* ML */}
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-rose-50/10">Tot</th>
+                            <th className="px-2 py-1 border-r border-gray-200 font-semibold text-center text-[10px] text-gray-500 bg-rose-50/10">Used</th>
+                            <th className="px-2 py-1 font-bold text-center text-[10px] text-rose-600 bg-rose-50/20">Bal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.map((row, idx) => {
+                            const b = row.balances || {};
+                            const elBal = (b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0);
+                            const slBal = (b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0);
+                            const coBal = (b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0);
+                            const fhBal = (b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0);
+                            const plBal = (b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0);
+                            const ccBal = (b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0);
+                            const mlBal = (b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0);
+
+                            return (
+                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50/30 border-b border-gray-100' : 'bg-gray-50/30 hover:bg-gray-50/50 border-b border-gray-100'}>
+                                    <td className="px-3 py-2 border-r border-gray-100 font-medium text-gray-900 sticky left-0 bg-inherit capitalize z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">{row.userName}</td>
+                                    <td className="px-3 py-2 border-r border-gray-100 text-center text-gray-500 capitalize">{String(row.role || row.department || 'Staff').replace(/_/g, ' ')}</td>
+                                    
+                                    {/* EL */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.earnedTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.earnedUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-emerald-600 bg-emerald-50/5">{elBal.toFixed(1)}</td>
+                                    
+                                    {/* SL */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.sickTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.sickUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-blue-600 bg-blue-50/5">{slBal.toFixed(1)}</td>
+                                    
+                                    {/* CO */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.compOffTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.compOffUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-teal-600 bg-teal-50/5">{coBal.toFixed(1)}</td>
+                                    
+                                    {/* FH */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.floatingTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.floatingUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-amber-600 bg-amber-50/5">{fhBal.toFixed(1)}</td>
+                                    
+                                    {/* PL */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.pinkTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.pinkUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-pink-600 bg-pink-50/5">{plBal.toFixed(1)}</td>
+                                    
+                                    {/* CC */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.childCareTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.childCareUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center font-bold text-cyan-600 bg-cyan-50/5">{ccBal.toFixed(1)}</td>
+
+                                    {/* ML */}
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.maternityTotal || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-600">{(b.maternityUsed || 0).toFixed(1)}</td>
+                                    <td className="px-2 py-2 text-center font-bold text-rose-600 bg-rose-50/5">{mlBal.toFixed(1)}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+            <Footer label="Paradigm Services - Leave Balance Tracker Report" />
         </div>
     );
 };

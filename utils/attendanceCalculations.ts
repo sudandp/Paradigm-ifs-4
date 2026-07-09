@@ -864,7 +864,13 @@ export function evaluateAttendanceStatus(params: {
           
           if (isPartialWork && isHalfDayLeave) {
               const code = getLeaveCode(approvedLeave).replace('1/2', '').replace('0.5', ''); 
-              status = `0.5P+0.5 ${code}`;
+              if (workStatus === 'A') {
+                  status = `0.5 ${code}`;
+              } else {
+                  // Keep whatever partial work was logged (if we want to use actual fraction) or fallback to 0.5P.
+                  // Default behavior was 0.5P + 0.5 Leave.
+                  status = `0.5P+0.5 ${code}`;
+              }
           } else {
               if (isWFH) status = 'WH';
               // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
@@ -1041,6 +1047,8 @@ export interface RangeStats {
   compOffs: number;
   earnedLeaves: number;
   sickLeaves: number;
+  casualLeaves: number;
+  workFromHomeDays: number;
   absentDays: number;
   weekOffs: number;
   holidays: number;
@@ -1055,6 +1063,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   let compOffs = 0;
   let earnedLeaves = 0;
   let sickLeaves = 0;
+  let casualLeaves = 0;
+  let workFromHomeDays = 0;
   let absentDays = 0;
   let weekOffs = 0;
   let holidays = 0;
@@ -1064,8 +1074,10 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
   const resolvePayableValue = (s: string): number => {
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 1.5; 
-    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', '0.5P', '1/2P', '2/4P', 'Half Day', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
-    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL')) {
+    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+    // Handle half-day leave types explicitly (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
+    if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
+    if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {
         return s.startsWith('0.5') ? 0.5 : 1;
     }
     if (['Half Day', '0.5P', '1/2P', '2/4P'].includes(s)) return 0.5;
@@ -1119,12 +1131,13 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
       else if (part === 'H/P') { holidays++; presentDays++; }
       else if (part.includes('SL') || part.includes('S/L')) { sickLeaves += inc; }
       else if (part.includes('EL') || part.includes('E/L')) { earnedLeaves += inc; }
-      else if (part.includes('CL') || part.includes('C/L')) { compOffs += inc; }
+      else if (part.includes('CL') || part.includes('C/L')) { casualLeaves += inc; }
       else if (part.includes('C/O') || part.includes('CO')) { compOffs += inc; }
       else if (part.includes('BL') || part.includes('F/H') || part.includes('FH')) floatingHolidays += inc;
       else if (part.includes('PL') || part.includes('P/L')) { floatingHolidays += inc; }
       else if (part.includes('LOP')) absentDays += inc;
-      else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) presentDays += inc;
+      // WFH counts as a paid workday AND is tracked in its own bucket
+      else if (part === 'W/H' || part === 'WH' || part.includes('WFH')) { workFromHomeDays += inc; presentDays += inc; }
     });
 
     // Payable Days
@@ -1146,11 +1159,13 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     compOffs,
     earnedLeaves,
     sickLeaves,
+    casualLeaves,
+    workFromHomeDays,
     absentDays,
     weekOffs,
     holidays,
     floatingHolidays,
-    totalPayableDays
+    totalPayableDays: Math.min(days.length, totalPayableDays)
   };
 }
 

@@ -146,6 +146,39 @@ const AddUserPage: React.FC = () => {
   }, [societyId]);
 
   useEffect(() => {
+    if (role && role !== 'unverified' && role !== 'gate_only') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const defaultDateStr = initialData?.createdAt ? initialData.createdAt.split('T')[0] : todayStr;
+      
+      const currentJoiningDate = watch('joiningDate');
+      const currentElDate = watch('earnedLeaveOpeningDate');
+      const currentSlDate = watch('sickLeaveOpeningDate');
+      const currentCoDate = watch('compOffOpeningDate');
+      const currentFlDate = watch('floatingLeaveOpeningDate');
+      const currentClDate = watch('childCareLeaveOpeningDate');
+      
+      if (!currentJoiningDate) {
+        setValue('joiningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+      if (!currentElDate) {
+        setValue('earnedLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+      if (!currentSlDate) {
+        setValue('sickLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+      if (!currentCoDate) {
+        setValue('compOffOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+      if (!currentFlDate) {
+        setValue('floatingLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+      if (!currentClDate) {
+        setValue('childCareLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+      }
+    }
+  }, [role, setValue, watch, initialData]);
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const [orgs, fetchedRoles, fetchedDevices, structure, settings, designations] = await Promise.all([
@@ -205,7 +238,18 @@ const AddUserPage: React.FC = () => {
           const user = users.find(u => u.id === id);
           if (user) {
             setInitialData(user);
-            reset(user);
+            
+            const defaultDateStr = user.createdAt ? user.createdAt.split('T')[0] : undefined;
+            const updatedUser = {
+              ...user,
+              joiningDate: user.joiningDate || defaultDateStr,
+              earnedLeaveOpeningDate: user.earnedLeaveOpeningDate || user.joiningDate || defaultDateStr,
+              sickLeaveOpeningDate: user.sickLeaveOpeningDate || user.joiningDate || defaultDateStr,
+              compOffOpeningDate: user.compOffOpeningDate || user.joiningDate || defaultDateStr,
+              floatingLeaveOpeningDate: user.floatingLeaveOpeningDate || user.joiningDate || defaultDateStr,
+              childCareLeaveOpeningDate: user.childCareLeaveOpeningDate || user.joiningDate || defaultDateStr,
+            };
+            reset(updatedUser);
 
             // Auto-resolve hierarchy for edit mode
             if (user.organizationId) {
@@ -548,6 +592,22 @@ const AddUserPage: React.FC = () => {
       // Map the string geographic locationId back to the true Organization Group UUID 
       // that the database foreign key expects
       const processedData = { ...data };
+
+      // Auto-set joining date and leave opening dates if giving access (role is not unverified/gate_only) and empty
+      if (processedData.role && processedData.role !== 'unverified' && processedData.role !== 'gate_only') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (!processedData.joiningDate) {
+          processedData.joiningDate = todayStr;
+        }
+        const targetJoiningDate = processedData.joiningDate;
+        if (targetJoiningDate) {
+          if (!processedData.earnedLeaveOpeningDate) processedData.earnedLeaveOpeningDate = targetJoiningDate;
+          if (!processedData.sickLeaveOpeningDate) processedData.sickLeaveOpeningDate = targetJoiningDate;
+          if (!processedData.compOffOpeningDate) processedData.compOffOpeningDate = targetJoiningDate;
+          if (!processedData.floatingLeaveOpeningDate) processedData.floatingLeaveOpeningDate = targetJoiningDate;
+          if (!processedData.childCareLeaveOpeningDate) processedData.childCareLeaveOpeningDate = targetJoiningDate;
+        }
+      }
       if (processedData.societyId) {
         const matchingGroup = orgStructure.find(g => 
           g.companies.some(c => c.id === processedData.societyId)

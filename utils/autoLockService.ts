@@ -42,7 +42,7 @@ export async function autoLockPreviousMonth(
     ] = await Promise.all([
       api.getUsers(),
       api.getLeaveRequests({ 
-        startDate: format(subDays(startDate, 1), 'yyyy-MM-dd'),
+        startDate: format(subDays(startDate, 45), 'yyyy-MM-dd'),
         endDate: format(addDays(endDate, 1), 'yyyy-MM-dd')
       }),
       api.getAllUserHolidays({ year }),
@@ -80,12 +80,12 @@ export async function autoLockPreviousMonth(
       api.getAttendanceEventsForUsers(
         targetUserIds,
         format(fetchStartDate, 'yyyy-MM-dd'), 
-        format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+        format(new Date(endDate.getTime() + 36 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
       ),
       api.getRoutePointsForUsers(
         targetUserIds,
         format(startDate, 'yyyy-MM-dd'),
-        format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+        format(new Date(endDate.getTime() + 36 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
       ).catch(() => [] as RoutePoint[])
     ]);
 

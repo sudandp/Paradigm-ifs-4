@@ -267,12 +267,21 @@ const LeaveDashboard: React.FC = () => {
     const fetchData = useCallback(async () => {
         if (!user) return;
         setError(null);
+        setBalance(null);
+        setMonthlyPaydays(null);
+        setSnapshotData(null);
+        setEvents([]);
+        setDailyActivityRecords([]);
+        setSiteOtDays(0);
+        setMonthlyTravelKm(0);
+        setMonthlyTravelDuration(0);
+        setMonthlySteps(0);
         
         const dateStr = format(viewingDate, 'yyyy-MM-dd');
         const startOfMonthDate = startOfMonth(viewingDate);
         // Expand range to catch night shifts at the start and end of the month
         const startStr = new Date(startOfWeek(subDays(startOfMonthDate, 15), { weekStartsOn: 1 }).getTime() - 12 * 60 * 60 * 1000).toISOString();
-        const endStr = new Date(endOfMonth(viewingDate).getTime() + 12 * 60 * 60 * 1000).toISOString();
+        const endStr = new Date(endOfMonth(viewingDate).getTime() + 36 * 60 * 60 * 1000).toISOString();
 
         // ── Cache-first: render cached data instantly while live fetch runs ──
         try {
@@ -745,9 +754,9 @@ const LeaveDashboard: React.FC = () => {
         },
         {
             title: 'Monthly Pay Days',
-            value: snapshotData?.summary?.totalPayableDays !== undefined 
-                ? `${snapshotData.summary.totalPayableDays}` 
-                : (monthlyPaydays !== null ? `${monthlyPaydays}` : '-'),
+            value: monthlyPaydays !== null
+                ? `${monthlyPaydays}`
+                : (snapshotData?.summary?.totalPayableDays !== undefined ? `${snapshotData.summary.totalPayableDays}` : '-'),
             description: `Total payable days tracked for ${format(viewingDate, 'MMMM yyyy')}.`,
             icon: Calculator,
             isExpired: false

@@ -299,7 +299,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes, allSiteHolidays, orgStructureData] = await Promise.all([
         externalUsers || api.getUsers(),
         api.getLeaveRequests({ 
-          startDate: format(subDays(startDate, 1), 'yyyy-MM-dd'),
+          startDate: format(subDays(startDate, 45), 'yyyy-MM-dd'),
           endDate: format(addDays(endDate, 1), 'yyyy-MM-dd')
         }),
         api.getAllUserHolidays({ year }),
@@ -347,13 +347,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         api.getAttendanceEventsForUsers(
           targetUserIds,
           format(fetchStartDate, 'yyyy-MM-dd'), 
-          // Expand 12 hours forward to catch night shift ends
-          format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+          // Expand 36 hours forward to catch night shift ends
+          format(new Date(endDate.getTime() + 36 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
         ),
         api.getRoutePointsForUsers(
           targetUserIds,
           format(startDate, 'yyyy-MM-dd'),
-          format(new Date(endDate.getTime() + 12 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
+          format(new Date(endDate.getTime() + 36 * 60 * 60 * 1000), 'yyyy-MM-dd HH:mm:ss')
         ).catch(err => {
           console.warn('Failed to fetch route points for report:', err);
           return [] as RoutePoint[];
@@ -807,7 +807,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                                 d.status.includes('E/L') ? 'bg-blue-50 text-blue-700' :
                                 d.status.includes('C/O') ? 'bg-teal-50 text-teal-700' :
                                 d.status.includes('LOP') ? 'bg-red-50 text-red-700' :
-                                d.status === 'W/H' ? 'bg-teal-50 text-teal-700' :
+                                (d.status === 'W/H' || d.status === 'WH') ? 'bg-teal-50 text-teal-700' :
                                 d.status.includes('BL') ? 'bg-blue-100 text-blue-800' :
                                 d.status.includes('PL') ? 'bg-pink-100 text-pink-700' :
                                 d.status.includes('ML') ? 'bg-rose-100 text-rose-700' :

@@ -137,6 +137,7 @@ export interface User {
   homeLatitude?: number | null;
   homeLongitude?: number | null;
   homeAddress?: string | null;
+  createdAt?: string;
 }
 
 export interface UserChild {

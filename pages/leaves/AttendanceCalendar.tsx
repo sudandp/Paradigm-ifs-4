@@ -388,6 +388,9 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 }
             } else if (status === 'leave') {
                 const leaveReq = leaveRequests?.find(req => {
+                    // Only count approved or corrected leaves — never pending/rejected
+                    const lStatus = String(req.status || '').toLowerCase();
+                    if (lStatus !== 'approved' && lStatus !== 'correction_made' && lStatus !== 'pending_hr_confirmation') return false;
                     return date >= startOfDay(new Date(req.startDate.replace(/-/g, '/'))) && date <= endOfDay(new Date(req.endDate.replace(/-/g, '/')));
                 });
                 

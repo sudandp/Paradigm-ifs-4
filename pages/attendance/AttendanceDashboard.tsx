@@ -9,7 +9,7 @@ import { fetchTodayMetrics, fetchAttendanceSummary, fetchTopPerformers, buildCha
 
 import { fetchKioskDevices, type KioskDevice } from '../../services/gateApi';
 import { pdf } from '@react-pdf/renderer';
-import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow } from './PDFReports';
+import { BasicReportDocument, MonthlyReportDocument, MonthlyMatrixReportDocument, SiteOtReportDocument, AttendanceLogDocument, WorkHoursReportDocument, AuditLogDocument, AttendanceLogDataRow, WorkHoursReportDataRow, SiteOtDataRow, AuditLogDataRow, MonthlyReportRow as PDFMonthlyReportRow, BasicReportDataRow, LeaveBalanceTrackerDocument } from './PDFReports';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { useAuthStore } from '../../store/authStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
@@ -35,7 +35,7 @@ import ManualAttendanceModal from '../../components/attendance/ManualAttendanceM
 import AssignLeaveModal from '../../components/attendance/AssignLeaveModal';
 import AttendanceAuditReport from '../../components/attendance/AttendanceAuditReport';
 import MonthlyHoursReport, { type EmployeeMonthlyData } from '../../components/attendance/MonthlyHoursReport';
-import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView } from '../../components/attendance/ReportHTMLViews';
+import { BasicReportView, AttendanceLogView, MonthlyStatusView, SiteOtReportView, WorkHoursReportView, LeaveBalanceTrackerView } from '../../components/attendance/ReportHTMLViews';
 import { calculateStatsForDateRange } from '../../utils/attendanceCalculations';
 import {
     format,
@@ -980,6 +980,10 @@ const AttendanceDashboard: React.FC = () => {
     
 
     
+    // Leave Balance Tracker States
+    const [leaveBalances, setLeaveBalances] = useState<any[]>([]);
+    const [isFetchingLeaveBalances, setIsFetchingLeaveBalances] = useState(false);
+
     // Manual Entry State
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
     const [isAssignLeaveModalOpen, setIsAssignLeaveModalOpen] = useState(false);
@@ -1360,8 +1364,8 @@ const AttendanceDashboard: React.FC = () => {
                 // Start buffer at the Monday at least 15 days before to ensure two full blocks for calculation
                 const bufferStartDate = startOfWeek(subDays(dateRange.startDate, 15), { weekStartsOn: 1 });
                 const startStr = bufferStartDate.toISOString();
-                // Add 12-hour lookahead to capture night shift completions
-                const endStr = new Date(dateRange.endDate.getTime() + 12 * 60 * 60 * 1000).toISOString();
+                // Add 36-hour lookahead to capture night shift completions
+                const endStr = new Date(dateRange.endDate.getTime() + 36 * 60 * 60 * 1000).toISOString();
 
                 const [events, compOffs, userHolidays, userLeaves, siteSpecificHolidays, leaveBalances] = await Promise.all([
                     api.getAttendanceEvents(user.id, startStr, endStr),
@@ -1575,13 +1579,16 @@ const AttendanceDashboard: React.FC = () => {
                 const activeStaffIds = new Set(activeStaff.map(u => u.id));
                 const today = new Date();
                 const queryStart = subDays(startDate, 3);
-                // Add 12-hour lookahead to capture night shift completions
-                const queryEnd = new Date(endDate.getTime() + 12 * 60 * 60 * 1000);
+                // Leave fetch needs a wider window: cross-month leaves (e.g. starting in prior month)
+                // must not be silently dropped. Use 45-day lookback for leaves only.
+                const leaveQueryStart = subDays(startDate, 45);
+                // Add 36-hour lookahead to capture night shift completions
+                const queryEnd = new Date(endDate.getTime() + 36 * 60 * 60 * 1000);
 
                 const [events, allLeavesResponse, holidaysResponse, rolesResponse, kioskDevicesResponse] = await Promise.all([
                     api.getAllAttendanceEvents(queryStart.toISOString(), queryEnd.toISOString()),
                     api.getLeaveRequests({ 
-                        startDate: queryStart.toISOString(), 
+                        startDate: leaveQueryStart.toISOString(), 
                         endDate: queryEnd.toISOString()
                     }),
                     api.getAllUserHolidays(),
@@ -1596,6 +1603,29 @@ const AttendanceDashboard: React.FC = () => {
                 setLeaves(leavesData);
                 setUserHolidaysPool(holidaysResponse || []);
                 setAllRoles(rolesResponse || []);
+
+                if (reportType === 'leave_balance') {
+                    setIsFetchingLeaveBalances(true);
+                    try {
+                        const balances = await Promise.all(
+                            activeStaff.map(async (u) => {
+                                const bal = await api.getLeaveBalancesForUser(u.id, format(endDate, 'yyyy-MM-dd'));
+                                return {
+                                    userId: u.id,
+                                    userName: u.name,
+                                    department: u.department || 'N/A',
+                                    role: u.role || 'N/A',
+                                    balances: bal
+                                };
+                            })
+                        );
+                        setLeaveBalances(balances);
+                    } catch (err) {
+                        console.error('Error fetching bulk leave balances:', err);
+                    } finally {
+                        setIsFetchingLeaveBalances(false);
+                    }
+                }
 
                 // Optimize lookups: Group events by session-aware business day
                 const dayKeyMap = buildAttendanceDayKeyByEventId(events);
@@ -1979,7 +2009,7 @@ const AttendanceDashboard: React.FC = () => {
             }
         };
         loadData();
-    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users]);
+    }, [user, selectedCompany, selectedSite, selectedLocation, selectedRole, selectedUser, users, reportType]);
 
     
     // Phase 1 — KPI cards (loads in ~100ms)
@@ -2825,6 +2855,7 @@ const AttendanceDashboard: React.FC = () => {
             if (reportType === 'site_ot') return <SiteOtReportView data={site_otReportData} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
             if (reportType === 'log') return <AttendanceLogView data={attendanceLogData} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
             if (reportType === 'audit') return <AttendanceAuditReport logs={auditLogs} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
+            if (reportType === 'leave_balance') return <LeaveBalanceTrackerView data={leaveBalances} dateRange={dr} logoUrl={fallbackLogoUrl} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
             return null;
         }
 
@@ -2856,9 +2887,10 @@ const AttendanceDashboard: React.FC = () => {
             }));
             return <AuditLogDocument data={mappedAuditLogs} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         }
+        if (reportType === 'leave_balance') return <LeaveBalanceTrackerDocument data={leaveBalances} dateRange={dr} logoUrl={logoBase64} generatedBy={user?.name} generatedByRole={user?.role} targetUserName={targetUserName} targetUserRole={targetUserRole} filters={resolvedFilters} />;
         
         return null;
-    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData]);
+    }, [reportType, basicReportData, attendanceLogData, site_otReportData, dateRange, auditLogs, user?.name, users, selectedCompany, selectedSite, selectedLocation, selectedStatus, selectedRole, scopedSettings, exportedMonthlyData, leaveBalances]);
 
     const pdfContent = useMemo(() => renderReportContent(false), [renderReportContent]);
     const previewContent = useMemo(() => renderReportContent(true), [renderReportContent]);
@@ -2966,6 +2998,18 @@ const AttendanceDashboard: React.FC = () => {
                     />).toBlob();
                     break;
                 }
+                case 'leave_balance':
+                    blob = await pdf(<LeaveBalanceTrackerDocument 
+                        data={leaveBalances} 
+                        dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                        generatedBy={generatedBy}
+                        generatedByRole={generatedByRole}
+                        targetUserName={targetUserName}
+                        targetUserRole={targetUserRole}
+                        logoUrl={logoBase64}
+                        filters={resolvedFilters}
+                    />).toBlob();
+                    break;
                 default:
                     setToast({ message: 'This report type is not yet supported in PDF format.', type: 'error' });
                     setIsDownloading(false);
@@ -3076,6 +3120,49 @@ const AttendanceDashboard: React.FC = () => {
                             { header: 'Location', key: 'locationName', width: 30 }
                         ];
                         dataToExport = site_otReportData;
+                        break;
+                    case 'leave_balance':
+                        reportTitle = 'Leave Balance Tracker';
+                        fileNamePrefix = 'Leave_Balance_Tracker';
+                        columns = [
+                            { header: 'Employee Name', key: 'userName', width: 25 },
+                            { header: 'Role/Dept', key: 'roleDept', width: 20 },
+                            { header: 'EL Earned', key: 'elEarned', width: 12 },
+                            { header: 'EL Balance', key: 'elBalance', width: 12 },
+                            { header: 'SL Earned', key: 'slEarned', width: 12 },
+                            { header: 'SL Balance', key: 'slBalance', width: 12 },
+                            { header: 'CO Earned', key: 'coEarned', width: 12 },
+                            { header: 'CO Balance', key: 'coBalance', width: 12 },
+                            { header: 'FH Earned', key: 'fhEarned', width: 12 },
+                            { header: 'FH Balance', key: 'fhBalance', width: 12 },
+                            { header: 'PL Earned', key: 'plEarned', width: 12 },
+                            { header: 'PL Balance', key: 'plBalance', width: 12 },
+                            { header: 'CC Earned', key: 'ccEarned', width: 12 },
+                            { header: 'CC Balance', key: 'ccBalance', width: 12 },
+                            { header: 'ML Earned', key: 'mlEarned', width: 12 },
+                            { header: 'ML Balance', key: 'mlBalance', width: 12 },
+                        ];
+                        dataToExport = leaveBalances.map(row => {
+                            const b = row.balances || {};
+                            return {
+                                userName: row.userName,
+                                roleDept: String(row.role || row.department || 'Staff').replace(/_/g, ' '),
+                                elEarned: (b.earnedTotal || 0).toFixed(1),
+                                elBalance: ((b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0)).toFixed(1),
+                                slEarned: (b.sickTotal || 0).toFixed(1),
+                                slBalance: ((b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0)).toFixed(1),
+                                coEarned: (b.compOffTotal || 0).toFixed(1),
+                                coBalance: ((b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0)).toFixed(1),
+                                fhEarned: (b.floatingTotal || 0).toFixed(1),
+                                fhBalance: ((b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0)).toFixed(1),
+                                plEarned: (b.pinkTotal || 0).toFixed(1),
+                                plBalance: ((b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0)).toFixed(1),
+                                ccEarned: (b.childCareTotal || 0).toFixed(1),
+                                ccBalance: ((b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0)).toFixed(1),
+                                mlEarned: (b.maternityTotal || 0).toFixed(1),
+                                mlBalance: ((b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0)).toFixed(1),
+                            };
+                        });
                         break;
                     default:
                         break;
@@ -3224,6 +3311,47 @@ const AttendanceDashboard: React.FC = () => {
                 case 'site_ot':
                     headers = { userName: 'Employee', date: 'Date', siteOtIn: 'In', siteOtOut: 'Out', duration: 'Duration' };
                     dataToExport = site_otReportData;
+                    break;
+                case 'leave_balance':
+                    headers = {
+                        userName: 'Employee Name',
+                        roleDept: 'Role/Dept',
+                        elEarned: 'EL Earned',
+                        elBalance: 'EL Balance',
+                        slEarned: 'SL Earned',
+                        slBalance: 'SL Balance',
+                        coEarned: 'CO Earned',
+                        coBalance: 'CO Balance',
+                        fhEarned: 'FH Earned',
+                        fhBalance: 'FH Balance',
+                        plEarned: 'PL Earned',
+                        plBalance: 'PL Balance',
+                        ccEarned: 'CC Earned',
+                        ccBalance: 'CC Balance',
+                        mlEarned: 'ML Earned',
+                        mlBalance: 'ML Balance',
+                    };
+                    dataToExport = leaveBalances.map(row => {
+                        const b = row.balances || {};
+                        return {
+                            userName: row.userName,
+                            roleDept: String(row.role || row.department || 'Staff').replace(/_/g, ' '),
+                            elEarned: (b.earnedTotal || 0).toFixed(1),
+                            elBalance: ((b.earnedTotal || 0) - (b.earnedUsed || 0) - (b.earnedPending || 0)).toFixed(1),
+                            slEarned: (b.sickTotal || 0).toFixed(1),
+                            slBalance: ((b.sickTotal || 0) - (b.sickUsed || 0) - (b.sickPending || 0)).toFixed(1),
+                            coEarned: (b.compOffTotal || 0).toFixed(1),
+                            coBalance: ((b.compOffTotal || 0) - (b.compOffUsed || 0) - (b.compOffPending || 0)).toFixed(1),
+                            fhEarned: (b.floatingTotal || 0).toFixed(1),
+                            fhBalance: ((b.floatingTotal || 0) - (b.floatingUsed || 0) - (b.floatingPending || 0)).toFixed(1),
+                            plEarned: (b.pinkTotal || 0).toFixed(1),
+                            plBalance: ((b.pinkTotal || 0) - (b.pinkUsed || 0) - (b.pinkPending || 0)).toFixed(1),
+                            ccEarned: (b.childCareTotal || 0).toFixed(1),
+                            ccBalance: ((b.childCareTotal || 0) - (b.childCareUsed || 0) - (b.childCarePending || 0)).toFixed(1),
+                            mlEarned: (b.maternityTotal || 0).toFixed(1),
+                            mlBalance: ((b.maternityTotal || 0) - (b.maternityUsed || 0) - (b.maternityPending || 0)).toFixed(1),
+                        };
+                    });
                     break;
             }
 
@@ -3468,6 +3596,18 @@ const AttendanceDashboard: React.FC = () => {
                         />).toBlob();
                         break;
                     }
+                    case 'leave_balance':
+                        pdfBlob = await pdf(<LeaveBalanceTrackerDocument 
+                            data={leaveBalances} 
+                            dateRange={{ startDate: dateRange.startDate!, endDate: dateRange.endDate! }} 
+                            generatedBy={generatedBy}
+                            generatedByRole={generatedByRole}
+                            targetUserName={targetUserName}
+                            targetUserRole={targetUserRole}
+                            logoUrl={logoBase64}
+                            filters={resolvedFilters}
+                        />).toBlob();
+                        break;
                 }
             } catch (pdfErr) {
                 console.warn('PDF Attachment Generation failed, sending email without attachment:', pdfErr);
@@ -3914,6 +4054,7 @@ const AttendanceDashboard: React.FC = () => {
                                 <option value="basic">Basic Report</option>
                                 <option value="monthly">Monthly Summary</option>
                                 <option value="work_hours">Work Hours Report</option>
+                                <option value="leave_balance">Leave Balance Tracker</option>
                                 {canViewAllAttendance && (
                                     <>
                                         <option value="site_ot">Site OT Report</option>
