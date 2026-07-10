@@ -166,7 +166,7 @@ const HolidaySelectionPage: React.FC = () => {
     // ─── Confirmation View ────────────────────────────────────────────────────
     if (view === 'confirmation') {
         return (
-            <div className={`p-4 md:p-6 pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
+            <div className={`p-4 md:p-6 pb-64 md:pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
                 {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
                 <div className="flex items-center gap-4 mb-8">
@@ -273,7 +273,7 @@ const HolidaySelectionPage: React.FC = () => {
 
     // ─── Main Selection View ──────────────────────────────────────────────────
     return (
-        <div className={`p-4 md:p-6 pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
+        <div className={`p-4 md:p-6 pb-64 md:pb-40 animate-fade-in ${isMobile ? 'bg-[#041b0f] text-white min-h-screen' : ''}`}>
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
             {/* Header */}
@@ -527,15 +527,41 @@ const HolidaySelectionPage: React.FC = () => {
                         </div>
                     )}
 
-                    <Button
-                        onClick={handleSave}
-                        disabled={selectedHolidays.length === 0}
-                        className={!isMobile 
-                            ? "px-12 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs" 
-                            : "w-full h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"}
-                    >
-                        Save Selection
-                    </Button>
+                    {isMobile ? (
+                        <div className="flex gap-2 w-full">
+                            <Button
+                                variant="secondary"
+                                onClick={() => navigate('/leaves/dashboard')}
+                                className="flex-1 h-14 text-base font-bold bg-white/5 border border-white/10 text-white rounded-2xl"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSave}
+                                disabled={selectedHolidays.length === 0}
+                                className="flex-1 h-14 text-base font-bold bg-[#006b3f] hover:bg-[#005632] text-white shadow-2xl shadow-black/40 rounded-2xl transition-all active:scale-[0.98]"
+                            >
+                                Save Selection
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="secondary"
+                                onClick={() => navigate('/leaves/dashboard')}
+                                className="px-8 py-3 rounded-xl border-2 font-black uppercase tracking-widest text-xs"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSave}
+                                disabled={selectedHolidays.length === 0}
+                                className="px-12 py-3 rounded-xl shadow-xl shadow-accent/20 font-black uppercase tracking-widest text-xs"
+                            >
+                                Save Selection
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -5,6 +5,24 @@ import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 import { CheckCircle2, XCircle, Clock, ShieldAlert, Loader2, ArrowRight } from 'lucide-react';
 import type { OpsApprovalRequest, ApprovalStatus } from '../../types/enterprise';
+import { supabase } from '../../services/supabase';
+
+const generateDeterministicPasscode = (id: string): string => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    const char = id.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  const code = Math.abs(hash) % 1000000;
+  return code.toString().padStart(6, '0');
+};
+
+const extractPasscode = (comments?: string): string => {
+  if (!comments) return '';
+  const match = comments.match(/Passcode:\s*(\d{6})/i);
+  return match ? match[1] : '';
+};
 
 const STATUS_COLORS: Record<ApprovalStatus, string> = {
   'Pending': 'bg-orange-100 text-orange-800 border-orange-200',
@@ -23,6 +41,48 @@ const ApprovalsInbox: React.FC = () => {
   const [showRejectModal, setShowRejectModal] = useState<OpsApprovalRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  const notifyUserOfAccessResult = async (request: OpsApprovalRequest, status: 'Approved' | 'Rejected', reason?: string, passcodeOverride?: string) => {
+    try {
+      if (!request.requestedBy) return;
+      
+      const passcode = passcodeOverride || (status === 'Approved' ? generateDeterministicPasscode(request.id) : '');
+      const message = status === 'Approved' 
+        ? `Your access request for ${request.title.replace('Access Request: ', '')} has been approved. Use passcode ${passcode} to unlock.`
+        : `Your access request for ${request.title.replace('Access Request: ', '')} was rejected. ${reason ? `Reason: ${reason}` : ''}`;
+      
+      const link = '/attendance/dashboard';
+
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: request.requestedBy,
+          message,
+          type: 'security',
+          link_to: link,
+          severity: status === 'Approved' ? 'Medium' : 'High',
+          metadata: {
+            requestId: request.id,
+            status,
+            link
+          }
+        });
+
+      await supabase.functions.invoke('send-notification', {
+        body: {
+          userIds: [request.requestedBy],
+          title: status === 'Approved' ? 'Access Request Approved' : 'Access Request Rejected',
+          message,
+          data: {
+            link,
+            requestId: request.id
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Failed to notify user of access request result:', err);
+    }
+  };
+
   useEffect(() => {
     // In a real app, we might pass the user's current role to filter requests meant for them.
     // For this demo, we fetch all and let them see the whole queue.
@@ -33,7 +93,19 @@ const ApprovalsInbox: React.FC = () => {
     if (!user) return;
     setProcessingId(request.id);
     try {
-      await processApproval(request.id, user.id, 'Approved', 'Approved via Enterprise Inbox');
+      let comments = 'Approved via Enterprise Inbox';
+      let passcode = '';
+      if (request.moduleName === 'ReportAccess') {
+        passcode = Math.floor(100000 + Math.random() * 900000).toString();
+        comments = `Passcode: ${passcode}`;
+      }
+      
+      const updatedRequest = await processApproval(request.id, user.id, 'Approved', comments);
+      
+      if (request.moduleName === 'ReportAccess') {
+        await notifyUserOfAccessResult(updatedRequest, 'Approved', undefined, passcode);
+      }
+
       setToast({ message: 'Request Approved Successfully', type: 'success' });
       fetchApprovalRequests(undefined, statusFilter === 'All' ? undefined : statusFilter);
     } catch (err: any) {
@@ -54,6 +126,11 @@ const ApprovalsInbox: React.FC = () => {
     setProcessingId(showRejectModal.id);
     try {
       await processApproval(showRejectModal.id, user.id, 'Rejected', rejectReason);
+      
+      if (showRejectModal.moduleName === 'ReportAccess') {
+        await notifyUserOfAccessResult(showRejectModal, 'Rejected', rejectReason);
+      }
+
       setToast({ message: 'Request Rejected', type: 'success' });
       setShowRejectModal(null);
       setRejectReason('');
@@ -137,6 +214,12 @@ const ApprovalsInbox: React.FC = () => {
                     {req.status !== 'Pending' && req.comments && (
                       <div className={`mt-3 p-3 rounded-lg text-sm border ${req.status === 'Approved' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
                         <strong>Reviewer Note ({req.approverName}):</strong> "{req.comments}"
+                      </div>
+                    )}
+
+                    {req.moduleName === 'ReportAccess' && req.status === 'Approved' && (
+                      <div className="mt-2 text-sm font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg inline-block">
+                        Passcode: {extractPasscode(req.comments) || generateDeterministicPasscode(req.id)}
                       </div>
                     )}
                   </div>

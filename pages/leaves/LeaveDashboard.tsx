@@ -524,6 +524,7 @@ const LeaveDashboard: React.FC = () => {
             setActiveHolidayPool(userRules?.holidayPool || HOLIDAY_SELECTION_POOL);
             setIsOtConversionEnabled(userRules?.enableOtToCompOffConversion || false);
             setIsShortfallEnabled(userRules?.enableShortfall || false);
+            setIsHolidaySelectionEnabled(userRules?.enableCustomHolidays || false);
 
             // ── ALL state is now set ── unlock the dashboard in the same React batch
             setIsLoading(false);
@@ -856,7 +857,22 @@ const LeaveDashboard: React.FC = () => {
                 <h2 className="text-xl md:text-2xl font-bold text-primary-text leading-none">
                     My Leave Requests
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                    {isHolidaySelectionEnabled && (
+                        isMobile ? (
+                            <button 
+                                onClick={() => navigate('/leaves/holiday-selection')}
+                                className="relative overflow-hidden bg-gradient-to-b from-[#008f53] to-[#004d2e] border border-[#00a862]/30 text-white font-bold text-[11px] h-8 rounded-full flex items-center gap-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_3px_8px_rgba(0,77,46,0.4)] px-3.5 hover:brightness-110 hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.35),0_4px_12px_rgba(0,77,46,0.5)] active:translate-y-[2px] active:shadow-[inset_0_3px_6px_rgba(0,0,0,0.4),0_1px_2px_rgba(0,77,46,0.2)] transition-all before:absolute before:top-0 before:left-0 before:right-0 before:h-[45%] before:bg-gradient-to-b before:from-white/20 before:to-transparent"
+                            >
+                                <Calendar className="w-3.5 h-3.5 text-[#00ff9d] relative z-10" />
+                                <span className="relative z-10">Holiday</span>
+                            </button>
+                        ) : (
+                            <Button onClick={() => navigate('/leaves/holiday-selection')} variant="secondary">
+                                <Calendar className="mr-2 h-4" /> Holiday
+                            </Button>
+                        )
+                    )}
                     {isMobile ? (
                         <button 
                             onClick={handleNewRequest}

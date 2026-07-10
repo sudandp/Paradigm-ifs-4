@@ -63,7 +63,7 @@ import {
     startOfDay,
     endOfDay
 } from 'date-fns';
-import { Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin } from 'lucide-react';
+import { Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -994,6 +994,11 @@ const AttendanceDashboard: React.FC = () => {
     const [selectedRecordType, setSelectedRecordType] = useState<string>('all');
     const [reportType, setReportType] = useState<AttendanceReportType>('basic');
     const [logoForPdf, setLogoForPdf] = useState<string>('');
+    const [accessRequests, setAccessRequests] = useState<any[]>([]);
+    const [isFetchingRequests, setIsFetchingRequests] = useState(false);
+    const [unlockedReports, setUnlockedReports] = useState<Record<string, number>>({});
+    const [passcodeInput, setPasscodeInput] = useState('');
+    const [passcodeError, setPasscodeError] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const [isExportingLeaves, setIsExportingLeaves] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -1046,6 +1051,315 @@ const AttendanceDashboard: React.FC = () => {
 
         checkAndLockPreviousMonth();
     }, [user]);
+
+    const generateDeterministicPasscode = (id: string): string => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            const char = id.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash |= 0;
+        }
+        const code = Math.abs(hash) % 1000000;
+        return code.toString().padStart(6, '0');
+    };
+
+    const extractPasscode = (comments?: string): string => {
+        if (!comments) return '';
+        const match = comments.match(/Passcode:\s*(\d{6})/i);
+        return match ? match[1] : '';
+    };
+
+    const fetchAccessRequests = useCallback(async () => {
+        if (!user || user.role !== 'hr_ops') return;
+        setIsFetchingRequests(true);
+        try {
+            const { data, error } = await supabase
+                .from('ops_approval_requests')
+                .select('*')
+                .eq('requested_by', user.id)
+                .eq('module_name', 'ReportAccess')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            setAccessRequests(data || []);
+        } catch (err) {
+            console.error('Failed to fetch access requests:', err);
+        } finally {
+            setIsFetchingRequests(false);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        if (user && user.role === 'hr_ops') {
+            fetchAccessRequests();
+        }
+    }, [user, fetchAccessRequests]);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        try {
+            const saved = localStorage.getItem(`report_unlocked_${user.id}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const now = Date.now();
+                const valid: Record<string, number> = {};
+                let changed = false;
+                Object.keys(parsed).forEach(k => {
+                    if (now - parsed[k] < 2 * 60 * 60 * 1000) {
+                        valid[k] = parsed[k];
+                    } else {
+                        changed = true;
+                    }
+                });
+                setUnlockedReports(valid);
+                if (changed) {
+                    localStorage.setItem(`report_unlocked_${user.id}`, JSON.stringify(valid));
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load unlocked reports:', e);
+        }
+    }, [user?.id]);
+
+    const notifyAdminsOfRequest = async (reportName: string) => {
+        try {
+            const { data: admins, error: adminError } = await supabase
+                .from('users')
+                .select('id')
+                .in('role_id', ['admin', 'super_admin']);
+            
+            if (adminError) throw adminError;
+            if (!admins || admins.length === 0) return;
+
+            const adminIds = admins.map(a => a.id);
+            const message = `${user?.name || 'User'} requested passcode for ${reportName}`;
+            const link = '/enterprise/approvals';
+
+            const notificationRecords = adminIds.map(adminId => ({
+                user_id: adminId,
+                message,
+                type: 'approval_request',
+                link_to: link,
+                severity: 'High',
+                metadata: {
+                    employeeName: user?.name,
+                    employeePhoto: user?.photoUrl,
+                    employeeId: user?.id,
+                    link
+                }
+            }));
+
+            const { error: insertError } = await supabase
+                .from('notifications')
+                .insert(notificationRecords);
+            
+            if (insertError) throw insertError;
+
+            await supabase.functions.invoke('send-notification', {
+                body: {
+                    userIds: adminIds,
+                    title: 'Report Passcode Request',
+                    message,
+                    data: {
+                        link,
+                        employeeId: user?.id
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Failed to notify admins of passcode request:', err);
+        }
+    };
+
+    const handleRequestAccess = async (type: string) => {
+        if (!user?.id) return;
+        setIsFetchingRequests(true);
+        try {
+            const reportUuids: Record<string, string> = {
+                work_hours: '11111111-1111-1111-1111-111111111111',
+                log: '22222222-2222-2222-2222-222222222222',
+                audit: '33333333-3333-3333-3333-333333333333'
+            };
+            const reportNames: Record<string, string> = {
+                work_hours: 'Work Hours Report',
+                log: 'Attendance Logs',
+                audit: 'Audit Logs'
+            };
+
+            const { error } = await supabase
+                .from('ops_approval_requests')
+                .insert({
+                    module_name: 'ReportAccess',
+                    record_id: reportUuids[type],
+                    title: `Access Request: ${reportNames[type]} for ${user.name}`,
+                    required_role: 'admin',
+                    requested_by: user.id,
+                    approval_stage: 1,
+                    status: 'Pending'
+                });
+            if (error) throw error;
+            
+            // Notify all admins of the new request
+            await notifyAdminsOfRequest(reportNames[type]);
+            
+            setToast({ message: 'Passcode request submitted successfully to admin.', type: 'success' });
+            await fetchAccessRequests();
+        } catch (err: any) {
+            console.error('Request access failed:', err);
+            setToast({ message: err.message || 'Failed to submit request.', type: 'error' });
+        } finally {
+            setIsFetchingRequests(false);
+        }
+    };
+
+    const handleUnlockReport = (type: string, correctCode: string) => {
+        if (passcodeInput.trim() === correctCode) {
+            const now = Date.now();
+            const updated = { ...unlockedReports, [type]: now };
+            setUnlockedReports(updated);
+            if (user?.id) {
+                localStorage.setItem(`report_unlocked_${user.id}`, JSON.stringify(updated));
+            }
+            setPasscodeInput('');
+            setPasscodeError('');
+            setToast({ message: 'Report unlocked successfully! Access valid for 2 hours.', type: 'success' });
+        } else {
+            setPasscodeError('Invalid passcode. Please request correct code or try again.');
+        }
+    };
+
+    const getReportLabel = (val: string, name: string) => {
+        if (user?.role === 'hr_ops' && ['work_hours', 'log', 'audit'].includes(val)) {
+            const isUnlocked = unlockedReports[val] && (Date.now() - unlockedReports[val] < 2 * 60 * 60 * 1000);
+            return `${isUnlocked ? '🔓' : '🔒'} ${name}`;
+        }
+        return name;
+    };
+
+    const renderLockPanel = () => {
+        const reportUuids: Record<string, string> = {
+            work_hours: '11111111-1111-1111-1111-111111111111',
+            log: '22222222-2222-2222-2222-222222222222',
+            audit: '33333333-3333-3333-3333-333333333333'
+        };
+        const reportNames: Record<string, string> = {
+            work_hours: 'Work Hours Report',
+            log: 'Attendance Logs',
+            audit: 'Audit Logs'
+        };
+
+        const targetUuid = reportUuids[reportType];
+        const latestRequest = accessRequests.find(r => r.record_id === targetUuid);
+        
+        return (
+            <div className="flex flex-col items-center justify-center p-8 text-center min-h-[350px] bg-white border border-gray-200 rounded-2xl shadow-sm max-w-lg mx-auto my-8 relative overflow-hidden">
+                <div className="p-4 bg-emerald-50 text-[#22c55e] rounded-full border border-emerald-100 mb-6">
+                    {latestRequest?.status === 'Approved' ? (
+                        <CheckCircle2 className="h-12 w-12 text-[#22c55e]" />
+                    ) : latestRequest?.status === 'Pending' ? (
+                        <Clock className="h-12 w-12 text-amber-500 animate-pulse" />
+                    ) : latestRequest?.status === 'Rejected' ? (
+                        <AlertCircle className="h-12 w-12 text-red-500" />
+                    ) : (
+                        <Lock className="h-12 w-12 text-[#22c55e]" />
+                    )}
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-900 mb-2 uppercase tracking-wide">
+                    {reportNames[reportType]} is Locked
+                </h3>
+                
+                <p className="text-sm text-gray-500 max-w-md mb-6 leading-relaxed">
+                    This report contains sensitive operational metrics. You must request a temporary passcode from the administrator to view this data.
+                </p>
+
+                {isFetchingRequests ? (
+                    <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Checking request status...
+                    </div>
+                ) : !latestRequest ? (
+                    <button
+                        type="button"
+                        onClick={() => handleRequestAccess(reportType)}
+                        className="px-8 py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold flex items-center gap-2 shadow-sm hover:shadow-emerald-500/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                    >
+                        Request Passcode
+                    </button>
+                ) : latestRequest.status === 'Pending' ? (
+                    <div className="space-y-4">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl font-semibold text-sm">
+                            <Clock className="h-4 w-4 animate-spin" /> Pending Admin Approval
+                        </div>
+                        <p className="text-xs text-gray-400">
+                            Submitted on {new Date(latestRequest.created_at).toLocaleString('en-IN')}. Please wait or notify your admin.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={fetchAccessRequests}
+                            className="text-xs text-emerald-600 font-semibold flex items-center gap-1 mx-auto hover:underline hover:text-[#16a34a]"
+                        >
+                            <RefreshCw className="h-3 w-3" /> Refresh Status
+                        </button>
+                    </div>
+                ) : latestRequest.status === 'Approved' ? (
+                    <div className="w-full space-y-6">
+                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                            <p className="text-xs text-gray-500 uppercase tracking-widest font-black mb-1">Passcode Granted</p>
+                            <p className="text-3xl font-mono font-bold tracking-widest text-[#22c55e]">
+                                {extractPasscode(latestRequest.comments) || generateDeterministicPasscode(latestRequest.id)}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-2">
+                                Enter this passcode below to unlock access for 2 hours.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3 max-w-sm mx-auto">
+                            <input
+                                type="text"
+                                maxLength={6}
+                                placeholder="Enter 6-digit passcode"
+                                value={passcodeInput}
+                                onChange={e => {
+                                    setPasscodeInput(e.target.value);
+                                    setPasscodeError('');
+                                }}
+                                className="w-full text-center py-3 rounded-xl bg-gray-50 border border-gray-200 text-gray-900 text-lg font-mono font-bold tracking-widest focus:ring-2 focus:ring-[#22c55e] outline-none"
+                            />
+                            {passcodeError && (
+                                <p className="text-xs text-red-500 font-semibold">{passcodeError}</p>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => handleUnlockReport(reportType, extractPasscode(latestRequest.comments) || generateDeterministicPasscode(latestRequest.id))}
+                                className="w-full py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold shadow-sm hover:shadow-emerald-500/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                            >
+                                Unlock Report
+                            </button>
+                        </div>
+                    </div>
+                ) : latestRequest.status === 'Rejected' ? (
+                    <div className="space-y-4">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl font-semibold text-sm">
+                            Request Rejected
+                        </div>
+                        {latestRequest.comments && (
+                            <p className="text-xs text-gray-400 italic">
+                                "{latestRequest.comments}"
+                            </p>
+                        )}
+                        <div className="pt-2">
+                            <button
+                                type="button"
+                                onClick={() => handleRequestAccess(reportType)}
+                                className="px-6 py-2.5 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold shadow-sm transition-all active:scale-[0.99]"
+                            >
+                                Submit New Request
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
 
     // --- Pending Filter States (to implement Apply button logic) ---
     const [pendingDateRange, setPendingDateRange] = useState<Range>(dateRange);
@@ -1241,7 +1555,11 @@ const AttendanceDashboard: React.FC = () => {
         }
     }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
-    const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report'));
+    const isReportLocked = user?.role === 'hr_ops' && 
+                           ['work_hours', 'log', 'audit'].includes(reportType) && 
+                           (!unlockedReports[reportType] || Date.now() - unlockedReports[reportType] >= 2 * 60 * 60 * 1000);
+
+    const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report')) && !isReportLocked;
     const canViewAllAttendance = user && (isAdmin(user.role) || permissions[user.role]?.includes('view_all_attendance'));
     
     // Reporting Manager logic
@@ -4051,15 +4369,15 @@ const AttendanceDashboard: React.FC = () => {
                                     }, 800);
                                 }}
                             >
-                                <option value="basic">Basic Report</option>
-                                <option value="monthly">Monthly Summary</option>
-                                <option value="work_hours">Work Hours Report</option>
-                                <option value="leave_balance">Leave Balance Tracker</option>
+                                <option value="basic">{getReportLabel('basic', 'Basic Report')}</option>
+                                <option value="monthly">{getReportLabel('monthly', 'Monthly Summary')}</option>
+                                <option value="work_hours">{getReportLabel('work_hours', 'Work Hours Report')}</option>
+                                <option value="leave_balance">{getReportLabel('leave_balance', 'Leave Balance Tracker')}</option>
                                 {canViewAllAttendance && (
                                     <>
-                                        <option value="site_ot">Site OT Report</option>
-                                        <option value="log">Attendance Logs</option>
-                                        <option value="audit">Audit Logs</option>
+                                        <option value="site_ot">{getReportLabel('site_ot', 'Site OT Report')}</option>
+                                        <option value="log">{getReportLabel('log', 'Attendance Logs')}</option>
+                                        <option value="audit">{getReportLabel('audit', 'Audit Logs')}</option>
                                     </>
                                 )}
                             </select>
@@ -4551,6 +4869,8 @@ const AttendanceDashboard: React.FC = () => {
                     <div className="w-full bg-[#041b0f] md:bg-gray-50 border border-[#1a3d2c] md:border-gray-200 rounded-xl min-h-[300px] md:min-h-[400px] flex items-center justify-center">
                         <ReportTableSkeleton />
                     </div>
+                ) : isReportLocked ? (
+                    renderLockPanel()
                 ) : (
                     <>
                         {previewMode === 'summary' ? (
