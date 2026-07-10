@@ -927,67 +927,7 @@ const LeaveDashboard: React.FC = () => {
             )}
 
 
-            {/* Holiday Selection Section */}
-            {isHolidaySelectionEnabled && (
-                isMobile ? (
-                    /* Mobile: Premium Dark Theme */
-                    <div className="bg-[#0f291e]/80 backdrop-blur-md rounded-2xl border border-white/5 p-5 shadow-xl relative overflow-hidden group mb-6">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-                        <div className="flex flex-col gap-4 relative z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 bg-emerald-500/20 rounded-xl">
-                                    <Calendar className="h-6 w-6 text-emerald-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white">Holiday Selection</h3>
-                                    <p className="text-emerald-100/60 text-xs text-left">Pick 6 holidays from the company list</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col items-center gap-3 w-full">
-                                <div className="px-3 py-1 bg-black/40 rounded-full border border-white/10">
-                                    <span className={`text-sm font-bold ${userHolidays.length === 6 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                        {userHolidays.length} / 6 Selected
-                                    </span>
-                                </div>
-                                <Button onClick={() => navigate('/leaves/holiday-selection')} className="w-full justify-center">
-                                    {userHolidays.length > 0 ? 'Update Selection' : 'Select Holidays'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    /* Desktop: Integrated Light Theme */
-                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between">
-                        <div className="flex items-center gap-5">
-                            <div className="p-3 bg-emerald-50 rounded-xl">
-                                <Calendar className="h-7 w-7 text-emerald-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-900">Holiday Selection</h3>
-                                <p className="text-gray-500 text-sm">Pick 6 holidays from the company list to complete your allowance.</p>
-                            </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-6">
-                            <div className="flex flex-col items-end mr-2">
-                                <span className={`text-sm font-bold ${userHolidays.length === 6 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                    {userHolidays.length} / 6 Selected
-                                </span>
-                                <div className="w-32 h-1.5 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
-                                    <div 
-                                        className={`h-full transition-all duration-500 ${userHolidays.length === 6 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                                        style={{ width: `${(userHolidays.length / 6) * 100}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-                            
-                            <Button onClick={() => navigate('/leaves/holiday-selection')} className="px-8 py-2.5">
-                                {userHolidays.length > 0 ? 'Update Selection' : 'Select Holidays'}
-                            </Button>
-                        </div>
-                    </div>
-                )
-            )}
+
 
 
 
