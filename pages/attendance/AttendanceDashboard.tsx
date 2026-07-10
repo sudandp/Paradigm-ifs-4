@@ -1081,6 +1081,40 @@ const AttendanceDashboard: React.FC = () => {
                 .order('created_at', { ascending: false });
             if (error) throw error;
             setAccessRequests(data || []);
+
+            // Auto-lock reports if the admin revoked (Rejected) the latest request
+            if (data) {
+                const saved = localStorage.getItem(`report_unlocked_${user.id}`);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        const reportUuids: Record<string, string> = {
+                            basic: '00000000-0000-0000-0000-000000000000',
+                            monthly: '44444444-4444-4444-4444-444444444444',
+                            leave_balance: '55555555-5555-5555-5555-555555555555',
+                            site_ot: '66666666-6666-6666-6666-666666666666',
+                            work_hours: '11111111-1111-1111-1111-111111111111',
+                            log: '22222222-2222-2222-2222-222222222222',
+                            audit: '33333333-3333-3333-3333-333333333333'
+                        };
+                        let changed = false;
+                        Object.keys(parsed).forEach(type => {
+                            const targetUuid = reportUuids[type];
+                            const latestRequest = data.find((r: any) => r.record_id === targetUuid);
+                            if (latestRequest && latestRequest.status !== 'Approved') {
+                                delete parsed[type];
+                                changed = true;
+                            }
+                        });
+                        if (changed) {
+                            setUnlockedReports(parsed);
+                            localStorage.setItem(`report_unlocked_${user.id}`, JSON.stringify(parsed));
+                        }
+                    } catch (e) {
+                        console.error('Error auto-locking:', e);
+                    }
+                }
+            }
         } catch (err) {
             console.error('Failed to fetch access requests:', err);
         } finally {
@@ -1091,6 +1125,20 @@ const AttendanceDashboard: React.FC = () => {
     useEffect(() => {
         if (user && user.role === 'hr_ops') {
             fetchAccessRequests();
+
+            const channel = supabase.channel('access-requests-dashboard')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'ops_approval_requests', filter: `requested_by=eq.${user.id}` },
+                    () => {
+                        fetchAccessRequests();
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, [user, fetchAccessRequests]);
 
@@ -1175,11 +1223,19 @@ const AttendanceDashboard: React.FC = () => {
         setIsFetchingRequests(true);
         try {
             const reportUuids: Record<string, string> = {
+                basic: '00000000-0000-0000-0000-000000000000',
+                monthly: '44444444-4444-4444-4444-444444444444',
+                leave_balance: '55555555-5555-5555-5555-555555555555',
+                site_ot: '66666666-6666-6666-6666-666666666666',
                 work_hours: '11111111-1111-1111-1111-111111111111',
                 log: '22222222-2222-2222-2222-222222222222',
                 audit: '33333333-3333-3333-3333-333333333333'
             };
             const reportNames: Record<string, string> = {
+                basic: 'Basic Report',
+                monthly: 'Monthly Summary',
+                leave_balance: 'Leave Balance Tracker',
+                site_ot: 'Site OT Report',
                 work_hours: 'Work Hours Report',
                 log: 'Attendance Logs',
                 audit: 'Audit Logs'
@@ -1228,7 +1284,7 @@ const AttendanceDashboard: React.FC = () => {
     };
 
     const getReportLabel = (val: string, name: string) => {
-        if (user?.role === 'hr_ops' && ['work_hours', 'log', 'audit'].includes(val)) {
+        if (user?.role === 'hr_ops') {
             const isUnlocked = unlockedReports[val] && (Date.now() - unlockedReports[val] < 2 * 60 * 60 * 1000);
             return `${isUnlocked ? '🔓' : '🔒'} ${name}`;
         }
@@ -1237,11 +1293,19 @@ const AttendanceDashboard: React.FC = () => {
 
     const renderLockPanel = () => {
         const reportUuids: Record<string, string> = {
+            basic: '00000000-0000-0000-0000-000000000000',
+            monthly: '44444444-4444-4444-4444-444444444444',
+            leave_balance: '55555555-5555-5555-5555-555555555555',
+            site_ot: '66666666-6666-6666-6666-666666666666',
             work_hours: '11111111-1111-1111-1111-111111111111',
             log: '22222222-2222-2222-2222-222222222222',
             audit: '33333333-3333-3333-3333-333333333333'
         };
         const reportNames: Record<string, string> = {
+            basic: 'Basic Report',
+            monthly: 'Monthly Summary',
+            leave_balance: 'Leave Balance Tracker',
+            site_ot: 'Site OT Report',
             work_hours: 'Work Hours Report',
             log: 'Attendance Logs',
             audit: 'Audit Logs'
@@ -1303,12 +1367,11 @@ const AttendanceDashboard: React.FC = () => {
                 ) : latestRequest.status === 'Approved' ? (
                     <div className="w-full space-y-6">
                         <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-                            <p className="text-xs text-gray-500 uppercase tracking-widest font-black mb-1">Passcode Granted</p>
-                            <p className="text-3xl font-mono font-bold tracking-widest text-[#22c55e]">
-                                {extractPasscode(latestRequest.comments) || generateDeterministicPasscode(latestRequest.id)}
+                            <p className="text-sm text-emerald-800 font-bold mb-1 flex items-center justify-center gap-2">
+                                <CheckCircle2 className="w-5 h-5 text-emerald-600" /> Request Approved
                             </p>
-                            <p className="text-[10px] text-gray-400 mt-2">
-                                Enter this passcode below to unlock access for 2 hours.
+                            <p className="text-xs text-emerald-600 font-medium">
+                                Check your notifications or messages for the passcode.
                             </p>
                         </div>
 
@@ -1556,7 +1619,6 @@ const AttendanceDashboard: React.FC = () => {
     }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
     const isReportLocked = user?.role === 'hr_ops' && 
-                           ['work_hours', 'log', 'audit'].includes(reportType) && 
                            (!unlockedReports[reportType] || Date.now() - unlockedReports[reportType] >= 2 * 60 * 60 * 1000);
 
     const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report')) && !isReportLocked;

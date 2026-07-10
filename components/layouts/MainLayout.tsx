@@ -190,7 +190,12 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
     const availableNavLinks = useMemo(() => {
         if (!user) return [];
         return allNavLinks
-            .filter(link => isAdmin(user.role) || userPermissions.includes(link.permission))
+            .filter(link => {
+                if (link.category === 'Enterprise Controls' && !isAdmin(user.role)) {
+                    return false;
+                }
+                return isAdmin(user.role) || userPermissions.includes(link.permission);
+            })
             .sort((a, b) => a.label.localeCompare(b.label));
     }, [user, userPermissions]);
 
@@ -200,6 +205,9 @@ const SidebarContent: React.FC<{ isCollapsed: boolean, onLinkClick?: () => void,
         // Use allNavLinks to maintain logical order within categories
         allNavLinks.forEach(link => {
             if (!user) return;
+            if (link.category === 'Enterprise Controls' && !isAdmin(user.role)) {
+                return;
+            }
             if (isAdmin(user.role) || userPermissions.includes(link.permission)) {
                 const cat = link.category || 'Other';
                 if (!groups[cat]) groups[cat] = [];

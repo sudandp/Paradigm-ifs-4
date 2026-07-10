@@ -751,6 +751,16 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                 }
                                                 const isLateReport = metadata.isLateReport;
                                                 
+                                                // Determine if this is a notification directed at the user themselves
+                                                const msgLower = notif.message.toLowerCase();
+                                                const isSelfNotification = msgLower.includes('punch out') || 
+                                                                           msgLower.includes("haven't punched out") ||
+                                                                           notif.message.includes('Hi ' + (user?.name?.split(' ')[0] || '___none___'));
+
+                                                const displayPhoto = metadata.employeePhoto || (isSelfNotification ? user?.photoUrl : undefined);
+                                                const displaySeed = metadata.employeeId || (isSelfNotification ? user?.id : undefined);
+                                                const displayName = metadata.employeeName || (isSelfNotification ? user?.name : 'Team Member');
+                                                
                                                 return (
                                                     <div 
                                                         key={notif.id} 
@@ -764,13 +774,13 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                         <div className="flex items-center gap-3">
                                                             <ProfilePlaceholder 
                                                                 className="w-8 h-8 rounded-lg flex-shrink-0"
-                                                                photoUrl={metadata.employeePhoto}
-                                                                seed={metadata.employeeId}
+                                                                photoUrl={displayPhoto}
+                                                                seed={displaySeed}
                                                             />
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center justify-between mb-0.5">
                                                                     <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>
-                                                                        {metadata.employeeName || 'Team Member'}
+                                                                        {displayName}
                                                                     </p>
                                                                     <span className={`text-[9px] ${isMobile ? 'text-white/40' : 'text-gray-400'}`}>
                                                                         {formatDistanceToNow(parseISO(notif.createdAt), { addSuffix: true })}

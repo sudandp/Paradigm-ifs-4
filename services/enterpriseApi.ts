@@ -69,9 +69,7 @@ export const enterpriseApi = {
       .from('ops_approval_requests')
       .select(`
         *, 
-        entity:entities(name), 
-        requester:requested_by(name),
-        approver:approver_id(name)
+        entity:entities(name)
       `)
       .order('created_at', { ascending: false });
       
@@ -81,11 +79,36 @@ export const enterpriseApi = {
     const { data, error } = await query;
     if (error) throw error;
     
-    return (data || []).map((row: any) => {
+    const rows = data || [];
+    if (rows.length === 0) return [];
+
+    const userIds = Array.from(new Set(
+      rows.flatMap((r: any) => [r.requested_by, r.approver_id]).filter(Boolean)
+    ));
+
+    const userMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      try {
+        const { data: users, error: usersError } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', userIds);
+        
+        if (!usersError && users) {
+          users.forEach((u: any) => {
+            userMap[u.id] = u.name;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch user names for approval requests:', err);
+      }
+    }
+    
+    return rows.map((row: any) => {
       const req = toCamelCase(row);
       req.entityName = row.entity?.name;
-      req.requestedByName = row.requester?.name;
-      req.approverName = row.approver?.name;
+      req.requestedByName = row.requested_by ? userMap[row.requested_by] : undefined;
+      req.approverName = row.approver_id ? userMap[row.approver_id] : undefined;
       return req;
     });
   },

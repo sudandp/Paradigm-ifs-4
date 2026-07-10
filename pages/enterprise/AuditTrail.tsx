@@ -4,7 +4,17 @@ import { ShieldCheck, Search, Filter, History, ChevronDown, ChevronRight, Loader
 import type { SystemAuditLog } from '../../types/enterprise';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 
+import { useAuthStore } from '../../store/authStore';
+import { isAdmin } from '../../utils/auth';
+import { Navigate } from 'react-router-dom';
+
 const AuditTrail: React.FC = () => {
+  const { user } = useAuthStore();
+
+  if (!user || !isAdmin(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
   const { auditLogs, fetchAuditLogs, isLoading } = useEnterpriseStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string>('All');
