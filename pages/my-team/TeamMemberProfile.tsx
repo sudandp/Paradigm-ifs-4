@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Download, Calendar, MapPin, Clock, 
   Navigation, Briefcase, ChevronRight, Info, FileText, AlertTriangle, Monitor, Shield, Globe, Smartphone,
-  Footprints, Maximize
+  Footprints
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import ViolationsView from '../../components/violations/ViolationsView';
@@ -15,6 +15,7 @@ import { api } from '../../services/api';
 import { User, AttendanceEvent, LeaveRequest, EmployeeScore } from '../../types';
 import { calculateEmployeeScores } from '../../services/employeeScoring';
 import { calculateDistanceMeters, reverseGeocode } from '../../utils/locationUtils';
+import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 import UserDeviceList from '../../components/devices/UserDeviceList';
 import { ProfilePlaceholder } from '../../components/ui/ProfilePlaceholder';
 
@@ -73,7 +74,7 @@ interface ActivitySegment {
   longitude?: number;
   distance?: number; // in km
   steps?: number;
-  sqft?: number;
+  distanceKm?: number;
 }
 
 const TeamMemberProfile: React.FC = () => {
@@ -197,7 +198,7 @@ const TeamMemberProfile: React.FC = () => {
             latitude: activeIn.latitude,
             longitude: activeIn.longitude,
             steps: evt.steps,
-            sqft: evt.sqft
+            distanceKm: evt.distanceKm
           });
           activeIn = null;
         }
@@ -270,12 +271,10 @@ const TeamMemberProfile: React.FC = () => {
     let workMin = 0;
     let travelMin = 0;
     let totalSteps = 0;
-    let totalSqft = 0;
     timeline.forEach(s => {
       if (s.type === 'Work') {
         workMin += s.durationMin;
         totalSteps += s.steps || 0;
-        totalSqft += s.sqft || 0;
       }
       if (s.type === 'Travel') {
         travelMin += s.durationMin;
@@ -283,11 +282,10 @@ const TeamMemberProfile: React.FC = () => {
       }
     });
     return {
-      totalDistance: totalDist.toFixed(2),
+      totalDistance: totalDist,
       workDuration: `${Math.floor(workMin / 60)}h ${workMin % 60}m`,
       travelTime: `${Math.floor(travelMin / 60)}h ${travelMin % 60}m`,
-      totalSteps,
-      totalSqft
+      totalSteps
     };
   }, [timeline]);
 
@@ -426,11 +424,10 @@ const TeamMemberProfile: React.FC = () => {
       <div className="w-full p-4 md:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-4 space-y-4">
-            <MetricCard title="Total Distance" value={`${metrics.totalDistance} km`} subtext="Traveled across segments" icon={<Navigation className="w-5 h-5" />} color="bg-blue-500" />
+            <MetricCard title="Total Distance" value={formatDistance(metrics.totalDistance)} subtext="Traveled across segments" icon={<Navigation className="w-5 h-5" />} color="bg-blue-500" />
             <MetricCard title="Work Duration" value={metrics.workDuration} subtext="Total time at site locations" icon={<Briefcase className="w-5 h-5" />} color="bg-green-500" />
             <MetricCard title="Travel Time" value={metrics.travelTime} subtext="Total time spent commuting" icon={<MapPin className="w-5 h-5" />} color="bg-orange-500" />
             <MetricCard title="Daily Steps" value={`${metrics.totalSteps.toLocaleString()} steps`} subtext="Walked during site visits" icon={<Footprints className="w-5 h-5" />} color="bg-teal-500" />
-            <MetricCard title="Area Covered" value={`${metrics.totalSqft.toLocaleString()} sqft`} subtext="Estimated coverage area" icon={<Maximize className="w-5 h-5" />} color="bg-purple-500" />
             
             <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
               <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
@@ -483,20 +480,21 @@ const TeamMemberProfile: React.FC = () => {
                                 <span className="bg-background px-2 py-0.5 rounded-lg border border-border">{s.duration}</span>
                               </div>
                             </div>
-                            {s.type === 'Work' && ((s.steps !== undefined && s.steps !== null) || (s.sqft !== undefined && s.sqft !== null)) && (
+                            {s.type === 'Work' && s.steps !== undefined && s.steps !== null && (
                               <div className="flex gap-4 mt-2 text-xs font-medium text-muted bg-accent/5 p-2 rounded-lg border border-accent/10 w-fit">
-                                {s.steps !== undefined && s.steps !== null && (
-                                  <span className="flex items-center gap-1">
-                                    <Footprints className="w-3.5 h-3.5 text-accent" />
-                                    {s.steps.toLocaleString()} steps
-                                  </span>
-                                )}
-                                {s.sqft !== undefined && s.sqft !== null && (
-                                  <span className="flex items-center gap-1">
-                                    <Maximize className="w-3.5 h-3.5 text-accent" />
-                                    {s.sqft.toLocaleString()} sqft
-                                  </span>
-                                )}
+                                <span className="flex items-center gap-1">
+                                  <Footprints className="w-3.5 h-3.5 text-accent" />
+                                  {s.steps.toLocaleString()} steps
+                                </span>
+                                {/* Show GPS distance if available, else derive from steps */}
+                                <span className="flex items-center gap-1">
+                                  <Navigation className="w-3.5 h-3.5 text-blue-500" />
+                                  {formatDistance(
+                                    (s.distanceKm && s.distanceKm > 0)
+                                      ? s.distanceKm
+                                      : stepsToDistanceKm(s.steps)
+                                  )}
+                                </span>
                               </div>
                             )}
                           </div>

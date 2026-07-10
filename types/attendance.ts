@@ -47,8 +47,7 @@ export interface AttendanceEvent {
   source?: string;
   isCached?: boolean;
   steps?: number;
-  sqft?: number;
-  travelDistance?: number;
+  distanceKm?: number;
 }
 
 export interface RoutePoint {

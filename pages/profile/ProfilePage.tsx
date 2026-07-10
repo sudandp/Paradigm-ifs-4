@@ -28,6 +28,7 @@ import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
+import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
@@ -109,8 +110,7 @@ const ProfilePage: React.FC = () => {
     const [todayMetrics, setTodayMetrics] = useState({
         totalDistance: '0.00',
         travelTime: '0h 0m',
-        totalSteps: 0,
-        totalSqft: 0
+        totalSteps: 0
     });
     const [isMetricsLoading, setIsMetricsLoading] = useState(true);
 
@@ -136,8 +136,7 @@ const ProfilePage: React.FC = () => {
                     setTodayMetrics({
                         totalDistance: '0.00',
                         travelTime: '0h 0m',
-                        totalSteps: 0,
-                        totalSqft: 0
+                        totalSteps: 0
                     });
                     return;
                 }
@@ -147,20 +146,15 @@ const ProfilePage: React.FC = () => {
                 // deduplicates points within 5m, and sums the cumulative path distance.
                 const { distance, duration } = calculateDailyPathTravelKm(events, routePoints);
 
-                // Steps and sqft are captured on check-out events only (saved by stepCounterService on check-out)
+                // Steps are captured on check-out events only (saved by stepCounterService on check-out)
                 const totalSteps = events
                     .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.steps != null)
                     .reduce((sum, e) => sum + (e.steps || 0), 0);
 
-                const totalSqft = events
-                    .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.sqft != null)
-                    .reduce((sum, e) => sum + (e.sqft || 0), 0);
-
                 setTodayMetrics({
                     totalDistance: distance.toFixed(2),
                     travelTime: `${Math.floor(duration / 60)}h ${duration % 60}m`,
-                    totalSteps,
-                    totalSqft
+                    totalSteps
                 });
             } catch (err) {
                 console.error('Failed to load today metrics:', err);
@@ -1351,20 +1345,11 @@ const ProfilePage: React.FC = () => {
                                                 </div>
                                                 <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
                                                     <div className="flex items-center gap-2 mb-1">
-                                                        <Maximize className="h-3.5 w-3.5 text-teal-400" />
-                                                        <span className="text-[9px] font-bold text-gray-400 uppercase">Area Covered</span>
-                                                    </div>
-                                                    <p className="text-xl font-bold text-white tabular-nums">
-                                                        {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
-                                                    </p>
-                                                </div>
-                                                <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
-                                                    <div className="flex items-center gap-2 mb-1">
                                                         <Navigation className="h-3.5 w-3.5 text-blue-400" />
                                                         <span className="text-[9px] font-bold text-gray-400 uppercase">Travel Dist.</span>
                                                     </div>
                                                     <p className="text-xl font-bold text-white tabular-nums">
-                                                        {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                                        {isMetricsLoading ? '—' : formatDistance(parseFloat(todayMetrics.totalDistance))}
                                                     </p>
                                                 </div>
                                                 <div className="bg-white/5 border border-white/5 p-4 rounded-2xl backdrop-blur-md">
@@ -3011,24 +2996,14 @@ const ProfilePage: React.FC = () => {
                                                     )}
                                                 </p>
                                             </div>
-                                            {/* Area Covered */}
-                                            <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
-                                                <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
-                                                    <Maximize className="w-3.5 h-3.5 text-teal-600" />
-                                                    Area Covered
-                                                </div>
-                                                <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                                    {isMetricsLoading ? '—' : `${todayMetrics.totalSqft.toLocaleString()} sqft`}
-                                                </p>
-                                            </div>
-                                            {/* Travel Distance */}
+                                            {/* Distance (GPS route) */}
                                             <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                                 <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                                     <Navigation className="w-3.5 h-3.5 text-blue-600" />
-                                                    Travel Distance
+                                                    Distance
                                                 </div>
                                                 <p className="text-lg font-bold text-gray-900 tabular-nums">
-                                                    {isMetricsLoading ? '—' : `${todayMetrics.totalDistance} km`}
+                                                    {isMetricsLoading ? '—' : formatDistance(parseFloat(todayMetrics.totalDistance))}
                                                 </p>
                                             </div>
                                             {/* Travel Duration */}

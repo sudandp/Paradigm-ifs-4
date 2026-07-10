@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, MapPin, Clock, Footprints, Maximize, Navigation } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Footprints, Navigation } from 'lucide-react';
 import { format } from 'date-fns';
 import Button from '../../components/ui/Button';
 import { supabase } from '../../services/supabase';
 import { useAuthStore } from '../../store/authStore';
+import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -22,7 +23,6 @@ export type DetailedActivityRecord = {
     travelKm: number;
     travelDuration: number;
     steps: number;
-    sqft: number;
     startTime: string | null;
     endTime: string | null;
     startLocation: string | null;
@@ -38,6 +38,8 @@ const formatDuration = (mins: number): string => {
   }
   return `${m}m`;
 };
+
+
 
 export const ActivityTimelinePage: React.FC = () => {
     const navigate = useNavigate();
@@ -258,9 +260,10 @@ export const ActivityTimelinePage: React.FC = () => {
                                                 <Footprints className="w-4 h-4 text-indigo-600" />
                                                 <span className="font-bold text-indigo-800 text-sm">{record.steps.toLocaleString()} steps</span>
                                             </div>
-                                            <div className="flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100">
-                                                <Maximize className="w-4 h-4 text-purple-600" />
-                                                <span className="font-medium text-purple-800 text-sm">{record.sqft.toLocaleString()} sqft</span>
+                                            {/* Walking distance = steps × 0.75m (avg stride). NOT GPS distance. */}
+                                            <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
+                                                <Navigation className="w-4 h-4 text-green-600" />
+                                                <span className="font-medium text-green-800 text-sm">{formatDistance(stepsToDistanceKm(record.steps))}</span>
                                             </div>
                                             </>
                                         )}

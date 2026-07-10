@@ -248,7 +248,7 @@ const LeaveDashboard: React.FC = () => {
     const [monthlyTravelKm, setMonthlyTravelKm] = useState<number>(0);
     const [monthlyTravelDuration, setMonthlyTravelDuration] = useState<number>(0);
     const [monthlySteps, setMonthlySteps] = useState<number>(0);
-    const [dailyActivityRecords, setDailyActivityRecords] = useState<{dateStr: string, travelKm: number, travelDuration: number, steps: number, sqft: number, startTime: string | null, endTime: string | null, startLocation: string | null, endLocation: string | null}[]>([]);
+    const [dailyActivityRecords, setDailyActivityRecords] = useState<{dateStr: string, travelKm: number, travelDuration: number, steps: number, startTime: string | null, endTime: string | null, startLocation: string | null, endLocation: string | null}[]>([]);
     const [snapshotData, setSnapshotData] = useState<any | null>(null);
     const currentYear = viewingDate.getFullYear();
 
@@ -475,10 +475,6 @@ const LeaveDashboard: React.FC = () => {
                         .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
                         .reduce((sum, e) => sum + (e.steps || 0), 0);
                     
-                    const daySqft = (dayEvents as AttendanceEvent[])
-                        .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && e.sqft != null)
-                        .reduce((sum, e) => sum + (e.sqft || 0), 0);
-                        
                     totalMonthlySteps += daySteps;
                     
                     const sortedEvents = [...dayEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -499,7 +495,6 @@ const LeaveDashboard: React.FC = () => {
                         travelKm: travelRes.distance,
                         travelDuration: travelRes.duration,
                         steps: daySteps,
-                        sqft: daySqft,
                         startTime,
                         endTime,
                         startLocation,

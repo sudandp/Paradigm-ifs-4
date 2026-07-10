@@ -299,7 +299,8 @@ export const useAuthStore = create<AuthState>()(
             const timeElapsed = now - lastSyncTime;
             const stepsChanged = steps !== lastSyncedSteps;
 
-            if (stepsChanged && (timeElapsed > 60000 || lastSyncTime === 0)) {
+            // Sync every 10s (was 60s) so the web app sees nearly real-time step data
+            if (stepsChanged && (timeElapsed > 10000 || lastSyncTime === 0)) {
                 lastSyncTime = now;
                 lastSyncedSteps = steps;
                 try {
@@ -991,51 +992,41 @@ export const useAuthStore = create<AuthState>()(
                     const currentDailyPunchCount = get().dailyPunchCount;
                     const isOtCycle = currentDailyPunchCount >= 1 && newType === 'punch-in' && workType !== 'field';
 
-                    // Capture steps on punch-out (all work types)
+                    // Capture steps and GPS distance on punch-out
                     let stepsValue: number | undefined = undefined;
-                    let sqftValue: number | undefined = undefined;
-                    let travelDistanceValue: number | undefined = undefined;
+                    let distanceKmValue: number | undefined = undefined;
 
                     if (newType === 'punch-out' || newType === 'site-ot-out' || newType === 'site-out') {
                              try {
                               const { stepCounterService } = await import('../services/stepCounterService');
                               await stepCounterService.getStepCountFromNative();
                               stepsValue = stepCounterService.getStepsCount();
-                              sqftValue = stepsValue * 20; // 2.5 ft stride * 8 ft coverage width
                               await stepCounterService.stopCounting();
                               set({ liveSteps: 0 }); // Reset live display after checkout
-                            console.log(`[authStore] Saved steps: ${stepsValue}, sqft: ${sqftValue}`);
+                            console.log(`[authStore] Saved steps: ${stepsValue}`);
                         } catch (err) {
                             console.warn('[authStore] Failed to capture step count on checkout:', err);
                         }
-                    }
 
-                    if (newType === 'punch-in' && workType === 'field' && lat && lng) {
+                        // Calculate total GPS distance for this session from route history
                         try {
-                            const start = new Date();
-                            start.setHours(0, 0, 0, 0);
-                            const end = new Date();
-                            end.setHours(23, 59, 59, 999);
-                            const todayEvents = await api.getAttendanceEvents(user.id, start.toISOString(), end.toISOString());
-                            
-                            const lastPunchOut = [...todayEvents]
-                                .filter(e => e.type === 'punch-out')
-                                .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
-
-                            if (lastPunchOut?.latitude && lastPunchOut?.longitude) {
-                                const distMeters = calculateDistanceMeters(
-                                    lastPunchOut.latitude,
-                                    lastPunchOut.longitude,
-                                    lat,
-                                    lng
-                                );
-                                travelDistanceValue = Number((distMeters / 1000).toFixed(2));
-                                console.log(`[authStore] Calculated travel distance since last checkout: ${travelDistanceValue} km`);
-                            }
+                            const { calculateDailyPathTravelKm } = await import('../utils/attendanceCalculations');
+                            const today = new Date();
+                            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
+                            const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).toISOString();
+                            const [todayEvents, routePoints] = await Promise.all([
+                                api.getAttendanceEvents(user.id, startOfDay, endOfDay),
+                                api.getRoutePoints(user.id, startOfDay, endOfDay).catch(() => [])
+                            ]);
+                            const { distance } = calculateDailyPathTravelKm(todayEvents, routePoints);
+                            distanceKmValue = Number(distance.toFixed(3));
+                            console.log(`[authStore] GPS distance for session: ${distanceKmValue} km`);
                         } catch (err) {
-                            console.warn('[authStore] Failed to calculate travel distance for check-in:', err);
+                            console.warn('[authStore] Failed to calculate session distance on checkout:', err);
                         }
                     }
+
+
 
                     try {
                         await api.addAttendanceEvent({
@@ -1052,8 +1043,7 @@ export const useAuthStore = create<AuthState>()(
                             fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
                             isOt: isOtCycle ? true : undefined,
                             steps: stepsValue,
-                            sqft: sqftValue,
-                            travelDistance: travelDistanceValue
+                            distanceKm: distanceKmValue
                         });
                     } catch (err: any) {
                         return { success: false, message: err.message || 'Failed to record attendance' };
@@ -1395,11 +1385,35 @@ export const useAuthStore = create<AuthState>()(
                         event: 'INSERT',
                         schema: 'public',
                         table: 'attendance_events',
-                        filter: `userId=eq.${user.id}`,
+                        filter: `user_id=eq.${user.id}`,
                     },
                     () => {
                         console.log('Realtime: Attendance event detected, refreshing status...');
                         get().checkAttendanceStatus();
+                    }
+                )
+                .subscribe();
+
+            // --- Realtime step sync from mobile ---
+            // When the Android app updates attendance_events.steps every 10s,
+            // this subscription instantly pushes the new count to the web app
+            // without waiting for the 15s poll cycle.
+            const stepsChannel = supabase
+                .channel(`steps_sync_${user.id}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'attendance_events',
+                        filter: `user_id=eq.${user.id}`,
+                    },
+                    (payload) => {
+                        const newSteps = (payload.new as any)?.steps;
+                        if (typeof newSteps === 'number') {
+                            console.log(`[Realtime] Step update from mobile: ${newSteps}`);
+                            set({ liveSteps: newSteps });
+                        }
                     }
                 )
                 .subscribe();
@@ -1412,11 +1426,10 @@ export const useAuthStore = create<AuthState>()(
                         event: 'UPDATE',
                         schema: 'public',
                         table: 'attendance_unlock_requests',
-                        filter: `userId=eq.${user.id}`,
+                        filter: `user_id=eq.${user.id}`,
                     },
                     (payload) => {
                         console.log('Realtime: Unlock request change detected:', payload);
-                        // If it was approved, we need to refresh the isPunchUnlocked status
                         get().checkAttendanceStatus();
                     }
                 )
@@ -1424,6 +1437,7 @@ export const useAuthStore = create<AuthState>()(
 
             return () => {
                 supabase.removeChannel(attendanceChannel);
+                supabase.removeChannel(stepsChannel);
                 supabase.removeChannel(unlockChannel);
             };
         },
