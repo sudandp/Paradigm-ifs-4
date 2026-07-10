@@ -135,9 +135,12 @@ class StepCounterService {
 
     if (this.isCounting) return;
 
-    // On non-Android: use simulation
+    // On non-Android: Step counting is not natively supported.
+    // We return 0 instead of simulating to prevent auto-increasing on web.
     if (Capacitor.getPlatform() !== 'android') {
-      this.simulateSteps();
+      this.isCounting = true;
+      this.currentSteps = 0;
+      if (this.onStepChange) this.onStepChange(0);
       return;
     }
 
