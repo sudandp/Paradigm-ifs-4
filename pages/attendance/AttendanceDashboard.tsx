@@ -1285,6 +1285,13 @@ const AttendanceDashboard: React.FC = () => {
 
     const getReportLabel = (val: string, name: string) => {
         if (user?.role === 'hr_ops') {
+            let diffDays = 0;
+            if (pendingDateRange.startDate && pendingDateRange.endDate) {
+                const diffMs = Math.abs(pendingDateRange.endDate.getTime() - pendingDateRange.startDate.getTime());
+                diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            }
+            if (diffDays <= 5) return name;
+
             const isUnlocked = unlockedReports[val] && (Date.now() - unlockedReports[val] < 2 * 60 * 60 * 1000);
             return `${isUnlocked ? '🔓' : '🔒'} ${name}`;
         }
@@ -1618,7 +1625,14 @@ const AttendanceDashboard: React.FC = () => {
         }
     }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
+    let appliedDiffDays = 0;
+    if (dateRange.startDate && dateRange.endDate) {
+        const diffMs = Math.abs(dateRange.endDate.getTime() - dateRange.startDate.getTime());
+        appliedDiffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    }
+    
     const isReportLocked = user?.role === 'hr_ops' && 
+                           appliedDiffDays > 5 &&
                            (!unlockedReports[reportType] || Date.now() - unlockedReports[reportType] >= 2 * 60 * 60 * 1000);
 
     const canDownloadReport = user && (isAdmin(user.role) || permissions[user.role]?.includes('download_attendance_report')) && !isReportLocked;

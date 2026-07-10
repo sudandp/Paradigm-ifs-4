@@ -75,7 +75,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // Employee Onboarding
     { to: '/onboarding', label: 'New Enrollment', icon: UserPlus, permission: 'create_enrollment', category: 'Employee Onboarding' },
     { to: '/hr/enrollment-rules', label: 'Enrollment Rules', icon: FileDigit, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
-    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_attendance_rules', category: 'Employee Onboarding' },
+    { to: '/hr/family-verification', label: 'Family Verification', icon: Baby, permission: 'manage_enrollment_rules', category: 'Employee Onboarding' },
 
     // Client Management
     { to: '/hr/entity-management?tab=client_structure', label: 'Client Structure', icon: ClipboardList, permission: 'view_entity_management', category: 'Client Management' },
@@ -138,7 +138,7 @@ export const allNavLinks: NavLinkConfig[] = [
     // System Config
     { to: '/developer/api', label: 'API Settings', icon: Settings, permission: 'view_developer_settings', category: 'System Config' },
     { to: '/developer/voip', label: 'VoIP Configuration', icon: Phone, permission: 'view_developer_settings', category: 'System Config' },
-    { to: '/notifications', label: 'Notification Management', icon: Bell, permission: 'manage_attendance_rules', category: 'System Config' },
+    { to: '/notifications', label: 'Notification Management', icon: Bell, permission: 'view_developer_settings', category: 'System Config' },
 
     // Support & Profile
     { to: '/support', label: 'Backend Support', icon: LifeBuoy, permission: 'access_support_desk', category: 'Support & Profile' },
