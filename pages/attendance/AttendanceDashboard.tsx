@@ -1285,10 +1285,10 @@ const AttendanceDashboard: React.FC = () => {
 
     const getReportLabel = (val: string, name: string) => {
         if (user?.role === 'hr_ops') {
-            let diffDays = 0;
+            let diffDays = 1;
             if (pendingDateRange.startDate && pendingDateRange.endDate) {
                 const diffMs = Math.abs(pendingDateRange.endDate.getTime() - pendingDateRange.startDate.getTime());
-                diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
             }
             if (diffDays <= 5) return name;
 
@@ -1625,10 +1625,10 @@ const AttendanceDashboard: React.FC = () => {
         }
     }, [reportType, reportPageSize, fetchAuditLogs, dateRange.startDate, dateRange.endDate]);
 
-    let appliedDiffDays = 0;
+    let appliedDiffDays = 1;
     if (dateRange.startDate && dateRange.endDate) {
         const diffMs = Math.abs(dateRange.endDate.getTime() - dateRange.startDate.getTime());
-        appliedDiffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        appliedDiffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
     }
     
     const isReportLocked = user?.role === 'hr_ops' && 

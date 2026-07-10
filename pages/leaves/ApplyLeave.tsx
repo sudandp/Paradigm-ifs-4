@@ -43,7 +43,7 @@ type LeaveRequestFormData = {
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
-    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction', 'Permission']).required('Leave type is required'),
+    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required')
         .test('is-valid-correction-date', 'Correction can only be raised for the same day (today) or within the last 48 hours', function (value) {
             const { leaveType } = this.parent as { leaveType?: string };
@@ -772,8 +772,8 @@ const ApplyLeave: React.FC = () => {
             }
 
             // Check balance before submitting
-            // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
-            if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
+            // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Regularization'
+            if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Regularization'].includes(formData.leaveType)) {
                 const balance = await api.getLeaveBalancesForUser(user.id);
                 
                 const baseType = formData.leaveType.toLowerCase().replace(/\s/g, '');
@@ -957,7 +957,7 @@ const ApplyLeave: React.FC = () => {
             const basePayload: any = {
                 leaveType,
                 startDate,
-                endDate: ['Correction', 'Permission'].includes(leaveType) ? startDate : endDate,
+                endDate: ['Correction', 'Permission', 'Regularization'].includes(leaveType) ? startDate : endDate,
                 dayOption,
                 reason: leaveType === 'Pink Leave' ? 'Pink Leave Request (Menstrual Leave)' : reason,
                 doctorCertificate,
@@ -1017,6 +1017,32 @@ const ApplyLeave: React.FC = () => {
                 };
             }
 
+            // Regularization: store actual worked hours + required hours for manager review
+            if (leaveType === 'Regularization') {
+                const getMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                const foh = rules?.fixedOfficeHours;
+                const requiredMins = foh
+                    ? Math.max(getMins(foh.checkOutTime) - getMins(foh.checkInTime), 0)
+                    : 8 * 60;
+                const actualMins = getMins(watchPunchIn) && getMins(watchPunchOut)
+                    ? Math.max(getMins(watchPunchOut) - getMins(watchPunchIn), 0) : 0;
+                const shortfallMins = Math.max(requiredMins - actualMins, 0);
+                basePayload.correctionDetails = {
+                    status: correctionStatus || 'Present',
+                    punchIn,
+                    punchOut,
+                    locationName,
+                    regularizationMeta: {
+                        actualWorkedMins: actualMins,
+                        requiredMins,
+                        shortfallMins,
+                        requiredHours: (requiredMins / 60).toFixed(1),
+                        actualHours: (actualMins / 60).toFixed(1),
+                        shortfallHours: (shortfallMins / 60).toFixed(1)
+                    }
+                };
+            }
+
             if (isEditMode && editId) {
                 // When editing a request that was previously rejected or cancelled, 
                 // reset its status to start the approval flow again.
@@ -1052,6 +1078,7 @@ const ApplyLeave: React.FC = () => {
             case 'WFH': return 'Work From Home (WFH)';
             case 'Correction': return 'Request for Correction (RC)';
             case 'Permission': return 'Request for Permission (RP)';
+            case 'Regularization': return 'Attendance Regularization (RG)';
             default: return type;
         }
     };
@@ -1152,6 +1179,7 @@ const ApplyLeave: React.FC = () => {
                                             {(rules?.enablePermission || rules?.enablePermission === undefined) && (
                                                 <option value="Permission">Request for Permission (RP)</option>
                                             )}
+                                            <option value="Regularization">Attendance Regularization (RG)</option>
                                         </Select>
                                     )} 
                                 />
@@ -1510,6 +1538,71 @@ const ApplyLeave: React.FC = () => {
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* ─── Regularization Panel ─── */}
+                                    {watchLeaveType === 'Regularization' && (() => {
+                                        const getMins = (t: string) => { const [h, m] = (t || '00:00').split(':').map(Number); return h * 60 + m; };
+                                        const foh = rules?.fixedOfficeHours;
+                                        const requiredMins = foh
+                                            ? Math.max(getMins(foh.checkOutTime) - getMins(foh.checkInTime), 0)
+                                            : 8 * 60;
+                                        const actualMins = Math.max(getMins(watchPunchOut) - getMins(watchPunchIn), 0);
+                                        const shortfallMins = Math.max(requiredMins - actualMins, 0);
+                                        const fmtH = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
+                                        const isShortfall = shortfallMins > 0;
+                                        return (
+                                            <div className={`p-6 rounded-2xl border space-y-5 transition-all duration-300 ${isMobile ? 'bg-amber-500/5 border-amber-500/10' : 'bg-amber-50 border-amber-200 shadow-sm'}`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className={`p-1.5 rounded-lg ${isMobile ? 'bg-amber-500/10' : 'bg-amber-100'}`}>
+                                                            <Clock className="w-4 h-4 text-amber-600" />
+                                                        </div>
+                                                        <h4 className={`font-bold text-sm uppercase tracking-wide ${isMobile ? 'text-amber-300' : 'text-amber-800'}`}>
+                                                            Hours Shortfall Summary
+                                                        </h4>
+                                                    </div>
+                                                    <div className={`text-[11px] font-semibold px-3 py-1 rounded-full ${isShortfall ? (isMobile ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-700 border border-rose-200') : (isMobile ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-green-100 text-green-700 border border-green-200')}`}>
+                                                        {isShortfall ? `⚠ Short by ${fmtH(shortfallMins)}` : '✓ Hours Complete'}
+                                                    </div>
+                                                </div>
+
+                                                {/* Stats Row */}
+                                                <div className={`grid grid-cols-3 gap-3 rounded-xl border p-4 ${isMobile ? 'bg-[#041b0f]/50 border-amber-500/10' : 'bg-white border-amber-100'}`}>
+                                                    {[
+                                                        { label: 'Required', value: fmtH(requiredMins), color: isMobile ? 'text-gray-300' : 'text-gray-800' },
+                                                        { label: 'Worked', value: fmtH(actualMins), color: isMobile ? 'text-emerald-400' : 'text-emerald-700' },
+                                                        { label: 'Shortfall', value: fmtH(shortfallMins), color: isShortfall ? (isMobile ? 'text-rose-400' : 'text-rose-600') : (isMobile ? 'text-green-400' : 'text-green-600') }
+                                                    ].map(stat => (
+                                                        <div key={stat.label} className="flex flex-col items-center gap-1 text-center">
+                                                            <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50 text-gray-400' : 'text-gray-400'}`}>{stat.label}</span>
+                                                            <span className={`font-black text-lg ${stat.color}`}>{stat.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Punch times row */}
+                                                <div className={`flex items-center justify-between gap-2 px-4 py-3 rounded-xl border ${isMobile ? 'bg-[#041b0f]/40 border-amber-500/10 text-xs' : 'bg-white border-amber-100 text-xs'}`}>
+                                                    {[
+                                                        { label: 'Punch In', value: watchPunchIn || '--:--', color: isMobile ? 'text-cyan-400' : 'text-cyan-700' },
+                                                        { label: '→', value: null },
+                                                        { label: 'Punch Out', value: watchPunchOut || '--:--', color: isMobile ? 'text-emerald-400' : 'text-emerald-700' }
+                                                    ].map((item, i) => item.value === null
+                                                        ? <span key={i} className={`text-lg font-bold ${isMobile ? 'opacity-30' : 'text-gray-300'}`}>→</span>
+                                                        : (
+                                                            <div key={i} className="flex flex-col items-center gap-1">
+                                                                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isMobile ? 'opacity-50' : 'text-gray-400'}`}>{item.label}</span>
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg border ${isMobile ? 'border-amber-500/20 bg-amber-500/10' : 'border-gray-200 bg-gray-50'} ${item.color}`}>{item.value}</span>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
+
+                                                <p className={`text-xs leading-relaxed ${isMobile ? 'text-amber-300/70' : 'text-amber-700'}`}>
+                                                    ℹ️ This request will be sent to your manager for approval. Please explain the reason for the shortfall in the field below.
+                                                </p>
+                                            </div>
+                                        );
+                                    })()}
 
                                     <div className="space-y-3 pt-4 border-t border-emerald-500/10">
                                         <div className="flex items-center gap-2">
