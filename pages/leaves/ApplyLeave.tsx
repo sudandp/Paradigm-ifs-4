@@ -748,6 +748,29 @@ const ApplyLeave: React.FC = () => {
                 }
             }
 
+            // Earned Leave and Child Care Leave eligibility check: must be >= 3 months after joining date
+            if (['Earned', 'Child Care'].includes(formData.leaveType)) {
+                if (user) {
+                    const joinDateStr = user.joiningDate || user.createdAt;
+                    if (joinDateStr) {
+                        const joinDate = new Date(joinDateStr.split('T')[0].replace(/-/g, '/'));
+                        const eligibilityDate = new Date(joinDate);
+                        eligibilityDate.setMonth(eligibilityDate.getMonth() + 3);
+                        
+                        const requestedStartDate = new Date(formData.startDate.replace(/-/g, '/'));
+                        if (requestedStartDate < eligibilityDate) {
+                            const formattedDate = format(eligibilityDate, 'dd-MM-yyyy');
+                            setToast({ 
+                                message: `You are not eligible to apply for ${formData.leaveType} yet. You can only apply for this leave starting from ${formattedDate} (3 months after your joining date).`, 
+                                type: 'error' 
+                            });
+                            setIsSubmitting(false);
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Check balance before submitting
             // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
             if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(formData.leaveType)) {
@@ -1064,7 +1087,7 @@ const ApplyLeave: React.FC = () => {
                                     </span>
                                 )}
                             </h1>
-                            {!isEditMode && (
+                            {!isEditMode && watchLeaveType !== 'Sick' && (
                                 <p className="text-xs font-bold text-muted/60 uppercase tracking-widest mt-0.5">
                                     Balance: <span className="text-emerald-500">{leaveBalance.toFixed(1)} days</span>
                                 </p>
@@ -1118,7 +1141,7 @@ const ApplyLeave: React.FC = () => {
                                             className={isMobile ? 'pro-select pro-select-arrow' : ''}
                                         >
                                             {!isProbation && <option value="Earned">Earned</option>}
-                                            {!isProbation && <option value="Sick">Sick</option>}
+                                            <option value="Sick">Sick</option>
                                             <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
                                             <option value="Comp Off">Comp Off</option>
                                             <option value="Loss of Pay">Loss of Pay</option>

@@ -21,6 +21,17 @@ const toTitleCase = (str: string): string =>
     .replace(/\b\w/g, c => c.toUpperCase())
     .trim();
 
+/** Adds a given number of months to a YYYY-MM-DD date string */
+const addMonthsToDateStr = (dateStr: string, months: number): string => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr.replace(/-/g, '/'));
+  date.setMonth(date.getMonth() + months);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 
 const createUserSchema = yup.object({
 
@@ -160,23 +171,35 @@ const AddUserPage: React.FC = () => {
       if (!currentJoiningDate) {
         setValue('joiningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
       }
+      const activeJoiningDate = currentJoiningDate || defaultDateStr;
       if (!currentElDate) {
-        setValue('earnedLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+        setValue('earnedLeaveOpeningDate', activeJoiningDate, { shouldValidate: true, shouldDirty: true });
       }
       if (!currentSlDate) {
-        setValue('sickLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+        setValue('sickLeaveOpeningDate', activeJoiningDate, { shouldValidate: true, shouldDirty: true });
       }
       if (!currentCoDate) {
-        setValue('compOffOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+        setValue('compOffOpeningDate', activeJoiningDate, { shouldValidate: true, shouldDirty: true });
       }
       if (!currentFlDate) {
-        setValue('floatingLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+        setValue('floatingLeaveOpeningDate', activeJoiningDate, { shouldValidate: true, shouldDirty: true });
       }
       if (!currentClDate) {
-        setValue('childCareLeaveOpeningDate', defaultDateStr, { shouldValidate: true, shouldDirty: true });
+        setValue('childCareLeaveOpeningDate', activeJoiningDate, { shouldValidate: true, shouldDirty: true });
       }
     }
   }, [role, setValue, watch, initialData]);
+
+  // Watch joiningDate and automatically sync all leave opening dates to match it
+  const watchedJoiningDate = watch('joiningDate');
+  useEffect(() => {
+    if (watchedJoiningDate) {
+      setValue('earnedLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
+      setValue('compOffOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
+      setValue('floatingLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
+      setValue('childCareLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
+    }
+  }, [watchedJoiningDate, setValue]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -875,24 +898,7 @@ const AddUserPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-semibold text-primary-text mb-4">Sick Leave Initial Balance</h3>
-                  <div className="space-y-4">
-                    <Input 
-                      label="Opening Balance (Days)" 
-                      type="number" 
-                      step="0.5" 
-                      registration={register('sickLeaveOpeningBalance')} 
-                      error={errors.sickLeaveOpeningBalance?.message}
-                    />
-                    <Input 
-                      label="Opening Date" 
-                      type="date" 
-                      registration={register('sickLeaveOpeningDate')} 
-                      error={errors.sickLeaveOpeningDate?.message}
-                    />
-                  </div>
-                </div>
+
 
                 <div>
                   <h3 className="text-sm font-semibold text-primary-text mb-4">Comp Off Initial Balance</h3>
@@ -1226,27 +1232,7 @@ const AddUserPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Sick Leave */}
-              <div className="space-y-4">
-                <h4 className="font-semibold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg inline-block text-sm">Sick Leave</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <Input 
-                    label="Opening Balance (Days)" 
-                    type="number" 
-                    step="0.5" 
-                    registration={register('sickLeaveOpeningBalance')} 
-                    error={errors.sickLeaveOpeningBalance?.message}
-                    description="Initial balance."
-                  />
-                  <Input 
-                    label="Opening Date" 
-                    type="date" 
-                    registration={register('sickLeaveOpeningDate')} 
-                    error={errors.sickLeaveOpeningDate?.message}
-                    description="Start date."
-                  />
-                </div>
-              </div>
+
 
               {/* Comp Off */}
               <div className="space-y-4">

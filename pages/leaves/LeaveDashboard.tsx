@@ -744,7 +744,8 @@ const LeaveDashboard: React.FC = () => {
             value: `${parseFloat((balanceDataState.sickTotal - balanceDataState.sickUsed - (balanceDataState.sickPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.sickTotal.toFixed(1))}`, 
             description: `Total: ${parseFloat(balanceDataState.sickTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.sickTotal - balanceDataState.sickUsed - (balanceDataState.sickPending || 0)).toFixed(1))}d.${(balanceDataState.sickPending || 0) > 0 ? ` (Pending: ${balanceDataState.sickPending}d)` : ''}`,
             icon: HeartPulse,
-            isExpired: balanceDataState.expiryStates?.sick
+            isExpired: balanceDataState.expiryStates?.sick,
+            isHidden: true
         },
         { 
             title: 'Blue Leave', 
@@ -823,7 +824,6 @@ const LeaveDashboard: React.FC = () => {
         }] : [])
     ].filter(card => !card.isExpired && !card.isHidden) : [
         { title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true },
-        { title: 'Sick Leave', value: '0 / 0', icon: HeartPulse, isLoading: true },
         { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
         { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },

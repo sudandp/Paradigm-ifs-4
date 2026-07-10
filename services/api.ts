@@ -4972,7 +4972,7 @@ export const api = {
     // Resolve rules for this user
     const { data: userProfile, error: userError } = await supabase
       .from('users')
-      .select('reporting_manager_id, role_id, society_id')
+      .select('reporting_manager_id, role_id, society_id, joining_date, created_at')
       .eq('id', data.userId)
       .single();
     if (userError) throw userError;
@@ -4995,6 +4995,21 @@ export const api = {
     const requestedDays = data.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endD, startD) + 1;
 
     const leaveTypeLower = data.leaveType.toLowerCase();
+
+    // Earned and Child Care Leave eligibility check: must be >= 3 months after joining date
+    if (['earned', 'child care', 'childcare', 'child'].some(t => leaveTypeLower.includes(t))) {
+      const joinDateStr = userProfile.joining_date || userProfile.created_at;
+      if (joinDateStr) {
+        const joinDate = new Date(joinDateStr.split('T')[0].replace(/-/g, '/'));
+        const eligibilityDate = new Date(joinDate);
+        eligibilityDate.setMonth(eligibilityDate.getMonth() + 3);
+        
+        if (startD < eligibilityDate) {
+          const formatted = `${String(eligibilityDate.getDate()).padStart(2, '0')}-${String(eligibilityDate.getMonth() + 1).padStart(2, '0')}-${eligibilityDate.getFullYear()}`;
+          throw new Error(`You are not eligible to apply for ${data.leaveType} yet. You can only apply for this leave starting from ${formatted} (3 months after your joining date).`);
+        }
+      }
+    }
 
     // 1. Maternity Leave validation
     if (leaveTypeLower.includes('maternity')) {
