@@ -747,6 +747,14 @@ export function evaluateAttendanceStatus(params: {
       let diffMins = outMins - inMins;
       if (diffMins < 0) diffMins += 24 * 60; // wrap around
       
+      if (approvedPermission!.correctionDetails.punchIn2 && approvedPermission!.correctionDetails.punchOut2) {
+          const inMins2 = getMinutes(approvedPermission!.correctionDetails.punchIn2);
+          const outMins2 = getMinutes(approvedPermission!.correctionDetails.punchOut2);
+          let diffMins2 = outMins2 - inMins2;
+          if (diffMins2 < 0) diffMins2 += 24 * 60;
+          diffMins += diffMins2;
+      }
+
       if (approvedPermission!.correctionDetails.includeBreak && approvedPermission!.correctionDetails.breakIn && approvedPermission!.correctionDetails.breakOut) {
           const bIn = getMinutes(approvedPermission!.correctionDetails.breakIn);
           const bOut = getMinutes(approvedPermission!.correctionDetails.breakOut);
@@ -769,6 +777,14 @@ export function evaluateAttendanceStatus(params: {
       let diffMins = outMins - inMins;
       if (diffMins < 0) diffMins += 24 * 60; // wrap around
       
+      if (approvedCorrection!.correctionDetails.punchIn2 && approvedCorrection!.correctionDetails.punchOut2) {
+          const inMins2 = getMinutes(approvedCorrection!.correctionDetails.punchIn2);
+          const outMins2 = getMinutes(approvedCorrection!.correctionDetails.punchOut2);
+          let diffMins2 = outMins2 - inMins2;
+          if (diffMins2 < 0) diffMins2 += 24 * 60;
+          diffMins += diffMins2;
+      }
+
       if (approvedCorrection!.correctionDetails.includeBreak && approvedCorrection!.correctionDetails.breakIn && approvedCorrection!.correctionDetails.breakOut) {
           const bIn = getMinutes(approvedCorrection!.correctionDetails.breakIn);
           const bOut = getMinutes(approvedCorrection!.correctionDetails.breakOut);

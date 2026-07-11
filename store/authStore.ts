@@ -713,10 +713,11 @@ export const useAuthStore = create<AuthState>()(
                     : new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();
 
                 // Run data fetching concurrently to save time
-                const [eventsResult, unlockCountResult, dailyUnlockCountResult] = await Promise.allSettled([
+                const [eventsResult, unlockCountResult, dailyUnlockCountResult, leaveRequestsResult] = await Promise.allSettled([
                     api.getAttendanceEvents(user.id, startOfDayStr, endOfDayStr),
                     api.checkUnlockStatus(),
-                    api.getDailyUnlockRequestCount()
+                    api.getDailyUnlockRequestCount(),
+                    api.getLeaveRequests({ userId: user.id })
                 ]);
 
                 // If the events fetch failed (offline / network error), preserve the last
@@ -730,6 +731,9 @@ export const useAuthStore = create<AuthState>()(
                 const events = eventsResult.value;
                 const approvedUnlockCount = unlockCountResult.status === 'fulfilled' ? unlockCountResult.value : 0;
                 const dailyUnlockRequestCount = 0;
+                const leaveRequests = (leaveRequestsResult.status === 'fulfilled' && (leaveRequestsResult.value as any)?.data)
+                    ? (leaveRequestsResult.value as any).data
+                    : [];
 
                 // Online but genuinely no events today – safe to reset
                 if (events.length === 0) {
@@ -796,32 +800,42 @@ export const useAuthStore = create<AuthState>()(
 
                 if (lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
-                    const isStillOpen = (currentlyCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn);
+                    const openSessions: Date[] = [];
                     
-                    if (isStillOpen) {
-                        // Like processDailyEvents, we only care about events after the last punch-out before today
-                        // to identify the start of the CURRENT session.
-                        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-                        let cutoffIndex = -1;
-                        let lastPunchInTime: Date | null = null;
-                        
-                        for (let i = 0; i < events.length; i++) {
-                            const e = events[i];
-                            const eventTime = new Date(e.timestamp);
-                            if (e.type === 'punch-in' || e.type === 'site-ot-in') {
-                                lastPunchInTime = eventTime;
-                            } else if (e.type === 'punch-out' || e.type === 'site-ot-out') {
-                                if ((lastPunchInTime && lastPunchInTime < startOfToday) || (!lastPunchInTime && eventTime < startOfToday)) {
-                                    cutoffIndex = i;
-                                }
-                            }
+                    if (currentlyCheckedIn) {
+                        const officePunchEvents = events.filter(e => !e.workType || e.workType === 'office');
+                        const lastOfficePunch = officePunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
+                        if (lastOfficePunch && lastOfficePunch.type === 'punch-in') {
+                            openSessions.push(new Date(lastOfficePunch.timestamp));
                         }
-                        const relevantEvents = cutoffIndex >= 0 ? events.slice(cutoffIndex + 1) : events;
-                        const firstActiveEvent = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-ot-in');
+                    }
+                    if (isFieldCheckedIn) {
+                        const fieldPunchEvents = events.filter(e => e.workType === 'field');
+                        const lastFieldPunch = fieldPunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
+                        if (lastFieldPunch && lastFieldPunch.type === 'punch-in') {
+                            openSessions.push(new Date(lastFieldPunch.timestamp));
+                        }
+                    }
+                    if (isSiteOtCheckedIn) {
+                        const siteOtPunchEvents = events.filter(e => e.type === 'site-ot-in' || e.type === 'site-ot-out');
+                        const lastSiteOtPunch = siteOtPunchEvents.pop();
+                        if (lastSiteOtPunch && lastSiteOtPunch.type === 'site-ot-in') {
+                            openSessions.push(new Date(lastSiteOtPunch.timestamp));
+                        }
+                    }
+                    
+                    if (openSessions.length > 0) {
+                        const earliestSessionTime = new Date(Math.min(...openSessions.map(d => d.getTime())));
+                        const sessionDateStr = getLocalDateKey(earliestSessionTime);
                         
-                        if (firstActiveEvent) {
-                            const sessionDateStr = getLocalDateKey(new Date(firstActiveEvent.timestamp));
-                            if (sessionDateStr < todayDateStr) {
+                        if (sessionDateStr < todayDateStr) {
+                            const isResolvedByRequest = leaveRequests.some((r: any) => 
+                                ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
+                                r.startDate === sessionDateStr &&
+                                !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
+                            );
+
+                            if (!isResolvedByRequest) {
                                 hasPreviousDayOpenSession = true;
                                 previousDaySessionInfo = {
                                     date: sessionDateStr,

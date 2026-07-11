@@ -2579,7 +2579,7 @@ const ProfilePage: React.FC = () => {
                                                                         Punch Out
                                                                     </Button>
                                                                 )}
-                                                                <Button onClick={() => navigate('/leaves/apply')} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
+                                                                <Button onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
                                                                     Apply Correction
                                                                 </Button>
                                                             </div>
@@ -2606,7 +2606,7 @@ const ProfilePage: React.FC = () => {
                                                                      <Coffee className="mr-1 h-3 w-3" /> End Break Now
                                                                  </Button>
                                                                  <Button
-                                                                     onClick={() => navigate('/leaves/apply?leaveType=Correction')}
+                                                                     onClick={() => navigate(`/leaves/apply?leaveType=Correction${previousDaySessionInfo ? `&startDate=${previousDaySessionInfo.date}` : ''}`)}
                                                                      variant="secondary"
                                                                      className="!h-7 !text-[10px] !px-2.5"
                                                                  >

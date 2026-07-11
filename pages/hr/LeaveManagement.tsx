@@ -1343,22 +1343,28 @@ const LeaveManagement: React.FC = () => {
                                                     </div>
                                                 </td>
                                                 <td data-label="Type" className="px-4 py-3 text-muted">
-                                             <div className="font-semibold text-primary-text">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</div>
-                                             {req.correctionDetails && (
-                                                 <div className="mt-1.5 text-[11px] space-y-0.5 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-emerald-600 font-medium">
-                                                     <div className="flex items-center gap-1.5">
-                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                         <strong>Requested:</strong> {req.correctionDetails.punchIn || '--'} - {req.correctionDetails.punchOut || '--'}
-                                                     </div>
-                                                     {req.correctionDetails.originalLogs && (
-                                                         <div className="flex items-center gap-1.5 text-muted/80">
-                                                             <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-                                                             <strong>Original:</strong> {req.correctionDetails.originalLogs.punchIn || '--'} - {req.correctionDetails.originalLogs.punchOut || '--'}
-                                                         </div>
-                                                     )}
-                                                 </div>
-                                             )}
-                                         </td>
+                                                    <div className="font-semibold text-primary-text">{req.leaveType} {req.dayOption && `(${req.dayOption})`}</div>
+                                                    {req.correctionDetails && (
+                                                        <div className="mt-1.5 text-[11px] space-y-0.5 bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10 text-emerald-600 font-medium">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                                <strong>Requested:</strong> {req.correctionDetails.punchIn || '--'} - {req.correctionDetails.punchOut || '--'}
+                                                            </div>
+                                                            {req.correctionDetails.punchIn2 && req.correctionDetails.punchOut2 && (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                                    <strong>Requested 2:</strong> {req.correctionDetails.punchIn2} - {req.correctionDetails.punchOut2}
+                                                                </div>
+                                                            )}
+                                                            {req.correctionDetails.originalLogs && (
+                                                                <div className="flex items-center gap-1.5 text-muted/80">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                                                    <strong>Original:</strong> {req.correctionDetails.originalLogs.punchIn || '--'} - {req.correctionDetails.originalLogs.punchOut || '--'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td data-label="Dates" className="px-4 py-3 text-muted">{formatSafeDate(req.startDate, 'dd MMM')} - {formatSafeDate(req.endDate, 'dd MMM')}</td>
                                                 <td data-label="Reason" className="px-4 py-3 text-muted whitespace-normal break-words max-w-sm">{req.reason}</td>
                                                 <td data-label="Status" className="px-4 py-3"><StatusChip status={req.status} approverName={req.currentApproverName} approverPhotoUrl={req.currentApproverPhotoUrl} approvalHistory={req.approvalHistory} /></td>
@@ -1713,6 +1719,12 @@ const LeaveManagement: React.FC = () => {
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                                         <strong>Requested:</strong> {req.correctionDetails.punchIn || '--'} - {req.correctionDetails.punchOut || '--'}
                                                     </div>
+                                                    {req.correctionDetails.punchIn2 && req.correctionDetails.punchOut2 && (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                            <strong>Requested 2:</strong> {req.correctionDetails.punchIn2} - {req.correctionDetails.punchOut2}
+                                                        </div>
+                                                    )}
                                                     {req.correctionDetails.originalLogs && (
                                                         <div className="flex items-center gap-1.5 text-muted/80">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>

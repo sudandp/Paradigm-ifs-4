@@ -318,6 +318,15 @@ export function evaluateSiteStaffStatus(params: any): string {
     const outMins = getMinutes(approvedLeave.correctionDetails.punchOut);
     let diffMins = outMins - inMins;
     if (diffMins < 0) diffMins += 24 * 60;
+
+    if (approvedLeave.correctionDetails.punchIn2 && approvedLeave.correctionDetails.punchOut2) {
+      const inMins2 = getMinutes(approvedLeave.correctionDetails.punchIn2);
+      const outMins2 = getMinutes(approvedLeave.correctionDetails.punchOut2);
+      let diffMins2 = outMins2 - inMins2;
+      if (diffMins2 < 0) diffMins2 += 24 * 60;
+      diffMins += diffMins2;
+    }
+
     if (approvedLeave.correctionDetails.includeBreak && approvedLeave.correctionDetails.breakIn && approvedLeave.correctionDetails.breakOut) {
       const bIn = getMinutes(approvedLeave.correctionDetails.breakIn);
       const bOut = getMinutes(approvedLeave.correctionDetails.breakOut);

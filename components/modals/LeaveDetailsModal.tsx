@@ -272,7 +272,7 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                         <h5 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                             <Activity className="h-3.5 w-3.5" /> {request.leaveType === 'Permission' ? 'Permission Information' : 'Correction Information'}
                         </h5>
-                        <div className={`grid grid-cols-1 sm:grid-cols-2 ${request.leaveType === 'Permission' && request.correctionDetails.originalLogs ? 'md:grid-cols-3' : ''} gap-4 text-sm`}>
+                        <div className={`grid grid-cols-1 sm:grid-cols-2 ${['Permission', 'Correction'].includes(request.leaveType) && request.correctionDetails.originalLogs ? 'md:grid-cols-3' : ''} gap-4 text-sm`}>
                             <div className="space-y-1">
                                 <p className="text-xs text-muted">Requested Timings</p>
                                 <p className="font-bold text-primary-text">{request.leaveType === 'Permission' ? 'Start' : 'Punch In'}: <span className="text-emerald-500">{request.correctionDetails.punchIn || '--:--'}</span></p>
@@ -289,9 +289,9 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                                 <p className="text-xs text-muted/80 mt-1">Location: {request.correctionDetails.locationName || 'N/A'}</p>
                             </div>
                             
-                            {request.leaveType === 'Permission' && request.correctionDetails.punchIn && request.correctionDetails.punchOut && (
+                            {['Permission', 'Correction'].includes(request.leaveType) && request.correctionDetails.punchIn && request.correctionDetails.punchOut && (
                                 <div className="space-y-1 border-t sm:border-t-0 sm:border-l border-emerald-500/10 sm:pl-4">
-                                    <p className="text-xs text-muted">Permission Details</p>
+                                    <p className="text-xs text-muted">{request.leaveType === 'Permission' ? 'Permission Details' : 'Correction Details'}</p>
                                     {(() => {
                                         const getMins = (t: string) => { if(!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
                                         const pIn = getMins(request.correctionDetails.punchIn);
@@ -307,7 +307,16 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                                             if (diff2 < 0) diff2 += 24 * 60;
                                         }
 
-                                        const totalDiff = diff + diff2;
+                                        let breakMins = 0;
+                                        if (request.leaveType === 'Correction' && request.correctionDetails.includeBreak && request.correctionDetails.breakIn && request.correctionDetails.breakOut) {
+                                            const bIn = getMins(request.correctionDetails.breakIn);
+                                            const bOut = getMins(request.correctionDetails.breakOut);
+                                            let bDiff = bOut - bIn;
+                                            if (bDiff < 0) bDiff += 24 * 60;
+                                            breakMins = bDiff;
+                                        }
+
+                                        const totalDiff = Math.max(0, diff + diff2 - breakMins);
                                         const sessionHalf = request.correctionDetails.punchIn2 ? 'Both Halves' : ((pIn < 13 * 60) ? '1st Half' : '2nd Half');
                                         
                                         return (
