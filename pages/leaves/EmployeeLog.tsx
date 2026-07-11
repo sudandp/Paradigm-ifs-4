@@ -7,8 +7,35 @@ import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, end
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
 import LoadingScreen from '../../components/ui/LoadingScreen';
+import { reverseGeocode } from '../../utils/locationUtils';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 
+const AddressResolver: React.FC<{ lat: number; lng: number; fallback?: string | null }> = ({ lat, lng, fallback }) => {
+    const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        const resolve = async () => {
+            if (!lat || !lng) {
+                setResolvedAddress(fallback || null);
+                return;
+            }
+            try {
+                setLoading(true);
+                const address = await reverseGeocode(lat, lng);
+                setResolvedAddress(address);
+            } catch (err) {
+                setResolvedAddress(fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            } finally {
+                setLoading(false);
+            }
+        };
+        resolve();
+    }, [lat, lng, fallback]);
+
+    if (loading) return <span className="animate-pulse text-indigo-400 font-medium">Resolving address...</span>;
+    return <span>{resolvedAddress || fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}</span>;
+};
 
 type TimeRange = 'day' | 'week' | 'month';
 
@@ -215,15 +242,36 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
 
     if (!user) return null;
 
-
+    const monthlyMissedPunches = useMemo(() => {
+        let count = 0;
+        groupedByDate.forEach(group => {
+            group.events.forEach(e => {
+                if (e.checkoutNote && e.checkoutNote.includes('user clicked for punch out with out applying correction this is the record of punch out')) {
+                    count++;
+                }
+            });
+        });
+        return count;
+    }, [groupedByDate]);
 
     return (
         <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full">
-            <div className="flex items-center gap-3 mb-5">
-                <div className="p-1.5 bg-indigo-50 rounded-lg">
-                    <Clock className="h-5 w-5 text-indigo-600" />
+            <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-indigo-50 rounded-lg">
+                        <Clock className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <h2 className="text-base font-semibold text-slate-800">Employee Log</h2>
                 </div>
-                <h3 className="text-lg md:text-xl font-bold text-gray-900">Employee Log</h3>
+                {selectedRange === 'month' && monthlyMissedPunches > 0 && (
+                    <div className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg text-[13px] font-medium flex items-center gap-1.5 border border-rose-100">
+                        <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                        </span>
+                        Auto-closed missed punches this month: {monthlyMissedPunches}
+                    </div>
+                )}
             </div>
 
             {/* Filter Controls */}
@@ -376,13 +424,25 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         }`}>
                                                             {format(new Date(event.timestamp), 'hh:mm a')}
                                                         </div>
+                                                        {event.checkoutNote && (
+                                                            <div className="text-[11px] font-medium text-slate-500 italic mt-1 max-w-[280px] leading-tight">
+                                                                Note: "{event.checkoutNote.replace(/\[SessionDate:\s*[^\]]+\]/g, '').trim()}"
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 {(event.locationName || (event.latitude && event.longitude)) && (
                                                     <div className="flex items-start gap-2 text-sm bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 max-w-md">
                                                         <MapPin className="h-4 w-4 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
                                                         <span className="text-xs break-words text-gray-700 max-md:text-gray-200">
-                                                            {event.locationName || `${event.latitude?.toFixed(4)}, ${event.longitude?.toFixed(4)}`}
+                                                            {event.locationName ? (
+                                                                event.locationName
+                                                            ) : (
+                                                                <AddressResolver 
+                                                                    lat={event.latitude!} 
+                                                                    lng={event.longitude!} 
+                                                                />
+                                                            )}
                                                         </span>
                                                     </div>
                                                 )}

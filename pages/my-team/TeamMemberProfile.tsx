@@ -74,7 +74,7 @@ interface ActivitySegment {
   longitude?: number;
   distance?: number; // in km
   steps?: number;
-  distanceKm?: number;
+  travelDistance?: number;
 }
 
 const TeamMemberProfile: React.FC = () => {
@@ -198,7 +198,7 @@ const TeamMemberProfile: React.FC = () => {
             latitude: activeIn.latitude,
             longitude: activeIn.longitude,
             steps: evt.steps,
-            distanceKm: evt.distanceKm
+            travelDistance: evt.travelDistance
           });
           activeIn = null;
         }
@@ -490,8 +490,8 @@ const TeamMemberProfile: React.FC = () => {
                                 <span className="flex items-center gap-1">
                                   <Navigation className="w-3.5 h-3.5 text-blue-500" />
                                   {formatDistance(
-                                    (s.distanceKm && s.distanceKm > 0)
-                                      ? s.distanceKm
+                                    (s.travelDistance && s.travelDistance > 0)
+                                      ? s.travelDistance
                                       : stepsToDistanceKm(s.steps)
                                   )}
                                 </span>

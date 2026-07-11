@@ -20,7 +20,7 @@ import { dispatchNotificationFromRules } from '../../services/notificationServic
 import { User as UserIcon, Loader2, ClipboardList, LogOut, LogIn, Crosshair, CheckCircle, Info, MapPin, AlertTriangle, Clock, Lock, Edit, Camera, Mail, Baby, PlusCircle, Trash2, FileCheck, FileX, Zap, Volume2, Coffee, FileText, Shield, Settings, ArrowLeft, Sparkles, QrCode, Footprints, Maximize, Navigation, HelpCircle, RefreshCw, Home, Bike, Car, Bus, Building2 } from 'lucide-react';
 import { AvatarUpload } from '../../components/onboarding/AvatarUpload';
 import AlertTonePicker from '../../components/attendance/AlertTonePicker';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { calculateDailyPathTravelKm } from '../../utils/attendanceCalculations';
 import CameraCaptureModal from '../../components/CameraCaptureModal';
 import HelpTicketModal from '../../components/support/HelpTicketModal';
@@ -102,6 +102,63 @@ const ProfilePage: React.FC = () => {
         }
     };
 
+    const handleAutoCheckOut = async () => {
+        triggerHaptic(ImpactStyle.Medium);
+        setIsSubmittingAttendance(true);
+        try {
+            // 1. Fetch current GPS coordinates (we record the location as present,
+            //    but the timestamp will be set to end of the missed session day)
+            let lat: number | undefined = undefined;
+            let lng: number | undefined = undefined;
+            try {
+                const pos = await getPrecisePosition(150, 10000);
+                lat = pos.coords.latitude;
+                lng = pos.coords.longitude;
+            } catch (err) {
+                console.warn("Failed to get coordinates for auto check-out:", err);
+            }
+
+            // 3. Determine which sessions to close
+            const toClose: ('field' | 'office')[] = [];
+            if (isFieldCheckedIn) toClose.push('field');
+            if (isCheckedIn) toClose.push('office');
+
+            let success = true;
+            let errMsg = '';
+            for (const wt of toClose) {
+                const forcedType = 'punch-out';
+                // Inject the intended session date in brackets so the frontend can properly group it
+                const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
+                const note = `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
+                const res = await toggleCheckInStatus(
+                    note,
+                    null,
+                    wt,
+                    undefined,
+                    forcedType,
+                    undefined,
+                    undefined
+                );
+                if (!res.success) {
+                    success = false;
+                    errMsg = res.message;
+                }
+            }
+
+            if (success) {
+                setToast({ message: 'Previous session closed successfully.', type: 'success' });
+            } else {
+                setToast({ message: errMsg || 'Failed to close some sessions.', type: 'error' });
+            }
+            await checkAttendanceStatus();
+        } catch (err: any) {
+            setToast({ message: err.message || 'Auto check-out failed.', type: 'error' });
+        } finally {
+            setIsSubmittingAttendance(false);
+        }
+    };
+
+
     const [isSaving, setIsSaving] = useState(false);
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
@@ -113,6 +170,7 @@ const ProfilePage: React.FC = () => {
         totalSteps: 0
     });
     const [isMetricsLoading, setIsMetricsLoading] = useState(true);
+    const [monthlyMissedPunchesCount, setMonthlyMissedPunchesCount] = useState(0);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -163,7 +221,22 @@ const ProfilePage: React.FC = () => {
             }
         };
 
+        const fetchMonthlyMissedPunches = async () => {
+            try {
+                const start = startOfMonth(new Date()).toISOString();
+                const end = endOfMonth(new Date()).toISOString();
+                const events = await api.getAttendanceEvents(user.id, start, end);
+                if (cancelled) return;
+                
+                const count = events.filter(e => e.checkoutNote && e.checkoutNote.includes('user clicked for punch out with out applying correction this is the record of punch out')).length;
+                setMonthlyMissedPunchesCount(count);
+            } catch (err) {
+                console.error('Failed to load monthly missed punches:', err);
+            }
+        };
+
         fetchTodayMetrics();
+        fetchMonthlyMissedPunches();
         return () => { cancelled = true; };
     }, [user?.id, isCheckedIn, isFieldCheckedIn, isSiteOtCheckedIn, isOnBreak]);
 
@@ -1372,6 +1445,20 @@ const ProfilePage: React.FC = () => {
                     {/* ═══ COMMAND CENTER ═══ */}
                     {user.role !== 'management' && (
                         <section className="flex flex-col items-center justify-center py-8 relative">
+                            {/* Monthly Missed Punches Banner */}
+                            {monthlyMissedPunchesCount > 0 && (
+                                <div className="w-full max-w-sm mb-4 px-4">
+                                    <div className="relative overflow-hidden rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-900/40 to-pink-900/30 backdrop-blur-xl p-3 shadow-lg">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="h-4 w-4 text-rose-400" />
+                                            <p className="text-xs font-semibold text-rose-100 flex-1">
+                                                Auto-closed missed punches this month: <span className="font-black text-white ml-1">{monthlyMissedPunchesCount}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* ── Previous Day Open Session Banner ── */}
                             {hasPreviousDayOpenSession && previousDaySessionInfo && (
                                 <div className="w-full max-w-sm mb-6 px-4">
@@ -1380,49 +1467,32 @@ const ProfilePage: React.FC = () => {
                                         <div className="relative z-10">
                                             <div className="flex items-center gap-2 mb-2">
                                                 <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">Missed Punch Out</h4>
+                                                <h4 className="text-sm font-black text-amber-300 uppercase tracking-wider">
+                                                    {isCheckedIn && isFieldCheckedIn ? 'Missed Punch Out & Site Out' : isFieldCheckedIn ? 'Missed Site Out' : 'Missed Punch Out'}
+                                                </h4>
                                             </div>
                                             <p className="text-xs text-amber-200/80 leading-relaxed mb-3">
-                                                You forgot to punch out on <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
-                                                Please provide a reason to close the previous session and continue.
+                                                You forgot to {isCheckedIn && isFieldCheckedIn ? 'punch out and site out' : isFieldCheckedIn ? 'site out' : 'punch out'} on <span className="font-bold text-white">{new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>.
+                                                Please close the previous session with current data or apply for correction.
                                             </p>
-                                            <div className="space-y-3">
-                                                <textarea
-                                                    value={missingPunchReason}
-                                                    onChange={(e) => setMissingPunchReason(e.target.value)}
-                                                    placeholder="Reason for missing punch out..."
-                                                    className="w-full bg-black/20 border border-amber-500/30 rounded-lg p-2 text-xs text-white placeholder-white/30 focus:outline-none focus:border-amber-400"
-                                                    rows={2}
-                                                />
+                                            <div className="flex gap-3 mt-3">
                                                 <button
-                                                    disabled={!missingPunchReason.trim() || isSubmittingAttendance}
-                                                    onClick={async () => {
-                                                        triggerHaptic(ImpactStyle.Medium);
-                                                        setIsSubmittingAttendance(true);
-                                                        try {
-                                                            if (effectivelyCheckedIn) {
-                                                                const wt = isFieldCheckedIn ? 'field' : 'office';
-                                                                const res = await toggleCheckInStatus(
-                                                                    `Missed punch closed: ${missingPunchReason}`, 
-                                                                    null, 
-                                                                    wt as any, 
-                                                                    undefined, 
-                                                                    isSiteOtCheckedIn ? 'site-ot-out' : undefined
-                                                                );
-                                                                if (res.success) {
-                                                                    setToast({ message: 'Previous session closed successfully.', type: 'success' });
-                                                                    setMissingPunchReason('');
-                                                                } else {
-                                                                    setToast({ message: res.message, type: 'error' });
-                                                                }
-                                                            }
-                                                        } finally {
-                                                            setIsSubmittingAttendance(false);
-                                                        }
-                                                    }}
-                                                    className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                    disabled={isSubmittingAttendance}
+                                                    onClick={handleAutoCheckOut}
+                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                                 >
-                                                    {isSubmittingAttendance ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continue'}
+                                                    {isSubmittingAttendance ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        isCheckedIn && isFieldCheckedIn ? 'Punch Out & Site Out' : isFieldCheckedIn ? 'Site Out' : 'Punch Out'
+                                                    )}
+                                                </button>
+                                                <button
+                                                    disabled={isSubmittingAttendance}
+                                                    onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)}
+                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                >
+                                                    Correction
                                                 </button>
                                             </div>
                                         </div>
@@ -2575,10 +2645,15 @@ const ProfilePage: React.FC = () => {
                                                                     </Button>
                                                                 )}
                                                                 {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
-                                                                    <Button onClick={() => navigate(`/attendance/check-out?workType=${isFieldCheckedIn ? 'field' : 'office'}&bypassReport=true`)} variant="danger" className="!h-7 !text-[10px] !px-2.5">
-                                                                        Punch Out
-                                                                    </Button>
-                                                                )}
+                                                                     <Button 
+                                                                         onClick={handleAutoCheckOut} 
+                                                                         isLoading={isSubmittingAttendance}
+                                                                         variant="danger" 
+                                                                         className="!h-7 !text-[10px] !px-2.5"
+                                                                     >
+                                                                         {isCheckedIn && isFieldCheckedIn ? 'Punch Out & Site Out' : isFieldCheckedIn ? 'Site Out' : 'Punch Out'}
+                                                                     </Button>
+                                                                 )}
                                                                 <Button onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
                                                                     Apply Correction
                                                                 </Button>
@@ -2662,11 +2737,19 @@ const ProfilePage: React.FC = () => {
                                                 ) : (
                                                     <Button
                                                         onClick={() => {
-                                                            // Warm up GPS for faster punch out
-                                                            import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
-                                                            const targetWorkType = (isFieldCheckedIn || isSiteOtCheckedIn) ? 'field' : 'office';
-                                                            navigate(`/attendance/check-out?workType=${targetWorkType}${hasPreviousDayOpenSession ? '&bypassReport=true' : ''}`);
+                                                            if (hasPreviousDayOpenSession) {
+                                                                // Previous-day sessions: close ALL open sessions at once
+                                                                // (field site-out + office punch-out) with backdated timestamp.
+                                                                // Do NOT navigate to AttendanceActionPage — that only handles one at a time.
+                                                                handleAutoCheckOut();
+                                                            } else {
+                                                                // Normal flow: navigate to confirmation page
+                                                                import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
+                                                                const targetWorkType = (isFieldCheckedIn || isSiteOtCheckedIn) ? 'field' : 'office';
+                                                                navigate(`/attendance/check-out?workType=${targetWorkType}`);
+                                                            }
                                                         }}
+
                                                         variant="danger"
                                                         className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
                                                         disabled={isOnBreak || isActionInProgress}

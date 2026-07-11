@@ -24,7 +24,24 @@ import {
 } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
 const offlineDb = { getCache: async (key?: string) => null, setCache: async (key?: string, val?: any) => {}, addToOutbox: async (val?: any) => {}, deleteOldDescriptors: async (userId?: string) => {}, getCacheWithMeta: async (key?: string) => null, setLastOnlineTimestamp: async () => {}, getSyncTime: async () => null, removeCache: async (key?: string) => {} };
-import { Network } from '@capacitor/network';
+import { Network as CapacitorNetwork } from '@capacitor/network';
+const Network = {
+  ...CapacitorNetwork,
+  getStatus: async () => {
+    try {
+      const status = await CapacitorNetwork.getStatus();
+      return {
+        ...status,
+        connected: status.connected || (typeof window !== 'undefined' && window.navigator.onLine)
+      };
+    } catch (e) {
+      return {
+        connected: typeof window !== 'undefined' ? window.navigator.onLine : true,
+        connectionType: 'unknown'
+      };
+    }
+  }
+};
 import { calculateSiteTravelTime, validateFieldStaffAttendance } from '../utils/fieldStaffTracking';
 import { isTechnicalRole, calculateWorkingHours, isBangaloreLocation, getStaffCategory } from '../utils/attendanceCalculations';
 import { buildAttendanceDayKeyByEventId } from '../utils/attendanceDayGrouping';
@@ -2860,7 +2877,8 @@ export const api = {
   },
   getAttendanceEvents: async (userId: string, start: string, end: string): Promise<AttendanceEvent[]> => {
     const status = await Network.getStatus();
-    if (status.connected) {
+    const isConnected = status.connected || (typeof window !== 'undefined' && window.navigator.onLine);
+    if (isConnected) {
       try {
         const query = supabase.from('attendance_events')
           .select('*')
@@ -2909,13 +2927,32 @@ export const api = {
     }
     return [];
   },
+  getAutoClosedMissedPunchesCount: async (userId: string, startTs: string, endTs: string): Promise<number> => {
+    const status = await Network.getStatus();
+    if (status.connected) {
+      try {
+        const { count, error } = await supabase
+          .from('attendance_events')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('timestamp', startTs)
+          .lte('timestamp', endTs)
+          .or('checkout_note.ilike.%auto closed%,checkout_note.ilike.%with out applying correction%');
+        if (error) throw error;
+        return count || 0;
+      } catch (err) {
+        console.error('Failed to get auto-closed count:', err);
+      }
+    }
+    return 0;
+  },
   getAttendanceEventsForUsers: async (userIds: string[], start: string, end: string): Promise<AttendanceEvent[]> => {
     if (!userIds || userIds.length === 0) return [];
     const status = await Network.getStatus();
     if (status.connected) {
       try {
         const query = supabase.from('attendance_events')
-          .select('id, user_id, timestamp, type, work_type, latitude, longitude, location_id, location_name, device_id, checkout_note, attachment_url, is_manual, created_by, reason, is_ot, detected_shift_id, battery_level, device_name, ip_address, network_type, source, is_cached, steps, distance_km, travel_distance')
+          .select('id, user_id, timestamp, type, work_type, latitude, longitude, location_id, location_name, device_id, checkout_note, attachment_url, is_manual, created_by, reason, is_ot, detected_shift_id, battery_level, device_name, ip_address, network_type, source, is_cached, steps, travel_distance')
           .in('user_id', userIds)
           .gte('timestamp', start)
           .lte('timestamp', end)
@@ -2975,7 +3012,8 @@ export const api = {
     }
 
     const status = await Network.getStatus();
-    if (!status.connected) {
+    const isConnected = status.connected || (typeof window !== 'undefined' && window.navigator.onLine);
+    if (!isConnected) {
         const offlineId = `att_offline_${Date.now()}`;
         const offlineEvent = { ...event, id: offlineId } as AttendanceEvent;
         await offlineDb.addToOutbox({ table_name: 'attendance_events', action: 'INSERT', payload: event });
@@ -3034,6 +3072,7 @@ export const api = {
       const cacheKey = `attendance_${event.userId}_${today}`;
       const cached = await offlineDb.getCache(cacheKey) || [];
       await offlineDb.setCache(cacheKey, [...cached, offlineEvent]);
+      throw err;
     }
   },
 

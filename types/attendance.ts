@@ -47,7 +47,7 @@ export interface AttendanceEvent {
   source?: string;
   isCached?: boolean;
   steps?: number;
-  distanceKm?: number;
+
   /** GPS-recorded travel distance in kilometres for this event leg. */
   travelDistance?: number | null;
 }

@@ -172,6 +172,12 @@ const AttendanceActionPage: React.FC = () => {
     const isBreakOut = location.pathname.includes('break-out');
     const actionParam = query.get('action') || query.get('forcedType');
     const bypassReport = query.get('bypassReport') === 'true';
+    // sessionDate is passed when closing a missed previous-day session (e.g. '2026-07-10')
+    // We use 23:59:00 on that date as the checkout timestamp so the record appears on the correct day.
+    const sessionDate = query.get('sessionDate');
+    const overrideTimestamp = sessionDate
+        ? new Date(`${sessionDate}T23:59:00`).toISOString()
+        : undefined;
     
     let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : (workType === 'site-ot' ? 'Site OT In' : 'Punch In')) : (workType === 'field' ? 'Site Check Out' : (workType === 'site-ot' ? 'Site OT Out' : 'Punch Out'));
     if (isBreakIn) action = 'Break In';
@@ -210,12 +216,15 @@ const AttendanceActionPage: React.FC = () => {
             if (!user) { setToast({ message: 'User session invalid.', type: 'error' }); setIsSubmitting(false); return; }
 
             // --- Offline Guard ---
-            // Block all attendance actions when there is no internet connection.
-            // The device remembers the last known state, but recording a new event
-            // requires a live server write. Inform the user clearly.
-            const { Network } = await import('@capacitor/network');
-            const netStatus = await Network.getStatus();
-            if (!netStatus.connected) {
+            // Use window.navigator.onLine as fallback for web browser where
+            // CapacitorNetwork.getStatus() incorrectly returns connected:false.
+            let isOnline = typeof window !== 'undefined' ? window.navigator.onLine : true;
+            try {
+                const { Network } = await import('@capacitor/network');
+                const netStatus = await Network.getStatus();
+                isOnline = netStatus.connected || isOnline;
+            } catch (_) { /* keep browser fallback */ }
+            if (!isOnline) {
                 setToast({
                     message: '📡 No internet connection. Please connect to Wi-Fi or mobile data to record attendance.',
                     type: 'error'
@@ -245,24 +254,29 @@ const AttendanceActionPage: React.FC = () => {
             }
 
             let forcedType: string | undefined;
-            if (isCheckIn) forcedType = workType === 'site-ot' ? 'site-ot-in' : 'punch-in';
-            if (!isCheckIn && !isBreakIn && !isBreakOut) forcedType = workType === 'site-ot' ? 'site-ot-out' : 'punch-out';
-            if (isBreakIn) forcedType = 'break-in';
-            if (isBreakOut) forcedType = 'break-out';
+            if (isCheckIn) {
+                forcedType = workType === 'site-ot' ? 'site-ot-in' : 'punch-in';
+            } else if (isBreakIn) {
+                forcedType = 'break-in';
+            } else if (isBreakOut) {
+                forcedType = 'break-out';
+            } else {
+                // Checkout — use site-out for field work, punch-out for office
+                forcedType = workType === 'site-ot' ? 'site-ot-out' : workType === 'field' ? 'site-out' : 'punch-out';
+            }
+            // actionParam from URL overrides all (e.g. ?forcedType=site-ot-out)
             if (actionParam) forcedType = actionParam;
 
             const normalizedWorkType = workType === 'site-ot' ? 'field' : (workType as 'office' | 'field');
-            
-            // If break-in and alarm disabled, pass a flag or handle accordingly
-            // For now, toggleCheckInStatus handles scheduling. If disabled, we might want to skip it.
-            // But usually users want the record regardless of the local alarm.
+
             const { success, message } = await toggleCheckInStatus(
-                undefined, 
-                null, 
-                normalizedWorkType, 
-                undefined, 
-                forcedType, 
-                (forcedType === 'break-in' && isAlarmEnabled) ? breakInterval : undefined
+                undefined,
+                null,
+                normalizedWorkType,
+                undefined,
+                forcedType,
+                (forcedType === 'break-in' && isAlarmEnabled) ? breakInterval : undefined,
+                overrideTimestamp  // ← undefined for normal punches; date-23:59 for missed-day session close
             );
 
             setToast({ message, type: success ? 'success' : 'error' });

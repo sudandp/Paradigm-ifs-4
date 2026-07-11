@@ -388,7 +388,11 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   
   const result = calculateWorkingHours(relevantEvents, processingDate);
   
-  const dailyPunchCount = relevantEvents.filter(e => e.type === 'punch-in' && (!e.workType || e.workType === 'office')).length;
+  const endOfTargetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59, 999);
+  const dailyPunchCount = relevantEvents.filter(e => {
+    const eventTime = new Date(e.timestamp);
+    return eventTime >= startOfTargetDay && eventTime <= endOfTargetDay && e.type === 'punch-in' && (!e.workType || e.workType === 'office');
+  }).length;
 
   return {
     checkIn: firstCheckIn?.timestamp || null,

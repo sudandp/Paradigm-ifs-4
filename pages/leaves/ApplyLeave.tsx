@@ -316,27 +316,38 @@ const ApplyLeave: React.FC = () => {
 
     // Recalculate usage based on the selected date's month
     React.useEffect(() => {
-        const monthPrefix = watchStartDate ? watchStartDate.substring(0, 7) : new Date().toISOString().substring(0, 7);
-        const monthCorrections = allLeaveRequests.filter((r: any) => 
-            r.leaveType === 'Correction' && 
-            r.status !== 'rejected' &&
-            r.status !== 'withdrawn' &&
-            r.status !== 'cancelled' &&
-            r.startDate.startsWith(monthPrefix) &&
-            r.id !== editId
-        );
-        const monthPerms = allLeaveRequests.filter((r: any) => 
-            r.leaveType === 'Permission' && 
-            r.status !== 'rejected' &&
-            r.status !== 'withdrawn' &&
-            r.status !== 'cancelled' &&
-            r.startDate.startsWith(monthPrefix) &&
-            r.id !== editId
-        );
-        
-        setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length }));
-        setPermissionUsage(prev => ({ ...prev, used: monthPerms.length }));
-    }, [watchStartDate, allLeaveRequests, editId]);
+        const fetchUsage = async () => {
+            const monthPrefix = watchStartDate ? watchStartDate.substring(0, 7) : new Date().toISOString().substring(0, 7);
+            const monthCorrections = allLeaveRequests.filter((r: any) => 
+                r.leaveType === 'Correction' && 
+                r.status !== 'rejected' &&
+                r.status !== 'withdrawn' &&
+                r.status !== 'cancelled' &&
+                r.startDate.startsWith(monthPrefix) &&
+                r.id !== editId
+            );
+            const monthPerms = allLeaveRequests.filter((r: any) => 
+                r.leaveType === 'Permission' && 
+                r.status !== 'rejected' &&
+                r.status !== 'withdrawn' &&
+                r.status !== 'cancelled' &&
+                r.startDate.startsWith(monthPrefix) &&
+                r.id !== editId
+            );
+
+            // Fetch auto-closed missed punches count
+            let autoClosedCount = 0;
+            if (user?.id) {
+                const startDate = `${monthPrefix}-01T00:00:00Z`;
+                const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0, 23, 59, 59).toISOString();
+                autoClosedCount = await api.getAutoClosedMissedPunchesCount(user.id, startDate, endDate);
+            }
+            
+            setCorrectionUsage(prev => ({ ...prev, used: monthCorrections.length + autoClosedCount }));
+            setPermissionUsage(prev => ({ ...prev, used: monthPerms.length }));
+        };
+        fetchUsage();
+    }, [watchStartDate, allLeaveRequests, editId, user?.id]);
 
     // Sync endDate with startDate for corrections/permissions
     React.useEffect(() => {
@@ -1240,6 +1251,14 @@ const ApplyLeave: React.FC = () => {
                     type: 'success' 
                 });
             }
+            
+            // Asynchronously sync/refresh check-in status immediately
+            try {
+                await useAuthStore.getState().checkAttendanceStatus();
+            } catch (syncErr) {
+                console.warn("Failed to check attendance status after submission:", syncErr);
+            }
+
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
         } catch (err) {
             setToast({ message: isEditMode ? 'Failed to update leave request.' : 'Failed to submit leave request.', type: 'error' });

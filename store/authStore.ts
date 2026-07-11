@@ -4,7 +4,24 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
-import { Network } from '@capacitor/network';
+import { Network as CapacitorNetwork } from '@capacitor/network';
+const Network = {
+  ...CapacitorNetwork,
+  getStatus: async () => {
+    try {
+      const status = await CapacitorNetwork.getStatus();
+      return {
+        ...status,
+        connected: status.connected || (typeof window !== 'undefined' && window.navigator.onLine)
+      };
+    } catch (e) {
+      return {
+        connected: typeof window !== 'undefined' ? window.navigator.onLine : true,
+        connectionType: 'unknown'
+      };
+    }
+  }
+};
 import { authService } from '../services/authService';
 import { Preferences } from '@capacitor/preferences';
 import { secureSet, secureGet, secureRemove } from '../utils/secureStorage';
@@ -125,7 +142,7 @@ interface AuthState {
     resetAttendance: () => void;
     updateUserProfile: (updates: Partial<User>) => void;
     checkAttendanceStatus: (isSilent?: boolean) => Promise<void>;
-    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number) => Promise<{ success: boolean; message: string }>;
+    toggleCheckInStatus: (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string) => Promise<{ success: boolean; message: string }>;
     subscribeToAttendance: () => (() => void) | void;
     error: string | null;
     setError: (error: string | null) => void;
@@ -768,22 +785,80 @@ export const useAuthStore = create<AuthState>()(
                 // 1. Daily Punch Session (Office/General)
                 const officeEvents = events.filter(e => !e.workType || e.workType === 'office');
                 const lastOfficePunchEvent = officeEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
-                const currentlyCheckedIn = lastOfficePunchEvent ? (lastOfficePunchEvent.type === 'punch-in') : false;
+                let currentlyCheckedIn = lastOfficePunchEvent ? (lastOfficePunchEvent.type === 'punch-in') : false;
                 
                 // 2. Site/Work Session (Field)
                 const fieldEvents = events.filter(e => e.workType === 'field');
                 const lastFieldPunchEvent = fieldEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
-                const isFieldCheckedIn = lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-in') : false;
+                let isFieldCheckedIn = lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-in') : false;
                 
                 // 3. Site OT Session
                 const otEvents = events.filter(e => e.type === 'site-ot-in' || e.type === 'site-ot-out');
                 const lastOtPunchEvent = otEvents.pop();
-                const isSiteOtCheckedIn = lastOtPunchEvent ? (lastOtPunchEvent.type === 'site-ot-in') : false;
+                let isSiteOtCheckedIn = lastOtPunchEvent ? (lastOtPunchEvent.type === 'site-ot-in') : false;
 
                 // 3. Break Session
                 const breakEvents = events.filter(e => e.type === 'break-in' || e.type === 'break-out');
                 const lastBreakEvent = breakEvents.length > 0 ? breakEvents[breakEvents.length - 1] : null;
-                const isOnBreak = lastBreakEvent ? (lastBreakEvent.type === 'break-in') : false;
+                let isOnBreak = lastBreakEvent ? (lastBreakEvent.type === 'break-in') : false;
+
+                const todayDateStr = getLocalDateKey(today);
+
+                if (currentlyCheckedIn && lastOfficePunchEvent) {
+                    const eventDateStr = getLocalDateKey(new Date(lastOfficePunchEvent.timestamp));
+                    if (eventDateStr < todayDateStr) {
+                        const isResolved = leaveRequests.some((r: any) => 
+                            ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
+                            r.startDate === eventDateStr &&
+                            !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
+                        );
+                        if (isResolved) {
+                            currentlyCheckedIn = false;
+                        }
+                    }
+                }
+
+                if (isFieldCheckedIn && lastFieldPunchEvent) {
+                    const eventDateStr = getLocalDateKey(new Date(lastFieldPunchEvent.timestamp));
+                    if (eventDateStr < todayDateStr) {
+                        const isResolved = leaveRequests.some((r: any) => 
+                            ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
+                            r.startDate === eventDateStr &&
+                            !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
+                        );
+                        if (isResolved) {
+                            isFieldCheckedIn = false;
+                        }
+                    }
+                }
+
+                if (isSiteOtCheckedIn && lastOtPunchEvent) {
+                    const eventDateStr = getLocalDateKey(new Date(lastOtPunchEvent.timestamp));
+                    if (eventDateStr < todayDateStr) {
+                        const isResolved = leaveRequests.some((r: any) => 
+                            ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
+                            r.startDate === eventDateStr &&
+                            !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
+                        );
+                        if (isResolved) {
+                            isSiteOtCheckedIn = false;
+                        }
+                    }
+                }
+
+                if (isOnBreak && lastBreakEvent) {
+                    const eventDateStr = getLocalDateKey(new Date(lastBreakEvent.timestamp));
+                    if (eventDateStr < todayDateStr) {
+                        const isResolved = leaveRequests.some((r: any) => 
+                            ['Permission', 'Correction', 'Regularization'].includes(r.leaveType) &&
+                            r.startDate === eventDateStr &&
+                            !['rejected', 'withdrawn', 'cancelled'].includes(r.status)
+                        );
+                        if (isResolved) {
+                            isOnBreak = false;
+                        }
+                    }
+                }
 
                 // Count daily primary punches using the logic from processDailyEvents
                 // which correctly ignores previous day's completed shifts.
@@ -927,7 +1002,7 @@ export const useAuthStore = create<AuthState>()(
             }
         },
 
-        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number) => {
+        toggleCheckInStatus: async (note?: string, attachmentUrl?: string | null, workType?: 'office' | 'field', fieldReportId?: string, forcedType?: string, breakInterval?: number, overrideTimestamp?: string) => {
             const { user, isCheckedIn, geofencingSettings, dailyPunchCount } = get();
             if (!user) return { success: false, message: 'User not found' };
             
@@ -1045,7 +1120,7 @@ export const useAuthStore = create<AuthState>()(
                     try {
                         await api.addAttendanceEvent({
                             userId: user.id,
-                            timestamp: new Date().toISOString(),
+                            timestamp: overrideTimestamp || new Date().toISOString(),
                             type: newType,
                             latitude: lat,
                             longitude: lng,
@@ -1057,7 +1132,7 @@ export const useAuthStore = create<AuthState>()(
                             fieldReportId: newType === 'punch-out' ? fieldReportId : undefined,
                             isOt: isOtCycle ? true : undefined,
                             steps: stepsValue,
-                            distanceKm: distanceKmValue
+                            travelDistance: distanceKmValue
                         });
                     } catch (err: any) {
                         return { success: false, message: err.message || 'Failed to record attendance' };
@@ -1363,6 +1438,24 @@ export const useAuthStore = create<AuthState>()(
                     }
                 } catch (geoErr) {
                     console.warn('Location name resolution failed:', geoErr);
+                }
+
+                // ── Backdated session close (previous-day missed checkout) ──
+                // When an overrideTimestamp is provided, the current GPS location
+                // only serves as an approximate address. Skip geofencing enforcement
+                // entirely — it's irrelevant for yesterday's missed punch.
+                if (overrideTimestamp) {
+                    let backfillLocName = locationName;
+                    if (!backfillLocName && position?.coords) {
+                        try {
+                            backfillLocName = await reverseGeocode(latitude, longitude);
+                        } catch {
+                            backfillLocName = 'Auto-closed (previous session)';
+                        }
+                    } else if (!backfillLocName) {
+                        backfillLocName = 'Auto-closed (previous session)';
+                    }
+                    return await finalizeAttendance(latitude, longitude, locationId, backfillLocName);
                 }
 
                 const result = await finalizeAttendance(latitude, longitude, locationId, locationName);

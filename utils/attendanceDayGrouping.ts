@@ -46,7 +46,16 @@ const buildDayKeysForSingleUser = (events: AttendanceEvent[]): Record<string, st
 
   for (const event of sorted) {
     const eventDate = new Date(event.timestamp);
-    const eventKey = toLocalDateKey(eventDate);
+    let eventKey = toLocalDateKey(eventDate);
+    
+    // Check if the event has a SessionDate override in its note
+    if (event.checkoutNote && event.checkoutNote.includes('[SessionDate: ')) {
+        const match = event.checkoutNote.match(/\[SessionDate:\s*([^\]]+)\]/);
+        if (match && match[1]) {
+            eventKey = match[1];
+        }
+    }
+
     const kind = getKind(event);
 
     // Context check: If any session is already open, any new event (start or otherwise)
