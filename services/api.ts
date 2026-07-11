@@ -2915,7 +2915,7 @@ export const api = {
     if (status.connected) {
       try {
         const query = supabase.from('attendance_events')
-          .select('*')
+          .select('id, user_id, timestamp, type, work_type, latitude, longitude, location_id, location_name, device_id, checkout_note, attachment_url, is_manual, created_by, reason, is_ot, detected_shift_id, battery_level, device_name, ip_address, network_type, source, is_cached, steps, distance_km, travel_distance')
           .in('user_id', userIds)
           .gte('timestamp', start)
           .lte('timestamp', end)

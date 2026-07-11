@@ -171,6 +171,7 @@ const AttendanceActionPage: React.FC = () => {
     const isBreakIn = location.pathname.includes('break-in');
     const isBreakOut = location.pathname.includes('break-out');
     const actionParam = query.get('action') || query.get('forcedType');
+    const bypassReport = query.get('bypassReport') === 'true';
     
     let action = isCheckIn ? (workType === 'field' ? 'Site Check In' : (workType === 'site-ot' ? 'Site OT In' : 'Punch In')) : (workType === 'field' ? 'Site Check Out' : (workType === 'site-ot' ? 'Site OT Out' : 'Punch Out'));
     if (isBreakIn) action = 'Break In';
@@ -239,7 +240,7 @@ const AttendanceActionPage: React.FC = () => {
             const currentWorkTypeCategory = workType === 'site-ot' ? 'site' : (workType as 'office' | 'field' | 'site');
             const enableFieldReport = attendance?.[currentWorkTypeCategory]?.enableFieldReport ?? true;
             
-            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && enableFieldReport) {
+            if (!isCheckIn && !isBreakIn && !isBreakOut && !actionParam?.includes('site-ot') && settings.enabled && enableFieldReport && !bypassReport) {
                 setIsReportModalOpen(true); setIsSubmitting(false); return;
             }
 

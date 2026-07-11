@@ -46,6 +46,7 @@ export interface DailyData {
   ot: string;
   shortfall: string;
   shift: string;
+  permDuration?: string;
   travelDistance?: number;
   travelDuration?: number;
   isAutoCheckout?: boolean;
@@ -244,6 +245,11 @@ export function processEmployeeMonth(
   };
 
   const resolvePayableValue = (s: string): number => {
+    // Special handling for RP combined with half-day leaves (user specifically requested RP+0.5EL = full day pay)
+    if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH'))) {
+        return 1.0;
+    }
+
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
     if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 1.5; 
     if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
@@ -259,10 +265,25 @@ export function processEmployeeMonth(
       const numericVal = parseFloat(s.slice(0, -1));
       if (!isNaN(numericVal)) return numericVal;
     }
+    if (s.endsWith('RP')) {
+      if (s === 'RP') return 0;
+      const numericVal = parseFloat(s.slice(0, -2));
+      if (!isNaN(numericVal)) return numericVal;
+    }
     return 0;
   };
 
   const updateCounters = (s: string) => {
+    if (s.includes('+')) {
+        // Special case: RP combined with a half-day leave. Since RP+0.5EL means they worked 0.5P but we replaced it with RP,
+        // we must manually increment halfDays to account for the physical work.
+        if ((s.includes('RP+') || s.includes('+RP')) && (s.includes('0.5EL') || s.includes('0.5SL') || s.includes('0.5CL') || s.includes('0.5CO') || s.includes('0.5WH'))) {
+            halfDays++;
+        }
+        s.split('+').forEach(part => updateCounters(part.trim()));
+        return;
+    }
+
     const isHalf = s.startsWith('0.5') || s === 'Half Day' || s === '1/2P' || s === '2/4P';
     const inc = isHalf ? 0.5 : 1;
 
@@ -331,7 +352,7 @@ export function processEmployeeMonth(
         daysActiveInCurrentWeek = 0;
     }
 
-    let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-';
+    let currentDayInTime = '-', currentDayOutTime = '-', currentDayGrossDuration = '-', currentDayBreakDuration = '-', currentDayNetWorkedHours = '-', currentDayOT = '-', currentDayShortfall = '-', currentDayShift = '-', currentDayBreakIn = '-', currentDayBreakOut = '-', currentDayPermDuration = '-';
     let currentDayTravelKm = 0;
     let currentDayTravelDuration = 0;
     let currentDaySteps = 0;
@@ -414,6 +435,49 @@ export function processEmployeeMonth(
       currentDaySteps = dayEvents
           .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
           .reduce((sum, e) => sum + (e.steps || 0), 0);
+
+      // Find approved permission for the current day
+      currentDayPermDuration = '-';
+      const approvedPermissionOnDay = allLeaves.find(l => {
+        const lStartDate = l.startDate || l.date || l.leave_date;
+        const lEndDate = l.endDate || l.date || l.leave_date;
+        if (!lStartDate || !lEndDate) return false;
+        const lUserId = l.userId || l.user_id;
+        if (String(lUserId) !== String(user.id)) return false;
+        const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+        if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
+
+        const normalize = (d: any) => {
+            if (!d) return '';
+            if (typeof d === 'string') return d.substring(0, 10);
+            return format(new Date(d), 'yyyy-MM-dd');
+        };
+
+        const startDateStr = normalize(lStartDate);
+        const endDateStr = normalize(lEndDate);
+        return dateStr >= startDateStr && dateStr <= endDateStr && String(l.leaveType || '').toLowerCase().includes('permission');
+      });
+
+      if (approvedPermissionOnDay && approvedPermissionOnDay.correctionDetails) {
+        const getMinutes = (timeStr: string) => {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
+        };
+        const inMins = getMinutes(approvedPermissionOnDay.correctionDetails.punchIn);
+        const outMins = getMinutes(approvedPermissionOnDay.correctionDetails.punchOut);
+        let diffMins = outMins - inMins;
+        if (diffMins < 0) diffMins += 24 * 60; // wrap around
+        
+        if (approvedPermissionOnDay.correctionDetails.includeBreak && approvedPermissionOnDay.correctionDetails.breakIn && approvedPermissionOnDay.correctionDetails.breakOut) {
+            const bIn = getMinutes(approvedPermissionOnDay.correctionDetails.breakIn);
+            const bOut = getMinutes(approvedPermissionOnDay.correctionDetails.breakOut);
+            let bDiff = bOut - bIn;
+            if (bDiff < 0) bDiff += 24 * 60;
+            diffMins -= bDiff;
+        }
+        currentDayPermDuration = formatTime(diffMins / 60);
+      }
 
       if (!isFuture) { 
           totalNetWorkDuration += netHours; 
@@ -500,6 +564,7 @@ export function processEmployeeMonth(
       date: day, status, inTime: currentDayInTime, outTime: currentDayOutTime, grossDuration: currentDayGrossDuration,
       breakIn: currentDayBreakIn, breakOut: currentDayBreakOut, breakDuration: currentDayBreakDuration,
       netWorkedHours: currentDayNetWorkedHours, ot: currentDayOT, shortfall: currentDayShortfall, shift: currentDayShift,
+      permDuration: (currentDayPermDuration && currentDayPermDuration !== '-') ? currentDayPermDuration : undefined,
       travelDistance: currentDayTravelKm,
       travelDuration: currentDayTravelDuration,
       isAutoCheckout,

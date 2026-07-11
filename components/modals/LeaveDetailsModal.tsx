@@ -1,10 +1,11 @@
-import React from 'react';
-import { X, Calendar, Clock, User, HeartPulse, Plane, CalendarClock, Briefcase, Download, Baby, Heart, Activity, Check, FileText, ExternalLink, MessageSquare, ShieldAlert } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Calendar, Clock, User, HeartPulse, Plane, CalendarClock, Briefcase, Download, Baby, Heart, Activity, Check, FileText, ExternalLink, MessageSquare, ShieldAlert, TrendingUp } from 'lucide-react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { getProxyUrl, getCleanFilename } from '../../utils/fileUrl';
-import type { LeaveRequest, LeaveRequestStatus } from '../../types';
-import { format } from 'date-fns';
+import type { LeaveRequest, LeaveRequestStatus, AttendanceEvent } from '../../types';
+import { format, startOfMonth, endOfMonth, differenceInMinutes, isSameDay } from 'date-fns';
+import { api } from '../../services/api';
 
 interface LeaveDetailsModalProps {
     isOpen: boolean;
@@ -13,6 +14,66 @@ interface LeaveDetailsModalProps {
 }
 
 const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, request }) => {
+    const [monthlyInsights, setMonthlyInsights] = useState<{ avgHours: number; daysWorked: number } | null>(null);
+    const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen || !request || !request.userId || !request.startDate) {
+            setMonthlyInsights(null);
+            return;
+        }
+
+        const fetchInsights = async () => {
+            setIsLoadingInsights(true);
+            try {
+                const reqDate = new Date(request.startDate.replace(/-/g, '/'));
+                const start = `${format(startOfMonth(reqDate), 'yyyy-MM-dd')}T00:00:00Z`;
+                const end = `${format(endOfMonth(reqDate), 'yyyy-MM-dd')}T23:59:59Z`;
+                
+                const events = await api.getAttendanceEvents(request.userId, start, end);
+                if (!events || events.length === 0) {
+                    setMonthlyInsights({ avgHours: 0, daysWorked: 0 });
+                    return;
+                }
+                
+                let totalMinutes = 0;
+                let daysWorked = 0;
+                const eventsByDate = events.reduce((acc, event) => {
+                    const d = format(new Date(event.timestamp), 'yyyy-MM-dd');
+                    if (!acc[d]) acc[d] = [];
+                    acc[d].push(event);
+                    return acc;
+                }, {} as Record<string, any[]>);
+
+                Object.values(eventsByDate).forEach(dayEvents => {
+                    const punchIns = dayEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'punch_in');
+                    const punchOuts = dayEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'punch_out');
+                    
+                    if (punchIns.length > 0 && punchOuts.length > 0) {
+                        const earliestIn = punchIns.reduce((prev: any, curr: any) => new Date(curr.timestamp) < new Date(prev.timestamp) ? curr : prev);
+                        const latestOut = punchOuts.reduce((prev: any, curr: any) => new Date(curr.timestamp) > new Date(prev.timestamp) ? curr : prev);
+                        
+                        const mins = differenceInMinutes(new Date(latestOut.timestamp), new Date(earliestIn.timestamp));
+                        if (mins > 0 && mins < 24 * 60) {
+                            totalMinutes += mins;
+                            daysWorked++;
+                        }
+                    }
+                });
+                
+                setMonthlyInsights({
+                    avgHours: daysWorked > 0 ? (totalMinutes / 60) / daysWorked : 0,
+                    daysWorked
+                });
+            } catch (error) {
+                console.error("Failed to fetch insights:", error);
+            } finally {
+                setIsLoadingInsights(false);
+            }
+        };
+        fetchInsights();
+    }, [isOpen, request]);
+
     if (!isOpen || !request) return null;
 
     const parseSafeDate = (d: any): Date | null => {
@@ -172,6 +233,29 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                     </div>
                 </div>
 
+                {/* Monthly Insights */}
+                {monthlyInsights && (
+                    <div className="space-y-2">
+                        <h5 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                            <TrendingUp className="h-3.5 w-3.5" /> Monthly Attendance Insights
+                        </h5>
+                        <div className="p-4 rounded-2xl bg-indigo-500/5 dark:bg-indigo-500/[0.02] border border-indigo-500/20 flex items-center justify-between">
+                            <div className="space-y-1">
+                                <p className="text-[10px] uppercase font-bold tracking-wider text-muted">Days Worked in Month</p>
+                                <p className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                                    {isLoadingInsights ? '...' : monthlyInsights.daysWorked}
+                                </p>
+                            </div>
+                            <div className="space-y-1 text-right">
+                                <p className="text-[10px] uppercase font-bold tracking-wider text-muted">Avg Daily Hours</p>
+                                <p className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                                    {isLoadingInsights ? '...' : `${monthlyInsights.avgHours.toFixed(1)} hrs`}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Reason Section */}
                 <div className="space-y-2">
                     <h5 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
@@ -186,24 +270,73 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                 {request.correctionDetails && (
                     <div className="space-y-3 p-4 rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/[0.02] border border-emerald-500/20">
                         <h5 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <Activity className="h-3.5 w-3.5" /> Correction Information
+                            <Activity className="h-3.5 w-3.5" /> {request.leaveType === 'Permission' ? 'Permission Information' : 'Correction Information'}
                         </h5>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                        <div className={`grid grid-cols-1 sm:grid-cols-2 ${request.leaveType === 'Permission' && request.correctionDetails.originalLogs ? 'md:grid-cols-3' : ''} gap-4 text-sm`}>
                             <div className="space-y-1">
                                 <p className="text-xs text-muted">Requested Timings</p>
-                                <p className="font-bold text-primary-text">Punch In: <span className="text-emerald-500">{request.correctionDetails.punchIn || '--:--'}</span></p>
-                                <p className="font-bold text-primary-text">Punch Out: <span className="text-emerald-500">{request.correctionDetails.punchOut || '--:--'}</span></p>
+                                <p className="font-bold text-primary-text">{request.leaveType === 'Permission' ? 'Start' : 'Punch In'}: <span className="text-emerald-500">{request.correctionDetails.punchIn || '--:--'}</span></p>
+                                <p className="font-bold text-primary-text">{request.leaveType === 'Permission' ? 'End' : 'Punch Out'}: <span className="text-emerald-500">{request.correctionDetails.punchOut || '--:--'}</span></p>
+                                {request.correctionDetails.punchIn2 && (
+                                    <>
+                                        <p className="font-bold text-primary-text mt-1.5">{request.leaveType === 'Permission' ? 'Start 2' : 'Punch In 2'}: <span className="text-emerald-500">{request.correctionDetails.punchIn2 || '--:--'}</span></p>
+                                        <p className="font-bold text-primary-text">{request.leaveType === 'Permission' ? 'End 2' : 'Punch Out 2'}: <span className="text-emerald-500">{request.correctionDetails.punchOut2 || '--:--'}</span></p>
+                                    </>
+                                )}
                                 {request.correctionDetails.includeBreak && (
                                     <p className="text-xs text-muted/80">Break: {request.correctionDetails.breakIn || '--'} - {request.correctionDetails.breakOut || '--'}</p>
                                 )}
                                 <p className="text-xs text-muted/80 mt-1">Location: {request.correctionDetails.locationName || 'N/A'}</p>
                             </div>
-                            {request.correctionDetails.originalLogs && (
+                            
+                            {request.leaveType === 'Permission' && request.correctionDetails.punchIn && request.correctionDetails.punchOut && (
                                 <div className="space-y-1 border-t sm:border-t-0 sm:border-l border-emerald-500/10 sm:pl-4">
+                                    <p className="text-xs text-muted">Permission Details</p>
+                                    {(() => {
+                                        const getMins = (t: string) => { if(!t) return 0; const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                                        const pIn = getMins(request.correctionDetails.punchIn);
+                                        const pOut = getMins(request.correctionDetails.punchOut);
+                                        let diff = pOut - pIn;
+                                        if (diff < 0) diff += 24 * 60;
+
+                                        let diff2 = 0;
+                                        if (request.correctionDetails.punchIn2 && request.correctionDetails.punchOut2) {
+                                            const pIn2 = getMins(request.correctionDetails.punchIn2);
+                                            const pOut2 = getMins(request.correctionDetails.punchOut2);
+                                            diff2 = pOut2 - pIn2;
+                                            if (diff2 < 0) diff2 += 24 * 60;
+                                        }
+
+                                        const totalDiff = diff + diff2;
+                                        const sessionHalf = request.correctionDetails.punchIn2 ? 'Both Halves' : ((pIn < 13 * 60) ? '1st Half' : '2nd Half');
+                                        
+                                        return (
+                                            <>
+                                                <p className="text-muted/80">Duration: <span className="font-bold text-primary-text">{Math.floor(totalDiff / 60)}h {totalDiff % 60}m</span></p>
+                                                <p className="text-muted/80">Session: <span className="font-bold text-primary-text">{sessionHalf}</span></p>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            {request.correctionDetails.originalLogs && (
+                                <div className={`space-y-1 border-t sm:border-t-0 border-emerald-500/10 ${request.leaveType === 'Permission' ? 'md:border-l md:pl-4 mt-4 md:mt-0' : 'sm:border-l sm:pl-4'}`}>
                                     <p className="text-xs text-muted">Original Timings</p>
-                                    <p className="text-muted/80">Punch In: {request.correctionDetails.originalLogs.punchIn || '--:--'}</p>
-                                    <p className="text-muted/80">Punch Out: {request.correctionDetails.originalLogs.punchOut || '--:--'}</p>
-                                    <p className="text-xs text-muted/60">Location: {request.correctionDetails.originalLogs.locationName || 'N/A'}</p>
+                                    <p className="text-muted/80">Punch In: <span className="font-bold text-primary-text">{request.correctionDetails.originalLogs.punchIn || '--:--'}</span></p>
+                                    <p className="text-muted/80">Punch Out: <span className="font-bold text-primary-text">{request.correctionDetails.originalLogs.punchOut || '--:--'}</span></p>
+                                    {(() => {
+                                        const pInStr = request.correctionDetails?.originalLogs?.punchIn;
+                                        const pOutStr = request.correctionDetails?.originalLogs?.punchOut;
+                                        if (!pInStr || !pOutStr || pInStr === '--:--' || pOutStr === '--:--') return null;
+                                        const getMins = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                                        const pIn = getMins(pInStr);
+                                        const pOut = getMins(pOutStr);
+                                        let diff = pOut - pIn;
+                                        if (diff < 0) diff += 24 * 60;
+                                        return <p className="text-muted/80">Duration: <span className="font-bold text-primary-text">{Math.floor(diff / 60)}h {diff % 60}m</span></p>;
+                                    })()}
+                                    <p className="text-xs text-muted/60 mt-1">Location: {request.correctionDetails.originalLogs.locationName || 'N/A'}</p>
                                 </div>
                             )}
                         </div>

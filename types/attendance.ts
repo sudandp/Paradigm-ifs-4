@@ -470,6 +470,8 @@ export interface CorrectionDetails {
   status: 'Present' | 'Site Visit' | 'W/H';
   punchIn: string; // HH:mm
   punchOut: string; // HH:mm
+  punchIn2?: string;
+  punchOut2?: string;
   includeBreak: boolean;
   breakIn?: string;
   breakOut?: string;

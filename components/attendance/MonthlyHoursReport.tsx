@@ -91,7 +91,18 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
     }
   };
 
+  const prevDeps = React.useRef<any>({});
   useEffect(() => {
+    const currentDeps = { month, year, userId, externalData, selectedStatus, selectedRecordType, selectedSite, selectedCompany, selectedLocation, selectedRole };
+    const changed: string[] = [];
+    Object.keys(currentDeps).forEach(key => {
+      if (prevDeps.current[key] !== (currentDeps as any)[key]) {
+        changed.push(`${key}: ${prevDeps.current[key]} -> ${(currentDeps as any)[key]}`);
+      }
+    });
+    console.log('[MonthlyHoursReport] useEffect triggered. Changed deps:', changed);
+    prevDeps.current = currentDeps;
+
     if (externalData) {
       setReportData(externalData);
       setLoading(false);
@@ -202,6 +213,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
 
     setLoading(true);
     try {
+      console.log('[MonthlyHoursReport] loadReportData starting...', { year, month, userId });
       const startDate = startOfMonth(new Date(year, month - 1));
       let endDate = endOfMonth(new Date(year, month - 1));
       const today = startOfToday();
@@ -214,6 +226,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       let lockedStatus = false;
       if (isPastMonth) {
         lockedStatus = await api.isMonthLocked(year, month);
+        console.log('[MonthlyHoursReport] lockedStatus fetched:', lockedStatus);
         setIsMonthLocked(lockedStatus);
       }
 
@@ -239,7 +252,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
           }
         }
         const employeeIds = targetUsers.map(u => u.id);
-        const snapshots = await api.getMonthSnapshotsBulk(employeeIds, year, month);
+        const CHUNK_SIZE = 50;
+        let snapshots: any[] = [];
+        for (let i = 0; i < employeeIds.length; i += CHUNK_SIZE) {
+          const chunk = employeeIds.slice(i, i + CHUNK_SIZE);
+          const chunkSnapshots = await api.getMonthSnapshotsBulk(chunk, year, month);
+          snapshots = snapshots.concat(chunkSnapshots);
+        }
 
         if (snapshots.length > 0) {
           // Reconstruct EmployeeMonthlyData from snapshots
@@ -281,21 +300,31 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
             };
           });
           const filteredRestored = applyFilters(restored);
-          setReportData(filteredRestored);
-          if (onDataLoaded) onDataLoaded(filteredRestored);
-          setLoading(false);
-          return; // ← skip recalculation entirely
+          
+          if (snapshots.length >= targetUsers.length) {
+            console.log('[MonthlyHoursReport] Serving from snapshots. Count:', snapshots.length);
+            setReportData(filteredRestored);
+            if (onDataLoaded) onDataLoaded(filteredRestored);
+            setLoading(false);
+            return; // skip recalculation entirely
+          }
+          // If partial lock, we will recalculate missing ones below.
+          // Note: Full merge logic would be needed here for true partial lock support.
+          // For now, if partial, we just ignore the partial lock and recalculate all to prevent hiding users.
         }
       }
 
+      console.log('[MonthlyHoursReport] Phase 2 recalculation starting...');
       // ── PHASE 2: Fetch versioned rules for this month ────────────────────────
       // Looks up which rule version was active during (year, month).
       // Falls back to live settings if no version found (backward compat).
       const versionedGlobalRules = await api.getRuleVersionForMonth(year, month);
+      console.log('[MonthlyHoursReport] Versioned global rules:', versionedGlobalRules?._versionId || 'none');
       if (versionedGlobalRules?._versionId) {
         setActiveRuleVersionId(versionedGlobalRules._versionId);
       }
 
+      console.log('[MonthlyHoursReport] Fetching Initial App Data and metadata...');
       const [usersData, leavesDataResponse, userHolidaysData, rolesData, globalHolidaysRes, allSiteHolidays, orgStructureData] = await Promise.all([
         externalUsers || api.getUsers(),
         api.getLeaveRequests({ 
@@ -308,6 +337,7 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
         api.getAllSiteSpecificHolidays(),
         api.getOrganizationStructure().catch(() => [])
       ]);
+      console.log('[MonthlyHoursReport] Initial metadata loaded. Users count:', usersData.length);
 
       const leavesData = leavesDataResponse?.data || [];
       setUsers(usersData);
@@ -537,7 +567,13 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
       await api.saveMonthSnapshots(snapshots);
 
       // ── STEP 2: Save leave balances (existing logic) ─────────────────────────
-      const prevBalances = await api.getLeaveBalancesBulk(employeeIds, prevYear, prevMonth);
+      const prevBalancesChunkSize = 50;
+      let prevBalances: any[] = [];
+      for (let i = 0; i < employeeIds.length; i += prevBalancesChunkSize) {
+        const chunk = employeeIds.slice(i, i + prevBalancesChunkSize);
+        const chunkBalances = await api.getLeaveBalancesBulk(chunk, prevYear, prevMonth);
+        prevBalances = prevBalances.concat(chunkBalances);
+      }
       const balanceMap = new Map();
       prevBalances.forEach((b: any) => balanceMap.set(b.employee_id, b));
 
@@ -839,6 +875,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">OutTime</td>
                       {employee.dailyData.map(d => <td key={d.date} className="p-0.5 text-center border-r border-slate-100 last:border-r-0">{d.outTime !== '-' ? d.outTime : '-'}</td>)}
+                    </tr>
+                    <tr className="bg-white border-b border-slate-100">
+                      <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Perm Duration</td>
+                      {employee.dailyData.map(d => (
+                        <td key={d.date} className="p-0.5 text-center border-r border-slate-100 last:border-r-0">
+                          {d.permDuration && d.permDuration !== '0:00' ? d.permDuration : '-'}
+                        </td>
+                      ))}
                     </tr>
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Gross Dur</td>

@@ -232,7 +232,7 @@ const GateKiosk: React.FC = () => {
     const syncInterval = setInterval(syncUsers, 5 * 60 * 1000);
 
     const channel = supabase
-      .channel(`gate-users-realtime-${Math.random().toString(36).substring(2, 7)}`)
+      .channel('gate-users-realtime')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',

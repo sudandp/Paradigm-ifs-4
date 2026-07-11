@@ -126,7 +126,7 @@ const TrackingLogsView: React.FC<{
         fetchLogs();
 
         // Real-time listener (best effort — may not fire if realtime not enabled for this table)
-        const channelId = `logs_updates_${Math.random().toString(36).substring(7)}`;
+        const channelId = 'logs_updates_tracking_audit';
         const channel = supabase
             .channel(channelId)
             .on('postgres_changes', { 
@@ -836,7 +836,7 @@ const RouteView: React.FC<{
         fetchRoute();
 
         // ✅ Real-time listener: re-fetch when a new GPS ping arrives for this user
-        const channelId = `map_route_${selectedUser}_${Math.random().toString(36).substring(7)}`;
+        const channelId = `map_route_${selectedUser}`;
         const channel = supabase
             .channel(channelId)
             .on('postgres_changes', {
@@ -1891,7 +1891,7 @@ const FieldStaffTracking: React.FC = () => {
     // Dedicated real-time listener effect
     useEffect(() => {
         // Use a unique channel for this component instance to avoid clashes during HMR or rapid re-renders
-        const channelId = `tracking_updates_${Math.random().toString(36).substring(7)}`;
+        const channelId = `tracking_updates_${selectedUser}`;
         const channel = supabase
             .channel(channelId)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'route_history' }, (payload) => {

@@ -673,7 +673,7 @@ export function evaluateAttendanceStatus(params: {
 
 
   // 3. Resolve Leaves
-  const approvedLeave = leaves?.find(l => {
+  const approvedLeavesList = leaves?.filter(l => {
       const lStartDate = l.startDate || l.date || l.leave_date;
       const lEndDate = l.endDate || l.date || l.leave_date;
       if (!lStartDate || !lEndDate) return false;
@@ -692,6 +692,17 @@ export function evaluateAttendanceStatus(params: {
       const startDateStr = normalize(lStartDate);
       const endDateStr = normalize(lEndDate);
       return dateStr >= startDateStr && dateStr <= endDateStr;
+  });
+
+  const approvedLeave = approvedLeavesList && approvedLeavesList.length > 0 ? approvedLeavesList[0] : undefined;
+  
+  const approvedPermission = approvedLeavesList?.find(l => String(l.leaveType || '').toLowerCase().includes('permission'));
+  const approvedCorrection = approvedLeavesList?.find(l => String(l.leaveType || (l as any).type || '').toLowerCase().includes('correction') || String(l.status || (l as any).leaveStatus || '').toLowerCase() === 'correction_made');
+  
+  // Find a main leave that is not permission/correction (e.g. 0.5EL, SL, etc.)
+  const approvedMainLeave = approvedLeavesList?.find(l => {
+      const lType = String(l.leaveType || '').toLowerCase();
+      return !lType.includes('permission') && !lType.includes('correction') && String(l.status || '').toLowerCase() !== 'correction_made';
   });
 
   // Helper to determine leave code (EL, SL, etc.)
@@ -721,24 +732,46 @@ export function evaluateAttendanceStatus(params: {
   };
 
   // 4. Status Determination logic
-  const isApprovedPermission = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('permission');
-  const isApprovedCorrection = approvedLeave && String(approvedLeave.leaveType || '').toLowerCase().includes('correction');
+  const isApprovedPermission = !!approvedPermission;
+  const isApprovedCorrection = !!approvedCorrection;
   let effectiveWorkingHours = workingHours || 0;
 
-  if ((isApprovedPermission || isApprovedCorrection) && approvedLeave.correctionDetails) {
+  if (isApprovedPermission && approvedPermission!.correctionDetails) {
       const getMinutes = (timeStr: string) => {
           if (!timeStr) return 0;
           const [h, m] = timeStr.split(':').map(Number);
           return h * 60 + m;
       };
-      const inMins = getMinutes(approvedLeave.correctionDetails.punchIn);
-      const outMins = getMinutes(approvedLeave.correctionDetails.punchOut);
+      const inMins = getMinutes(approvedPermission!.correctionDetails.punchIn);
+      const outMins = getMinutes(approvedPermission!.correctionDetails.punchOut);
       let diffMins = outMins - inMins;
       if (diffMins < 0) diffMins += 24 * 60; // wrap around
       
-      if (approvedLeave.correctionDetails.includeBreak && approvedLeave.correctionDetails.breakIn && approvedLeave.correctionDetails.breakOut) {
-          const bIn = getMinutes(approvedLeave.correctionDetails.breakIn);
-          const bOut = getMinutes(approvedLeave.correctionDetails.breakOut);
+      if (approvedPermission!.correctionDetails.includeBreak && approvedPermission!.correctionDetails.breakIn && approvedPermission!.correctionDetails.breakOut) {
+          const bIn = getMinutes(approvedPermission!.correctionDetails.breakIn);
+          const bOut = getMinutes(approvedPermission!.correctionDetails.breakOut);
+          let bDiff = bOut - bIn;
+          if (bDiff < 0) bDiff += 24 * 60;
+          diffMins -= bDiff;
+      }
+      // For Permission, add the permission duration to effective hours
+      effectiveWorkingHours = Math.max(0, (workingHours || 0) + (diffMins / 60));
+  }
+  
+  if (isApprovedCorrection && approvedCorrection!.correctionDetails) {
+      const getMinutes = (timeStr: string) => {
+          if (!timeStr) return 0;
+          const [h, m] = timeStr.split(':').map(Number);
+          return h * 60 + m;
+      };
+      const inMins = getMinutes(approvedCorrection!.correctionDetails.punchIn);
+      const outMins = getMinutes(approvedCorrection!.correctionDetails.punchOut);
+      let diffMins = outMins - inMins;
+      if (diffMins < 0) diffMins += 24 * 60; // wrap around
+      
+      if (approvedCorrection!.correctionDetails.includeBreak && approvedCorrection!.correctionDetails.breakIn && approvedCorrection!.correctionDetails.breakOut) {
+          const bIn = getMinutes(approvedCorrection!.correctionDetails.breakIn);
+          const bOut = getMinutes(approvedCorrection!.correctionDetails.breakOut);
           let bDiff = bOut - bIn;
           if (bDiff < 0) bDiff += 24 * 60;
           diffMins -= bDiff;
@@ -796,7 +829,52 @@ export function evaluateAttendanceStatus(params: {
   }
 
   if (isApprovedPermission) {
-      if (effectiveWorkingHours >= full) {
+      const pCode = getLeaveCode(approvedPermission);
+      const leaveCode = approvedMainLeave ? getLeaveCode(approvedMainLeave) : '';
+      const leave_fraction = approvedMainLeave ? (leaveCode.startsWith('0.5') ? 0.5 : 1) : 0;
+      const baseHrs = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
+      
+      // Calculate permission hours from approvedPermission
+      let permHours = 0;
+      if (approvedPermission!.correctionDetails) {
+          const getMinutes = (timeStr: string) => {
+              if (!timeStr) return 0;
+              const [h, m] = timeStr.split(':').map(Number);
+              return h * 60 + m;
+          };
+          const inMins = getMinutes(approvedPermission!.correctionDetails.punchIn);
+          const outMins = getMinutes(approvedPermission!.correctionDetails.punchOut);
+          let diffMins = outMins - inMins;
+          if (diffMins < 0) diffMins += 24 * 60; // wrap around
+          
+          if (approvedPermission!.correctionDetails.includeBreak && approvedPermission!.correctionDetails.breakIn && approvedPermission!.correctionDetails.breakOut) {
+              const bIn = getMinutes(approvedPermission!.correctionDetails.breakIn);
+              const bOut = getMinutes(approvedPermission!.correctionDetails.breakOut);
+              let bDiff = bOut - bIn;
+              if (bDiff < 0) bDiff += 24 * 60;
+              diffMins -= bDiff;
+          }
+          permHours = diffMins / 60;
+      }
+
+      const total_effective = (workingHours || 0) + permHours + (leave_fraction * baseHrs);
+
+      if (total_effective >= full) {
+          const rem_fraction = 1.0 - leave_fraction;
+          if (rem_fraction > 0 && workingHours && workingHours > 0) {
+              // Round worked fraction to nearest 0.05
+              let worked_fraction = Math.round(((workingHours || 0) / baseHrs) * 20) / 20;
+              worked_fraction = Math.min(rem_fraction, worked_fraction);
+              const permission_fraction = Math.round((rem_fraction - worked_fraction) * 100) / 100;
+              
+              if (worked_fraction > 0 && permission_fraction > 0) {
+                  return `${worked_fraction}P+${permission_fraction}RP${approvedMainLeave ? `+${leaveCode}` : ''}`;
+              }
+          }
+          
+          if (approvedMainLeave) {
+              return `${pCode}+${leaveCode}`;
+          }
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
           if (isWeekend || isRecurringHoliday) {
               if (isRecurringHoliday) {
@@ -806,7 +884,13 @@ export function evaluateAttendanceStatus(params: {
           }
           return 'P';
       } else {
-          return getLeaveCode(approvedLeave);
+          if (approvedMainLeave) {
+              return `${pCode}+${leaveCode}`;
+          }
+          if (workStatus && workStatus !== 'A' && workStatus !== 'P') {
+              return `${pCode}+${workStatus}`;
+          }
+          return pCode;
       }
   }
 
@@ -821,32 +905,33 @@ export function evaluateAttendanceStatus(params: {
           }
           return 'P';
       } else {
-          return getLeaveCode(approvedLeave);
+          return getLeaveCode(approvedCorrection);
       }
   }
 
-  const isCorrection = approvedLeave && (
-      String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase().includes('correction') ||
-      String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
+  const targetLeave = approvedMainLeave || approvedLeave;
+
+  const isCorrection = targetLeave && (
+      String(targetLeave.leaveType || (targetLeave as any).type || '').toLowerCase().includes('correction') ||
+      String(targetLeave.status || (targetLeave as any).leaveStatus || '').toLowerCase() === 'correction_made'
   );
 
-  const isFullDayLeave = approvedLeave && approvedLeave.dayOption !== 'half' && (approvedLeave as any).day_option !== 'half';
-  const isCorrectionOrPermission = approvedLeave && (
-      String(approvedLeave.leaveType || '').toLowerCase().includes('correction') ||
-      String(approvedLeave.leaveType || '').toLowerCase().includes('permission') ||
-      String(approvedLeave.status || '').toLowerCase() === 'correction_made'
+  const isFullDayLeave = targetLeave && targetLeave.dayOption !== 'half' && (targetLeave as any).day_option !== 'half';
+  const isCorrectionOrPermission = targetLeave && (
+      String(targetLeave.leaveType || '').toLowerCase().includes('correction') ||
+      String(targetLeave.leaveType || '').toLowerCase().includes('permission') ||
+      String(targetLeave.status || '').toLowerCase() === 'correction_made'
   );
 
   // B. Handle Combinations or pure status
-  // NEW RULE: Approved full-day leaves take priority over physical presence, so if they applied for leave and it is approved, assign the leave-based notation.
-  if (approvedLeave && isFullDayLeave && !isCorrectionOrPermission) {
-      status = getLeaveCode(approvedLeave);
+  if (targetLeave && isFullDayLeave && !isCorrectionOrPermission) {
+      status = getLeaveCode(targetLeave);
   } else if (workStatus && workStatus !== 'A') {
-      const lType = String(approvedLeave?.leaveType || (approvedLeave as any)?.type || '').toLowerCase();
+      const lType = String(targetLeave?.leaveType || (targetLeave as any)?.type || '').toLowerCase();
       const isWFH = lType.includes('work from home') || lType === 'wfh' || lType === 'w/h';
 
       if (isCorrection) {
-          const code = getLeaveCode(approvedLeave);
+          const code = getLeaveCode(targetLeave);
           if (code === 'P' || code === 'Present') {
               if (isWFH) status = 'WH';
               else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
@@ -860,45 +945,30 @@ export function evaluateAttendanceStatus(params: {
       } else {
           // If work is partial and there's a 1/2 day leave, combine them
           const isPartialWork = workStatus !== 'P';
-          const isHalfDayLeave = approvedLeave && (approvedLeave.dayOption === 'half' || (approvedLeave as any).day_option === 'half');
+          const isHalfDayLeave = targetLeave && (targetLeave.dayOption === 'half' || (targetLeave as any).day_option === 'half');
           
           if (isPartialWork && isHalfDayLeave) {
-              const code = getLeaveCode(approvedLeave).replace('1/2', '').replace('0.5', ''); 
+              const code = getLeaveCode(targetLeave).replace('1/2', '').replace('0.5', ''); 
               if (workStatus === 'A') {
                   status = `0.5 ${code}`;
               } else {
-                  // Keep whatever partial work was logged (if we want to use actual fraction) or fallback to 0.5P.
-                  // Default behavior was 0.5P + 0.5 Leave.
                   status = `0.5P+0.5 ${code}`;
               }
           } else {
               if (isWFH) status = 'WH';
-              // Priority 2: Explicit Company Holidays - credit H/P for ANY work on a holiday
               else if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) status = 'H/P';
-              // Priority 3: Weekend Work or Recurring Holidays (Blue Leaves) - credit W/P or BL/P/PL/P for ANY work
               else if (isWeekend || isRecurringHoliday) {
                   status = isRecurringHoliday ? (recurringHolidayType === 'BL' ? 'BL/P' : (recurringHolidayType === 'PL' ? 'PL/P' : 'W/P')) : 'W/P';
               }
               else status = workStatus;
           }
       }
-  } else if (approvedLeave) {
-      const lStatus = String(approvedLeave.status || (approvedLeave as any).leaveStatus || '').toLowerCase();
-      const lType = String(approvedLeave.leaveType || (approvedLeave as any).type || '').toLowerCase();
-      
-      // Manual corrections and Earned Comp Offs should bypass the eligibility rule
-      const isCorrection = lStatus === 'correction_made' || lType.includes('correction');
-      const isCompOff = lType.includes('comp') || lType === 'c/o' || lType === 'co';
-      
-      // Approved leaves (Earned, Sick, etc.) are generally paid regardless of the previous week's activity threshold
-      // unless specifically marked as Loss of Pay.
-      status = getLeaveCode(approvedLeave);
+  } else if (targetLeave) {
+      status = getLeaveCode(targetLeave);
   } else {
       if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) {
-          // Explicit Company Holidays should show as 'H'
           status = 'H';
       } else if ((isWeekend || isRecurringHoliday) && isEligible) {
-          // Weekends show as W/O; Recurring holidays show as BL (Blue Leave) or PL (Pink Leave)
           status = isRecurringHoliday ? recurringHolidayType : 'W/O';
       } else {
           status = 'A';
@@ -1085,6 +1155,11 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
     if (s === '1/4P' || s === '0.25P') return 0.25;
     if (s.endsWith('P') && s !== 'LOP') {
       const numericVal = parseFloat(s.slice(0, -1));
+      if (!isNaN(numericVal)) return numericVal;
+    }
+    if (s.endsWith('RP')) {
+      if (s === 'RP') return 0;
+      const numericVal = parseFloat(s.slice(0, -2));
       if (!isNaN(numericVal)) return numericVal;
     }
     return 0;

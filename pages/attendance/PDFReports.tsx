@@ -1295,6 +1295,14 @@ export const MonthlyReportDocument: React.FC<{
               )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
             </View>
 
+            {/* Row: Perm Dur */}
+            <View style={{ flexDirection: 'row' }}>
+              <View style={styles.matrixRowLabel}><Text>Perm Dur</Text></View>
+              {employee.dailyData?.map((d: any, i: number) => (
+                <View key={i} style={styles.matrixCell}><Text>{d.permDuration || '-'}</Text></View>
+              )) || days.map((_, i) => <View key={i} style={styles.matrixCell}><Text>-</Text></View>)}
+            </View>
+
             {/* Row: Gross Dur */}
             <View style={{ flexDirection: 'row' }}>
               <View style={styles.matrixRowLabel}><Text>Gross Dur</Text></View>

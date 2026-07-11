@@ -2575,7 +2575,7 @@ const ProfilePage: React.FC = () => {
                                                                     </Button>
                                                                 )}
                                                                 {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
-                                                                    <Button onClick={() => navigate(`/attendance/check-out?workType=${isFieldCheckedIn ? 'field' : 'office'}`)} variant="danger" className="!h-7 !text-[10px] !px-2.5">
+                                                                    <Button onClick={() => navigate(`/attendance/check-out?workType=${isFieldCheckedIn ? 'field' : 'office'}&bypassReport=true`)} variant="danger" className="!h-7 !text-[10px] !px-2.5">
                                                                         Punch Out
                                                                     </Button>
                                                                 )}
@@ -2665,7 +2665,7 @@ const ProfilePage: React.FC = () => {
                                                             // Warm up GPS for faster punch out
                                                             import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
                                                             const targetWorkType = (isFieldCheckedIn || isSiteOtCheckedIn) ? 'field' : 'office';
-                                                            navigate(`/attendance/check-out?workType=${targetWorkType}`);
+                                                            navigate(`/attendance/check-out?workType=${targetWorkType}${hasPreviousDayOpenSession ? '&bypassReport=true' : ''}`);
                                                         }}
                                                         variant="danger"
                                                         className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
