@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 92,
-  "latestVersionName": "18.2.0",
+  "latestVersionCode": 94,
+  "latestVersionName": "18.4.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement profile page, attendance tracking, and leave management system with associated services and store configurations\nfeat: implement site staff payroll, attendance, and leave management system modules\nfeat: implement full-screen gate kiosk system with QR scanning, manual check-in, and real-time device telemetry integration\nfeat: add AttendanceDashboard component with manual date entry, integer chart axes, and unified report generation\nfeat: implement Attendance Dashboard, Apply Leave page, and supporting attendance types",
+  "releaseNotes": "refactor: remove What's New modal and add dismissible UpdatePromptModal functionality\nfeat: add WhatsNewModal component and create extensive diagnostic scratch scripts\nfeat: add ProfilePage, auth store, and utility scripts for managing attendance and user sessions\nfeat: implement profile page, attendance tracking, and leave management system with associated services and store configurations\nfeat: implement site staff payroll, attendance, and leave management system modules",
   "isMandatory": true
 }
