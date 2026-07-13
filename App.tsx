@@ -46,7 +46,6 @@ import { useAppUpdate } from './hooks/useAppUpdate';
 import { UpdatePromptModal } from './components/UpdatePromptModal';
 import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequiredBanner';
 import { APP_VERSION } from './src/config/appVersion';
-import { WhatsNewModal } from './components/WhatsNewModal';
 import { Network } from '@capacitor/network';
 
 
@@ -400,31 +399,12 @@ const App: React.FC = () => {
   const location = useLocation();
   const { setDeferredPrompt } = usePWAStore();
   const { isUpdateRequired, updateInfo } = useAppUpdate();
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const { isOnline } = useNetworkStatus();
   const [permissionsComplete, setPermissionsComplete] = useState(false);
   const [isAppOutdated, setIsAppOutdated] = useState(false);
   const [showExitWarning, setShowExitWarning] = useState(false);
   const { triggerAlert: triggerBreakAlert } = useBreakAlertStore();
-
-  const [showWhatsNew, setShowWhatsNew] = useState(false);
-
-  useEffect(() => {
-    // Show WhatsNewModal if the version running is newer than the last seen version
-    const lastSeenVersion = localStorage.getItem('last_seen_release_notes_version');
-    const snoozedUntil = localStorage.getItem('whats_new_snoozed_until');
-    const now = Date.now();
-    const isSnoozed = snoozedUntil && now < parseInt(snoozedUntil, 10);
-
-    if (lastSeenVersion && lastSeenVersion !== APP_VERSION) {
-      // New version available — show unless snoozed
-      if (!isSnoozed) {
-        setShowWhatsNew(true);
-      }
-    } else if (!lastSeenVersion) {
-      // First time launch - don't show what's new, just set the version
-      localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
-    }
-  }, []);
 
   const [isCheckingKiosk, setIsCheckingKiosk] = useState(true);
   const [showProvision, setShowProvision] = useState(false);
@@ -1322,7 +1302,12 @@ const App: React.FC = () => {
       <ScrollToTop />
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}
-      {isUpdateRequired && <UpdatePromptModal updateInfo={updateInfo} />}
+      {isUpdateRequired && !updateDismissed && (
+        <UpdatePromptModal
+          updateInfo={updateInfo}
+          onLater={() => setUpdateDismissed(true)}
+        />
+      )}
       <Suspense fallback={<LoadingScreen message="Loading..." fullScreen={true} />}>
       <Routes>
         {/* 1. Public Authentication & Form Routes */}
@@ -1638,23 +1623,7 @@ const App: React.FC = () => {
         onConfirm={() => { setShowExitWarning(false); CapacitorApp.minimizeApp(); }}
         onCancel={() => setShowExitWarning(false)}
       />
-      {/* ── What's New Modal: shown once per version, only when no update is pending ── */}
-      {showWhatsNew && !isUpdateRequired && !isAppOutdated && (
-        <WhatsNewModal
-          onClose={() => {
-            // Permanently mark this version as seen
-            localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
-            localStorage.removeItem('whats_new_snoozed_until');
-            setShowWhatsNew(false);
-          }}
-          onSkip={() => {
-            // Snooze for 24 hours — modal re-appears next session after snooze expires
-            const snoozedUntil = Date.now() + 24 * 60 * 60 * 1000;
-            localStorage.setItem('whats_new_snoozed_until', String(snoozedUntil));
-            setShowWhatsNew(false);
-          }}
-        />
-      )}
+
     </>
   );
 };
