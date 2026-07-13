@@ -123,13 +123,17 @@ const ProfilePage: React.FC = () => {
             if (isFieldCheckedIn) toClose.push('field');
             if (isCheckedIn) toClose.push('office');
 
+            const overrideTimestamp = previousDaySessionInfo?.date ? `${previousDaySessionInfo.date}T23:59:59Z` : undefined;
+
             let success = true;
             let errMsg = '';
             for (const wt of toClose) {
-                const forcedType = 'punch-out';
+                const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
                 // Inject the intended session date in brackets so the frontend can properly group it
                 const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
-                const note = `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
+                const note = wt === 'field'
+                    ? `user clicked for site out${dateTag}`
+                    : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
                 const res = await toggleCheckInStatus(
                     note,
                     null,
@@ -137,7 +141,7 @@ const ProfilePage: React.FC = () => {
                     undefined,
                     forcedType,
                     undefined,
-                    undefined
+                    overrideTimestamp
                 );
                 if (!res.success) {
                     success = false;
@@ -1476,17 +1480,19 @@ const ProfilePage: React.FC = () => {
                                                 Please close the previous session with current data or apply for correction.
                                             </p>
                                             <div className="flex gap-3 mt-3">
-                                                <button
-                                                    disabled={isSubmittingAttendance}
-                                                    onClick={handleAutoCheckOut}
-                                                    className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                                                >
-                                                    {isSubmittingAttendance ? (
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        isCheckedIn && isFieldCheckedIn ? 'Punch Out & Site Out' : isFieldCheckedIn ? 'Site Out' : 'Punch Out'
-                                                    )}
-                                                </button>
+                                                {!isCheckedIn && (
+                                                    <button
+                                                        disabled={isSubmittingAttendance}
+                                                        onClick={handleAutoCheckOut}
+                                                        className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                                    >
+                                                        {isSubmittingAttendance ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            isFieldCheckedIn ? 'Site Out' : 'Punch Out'
+                                                        )}
+                                                    </button>
+                                                )}
                                                 <button
                                                     disabled={isSubmittingAttendance}
                                                     onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)}
@@ -1547,6 +1553,10 @@ const ProfilePage: React.FC = () => {
                                                 return;
                                             }
                                             if (effectivelyCheckedIn) {
+                                                if (hasPreviousDayOpenSession && isCheckedIn && previousDaySessionInfo) {
+                                                    navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
+                                                    return;
+                                                }
                                                 const wt = isSiteOtCheckedIn ? 'site-ot' : isFieldCheckedIn ? 'field' : 'office';
                                                 navigate(`/attendance/check-out?workType=${wt}`);
                                             } else {
@@ -1579,10 +1589,24 @@ const ProfilePage: React.FC = () => {
                                                 className="flex flex-col items-center relative z-10"
                                             >
                                                 {effectivelyCheckedIn ? (
-                                                    <>
-                                                        <LogOut className="h-9 w-9 text-rose-500 mb-1 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-                                                        <span className="text-lg font-black text-white tracking-widest">PUNCH OUT</span>
-                                                    </>
+                                                    (hasPreviousDayOpenSession && isCheckedIn) ? (
+                                                        // Missed punch out from previous day -> force correction
+                                                        <>
+                                                            <AlertTriangle className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
+                                                            <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center font-mono">APPLY{`\n`}CORRECTION</span>
+                                                        </>
+                                                    ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
+                                                        // Field/site session active → user must site-out before punching out
+                                                        <>
+                                                            <MapPin className="h-9 w-9 text-amber-400 mb-1 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
+                                                            <span className="text-[13px] font-black text-amber-300 tracking-tight leading-tight px-2 text-center">SITE OUT{`\n`}FIRST</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <LogOut className="h-9 w-9 text-rose-500 mb-1 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                                                            <span className="text-lg font-black text-white tracking-widest">PUNCH OUT</span>
+                                                        </>
+                                                    )
                                                 ) : isPunchBlocked ? (
                                                     <>
                                                         {unlockRequestStatus === 'pending' ? <Clock className="h-9 w-9 text-amber-400 mb-1" /> : <Lock className="h-9 w-9 text-white mb-1" />}
@@ -1598,7 +1622,7 @@ const ProfilePage: React.FC = () => {
                                                 )}
                                             </motion.div>
                                         </AnimatePresence>
-                                        <div className={`absolute bottom-0 left-0 w-full h-1 transition-colors duration-500 ${effectivelyCheckedIn ? 'bg-rose-500' : 'bg-emerald-400'}`} />
+                                        <div className={`absolute bottom-0 left-0 w-full h-1 transition-colors duration-500 ${effectivelyCheckedIn ? ((hasPreviousDayOpenSession && isCheckedIn) ? 'bg-amber-400' : (isFieldCheckedIn || isSiteOtCheckedIn) ? 'bg-amber-400' : 'bg-rose-500') : 'bg-emerald-400'}`} />
                                     </motion.button>
                                 </div>
                             )}
@@ -2644,14 +2668,14 @@ const ProfilePage: React.FC = () => {
                                                                         Site OT Out
                                                                     </Button>
                                                                 )}
-                                                                {(isCheckedIn || isFieldCheckedIn) && !isSiteOtCheckedIn && (
+                                                                {!isCheckedIn && (isFieldCheckedIn) && !isSiteOtCheckedIn && (
                                                                      <Button 
                                                                          onClick={handleAutoCheckOut} 
                                                                          isLoading={isSubmittingAttendance}
                                                                          variant="danger" 
                                                                          className="!h-7 !text-[10px] !px-2.5"
                                                                      >
-                                                                         {isCheckedIn && isFieldCheckedIn ? 'Punch Out & Site Out' : isFieldCheckedIn ? 'Site Out' : 'Punch Out'}
+                                                                         {isFieldCheckedIn ? 'Site Out' : 'Punch Out'}
                                                                      </Button>
                                                                  )}
                                                                 <Button onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
@@ -2738,10 +2762,11 @@ const ProfilePage: React.FC = () => {
                                                     <Button
                                                         onClick={() => {
                                                             if (hasPreviousDayOpenSession) {
-                                                                // Previous-day sessions: close ALL open sessions at once
-                                                                // (field site-out + office punch-out) with backdated timestamp.
-                                                                // Do NOT navigate to AttendanceActionPage — that only handles one at a time.
-                                                                handleAutoCheckOut();
+                                                                if (isCheckedIn && previousDaySessionInfo) {
+                                                                    navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`);
+                                                                } else {
+                                                                    handleAutoCheckOut();
+                                                                }
                                                             } else {
                                                                 // Normal flow: navigate to confirmation page
                                                                 import('../../utils/locationUtils').then(m => m.getPrecisePosition(150, 15000).catch(() => {}));
@@ -2751,10 +2776,24 @@ const ProfilePage: React.FC = () => {
                                                         }}
 
                                                         variant="danger"
-                                                        className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-red-900/10 ${isOnBreak || isActionInProgress ? '!bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                        className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl ${
+                                                            isOnBreak || isActionInProgress
+                                                                ? 'shadow-none !bg-gray-100 !text-gray-400 !border-gray-200 pointer-events-none'
+                                                                : (hasPreviousDayOpenSession && isCheckedIn)
+                                                                    ? 'shadow-amber-900/10 !bg-amber-500 hover:!bg-amber-600'
+                                                                    : (isFieldCheckedIn || isSiteOtCheckedIn)
+                                                                        ? 'shadow-amber-900/10 !bg-amber-500 hover:!bg-amber-600'
+                                                                        : 'shadow-red-900/10'
+                                                        }`}
                                                         disabled={isOnBreak || isActionInProgress}
                                                     >
-                                                        <LogOut className="mr-2 h-4 w-4" /> Punch Out
+                                                        {(hasPreviousDayOpenSession && isCheckedIn) ? (
+                                                            <><AlertTriangle className="mr-2 h-4 w-4" /> Apply Correction</>
+                                                        ) : (isFieldCheckedIn || isSiteOtCheckedIn) ? (
+                                                            <><MapPin className="mr-2 h-4 w-4" /> Site Out First</>
+                                                        ) : (
+                                                            <><LogOut className="mr-2 h-4 w-4" /> Punch Out</>
+                                                        )}
                                                     </Button>
                                                 )}
                                              </div>

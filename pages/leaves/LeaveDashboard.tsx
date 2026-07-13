@@ -1052,6 +1052,14 @@ const LeaveDashboard: React.FC = () => {
                                                              req.leaveType}
                                                         </p>
                                                         {req.dayOption === 'half' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Half Day</span>}
+                                                        {['correction', 'permission'].some(t => lType.includes(t)) && req.correctionDetails && (
+                                                            <div className="text-[11px] text-muted-foreground mt-1 font-semibold space-y-0.5 leading-none">
+                                                                <div>Requested: <span className="text-emerald-600 font-bold">{req.correctionDetails.punchIn || '--:--'} - {req.correctionDetails.punchOut || '--:--'}</span></div>
+                                                                {req.correctionDetails.punchIn2 && (
+                                                                    <div>2nd Half: <span className="text-emerald-600 font-bold">{req.correctionDetails.punchIn2} - {req.correctionDetails.punchOut2}</span></div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>

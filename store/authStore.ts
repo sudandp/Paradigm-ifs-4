@@ -1117,6 +1117,13 @@ export const useAuthStore = create<AuthState>()(
 
 
 
+                    // Block office punch-out if a field/duty-site session is still active.
+                    // The correct order is: Site Out → then Punch Out.
+                    const { isFieldCheckedIn: fieldOpen } = get();
+                    if (newType === 'punch-out' && (!workType || workType === 'office') && fieldOpen) {
+                        return { success: false, message: 'Please check out from the duty site first, then punch out.' };
+                    }
+
                     try {
                         await api.addAttendanceEvent({
                             userId: user.id,
