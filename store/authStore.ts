@@ -788,9 +788,10 @@ export const useAuthStore = create<AuthState>()(
                 let currentlyCheckedIn = lastOfficePunchEvent ? (lastOfficePunchEvent.type === 'punch-in') : false;
                 
                 // 2. Site/Work Session (Field)
+                // Note: events may be stored as 'punch-in'/'punch-out' (old) or 'site-in'/'site-out' (new desktop flow)
                 const fieldEvents = events.filter(e => e.workType === 'field');
-                const lastFieldPunchEvent = fieldEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
-                let isFieldCheckedIn = lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-in') : false;
+                const lastFieldPunchEvent = fieldEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out').pop();
+                let isFieldCheckedIn = lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-in' || lastFieldPunchEvent.type === 'site-in') : false;
                 
                 // 3. Site OT Session
                 const otEvents = events.filter(e => e.type === 'site-ot-in' || e.type === 'site-ot-out');
@@ -886,8 +887,8 @@ export const useAuthStore = create<AuthState>()(
                     }
                     if (isFieldCheckedIn) {
                         const fieldPunchEvents = events.filter(e => e.workType === 'field');
-                        const lastFieldPunch = fieldPunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out').pop();
-                        if (lastFieldPunch && lastFieldPunch.type === 'punch-in') {
+                        const lastFieldPunch = fieldPunchEvents.filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out').pop();
+                        if (lastFieldPunch && (lastFieldPunch.type === 'punch-in' || lastFieldPunch.type === 'site-in')) {
                             openSessions.push(new Date(lastFieldPunch.timestamp));
                         }
                     }
@@ -947,7 +948,7 @@ export const useAuthStore = create<AuthState>()(
                     dailyUnlockRequestCount,
                     isPunchUnlocked,
                     isFieldCheckedIn,
-                    isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out') : false,
+                    isFieldCheckedOut: lastFieldPunchEvent ? (lastFieldPunchEvent.type === 'punch-out' || lastFieldPunchEvent.type === 'site-out') : false,
                     isSiteOtCheckedIn,
                     hasPreviousDayOpenSession,
                     previousDaySessionInfo,

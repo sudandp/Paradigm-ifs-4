@@ -3076,6 +3076,14 @@ export const api = {
     }
   },
 
+  deleteAttendanceEvent: async (eventId: string): Promise<void> => {
+    const { error } = await supabase
+      .from('attendance_events')
+      .delete()
+      .eq('id', eventId);
+    if (error) throw error;
+  },
+
   updateActiveSessionSteps: async (userId: string, steps: number): Promise<void> => {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0).toISOString();

@@ -3,14 +3,15 @@
 // to the user when they launch the app after an update.
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Check, ArrowRight } from 'lucide-react';
+import { Sparkles, Check, ArrowRight, Clock } from 'lucide-react';
 import { RELEASE_NOTES } from '../src/config/releaseNotes';
 
 interface WhatsNewModalProps {
   onClose: () => void;
+  onSkip: () => void;
 }
 
-export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ onClose }) => {
+export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ onClose, onSkip }) => {
   const notesList = RELEASE_NOTES.notes || [];
 
   return (
@@ -86,13 +87,22 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ onClose }) => {
               )}
             </div>
 
-            {/* CTA Button */}
+            {/* CTA Buttons */}
             <button
               onClick={onClose}
               className="w-full group flex items-center justify-center gap-2 py-4 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-400 transition-colors shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)]"
             >
               Continue to App
               <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            </button>
+
+            {/* Skip for now – re-shows after 24 hrs */}
+            <button
+              onClick={onSkip}
+              className="w-full mt-3 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all"
+            >
+              <Clock className="w-4 h-4" />
+              Skip for now
             </button>
           </div>
         </motion.div>

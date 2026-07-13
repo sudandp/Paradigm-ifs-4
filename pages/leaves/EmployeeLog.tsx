@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { AttendanceEvent } from '../../types';
-import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
 import LoadingScreen from '../../components/ui/LoadingScreen';
 import { reverseGeocode } from '../../utils/locationUtils';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
+import { isAdmin } from '../../utils/auth';
 
 const AddressResolver: React.FC<{ lat: number; lng: number; fallback?: string | null }> = ({ lat, lng, fallback }) => {
     const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
@@ -59,6 +60,8 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
     const [selectedRange, setSelectedRange] = useState<TimeRange>('day');
     const [selectedDate, setSelectedDate] = useState(new Date());
     const isMobile = useMediaQuery('(max-width: 767px)');
+    const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+    const canDelete = user && isAdmin(user.role);
 
     const fetchAttendanceEvents = async () => {
         if (!user) return;
@@ -205,6 +208,19 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
         const hours = Math.floor(roundedMins / 60);
         const mins = roundedMins % 60;
         return `${hours}h ${mins}m`;
+    };
+
+    const handleDeleteEvent = async (eventId: string) => {
+        if (!window.confirm('Delete this attendance record? This cannot be undone.')) return;
+        setDeletingEventId(eventId);
+        try {
+            await api.deleteAttendanceEvent(eventId);
+            setEvents(prev => prev.filter(e => e.id !== eventId));
+        } catch (err) {
+            alert('Failed to delete record. Please try again.');
+        } finally {
+            setDeletingEventId(null);
+        }
     };
 
     const handleRangeChange = (range: TimeRange) => {
@@ -454,6 +470,18 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                         </span>
                                                     </div>
                                                 )}
+                                                {canDelete && (
+                                                    <button
+                                                        onClick={() => handleDeleteEvent(event.id)}
+                                                        disabled={deletingEventId === event.id}
+                                                        title="Delete this record"
+                                                        className="ml-auto flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {deletingEventId === event.id
+                                                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                            : <Trash2 className="h-4 w-4" />}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -477,13 +505,13 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                     <div className="flex items-center">
                                         <span className="text-gray-500">Site Check Ins:</span>
                                         <span className="ml-1 font-bold text-emerald-600">
-                                            {group.events.filter(e => e.type === 'punch-in' && e.workType === 'field').length}
+                                            {group.events.filter(e => (e.type === 'punch-in' && e.workType === 'field') || e.type === 'site-in').length}
                                         </span>
                                     </div>
                                     <div className="flex items-center">
                                         <span className="text-gray-500">Site Check Outs:</span>
                                         <span className="ml-1 font-bold text-rose-600">
-                                            {group.events.filter(e => e.type === 'punch-out' && e.workType === 'field').length}
+                                            {group.events.filter(e => (e.type === 'punch-out' && e.workType === 'field') || e.type === 'site-out').length}
                                         </span>
                                     </div>
                                     <div className="flex items-center">

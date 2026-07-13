@@ -10,6 +10,7 @@ interface AvatarUploadProps {
   file: UploadedFile | undefined | null;
   onFileChange: (file: UploadedFile | null) => void;
   hideControls?: boolean;
+  userId?: string;
 }
 
 const resizeImageFile = (file: File, maxWidth = 1024, maxHeight = 1024): Promise<File> => {
@@ -44,7 +45,7 @@ const resizeImageFile = (file: File, maxWidth = 1024, maxHeight = 1024): Promise
   });
 };
 
-export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, hideControls = false }) => {
+export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, hideControls = false, userId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -202,10 +203,11 @@ export const AvatarUpload: React.FC<AvatarUploadProps> = ({ file, onFileChange, 
           ) : (file?.preview && !hasError) ? (
             <ProfilePlaceholder 
               photoUrl={file.preview}
+              seed={userId}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
             />
           ) : (
-            <ProfilePlaceholder />
+            <ProfilePlaceholder seed={userId} />
           )}
         </div>
         {file && !isLoading && (

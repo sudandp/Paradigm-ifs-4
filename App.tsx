@@ -410,10 +410,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Show WhatsNewModal if the version running is newer than the last seen version
-    const lastSeenReleaseNotesVersion = localStorage.getItem('last_seen_release_notes_version');
-    if (lastSeenReleaseNotesVersion && lastSeenReleaseNotesVersion !== APP_VERSION) {
-      setShowWhatsNew(true);
-    } else if (!lastSeenReleaseNotesVersion) {
+    const lastSeenVersion = localStorage.getItem('last_seen_release_notes_version');
+    const snoozedUntil = localStorage.getItem('whats_new_snoozed_until');
+    const now = Date.now();
+    const isSnoozed = snoozedUntil && now < parseInt(snoozedUntil, 10);
+
+    if (lastSeenVersion && lastSeenVersion !== APP_VERSION) {
+      // New version available — show unless snoozed
+      if (!isSnoozed) {
+        setShowWhatsNew(true);
+      }
+    } else if (!lastSeenVersion) {
       // First time launch - don't show what's new, just set the version
       localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
     }
@@ -1635,7 +1642,15 @@ const App: React.FC = () => {
       {showWhatsNew && !isUpdateRequired && !isAppOutdated && (
         <WhatsNewModal
           onClose={() => {
+            // Permanently mark this version as seen
             localStorage.setItem('last_seen_release_notes_version', APP_VERSION);
+            localStorage.removeItem('whats_new_snoozed_until');
+            setShowWhatsNew(false);
+          }}
+          onSkip={() => {
+            // Snooze for 24 hours — modal re-appears next session after snooze expires
+            const snoozedUntil = Date.now() + 24 * 60 * 60 * 1000;
+            localStorage.setItem('whats_new_snoozed_until', String(snoozedUntil));
             setShowWhatsNew(false);
           }}
         />

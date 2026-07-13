@@ -1197,7 +1197,7 @@ const ProfilePage: React.FC = () => {
                                 />
                             </svg>
                             <div className="relative z-10 w-28 h-28 flex items-center justify-center">
-                                <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} hideControls={true} />
+                            <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} hideControls={true} userId={user.id} />
                             </div>
                         </div>
                     </div>
@@ -2458,7 +2458,7 @@ const ProfilePage: React.FC = () => {
                 <div className="relative z-10 flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-8 w-full py-6 md:py-8 px-6">
                     {/* Squircle Avatar (The squircle shape is now handled inside AvatarUpload) */}
                     <div className="relative flex-shrink-0">
-                        <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} />
+                        <AvatarUpload file={avatarFile} onFileChange={handlePhotoChange} userId={user.id} />
                     </div>
                     
                     {/* User Info aligned next to the avatar */}
@@ -2810,7 +2810,7 @@ const ProfilePage: React.FC = () => {
                                                                 >
                                                                     Regular Duty
                                                                 </button>
-                                                                {isSiteStaffRole && (
+                                                                {(isSiteStaffRole || isFieldStaffRole) && (
                                                                     <button 
                                                                         onClick={() => setSiteWorkMode('ot')}
                                                                         className={`flex-1 py-2 text-[11px] font-black uppercase tracking-[0.1em] rounded-xl transition-all ${siteWorkMode === 'ot' ? 'bg-white text-indigo-600 shadow-md border border-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
