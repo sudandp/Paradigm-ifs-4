@@ -6,22 +6,18 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    const { data, error } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .limit(1);
+    console.log("Fetching all scoped settings from attendance_settings_scopes...");
+    const { data: scopedSettings, error } = await supabase
+        .from('attendance_settings_scopes')
+        .select('*');
 
     if (error) {
         console.error("Error:", error);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
-    } else {
-        console.log("No data found to inspect columns");
-    }
+    console.log("Scoped settings found in DB:");
+    console.log(JSON.stringify(scopedSettings, null, 2));
 }
 
 main().catch(console.error);

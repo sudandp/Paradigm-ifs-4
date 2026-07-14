@@ -6,22 +6,18 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    const { data, error } = await supabase
-        .from('leave_requests')
+    const { data: locations, error } = await supabase
+        .from('locations')
         .select('*')
-        .limit(1);
+        .or('name.ilike.%paradigm%,name.ilike.%pifs%,name.ilike.%office%');
 
     if (error) {
         console.error("Error:", error);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
-    } else {
-        console.log("No data found to inspect columns");
-    }
+    console.log("Locations matching 'paradigm', 'pifs', or 'office':");
+    console.log(JSON.stringify(locations, null, 2));
 }
 
 main().catch(console.error);

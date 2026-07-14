@@ -717,9 +717,29 @@ export function evaluateAttendanceStatus(params: {
       
       // Handle Correction Status mapping
       if (lType.includes('correction')) {
+          const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+          const isPending = ['pending_manager_approval', 'pending_hr_confirmation', 'pending_admin_correction'].includes(lStatus);
+          
           const cStatus = l.correctionStatus || (l.correctionDetails?.status) || '';
           if (cStatus === 'W/H') return 'WH';
-          return 'RC'; // Updated from 'P' to 'RC'
+          
+          if (isPending) return 'RC';
+          
+          if (isHalf) {
+              const parseLeaveTypeFromReason = (reason: string): string | null => {
+                if (!reason) return null;
+                const text = reason.toLowerCase();
+                if (text.includes('e/l') || text.includes('el') || text.includes('earned')) return 'EL';
+                if (text.includes('s/l') || text.includes('sl') || text.includes('sick')) return 'SL';
+                if (text.includes('c/l') || text.includes('cl') || text.includes('casual')) return 'CL';
+                if (text.includes('c/o') || text.includes('co') || text.includes('comp')) return 'CO';
+                if (text.includes('lop') || text.includes('loss')) return 'LOP';
+                return null;
+              };
+              const parsedLeave = parseLeaveTypeFromReason(l.reason);
+              return parsedLeave ? `0.5P+0.5${parsedLeave}` : '0.5P';
+          }
+          return 'P';
       }
 
       if (lType.includes('work from home') || lType === 'wfh' || lType === 'w/h') return 'WH';
@@ -915,6 +935,11 @@ export function evaluateAttendanceStatus(params: {
   }
 
   if (isApprovedCorrection) {
+      const isHalf = approvedCorrection.dayOption === 'half' || (approvedCorrection as any).day_option === 'half';
+      if (isHalf) {
+          return getLeaveCode(approvedCorrection);
+      }
+
       if (effectiveWorkingHours >= full) {
           if (isConfiguredHoliday || isPoolHoliday || isFixedHoliday) return 'H/P';
           if (isWeekend || isRecurringHoliday) {

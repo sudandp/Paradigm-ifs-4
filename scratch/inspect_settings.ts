@@ -1,27 +1,29 @@
-import * as dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
-dotenv.config();
-dotenv.config({ path: '.env.local', override: true });
+const SUPABASE_URL = "https://fmyafuhxlorbafbacywa.supabase.co";
+const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M";
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('*')
-    .eq('id', 'singleton')
-    .single();
+    const year = 2026;
+    const month = 7;
+    const monthStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    
+    console.log(`Checking attendance_rule_versions for ${monthStr}...`);
+    const { data, error } = await supabase
+        .from('attendance_rule_versions')
+        .select('*')
+        .eq('scope_type', 'global')
+        .lte('effective_from', monthStr)
+        .order('effective_from', { ascending: false });
 
-  if (error) {
-    console.error('Error fetching settings:', error);
-    return;
-  }
-
-  console.log('Settings singleton details:');
-  console.log(JSON.stringify(data, null, 2));
+    if (error) {
+        console.error("Error:", error);
+    } else {
+        console.log("Matched versions:");
+        console.log(JSON.stringify(data, null, 2));
+    }
 }
 
-main();
+main().catch(console.error);

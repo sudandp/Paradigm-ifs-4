@@ -33,6 +33,36 @@ import type {
   RoutePoint,
 } from '../types';
 
+export const parsePermissionDurationFromReason = (reason: string): number => {
+  if (!reason) return 0;
+  const text = reason.toLowerCase();
+  
+  // Try matching formats like "1hr 15 mints", "1 hour 15 mins", "1h 15m", "1 hr 15 mins", "1 hour 15 minutes"
+  const hrMinRegex = /(\d+)\s*(?:hr|hour|h)s?\s*(\d+)\s*(?:mint|min|m)/;
+  const hrMinMatch = text.match(hrMinRegex);
+  if (hrMinMatch) {
+    const hrs = parseInt(hrMinMatch[1], 10);
+    const mins = parseInt(hrMinMatch[2], 10);
+    return hrs * 60 + mins;
+  }
+
+  // Try matching only hours: "1.5 hours", "2 hours", "1hr", "1 hour", "1h"
+  const hrRegex = /(\d+(?:\.\d+)?)\s*(?:hr|hour|h)/;
+  const hrMatch = text.match(hrRegex);
+  if (hrMatch) {
+    return parseFloat(hrMatch[1]) * 60;
+  }
+
+  // Try matching only minutes: "15mints", "30 mintes", "37 minutes", "15m"
+  const minRegex = /(\d+)\s*(?:mint|min|m)/;
+  const minMatch = text.match(minRegex);
+  if (minMatch) {
+    return parseInt(minMatch[1], 10);
+  }
+
+  return 0;
+};
+
 export interface DailyData {
   date: number;
   status: string;
@@ -360,6 +390,33 @@ export function processEmployeeMonth(
     let fieldResultStatus = '';
     let resolvedShift: any = null;
     const dateStr = format(currentDate, 'yyyy-MM-dd');
+    
+    // Find approved permission for the current day
+    const approvedPermissionOnDay = allLeaves.find(l => {
+      const lStartDate = l.startDate || l.date || l.leave_date;
+      const lEndDate = l.endDate || l.date || l.leave_date;
+      if (!lStartDate || !lEndDate) return false;
+      const lUserId = l.userId || l.user_id;
+      if (String(lUserId) !== String(user.id)) return false;
+      const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
+      if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
+
+      const normalize = (d: any) => {
+          if (!d) return '';
+          if (typeof d === 'string') return d.substring(0, 10);
+          return format(new Date(d), 'yyyy-MM-dd');
+      };
+
+      const startDateStr = normalize(lStartDate);
+      const endDateStr = normalize(lEndDate);
+      return dateStr >= startDateStr && dateStr <= endDateStr && String(l.leaveType || '').toLowerCase().includes('permission');
+    });
+
+    if (approvedPermissionOnDay) {
+      const permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason);
+      currentDayPermDuration = formatTime(permMinutes / 60);
+    }
+
     const dayEvents = eventsByGroup[dateStr] || [];
     const dayRoutePoints = routePoints.filter(p => isSameDay(new Date(p.timestamp), currentDate));
     const hasActivity = dayEvents.length > 0;
@@ -367,8 +424,27 @@ export function processEmployeeMonth(
     let isAutoCheckout = false;
 
     if (hasActivity) {
-      const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(dayEvents, currentDate);
-      netHours = wHours; grossHours = totalHours; breakHours = bHrs;
+      // Filter out auto-inserted permission events for physical presence calculation
+      const actualPunches = dayEvents.filter(e => e.reason !== 'Auto-inserted from approved Permission Request');
+      
+      const { checkIn: actualIn, checkOut: actualOut, firstBreakIn, breakOut, workingHours: wHours, breakHours: bHrs, totalHours } = processDailyEvents(actualPunches, currentDate);
+      
+      let baseNetHours = wHours;
+      let baseGrossHours = totalHours;
+      
+      if (approvedPermissionOnDay) {
+        const permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason);
+        baseNetHours += (permMinutes / 60);
+        baseGrossHours += (permMinutes / 60);
+      }
+
+      netHours = baseNetHours;
+      grossHours = baseGrossHours;
+      breakHours = bHrs;
+
+      // Use all events (including auto-inserted ones) for display of inTime and outTime
+      const { checkIn, checkOut } = processDailyEvents(dayEvents, currentDate);
+      
       currentDayInTime = checkIn ? format(new Date(checkIn), 'HH:mm') : '-';
       currentDayOutTime = checkOut ? format(new Date(checkOut), 'HH:mm') : '-';
       currentDayBreakIn = firstBreakIn ? format(new Date(firstBreakIn), 'HH:mm') : '-';
@@ -436,48 +512,7 @@ export function processEmployeeMonth(
           .filter(e => (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') && (e.steps ?? 0) > 0)
           .reduce((sum, e) => sum + (e.steps || 0), 0);
 
-      // Find approved permission for the current day
-      currentDayPermDuration = '-';
-      const approvedPermissionOnDay = allLeaves.find(l => {
-        const lStartDate = l.startDate || l.date || l.leave_date;
-        const lEndDate = l.endDate || l.date || l.leave_date;
-        if (!lStartDate || !lEndDate) return false;
-        const lUserId = l.userId || l.user_id;
-        if (String(lUserId) !== String(user.id)) return false;
-        const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
-        if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
-
-        const normalize = (d: any) => {
-            if (!d) return '';
-            if (typeof d === 'string') return d.substring(0, 10);
-            return format(new Date(d), 'yyyy-MM-dd');
-        };
-
-        const startDateStr = normalize(lStartDate);
-        const endDateStr = normalize(lEndDate);
-        return dateStr >= startDateStr && dateStr <= endDateStr && String(l.leaveType || '').toLowerCase().includes('permission');
-      });
-
-      if (approvedPermissionOnDay && approvedPermissionOnDay.correctionDetails) {
-        const getMinutes = (timeStr: string) => {
-            if (!timeStr) return 0;
-            const [h, m] = timeStr.split(':').map(Number);
-            return h * 60 + m;
-        };
-        const inMins = getMinutes(approvedPermissionOnDay.correctionDetails.punchIn);
-        const outMins = getMinutes(approvedPermissionOnDay.correctionDetails.punchOut);
-        let diffMins = outMins - inMins;
-        if (diffMins < 0) diffMins += 24 * 60; // wrap around
-        
-        if (approvedPermissionOnDay.correctionDetails.includeBreak && approvedPermissionOnDay.correctionDetails.breakIn && approvedPermissionOnDay.correctionDetails.breakOut) {
-            const bIn = getMinutes(approvedPermissionOnDay.correctionDetails.breakIn);
-            const bOut = getMinutes(approvedPermissionOnDay.correctionDetails.breakOut);
-            let bDiff = bOut - bIn;
-            if (bDiff < 0) bDiff += 24 * 60;
-            diffMins -= bDiff;
-        }
-        currentDayPermDuration = formatTime(diffMins / 60);
-      }
+      // Find approved permission - Handled at start of loop
 
       if (!isFuture) { 
           totalNetWorkDuration += netHours; 
@@ -504,6 +539,11 @@ export function processEmployeeMonth(
       const siteShifts = (rules as any)?.siteShifts || [];
       if (siteShifts.length > 0) {
         resolvedShift = resolveShift(rules, user.department || '', (user as any).shiftId) || null;
+      }
+      if (approvedPermissionOnDay) {
+        const permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason);
+        netHours = permMinutes / 60;
+        grossHours = permMinutes / 60;
       }
     }
 

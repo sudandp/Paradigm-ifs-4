@@ -6,22 +6,25 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    const { data, error } = await supabase
-        .from('leave_requests')
+    const sudhanId = "5321c6f6-578e-4168-9da8-060148e1587b";
+
+    const { data: user, error } = await supabase
+        .from('users')
         .select('*')
-        .limit(1);
+        .eq('id', sudhanId)
+        .single();
 
     if (error) {
-        console.error("Error:", error);
+        console.error("Error fetching Sudhan M profile:", error);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
-    } else {
-        console.log("No data found to inspect columns");
-    }
+    console.log("Sudhan M Profile details:");
+    console.log("ID:", user.id);
+    console.log("Name:", user.name);
+    console.log("Role ID:", user.role_id);
+    console.log("Society ID:", user.society_id);
+    console.log("Organization ID:", user.organization_id);
 }
 
 main().catch(console.error);

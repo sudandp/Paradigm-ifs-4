@@ -6,23 +6,22 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    console.log("Fetching columns of attendance_events table...");
-    // Let's run a query that selects 1 row from attendance_events
-    const { data, error } = await supabase
+    const userId = "5321c6f6-578e-4168-9da8-060148e1587b"; // Sudhan M
+    const dateStr = "2026-06-22";
+
+    console.log("Fetching attendance events for June 22, 2026...");
+    const { data: events, error: eErr } = await supabase
         .from('attendance_events')
         .select('*')
-        .limit(1);
+        .eq('user_id', userId)
+        .gte('timestamp', dateStr + "T00:00:00")
+        .lte('timestamp', dateStr + "T23:59:59");
 
-    if (error) {
-        console.error("Error:", error);
-        return;
-    }
-
-    if (data && data.length > 0) {
-        console.log("Keys in attendance_events table row:");
-        console.log(Object.keys(data[0]).sort());
+    if (eErr) {
+        console.error("Events error:", eErr);
     } else {
-        console.log("No data found to inspect columns");
+        console.log("Events count:", events?.length);
+        console.log(JSON.stringify(events, null, 2));
     }
 }
 

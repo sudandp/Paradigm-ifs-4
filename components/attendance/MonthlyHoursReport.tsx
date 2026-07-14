@@ -827,8 +827,33 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                       {employee.dailyData.map(d => {
                         const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d.date).padStart(2,'0')}`;
                         const hasPendingRC = pendingCorrectionDates.get(employee.employeeId)?.has(dateStr) ?? false;
+                        
+                        const getStatusLabel = (s: string): string => {
+                          if (s === 'P') return 'Present';
+                          if (['0.5P', '1/2P', '2/4P', 'Half Day'].includes(s)) return 'Half Day';
+                          if (s === '3/4P' || s === '0.75P') return 'Three-Quarter Day';
+                          if (s === '1/4P' || s === '0.25P') return 'Quarter Day';
+                          if (s === 'A') return 'Absent';
+                          if (s === 'W/O') return 'Weekly Off';
+                          if (s === 'WOP') return 'Weekend Present';
+                          if (s === 'W/P') return 'Worked on Weekend';
+                          if (s === 'H') return 'Public Holiday';
+                          if (s === 'H/P') return 'Holiday Present';
+                          if (s.includes('F/H') || s.includes('FH')) return 'Floating Holiday';
+                          if (s.includes('S/L') || s.includes('SL')) return 'Sick Leave';
+                          if (s.includes('E/L') || s.includes('EL')) return 'Earned Leave';
+                          if (s.includes('C/O') || s.includes('CO')) return 'Comp Off';
+                          if (s.includes('LOP')) return 'Loss of Pay';
+                          if (s === 'W/H' || s === 'WH' || s.includes('WFH')) return 'Work From Home';
+                          if (s.includes('BL')) return 'Blue Leave';
+                          if (s.includes('PL')) return 'Pink Leave';
+                          if (s.includes('ML')) return 'Maternity Leave';
+                          if (s.includes('CL')) return 'Casual Leave';
+                          return s;
+                        };
+
                         return (
-                        <td key={d.date} className="p-0 text-center border-r border-slate-100 last:border-r-0 relative">
+                        <td key={d.date} title={getStatusLabel(d.status)} className="p-0 text-center border-r border-slate-100 last:border-r-0 relative">
                             <span className={`inline-flex items-center justify-center w-full min-h-[18px] font-bold text-[9px] ${
                                 d.status === 'P' ? 'bg-emerald-50 text-emerald-700' :
                                 (d.status === '0.75P' || d.status === '3/4P') ? 'bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-600' :
@@ -878,11 +903,14 @@ const MonthlyHoursReport: React.FC<MonthlyHoursReportProps> = ({
                     </tr>
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Perm Duration</td>
-                      {employee.dailyData.map(d => (
-                        <td key={d.date} className="p-0.5 text-center border-r border-slate-100 last:border-r-0">
-                          {d.permDuration && d.permDuration !== '0:00' ? d.permDuration : '-'}
-                        </td>
-                      ))}
+                      {employee.dailyData.map(d => {
+                        const hasPerm = d.permDuration && d.permDuration !== '-' && d.permDuration !== '0:00';
+                        return (
+                          <td key={d.date} className={`p-0.5 text-center border-r border-slate-100 last:border-r-0 ${hasPerm ? 'text-red-600 font-bold bg-red-50/50' : ''}`}>
+                            {hasPerm ? d.permDuration : '-'}
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr className="bg-white border-b border-slate-100">
                       <td className="py-0.5 px-1 font-medium text-gray-600 sticky left-0 bg-slate-100 border-r border-slate-200 z-10">Gross Dur</td>

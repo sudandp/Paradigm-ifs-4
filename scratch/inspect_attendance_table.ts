@@ -6,22 +6,20 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
+    console.log("Fetching global settings from 'settings' table...");
     const { data, error } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .limit(1);
+        .from('settings')
+        .select('attendance_settings')
+        .eq('id', 'singleton')
+        .single();
 
     if (error) {
-        console.error("Error:", error);
+        console.error("Error fetching settings:", error);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
-    } else {
-        console.log("No data found to inspect columns");
-    }
+    console.log("Global Settings:");
+    console.log(JSON.stringify(data, null, 2));
 }
 
 main().catch(console.error);

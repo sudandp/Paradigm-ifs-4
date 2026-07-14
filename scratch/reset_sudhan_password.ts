@@ -6,21 +6,18 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    const { data, error } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .limit(1);
+    const sudhanId = "5321c6f6-578e-4168-9da8-060148e1587b";
+    console.log(`Setting password for user ${sudhanId} (Sudhan M) to 'PAR_1610'...`);
+    
+    const { data, error } = await supabase.auth.admin.updateUserById(
+        sudhanId,
+        { password: 'PAR_1610' }
+    );
 
     if (error) {
-        console.error("Error:", error);
-        return;
-    }
-
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
+        console.error("Error setting passcode:", error);
     } else {
-        console.log("No data found to inspect columns");
+        console.log("Successfully set Sudhan M's passcode back to '1610'!");
     }
 }
 

@@ -6,21 +6,21 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    const { data, error } = await supabase
-        .from('leave_requests')
-        .select('*')
-        .limit(1);
+    const { data: snapshots, error } = await supabase
+        .from('attendance_month_snapshots')
+        .select('id, employee_id, year, month, summary')
+        .eq('year', 2026)
+        .eq('month', 6);
 
     if (error) {
         console.error("Error:", error);
         return;
     }
 
-    if (data && data.length > 0) {
-        console.log("Keys in leave_requests table row:");
-        console.log(Object.keys(data[0]).sort());
-    } else {
-        console.log("No data found to inspect columns");
+    console.log("June 2026 Snapshots:");
+    for (const snap of (snapshots || [])) {
+        const { data: user } = await supabase.from('users').select('name').eq('id', snap.employee_id).single();
+        console.log(`User ID: ${snap.employee_id}, Name: ${user?.name}, Summary:`, snap.summary);
     }
 }
 
