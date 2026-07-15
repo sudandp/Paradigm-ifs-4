@@ -6078,11 +6078,11 @@ export const api = {
       const usedKey = typeKeyStr.replace('Total', 'Used') as keyof LeaveBalance;
       const pendingKey = typeKeyStr.replace('Total', 'Pending') as keyof LeaveBalance;
       
-      const available = (balance[typeKey] as number) - (balance[usedKey] as number) - (balance[pendingKey] as number);
+      const available = (balance[typeKey] as number) - (balance[usedKey] as number) - (balance[pendingKey] as number) + leaveDays;
       
       if (available < leaveDays) {
         // Auto-decline if insufficient leaves
-        const reason = `Insufficient ${request.leave_type} balance. Available: ${available} days, Requested: ${leaveDays} days.`;
+        const reason = `Insufficient ${request.leave_type} balance. Available: ${available} days (already including this request), Requested: ${leaveDays} days.`;
         await api.rejectLeaveRequest(id, approverId, reason);
         return;
       }
