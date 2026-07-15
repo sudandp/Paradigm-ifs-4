@@ -1894,7 +1894,7 @@ const AttendanceSettings: React.FC = () => {
                                 }}
                             />
                             
-                            {currentRules.earnedLeaveAccrual && (
+                             {currentRules.earnedLeaveAccrual && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pl-8">
                                     <Input
                                         label="Days Required"
@@ -1904,7 +1904,7 @@ const AttendanceSettings: React.FC = () => {
                                             ...currentRules.earnedLeaveAccrual,
                                             daysRequired: parseFloat(e.target.value) || 10
                                         })}
-                                        description="Countable days (Worked + Holiday + Weekoff)"
+                                        description="Countable days milestone"
                                     />
                                     <Input
                                         label="Leave Earned (Days)"
@@ -1917,6 +1917,15 @@ const AttendanceSettings: React.FC = () => {
                                         })}
                                         description="Amount of leave granted per period"
                                     />
+                                    <div className="sm:col-span-2">
+                                        <Checkbox
+                                            id="useWorkedDaysForEarnedLeave"
+                                            label="Accrue only on actual worked days"
+                                            description="If checked, only actual present/worked days (dates where the employee punched in) will count towards the milestone. Public holidays, weekoffs, and leaves will not count."
+                                            checked={!!currentRules.useWorkedDaysForEarnedLeave}
+                                            onChange={(e) => handleSettingChange('useWorkedDaysForEarnedLeave', e.target.checked)}
+                                        />
+                                    </div>
                                 </div>
                             )}
                         </div>

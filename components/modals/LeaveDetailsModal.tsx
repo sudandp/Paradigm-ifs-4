@@ -16,6 +16,29 @@ interface LeaveDetailsModalProps {
 const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, request }) => {
     const [monthlyInsights, setMonthlyInsights] = useState<{ avgHours: number; daysWorked: number } | null>(null);
     const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+    const [leaveBalance, setLeaveBalance] = useState<any | null>(null);
+    const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen || !request || !request.userId) {
+            setLeaveBalance(null);
+            return;
+        }
+
+        const fetchBalance = async () => {
+            setIsLoadingBalance(true);
+            try {
+                const balance = await api.getLeaveBalancesForUser(request.userId, format(new Date(), 'yyyy-MM-dd'));
+                setLeaveBalance(balance);
+            } catch (error) {
+                console.error("Failed to fetch leave balance:", error);
+            } finally {
+                setIsLoadingBalance(false);
+            }
+        };
+
+        fetchBalance();
+    }, [isOpen, request]);
 
     useEffect(() => {
         if (!isOpen || !request || !request.userId || !request.startDate) {
@@ -204,6 +227,36 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                         </span>
                     </div>
                 </div>
+
+                {/* Submitter Leave Balances */}
+                {isLoadingBalance ? (
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="h-14 bg-white/5 animate-pulse rounded-2xl border border-white/10" />
+                        <div className="h-14 bg-white/5 animate-pulse rounded-2xl border border-white/10" />
+                        <div className="h-14 bg-white/5 animate-pulse rounded-2xl border border-white/10" />
+                    </div>
+                ) : leaveBalance ? (
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex flex-col justify-center">
+                            <p className="text-[9px] uppercase font-bold tracking-wider text-emerald-500/70">Earned Leave</p>
+                            <p className="text-base font-black text-emerald-500">
+                                {((leaveBalance.earnedTotal || 0) - (leaveBalance.earnedUsed || 0)).toFixed(1)} <span className="text-[10px] font-normal">Days</span>
+                            </p>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-red-500/5 border border-red-500/10 flex flex-col justify-center">
+                            <p className="text-[9px] uppercase font-bold tracking-wider text-red-500/70">Sick Leave</p>
+                            <p className="text-base font-black text-red-500">
+                                {((leaveBalance.sickTotal || 0) - (leaveBalance.sickUsed || 0)).toFixed(1)} <span className="text-[10px] font-normal">Days</span>
+                            </p>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 flex flex-col justify-center">
+                            <p className="text-[9px] uppercase font-bold tracking-wider text-amber-500/70">Compensatory Off</p>
+                            <p className="text-base font-black text-amber-500">
+                                {((leaveBalance.compOffTotal || 0) - (leaveBalance.compOffUsed || 0)).toFixed(1)} <span className="text-[10px] font-normal">Days</span>
+                            </p>
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* Core Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

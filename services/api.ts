@@ -4388,6 +4388,11 @@ export const api = {
     const accrualYearStart = new Date(yearStart.replace(/-/g, '/'));
     const isMonthlyAccrual = staffType === 'site';
 
+    // Calculate Floating Holidays and Comp Offs based on attendance
+    const attendedDates = new Set((yearEvents || [])
+        .filter(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'))
+        .map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
+
     let earnedTotal = rules.annualEarnedLeaves || 0;
     let earnedThisMonth = 0;
     let earnedPreviousMonth = 0;
@@ -4399,44 +4404,62 @@ export const api = {
       
       const accrualRate = rules.earnedLeaveAccrual?.amountEarned || 1.5;
       const daysRequired = rules.earnedLeaveAccrual?.daysRequired || 30;
+      const useWorkedDays = rules.useWorkedDaysForEarnedLeave || false;
 
-      // 1. Total Cumulative Accrual
-      // Policy: EL is LIFETIME (carry-forward enabled).
-      // ALL users: Use CALENDAR DAYS for EL accrual.
-      const calendarDaysTotal = differenceInCalendarDays(accrualEndDate, openingDateObj) + 1;
-      earnedTotal = openingBalance + (calendarDaysTotal / daysRequired) * accrualRate;
-      
+      if (useWorkedDays) {
+        // Count actual worked days (dates with attendance events) within the accrual window
+        const workedDays = Array.from(attendedDates).filter(dateStr => {
+            return dateStr >= openingDate && dateStr <= format(accrualEndDate, 'yyyy-MM-dd');
+        }).length;
+        earnedTotal = openingBalance + Math.floor(workedDays / daysRequired) * accrualRate;
+
+        // Previous month worked days balance
+        const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
+        if (prevMonthEnd >= openingDateObj) {
+            const workedDaysPrev = Array.from(attendedDates).filter(dateStr => {
+                return dateStr >= openingDate && dateStr <= format(prevMonthEnd, 'yyyy-MM-dd');
+            }).length;
+            earnedPreviousMonth = openingBalance + Math.floor(workedDaysPrev / daysRequired) * accrualRate;
+        } else {
+            earnedPreviousMonth = openingBalance;
+        }
+        
+        earnedThisMonth = Math.max(0, earnedTotal - earnedPreviousMonth);
+      } else {
+        // 1. Total Cumulative Accrual
+        // Policy: EL is LIFETIME (carry-forward enabled).
+        // ALL users: Use CALENDAR DAYS for EL accrual.
+        const calendarDaysTotal = differenceInCalendarDays(accrualEndDate, openingDateObj) + 1;
+        earnedTotal = openingBalance + (calendarDaysTotal / daysRequired) * accrualRate;
+        
+        // 2. Accrual for the CURRENT viewed month
+        const monthStart = startOfMonth(accrualEndDate);
+        const effectiveMonthStart = monthStart < openingDateObj ? openingDateObj : monthStart;
+        if (accrualEndDate >= effectiveMonthStart) {
+          // ALL users: use calendar days for consistency with total accrual
+          const calendarDaysThisMonth = differenceInCalendarDays(accrualEndDate, effectiveMonthStart) + 1;
+          earnedThisMonth = (calendarDaysThisMonth / daysRequired) * accrualRate;
+        }
+
+        // 3. Starting Balance (Month end of previous month)
+        const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
+        if (prevMonthEnd >= openingDateObj) {
+            // ALL users: use calendar days for consistency with total accrual
+            const calendarDaysPrev = differenceInCalendarDays(prevMonthEnd, openingDateObj) + 1;
+            earnedPreviousMonth = openingBalance + (calendarDaysPrev / daysRequired) * accrualRate;
+        } else {
+            earnedPreviousMonth = openingBalance;
+        }
+      }
+
       // Validity check for Earned Leave
       if (isNotValid(rules.earnedLeavesValidFrom, rules.earnedLeavesExpiryDate)) {
           earnedTotal = 0;
-      }
-      
-      // 2. Accrual for the CURRENT viewed month
-      const monthStart = startOfMonth(accrualEndDate);
-      // Ensure we don't start before the opening date
-      const effectiveMonthStart = monthStart < openingDateObj ? openingDateObj : monthStart;
-      if (accrualEndDate >= effectiveMonthStart) {
-        // ALL users: use calendar days for consistency with total accrual
-        const calendarDaysThisMonth = differenceInCalendarDays(accrualEndDate, effectiveMonthStart) + 1;
-        earnedThisMonth = (calendarDaysThisMonth / daysRequired) * accrualRate;
-      }
-
-      // 3. Starting Balance (Month end of previous month)
-      const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
-      if (prevMonthEnd >= openingDateObj) {
-          // ALL users: use calendar days for consistency with total accrual
-          const calendarDaysPrev = differenceInCalendarDays(prevMonthEnd, openingDateObj) + 1;
-          earnedPreviousMonth = openingBalance + (calendarDaysPrev / daysRequired) * accrualRate;
-      } else {
-          earnedPreviousMonth = openingBalance;
+          earnedThisMonth = 0;
+          earnedPreviousMonth = 0;
       }
     }
 
-    // Calculate Floating Holidays based on attendance on Recurring Holidays (e.g. 3rd Saturday)
-    // AND Comp Offs based on attendance on Sundays or Public Holidays
-    const attendedDates = new Set((yearEvents || [])
-        .filter(e => e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in'))
-        .map(e => format(new Date(e.timestamp), 'yyyy-MM-dd')));
     const holidayDates = new Set(holidays.map(h => {
         const dStr = String(h.date);
         if (dStr.includes('T')) return format(new Date(dStr), 'yyyy-MM-dd');

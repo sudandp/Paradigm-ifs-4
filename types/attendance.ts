@@ -187,6 +187,7 @@ export interface StaffAttendanceRules {
     daysRequired: number; // e.g., 10
     amountEarned: number; // e.g., 0.5
   };
+  useWorkedDaysForEarnedLeave?: boolean;
   enableSickLeaveAccrual?: boolean;
   fieldStaffGraceMinutes?: number;
   holidayPool?: { name: string; date: string }[];
