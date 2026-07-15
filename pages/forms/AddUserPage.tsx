@@ -135,7 +135,7 @@ const AddUserPage: React.FC = () => {
   }, [currentUser]);
 
   const schema = isEditing ? editUserSchema : createUserSchema;
-  const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<Partial<User> & { password?: string; noSiteAssignment?: boolean }>({
+  const { register, handleSubmit, formState: { errors, dirtyFields }, reset, watch, setValue } = useForm<Partial<User> & { password?: string; noSiteAssignment?: boolean }>({
     resolver: yupResolver(schema) as unknown as Resolver<Partial<User> & { password?: string; noSiteAssignment?: boolean }>,
   });
 
@@ -205,12 +205,36 @@ const AddUserPage: React.FC = () => {
   const watchedJoiningDate = watch('joiningDate');
   useEffect(() => {
     if (watchedJoiningDate) {
-      setValue('earnedLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
-      setValue('compOffOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
-      setValue('floatingLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
-      setValue('childCareLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true, shouldDirty: true });
+      const shouldSync = !isEditing || dirtyFields.joiningDate;
+      if (shouldSync) {
+        if (!dirtyFields.earnedLeaveOpeningDate) {
+          setValue('earnedLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true });
+        }
+        if (!dirtyFields.sickLeaveOpeningDate) {
+          setValue('sickLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true });
+        }
+        if (!dirtyFields.compOffOpeningDate) {
+          setValue('compOffOpeningDate', watchedJoiningDate, { shouldValidate: true });
+        }
+        if (!dirtyFields.floatingLeaveOpeningDate) {
+          setValue('floatingLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true });
+        }
+        if (!dirtyFields.childCareLeaveOpeningDate) {
+          setValue('childCareLeaveOpeningDate', watchedJoiningDate, { shouldValidate: true });
+        }
+      }
     }
-  }, [watchedJoiningDate, setValue]);
+  }, [
+    watchedJoiningDate, 
+    setValue, 
+    isEditing, 
+    dirtyFields.joiningDate, 
+    dirtyFields.earnedLeaveOpeningDate, 
+    dirtyFields.sickLeaveOpeningDate, 
+    dirtyFields.compOffOpeningDate, 
+    dirtyFields.floatingLeaveOpeningDate, 
+    dirtyFields.childCareLeaveOpeningDate
+  ]);
 
   useEffect(() => {
     const fetchData = async () => {

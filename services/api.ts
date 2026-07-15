@@ -4400,55 +4400,67 @@ export const api = {
     if (rules.earnedLeaveAccrual) {
       const openingBalance = userData.earned_leave_opening_balance || 0;
       const openingDate = userData.earned_leave_opening_date || `${currentYear}-01-01`;
-      const openingDateObj = new Date(openingDate); 
+      const openingDateObj = new Date(openingDate.replace(/-/g, '/')); 
       
       const accrualRate = rules.earnedLeaveAccrual?.amountEarned || 1.5;
       const daysRequired = rules.earnedLeaveAccrual?.daysRequired || 30;
       const useWorkedDays = rules.useWorkedDaysForEarnedLeave || false;
 
       if (useWorkedDays) {
-        // Count actual worked days (dates with attendance events) within the accrual window
-        const workedDays = Array.from(attendedDates).filter(dateStr => {
-            return dateStr >= openingDate && dateStr <= format(accrualEndDate, 'yyyy-MM-dd');
-        }).length;
-        earnedTotal = openingBalance + Math.floor(workedDays / daysRequired) * accrualRate;
-
-        // Previous month worked days balance
-        const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
-        if (prevMonthEnd >= openingDateObj) {
-            const workedDaysPrev = Array.from(attendedDates).filter(dateStr => {
-                return dateStr >= openingDate && dateStr <= format(prevMonthEnd, 'yyyy-MM-dd');
-            }).length;
-            earnedPreviousMonth = openingBalance + Math.floor(workedDaysPrev / daysRequired) * accrualRate;
+        if (accrualEndDate < openingDateObj) {
+          earnedTotal = 0;
+          earnedThisMonth = 0;
+          earnedPreviousMonth = 0;
         } else {
-            earnedPreviousMonth = openingBalance;
+          // Count actual worked days (dates with attendance events) within the accrual window
+          const workedDays = Array.from(attendedDates).filter(dateStr => {
+              return dateStr >= openingDate && dateStr <= format(accrualEndDate, 'yyyy-MM-dd');
+          }).length;
+          earnedTotal = openingBalance + Math.floor(workedDays / daysRequired) * accrualRate;
+
+          // Previous month worked days balance
+          const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
+          if (prevMonthEnd >= openingDateObj) {
+              const workedDaysPrev = Array.from(attendedDates).filter(dateStr => {
+                  return dateStr >= openingDate && dateStr <= format(prevMonthEnd, 'yyyy-MM-dd');
+              }).length;
+              earnedPreviousMonth = openingBalance + Math.floor(workedDaysPrev / daysRequired) * accrualRate;
+          } else {
+              earnedPreviousMonth = 0;
+          }
+          
+          earnedThisMonth = Math.max(0, earnedTotal - earnedPreviousMonth);
         }
-        
-        earnedThisMonth = Math.max(0, earnedTotal - earnedPreviousMonth);
       } else {
-        // 1. Total Cumulative Accrual
-        // Policy: EL is LIFETIME (carry-forward enabled).
-        // ALL users: Use CALENDAR DAYS for EL accrual.
-        const calendarDaysTotal = differenceInCalendarDays(accrualEndDate, openingDateObj) + 1;
-        earnedTotal = openingBalance + (calendarDaysTotal / daysRequired) * accrualRate;
-        
-        // 2. Accrual for the CURRENT viewed month
-        const monthStart = startOfMonth(accrualEndDate);
-        const effectiveMonthStart = monthStart < openingDateObj ? openingDateObj : monthStart;
-        if (accrualEndDate >= effectiveMonthStart) {
-          // ALL users: use calendar days for consistency with total accrual
-          const calendarDaysThisMonth = differenceInCalendarDays(accrualEndDate, effectiveMonthStart) + 1;
-          earnedThisMonth = (calendarDaysThisMonth / daysRequired) * accrualRate;
-        }
-
-        // 3. Starting Balance (Month end of previous month)
-        const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
-        if (prevMonthEnd >= openingDateObj) {
-            // ALL users: use calendar days for consistency with total accrual
-            const calendarDaysPrev = differenceInCalendarDays(prevMonthEnd, openingDateObj) + 1;
-            earnedPreviousMonth = openingBalance + (calendarDaysPrev / daysRequired) * accrualRate;
+        if (accrualEndDate < openingDateObj) {
+          earnedTotal = 0;
+          earnedThisMonth = 0;
+          earnedPreviousMonth = 0;
         } else {
-            earnedPreviousMonth = openingBalance;
+          // 1. Total Cumulative Accrual
+          // Policy: EL is LIFETIME (carry-forward enabled).
+          // ALL users: Use CALENDAR DAYS for EL accrual.
+          const calendarDaysTotal = differenceInCalendarDays(accrualEndDate, openingDateObj) + 1;
+          earnedTotal = openingBalance + (calendarDaysTotal / daysRequired) * accrualRate;
+          
+          // 2. Accrual for the CURRENT viewed month
+          const monthStart = startOfMonth(accrualEndDate);
+          const effectiveMonthStart = monthStart < openingDateObj ? openingDateObj : monthStart;
+          if (accrualEndDate >= effectiveMonthStart) {
+            // ALL users: use calendar days for consistency with total accrual
+            const calendarDaysThisMonth = differenceInCalendarDays(accrualEndDate, effectiveMonthStart) + 1;
+            earnedThisMonth = (calendarDaysThisMonth / daysRequired) * accrualRate;
+          }
+
+          // 3. Starting Balance (Month end of previous month)
+          const prevMonthEnd = endOfMonth(subMonths(accrualEndDate, 1));
+          if (prevMonthEnd >= openingDateObj) {
+              // ALL users: use calendar days for consistency with total accrual
+              const calendarDaysPrev = differenceInCalendarDays(prevMonthEnd, openingDateObj) + 1;
+              earnedPreviousMonth = openingBalance + (calendarDaysPrev / daysRequired) * accrualRate;
+          } else {
+              earnedPreviousMonth = 0;
+          }
         }
       }
 
@@ -4602,21 +4614,32 @@ export const api = {
       new Date(explicitSickOpeningDate.replace(/-/g, '/')).getFullYear() === currentYear;
     const effectiveSickOpeningBalance = isMidYearJoiner ? sickOpeningBalance : 0;
 
-    if (rules.enableSickLeaveAccrual) {
-      // Floor the opening date to Jan 1 of the current year for non-mid-year users.
-      const openingDate = (isMidYearJoiner ? explicitSickOpeningDate : yearStartStr)!;
-      const openingDateObj = new Date(openingDate.replace(/-/g, '/'));
-      const effectiveOpeningDateSL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
-
-      // Sick Leave Policy: STRICTLY CURRENT YEAR (No Carry Forward).
-      // ALL users (Office, Field, Site): 1 per calendar month.
-      const monthsElapsed = differenceInCalendarMonths(accrualEndDate, effectiveOpeningDateSL);
-      sickTotal = effectiveSickOpeningBalance + monthsElapsed + 1;
+    const explicitSickOpeningDateObj = explicitSickOpeningDate ? new Date(explicitSickOpeningDate.replace(/-/g, '/')) : null;
+    if (explicitSickOpeningDateObj && accrualEndDate < explicitSickOpeningDateObj) {
+      sickTotal = 0;
+    } else if (accrualEndDate < accrualYearStart) {
+      sickTotal = 0;
     } else {
-      // Accrual disabled: cap to annualSickLeaves for months elapsed since year start.
-      const monthsElapsed = differenceInCalendarMonths(accrualEndDate, accrualYearStart);
-      sickTotal = effectiveSickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
-      console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'effectiveSickOpeningBalance:', effectiveSickOpeningBalance, 'isMidYearJoiner:', isMidYearJoiner, 'sickTotal:', sickTotal);
+      if (rules.enableSickLeaveAccrual) {
+        // Floor the opening date to Jan 1 of the current year for non-mid-year users.
+        const openingDate = (isMidYearJoiner ? explicitSickOpeningDate : yearStartStr)!;
+        const openingDateObj = new Date(openingDate.replace(/-/g, '/'));
+        const effectiveOpeningDateSL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
+
+        // Sick Leave Policy: STRICTLY CURRENT YEAR (No Carry Forward).
+        // ALL users (Office, Field, Site): 1 per calendar month.
+        if (accrualEndDate < effectiveOpeningDateSL) {
+          sickTotal = 0;
+        } else {
+          const monthsElapsed = differenceInCalendarMonths(accrualEndDate, effectiveOpeningDateSL);
+          sickTotal = effectiveSickOpeningBalance + monthsElapsed + 1;
+        }
+      } else {
+        // Accrual disabled: cap to annualSickLeaves for months elapsed since year start.
+        const monthsElapsed = differenceInCalendarMonths(accrualEndDate, accrualYearStart);
+        sickTotal = effectiveSickOpeningBalance + Math.min(rules.annualSickLeaves || 12, monthsElapsed + 1);
+        console.log('[LeaveDebug] SL path: accrual DISABLED, annualSickLeaves:', rules.annualSickLeaves, 'monthsElapsed:', monthsElapsed, 'effectiveSickOpeningBalance:', effectiveSickOpeningBalance, 'isMidYearJoiner:', isMidYearJoiner, 'sickTotal:', sickTotal);
+      }
     }
     console.log('[LeaveDebug] FINAL sickTotal:', sickTotal, 'isMonthlyAccrual:', isMonthlyAccrual);
 
@@ -4663,7 +4686,12 @@ export const api = {
     const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId).length;
     
     const compOffOpeningBalance = Number(userData.comp_off_opening_balance || userData.compOffOpeningBalance || 0);
-    const compOffTotal = dynamicCompOffTotal + manualCompOffGranted + compOffOpeningBalance;
+    const compOffOpeningDate = userData.comp_off_opening_date;
+    const compOffOpeningDateObj = compOffOpeningDate ? new Date(compOffOpeningDate.replace(/-/g, '/')) : null;
+    const hasReachedCompOffOpening = !compOffOpeningDateObj || accrualEndDate >= compOffOpeningDateObj;
+    const effectiveCompOffOpeningBalance = hasReachedCompOffOpening ? compOffOpeningBalance : 0;
+    
+    const compOffTotal = dynamicCompOffTotal + manualCompOffGranted + effectiveCompOffOpeningBalance;
 
     const finalCompOffTotal = compOffTotal;
 
@@ -4681,8 +4709,12 @@ export const api = {
     // Blue Leave (Floating Holiday/3rd Saturday) is ONLY available for MALE Bangalore office/field staff.
     let floatingTotalValue = 0;
     const floatingOpeningBalance = Number(userData.floating_leave_opening_balance || userData.floatingLeaveOpeningBalance || 0);
+    const floatingOpeningDate = userData.floating_leave_opening_date;
+    const floatingOpeningDateObj = floatingOpeningDate ? new Date(floatingOpeningDate.replace(/-/g, '/')) : null;
+    const hasReachedFloatingOpening = !floatingOpeningDateObj || accrualEndDate >= floatingOpeningDateObj;
+    const effectiveFloatingOpeningBalance = hasReachedFloatingOpening ? floatingOpeningBalance : 0;
     if (isBangaloreStaff && isFloatingHolidayValid(todayStr) && !isFemaleUser) {
-        floatingTotalValue = (rules.monthlyFloatingLeaves || 0) + floatingOpeningBalance;
+        floatingTotalValue = (rules.monthlyFloatingLeaves || 0) + effectiveFloatingOpeningBalance;
     }
 
     const balance: LeaveBalance = {
@@ -4716,7 +4748,9 @@ export const api = {
     };
 
     // --- Pink Leave (Female employees only, 1/month, no carry forward) ---
-    if (isFemaleUser) {
+    const joiningDate = userData.joining_date || userData.created_at?.split('T')[0] || yearStart;
+    const joiningDateObj = new Date(joiningDate.replace(/-/g, '/'));
+    if (isFemaleUser && accrualEndDate >= joiningDateObj) {
       balance.pinkTotal = 1;
     }
 
@@ -4780,27 +4814,31 @@ export const api = {
             // 2. Monthly Accrual: 0.5 per month with attendance
             const openingBalance = userData.child_care_leave_opening_balance || 0;
             const openingDate = userData.child_care_leave_opening_date || userData.joining_date || userData.created_at || `${currentYear}-01-01`;
-            const openingDateObj = new Date(openingDate);
+            const openingDateObj = new Date(openingDate.replace(/-/g, '/'));
             const effectiveOpeningDateCCL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
             const effectiveOpeningBalanceCCL = openingDateObj < accrualYearStart ? 0 : openingBalance;
 
-            const startCheckCCL = startOfMonth(effectiveOpeningDateCCL);
-            const endCheckCCL = startOfMonth(accrualEndDate);
-            let monthsToTestCCL = eachMonthOfInterval({ start: startCheckCCL, end: endCheckCCL });
-            
-            let earnedCCL = 0;
-            monthsToTestCCL.forEach(m => {
-                const mStart = startOfMonth(m);
-                const mEnd = endOfMonth(m);
-                const hasAttendanceThisMonth = (yearEvents || []).some(e => {
-                    const d = new Date(e.timestamp);
-                    return d >= mStart && d <= mEnd && (e.type === 'punch-in' || e.type === 'check-in' || e.type === 'site-ot-in');
-                });
-                if (hasAttendanceThisMonth) earnedCCL += 0.5;
-            });
-            
-            // Cap at the computed limit
-            balance.childCareTotal = Math.min(limit, effectiveOpeningBalanceCCL + earnedCCL);
+            if (accrualEndDate < effectiveOpeningDateCCL) {
+              balance.childCareTotal = 0;
+            } else {
+              const startCheckCCL = startOfMonth(effectiveOpeningDateCCL);
+              const endCheckCCL = startOfMonth(accrualEndDate);
+              let monthsToTestCCL = eachMonthOfInterval({ start: startCheckCCL, end: endCheckCCL });
+              
+              let earnedCCL = 0;
+              monthsToTestCCL.forEach(m => {
+                  const mStart = startOfMonth(m);
+                  const mEnd = endOfMonth(m);
+                  const hasAttendanceThisMonth = (yearEvents || []).some(e => {
+                      const d = new Date(e.timestamp);
+                      return d >= mStart && d <= mEnd && (e.type === 'punch-in' || e.type === 'check-in' || e.type === 'site-ot-in');
+                  });
+                  if (hasAttendanceThisMonth) earnedCCL += 0.5;
+              });
+              
+              // Cap at the computed limit
+              balance.childCareTotal = Math.min(limit, effectiveOpeningBalanceCCL + earnedCCL);
+            }
           }
         }
       } catch (e) {
@@ -5042,7 +5080,7 @@ export const api = {
     // Resolve rules for this user
     const { data: userProfile, error: userError } = await supabase
       .from('users')
-      .select('reporting_manager_id, role_id, society_id, joining_date, created_at')
+      .select('reporting_manager_id, role_id, society_id, joining_date, created_at, earned_leave_opening_date, sick_leave_opening_date, comp_off_opening_date, floating_leave_opening_date, child_care_leave_opening_date')
       .eq('id', data.userId)
       .single();
     if (userError) throw userError;
@@ -5065,6 +5103,30 @@ export const api = {
     const requestedDays = data.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endD, startD) + 1;
 
     const leaveTypeLower = data.leaveType.toLowerCase();
+
+    // Validate leave start date against opening date
+    let targetOpeningDateStr: string | null = null;
+    if (leaveTypeLower.includes('earned') || leaveTypeLower === 'el') {
+      targetOpeningDateStr = userProfile.earned_leave_opening_date;
+    } else if (leaveTypeLower.includes('sick') || leaveTypeLower === 'sl' || leaveTypeLower === 's/l') {
+      targetOpeningDateStr = userProfile.sick_leave_opening_date;
+    } else if (leaveTypeLower.includes('comp') || leaveTypeLower === 'co') {
+      targetOpeningDateStr = userProfile.comp_off_opening_date;
+    } else if (leaveTypeLower.includes('floating') || leaveTypeLower === 'fh') {
+      targetOpeningDateStr = userProfile.floating_leave_opening_date;
+    } else if (leaveTypeLower.includes('child')) {
+      targetOpeningDateStr = userProfile.child_care_leave_opening_date;
+    } else if (leaveTypeLower.includes('pink')) {
+      targetOpeningDateStr = userProfile.joining_date || (userProfile.created_at ? userProfile.created_at.split('T')[0] : null);
+    }
+
+    if (targetOpeningDateStr) {
+      const openingDateObj = new Date(targetOpeningDateStr.replace(/-/g, '/'));
+      if (startD < openingDateObj) {
+        const formatted = `${String(openingDateObj.getDate()).padStart(2, '0')}-${String(openingDateObj.getMonth() + 1).padStart(2, '0')}-${openingDateObj.getFullYear()}`;
+        throw new Error(`You cannot apply for ${data.leaveType} before your opening date of ${formatted}.`);
+      }
+    }
 
     // Earned and Child Care Leave eligibility check: must be >= 3 months after joining date
     if (['earned', 'child care', 'childcare', 'child'].some(t => leaveTypeLower.includes(t))) {

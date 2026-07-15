@@ -1253,7 +1253,8 @@ const ApplyLeave: React.FC = () => {
 
             setTimeout(() => navigate('/leaves/dashboard'), 1500);
         } catch (err) {
-            setToast({ message: isEditMode ? 'Failed to update leave request.' : 'Failed to submit leave request.', type: 'error' });
+            const errMsg = err instanceof Error ? err.message : (isEditMode ? 'Failed to update leave request.' : 'Failed to submit leave request.');
+            setToast({ message: errMsg, type: 'error' });
             setIsSubmitting(false);
         }
     };
