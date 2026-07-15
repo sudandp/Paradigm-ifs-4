@@ -66,6 +66,21 @@ const buildDayKeysForSingleUser = (events: AttendanceEvent[]): Record<string, st
       : null;
 
     if (kind && isStartEvent(event)) {
+      const isPrimary = kind === 'office_punch' || kind === 'field_punch';
+
+      if (isPrimary) {
+        // A new primary punch always starts a fresh session on its own date.
+        // It implicitly closes any previously forgotten open sessions (primary or otherwise).
+        delete open['office_punch'];
+        delete open['field_punch'];
+        delete open['site'];
+        delete open['site_ot'];
+        
+        open[kind] = { startKey: eventKey, startMs: eventDate.getTime() };
+        keyById[event.id] = eventKey;
+        continue;
+      }
+
       // Check if this SAME kind of session is already open (missed punch-out scenario).
       // If so, implicitly close the stale session and start a fresh one on the new date.
       const sameKindOpen = open[kind];
