@@ -429,6 +429,21 @@ const App: React.FC = () => {
     };
   }, [setIsOffline]);
 
+  // ── Sync Supabase Session to Cookie for /api/view-file proxy ──────────────
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        // Set cookie so <img> tags can send the auth token to our Vercel /api/view-file proxy
+        document.cookie = `sb-access-auth-token=${encodeURIComponent(JSON.stringify(session.access_token))}; path=/; max-age=3600; SameSite=Lax; Secure`;
+      } else {
+        document.cookie = 'sb-access-auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // ── Kiosk Mode Initialization ──────────────────────────────────────────────
   useEffect(() => {
     const checkKiosk = async () => {
