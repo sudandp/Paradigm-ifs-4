@@ -852,18 +852,10 @@ const ApplyLeave: React.FC = () => {
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
                 if (formData.leaveType === 'Earned') {
-                    // Earned Leave: Allow same-day application if before 9:00 AM
-                    const isToday = startDateObj.getTime() === todayMidnight.getTime();
                     const isPastDate = startDateObj < todayMidnight;
-                    const currentHour = now.getHours();
 
                     if (isPastDate) {
                         setToast({ message: 'Earned Leave cannot be applied for past dates.', type: 'error' });
-                        setIsSubmitting(false);
-                        return;
-                    }
-                    if (isToday && currentHour >= 9) {
-                        setToast({ message: 'Earned Leave for today must be applied before 9:00 AM.', type: 'error' });
                         setIsSubmitting(false);
                         return;
                     }

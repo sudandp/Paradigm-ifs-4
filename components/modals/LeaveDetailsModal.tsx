@@ -384,10 +384,10 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                         </div>
 
                         {/* Image Preview Thumbnail */}
-                        {isImageCert && request.doctorCertificate.preview && (
+                        {isImageCert && (request.doctorCertificate.preview || request.doctorCertificate.url) && (
                             <div className="mt-2 flex justify-center border border-white/10 dark:border-border/50 rounded-2xl overflow-hidden bg-black/10 max-h-[220px]">
                                 <img
-                                    src={getProxyUrl(request.doctorCertificate.preview)}
+                                    src={getProxyUrl(request.doctorCertificate.preview || request.doctorCertificate.url)}
                                     alt="Doctor Certificate Preview"
                                     className="max-w-full max-h-[220px] object-contain"
                                     onClick={handleViewDocument}

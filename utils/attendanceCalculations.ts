@@ -1079,7 +1079,7 @@ export function calculateDailyTravelKm(events: AttendanceEvent[]): number {
 export function calculateDailyPathTravelKm(
   events: AttendanceEvent[],
   routePoints: RoutePoint[]
-): { distance: number; duration: number } {
+): { distance: number; duration: number; vehicleDistance?: number } {
   // If telemetry routePoints is empty, fallback to the standard site-to-site check-in/out travel calculation
   if (!routePoints || routePoints.length === 0) {
     const dist = calculateDailyTravelKm(events);
@@ -1136,12 +1136,23 @@ export function calculateDailyPathTravelKm(
 
   // 5. Calculate cumulative distance
   let totalDist = 0;
+  let vehicleDist = 0; // Distance covered at > 12 km/h
   for (let i = 0; i < deduped.length - 1; i++) {
     const distMeters = calculateDistanceMeters(
       deduped[i].latitude, deduped[i].longitude,
       deduped[i + 1].latitude, deduped[i + 1].longitude
     );
+    
+    const timeDiffSecs = (new Date(deduped[i + 1].timestamp).getTime() - new Date(deduped[i].timestamp).getTime()) / 1000;
+    
     totalDist += distMeters;
+    
+    if (timeDiffSecs > 0) {
+      const speedKmh = (distMeters / timeDiffSecs) * 3.6;
+      if (speedKmh > 12) {
+        vehicleDist += distMeters;
+      }
+    }
   }
 
   const startTime = new Date(deduped[0].timestamp).getTime();
@@ -1151,7 +1162,8 @@ export function calculateDailyPathTravelKm(
 
   return {
     distance: Number((totalDist / 1000).toFixed(2)),
-    duration: durationMins
+    duration: durationMins,
+    vehicleDistance: Number((vehicleDist / 1000).toFixed(2))
   };
 }
 
