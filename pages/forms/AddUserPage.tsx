@@ -12,6 +12,7 @@ import Toast from '../../components/ui/Toast';
 import { api } from '../../services/api';
 import { UserPlus, ArrowLeft, Calendar } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useAuthStore } from '../../store/authStore';
 
 /** Normalize role display names to Title Case regardless of DB storage format */
 const toTitleCase = (str: string): string =>
@@ -125,6 +126,14 @@ const AddUserPage: React.FC = () => {
   const [pendingSubmitData, setPendingSubmitData] = useState<any>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
+  const { user: currentUser } = useAuthStore();
+
+  const isHrOrHrOpsOrAdmin = React.useMemo(() => {
+    if (!currentUser) return false;
+    const roleLower = currentUser.role?.toLowerCase();
+    return ['hr', 'hr_ops', 'admin', 'super_admin', 'developer'].includes(roleLower);
+  }, [currentUser]);
+
   const schema = isEditing ? editUserSchema : createUserSchema;
   const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<Partial<User> & { password?: string; noSiteAssignment?: boolean }>({
     resolver: yupResolver(schema) as unknown as Resolver<Partial<User> & { password?: string; noSiteAssignment?: boolean }>,
@@ -138,6 +147,8 @@ const AddUserPage: React.FC = () => {
     const minDate = minD.toISOString().split('T')[0];
     return { minJoiningDate: minDate, maxJoiningDate: maxDate };
   }, []);
+
+  const minDateLimit = isHrOrHrOpsOrAdmin ? undefined : minJoiningDate;
 
   const role = watch('role');
   const organizationId = watch('organizationId');
@@ -1200,7 +1211,7 @@ const AddUserPage: React.FC = () => {
                   <Input 
                     label="Joining Date" 
                     type="date" 
-                    min={minJoiningDate}
+                    min={minDateLimit}
                     max={maxJoiningDate}
                     registration={register('joiningDate')} 
                     error={errors.joiningDate?.message}
