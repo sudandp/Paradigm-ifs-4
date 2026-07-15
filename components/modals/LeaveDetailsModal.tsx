@@ -392,6 +392,9 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                                     className="max-w-full max-h-[220px] object-contain"
                                     onClick={handleViewDocument}
                                     style={{ cursor: 'pointer' }}
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                    }}
                                 />
                             </div>
                         )}
