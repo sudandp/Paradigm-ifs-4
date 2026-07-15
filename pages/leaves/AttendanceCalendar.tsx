@@ -499,24 +499,35 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
 
                             const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
 
-                            if (isCorrection) {
+                            if (relevantLeave && relevantLeave.dayOption === 'half') {
+                                let leaveCode = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);
+                                if (isCorrection) {
+                                    const reason = (relevantLeave.reason || (relevantLeave as any).reason || "").toLowerCase();
+                                    if (reason.includes('e/l') || reason.includes('el') || reason.includes('earned')) leaveCode = 'EL';
+                                    else if (reason.includes('s/l') || reason.includes('sl') || reason.includes('sick')) leaveCode = 'SL';
+                                    else if (reason.includes('c/l') || reason.includes('cl') || reason.includes('casual')) leaveCode = 'CL';
+                                    else if (reason.includes('c/o') || reason.includes('co') || reason.includes('comp')) leaveCode = 'CO';
+                                    else if (reason.includes('lop') || reason.includes('loss')) leaveCode = 'LOP';
+                                    else leaveCode = '';
+                                    
+                                    overlayText = leaveCode ? `0.5P+0.5${leaveCode}` : '0.5P';
+                                } else {
+                                    overlayText = status === 'holiday-present' 
+                                        ? `H/0.5P+0.5 ${leaveCode}` 
+                                        : status === 'weekend-present' 
+                                            ? `W/0.5P+0.5 ${leaveCode}` 
+                                            : `0.5P+0.5 ${leaveCode}`;
+                                }
+                                const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
+                                const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
+                                customStyle = {
+                                    background: `linear-gradient(135deg, ${leftColor} 50%, ${leaveCode ? rightColor : leftColor} 50%)`, // Half Holiday/Sunday / Half Blue or Pink
+                                    borderColor: 'transparent'
+                                };
+                            } else if (isCorrection) {
                                 overlayText = 'P';
                                 customStyle = {
                                     background: '#10b981', // Solid green for correction
-                                    borderColor: 'transparent'
-                                };
-                            } else if (relevantLeave && relevantLeave.dayOption === 'half') {
-                                const leaveCode = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);
-                                overlayText = status === 'holiday-present' 
-                                    ? `H/0.5P+0.5 ${leaveCode}` 
-                                    : status === 'weekend-present' 
-                                        ? `W/0.5P+0.5 ${leaveCode}` 
-                                        : `0.5P+0.5 ${leaveCode}`;
-                                const leftColor = status === 'holiday-present' ? '#38bdf8' : status === 'weekend-present' ? '#fda4af' : '#10b981';
-                                const isPink = String(relevantLeave.leaveType || '').toLowerCase().includes('pink');
-                                const rightColor = isPink ? '#ec4899' : '#2563eb';
-                                customStyle = {
-                                    background: `linear-gradient(135deg, ${leftColor} 50%, ${rightColor} 50%)`, // Half Holiday/Sunday / Half Blue or Pink
                                     borderColor: 'transparent'
                                 };
                             } else if (workingHours >= shiftThreshold) {
@@ -574,7 +585,33 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             });
                             if (request) {
                                 const lType = String(request.leaveType || (request as any).type || "").toLowerCase();
-                                if (lType.includes('correction')) {
+                                if (request.dayOption === 'half') {
+                                    let leaveCode = getLeaveAbbreviation(request.leaveType || (request as any).leave_type);
+                                    if (lType.includes('correction')) {
+                                        const reason = (request.reason || (request as any).reason || "").toLowerCase();
+                                        if (reason.includes('e/l') || reason.includes('el') || reason.includes('earned')) leaveCode = 'EL';
+                                        else if (reason.includes('s/l') || reason.includes('sl') || reason.includes('sick')) leaveCode = 'SL';
+                                        else if (reason.includes('c/l') || reason.includes('cl') || reason.includes('casual')) leaveCode = 'CL';
+                                        else if (reason.includes('c/o') || reason.includes('co') || reason.includes('comp')) leaveCode = 'CO';
+                                        else if (reason.includes('lop') || reason.includes('loss')) leaveCode = 'LOP';
+                                        else leaveCode = '';
+                                        
+                                        overlayText = leaveCode ? `0.5P+0.5${leaveCode}` : '0.5P';
+                                        const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
+                                        customStyle = {
+                                            background: `linear-gradient(135deg, #10b981 50%, ${leaveCode ? rightColor : '#10b981'} 50%)`, // Half Green (Present) / Half Blue
+                                            borderColor: 'transparent'
+                                        };
+                                    } else {
+                                        overlayText = `0.5 A + 0.5 ${leaveCode}`;
+                                        const isPink = String(request.leaveType || '').toLowerCase().includes('pink');
+                                        const rightColor = isPink ? '#ec4899' : '#2563eb';
+                                        customStyle = {
+                                            background: `linear-gradient(135deg, #ef4444 50%, ${rightColor} 50%)`, // Half Red (Absent) / Half Blue or Pink
+                                            borderColor: 'transparent'
+                                        };
+                                    }
+                                } else if (lType.includes('correction')) {
                                     overlayText = 'RC';
                                     customStyle = {
                                         background: '#10b981', // Solid green for correction
@@ -584,15 +621,6 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     overlayText = 'RP';
                                     customStyle = {
                                         background: '#2563eb', // Solid blue for permission
-                                        borderColor: 'transparent'
-                                    };
-                                } else if (request.dayOption === 'half') {
-                                    const leaveCode = getLeaveAbbreviation(request.leaveType || (request as any).leave_type);
-                                    overlayText = `0.5 A + 0.5 ${leaveCode}`;
-                                    const isPink = String(request.leaveType || '').toLowerCase().includes('pink');
-                                    const rightColor = isPink ? '#ec4899' : '#2563eb';
-                                    customStyle = {
-                                        background: `linear-gradient(135deg, #ef4444 50%, ${rightColor} 50%)`, // Half Red (Absent) / Half Blue or Pink
                                         borderColor: 'transparent'
                                     };
                                 } else {
