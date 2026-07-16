@@ -4,7 +4,11 @@
 	"webDir": "dist",
 	"server": {
 		"androidScheme": "https",
-		"hostname": "app.paradigmfms.com"
+		"allowNavigation": [
+			"app.paradigmfms.com",
+			"*.supabase.co",
+			"https://api.qrserver.com/**"
+		]
 	},
 	"android": {
 		"allowMixedContent": true
@@ -16,6 +20,30 @@
 				"sound",
 				"alert"
 			]
+		},
+		"Badge": {
+			"persist": true,
+			"autoClear": false
+		},
+		"SplashScreen": {
+			"launchAutoHide": true,
+			"launchShowDuration": 2000,
+			"launchFadeOutDuration": 500,
+			"backgroundColor": "#041b0f",
+			"showSpinner": false
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#041b0f"
+		},
+		"Keyboard": {
+			"resize": "body",
+			"resizeOnFullScreen": true
+		},
+		"SocialLogin": {
+			"google": {
+				"webClientId": "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com"
+			}
 		}
 	},
 	"packageClassList": [
@@ -23,18 +51,25 @@
 		"ContactsPlugin",
 		"CapacitorSQLitePlugin",
 		"AppPlugin",
+		"CAPBrowserPlugin",
 		"CAPCameraPlugin",
 		"DevicePlugin",
 		"FilesystemPlugin",
 		"GeolocationPlugin",
+		"HapticsPlugin",
+		"KeyboardPlugin",
 		"LocalNotificationsPlugin",
 		"CAPNetworkPlugin",
 		"PreferencesPlugin",
 		"PushNotificationsPlugin",
+		"ScreenOrientationPlugin",
 		"SplashScreenPlugin",
 		"StatusBarPlugin",
+		"AppUpdatePlugin",
 		"BadgePlugin",
+		"SocialLoginPlugin",
 		"CapacitorUpdaterPlugin",
+		"NativeSettingsPlugin",
 		"CDVPlugin"
 	]
 }

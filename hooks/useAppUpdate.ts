@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { AppUpdate, AppUpdateAvailability } from '@capawesome/capacitor-app-update';
 import { useAuthStore } from '../store/authStore';
 
 export interface AppVersionInfo {
@@ -68,17 +69,63 @@ export const useAppUpdate = () => {
   }, []);
 
   const checkVersion = async () => {
+    // Only check native app updates on Android platform
     if (Capacitor.getPlatform() !== 'android') {
       setIsChecking(false);
       return;
     }
 
-    try {
-      // 1. Get current device app version
-      const appInfo = await App.getInfo();
-      const currentVersionCode = parseInt(appInfo.build, 10);
+    // 1. Try native App Store / Play Store check first if on iOS or Android native platform
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const info = await AppUpdate.getAppUpdateInfo();
+        if (info.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE) {
+          // Play Store / App Store has a newer version!
+          
+          // Construct version info object for our UI modal
+          const latestCode = info.availableVersionCode ? parseInt(info.availableVersionCode, 10) : 0;
+          const remoteInfo: AppVersionInfo = {
+            latestVersionCode: latestCode,
+            latestVersionName: info.availableVersionName || `v${latestCode}`,
+            apkDownloadUrl: 'https://play.google.com/store/apps/details?id=com.paradigm.ifs',
+            releaseNotes: 'A new native update is available on the Play Store. Please update the app to receive the latest features and security improvements.',
+            isMandatory: info.immediateUpdateAllowed || false
+          };
 
-      // 2. Fetch the latest version info from our public version.json
+          setUpdateInfo(remoteInfo);
+          setIsUpdateRequired(true);
+          
+          // Trigger native Immediate in-app update overlay directly on Android if allowed
+          if (Capacitor.getPlatform() === 'android' && info.immediateUpdateAllowed) {
+            await AppUpdate.performImmediateUpdate();
+          }
+
+          setIsChecking(false);
+          return;
+        } else {
+          // Play Store reports no update is available yet (e.g. Google review is pending).
+          // We return early and bypass checking version.json on Vercel to avoid locking the user.
+          setIsChecking(false);
+          return;
+        }
+      } catch (nativeErr) {
+        console.warn('[AppUpdate] Native store check failed, falling back to version.json web configuration:', nativeErr);
+      }
+    }
+
+    // 2. Web/PWA or Localhost Fallback Check (original version.json configuration)
+    try {
+      // Get current version code
+      let currentVersionCode = 0;
+      try {
+        const appInfo = await App.getInfo();
+        currentVersionCode = parseInt(appInfo.build, 10) || 0;
+      } catch (err) {
+        // Fallback for browser testing
+        currentVersionCode = 0;
+      }
+
+      // Fetch the latest version info from our public version.json
       // Cache buster included to ensure we get the latest file
       const response = await fetch(`https://app.paradigmfms.com/version.json?t=${new Date().getTime()}`);
       if (!response.ok) {
@@ -87,12 +134,12 @@ export const useAppUpdate = () => {
 
       const remoteInfo: AppVersionInfo = await response.json();
 
-      // 3. Compare version codes
+      // Compare version codes
       if (remoteInfo.latestVersionCode > currentVersionCode) {
         setUpdateInfo(remoteInfo);
         setIsUpdateRequired(true);
 
-        // 4. Send FCU in-app notification broadcast to all users (once per version)
+        // Send FCU in-app notification broadcast to all users (once per version)
         sendFcuBroadcast(remoteInfo);
       }
     } catch (error) {

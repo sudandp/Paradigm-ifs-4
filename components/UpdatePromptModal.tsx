@@ -11,13 +11,18 @@ interface UpdatePromptModalProps {
 export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo, onLater }) => {
   if (!updateInfo) return null;
 
-  const handleUpdate = () => {
-    const playStoreUrl = 'market://details?id=com.paradigm.ifs';
-    const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
-
+  const handleUpdate = async () => {
     if (Capacitor.isNativePlatform()) {
-      window.open(playStoreUrl, '_system');
+      try {
+        const { AppUpdate } = await import('@capawesome/capacitor-app-update');
+        await AppUpdate.openAppStore();
+      } catch (err) {
+        console.warn('Failed to open app store natively, using fallback URL:', err);
+        const playStoreUrl = 'market://details?id=com.paradigm.ifs';
+        window.open(playStoreUrl, '_system');
+      }
     } else {
+      const fallbackUrl = 'https://play.google.com/store/apps/details?id=com.paradigm.ifs';
       window.open(fallbackUrl, '_blank');
     }
   };

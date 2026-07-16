@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useForm, Controller, SubmitHandler, Resolver, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -29,6 +29,8 @@ type FormData = Pick<SupportTicket, 'title' | 'description' | 'category' | 'prio
 
 const NewTicketPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const fromPath = (location.state as any)?.from || '/support';
     const { user } = useAuthStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [users, setUsers] = useState<User[]>([]);
@@ -82,7 +84,7 @@ const NewTicketPage: React.FC = () => {
                 feedback: null
             } as any);
             setToast({ message: 'Ticket created successfully!', type: 'success' });
-            setTimeout(() => navigate('/support'), 1500);
+            setTimeout(() => navigate(fromPath), 1500);
         } catch (error) {
             setToast({ message: 'Failed to create ticket.', type: 'error' });
         } finally {
@@ -164,7 +166,7 @@ const NewTicketPage: React.FC = () => {
                         <footer className="pt-6 mt-auto flex items-center justify-between relative z-10">
                             <button
                                 type="button"
-                                onClick={() => navigate('/support')}
+                                onClick={() => navigate(fromPath)}
                                 disabled={isSubmitting}
                                 className="text-white text-sm font-bold bg-transparent px-2"
                             >
@@ -306,7 +308,7 @@ const NewTicketPage: React.FC = () => {
                     <div className="mt-8 pt-6 border-t flex justify-end gap-3 border-gray-100">
                         <Button
                             type="button"
-                            onClick={() => navigate('/support')}
+                            onClick={() => navigate(fromPath)}
                             variant="secondary"
                             disabled={isSubmitting}
                         >

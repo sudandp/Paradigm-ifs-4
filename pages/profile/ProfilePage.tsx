@@ -27,6 +27,7 @@ import HelpTicketModal from '../../components/support/HelpTicketModal';
 import Modal from '../../components/ui/Modal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Capacitor } from '@capacitor/core';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
 
@@ -1252,7 +1253,14 @@ const ProfilePage: React.FC = () => {
                             </button>
                             <button 
                                 type="button"
-                                onClick={() => { triggerHaptic(); setIsHelpModalOpen(true); }}
+                                onClick={() => {
+                                    triggerHaptic();
+                                    if (isMobile) {
+                                        setIsHelpModalOpen(true);
+                                    } else {
+                                        navigate('/support/ticket/new', { state: { from: '/profile' } });
+                                    }
+                                }}
                                 className="px-2 py-1.5 bg-transparent border-none text-amber-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1 active:scale-95 transition-all hover:opacity-70"
                             >
                                 <HelpCircle className="w-3 h-3 text-amber-400" />

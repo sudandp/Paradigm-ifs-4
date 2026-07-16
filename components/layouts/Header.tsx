@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { User, LogOut, Crosshair, ChevronDown, Menu, X, ArrowLeft, Bell, Plus, HelpCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -151,7 +152,14 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
                                                 </Link>
                                             )}
                                             <button
-                                                onClick={() => { setIsHelpModalOpen(true); setIsUserMenuOpen(false); }}
+                                                onClick={() => {
+                                                    if (isMobile) {
+                                                        setIsHelpModalOpen(true);
+                                                    } else {
+                                                        navigate('/support/ticket/new', { state: { from: location.pathname } });
+                                                    }
+                                                    setIsUserMenuOpen(false);
+                                                }}
                                                 className="flex items-center w-full text-left px-4 py-2 text-sm text-primary-text hover:bg-page"
                                                 role="menuitem"
                                             >
