@@ -844,10 +844,10 @@ const ApplyLeave: React.FC = () => {
             const duration = formData.dayOption === 'half' ? 0.5 : differenceInCalendarDays(endDateObj, startDateObj) + 1;
 
             // Strict time check: 
-            // 1. Sick Leave, Comp Off, Correction, Permission, and Pink Leave can be applied for any date (past/present/future).
+            // 1. Sick Leave, Comp Off, Correction, Permission, Pink Leave, and WFH can be applied for any date (past/present/future).
             // 2. Earned Leave can be applied for the same day IF applied before 9:00 AM. Otherwise, at least 1 day in advance.
             // 3. All other leaves must be applied at least one day in advance (no past or present days).
-            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave'].includes(formData.leaveType)) {
+            if (!['Correction', 'Permission', 'Sick', 'Comp Off', 'Pink Leave', 'WFH'].includes(formData.leaveType)) {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
