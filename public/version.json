@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 95,
-  "latestVersionName": "18.5.0",
+  "latestVersionCode": 96,
+  "latestVersionName": "18.6.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "chore: update package-lock.json dependencies\nfeat: implement useAppUpdate hook to handle native Android updates and role-based version broadcast notifications\nfeat: implement support ticket creation page, add app update capability, and establish new mobile UI components.\nfeat: implement enterprise approvals inbox with analytics dashboard and request management components\nfeat: implement ApplyLeave component with multi-type request handling and validation schema",
+  "releaseNotes": "feat: implement permissions primer and background tracking support for mobile builds\nchore: update package-lock.json dependencies\nfeat: implement useAppUpdate hook to handle native Android updates and role-based version broadcast notifications\nfeat: implement support ticket creation page, add app update capability, and establish new mobile UI components.\nfeat: implement enterprise approvals inbox with analytics dashboard and request management components",
   "isMandatory": true
 }
