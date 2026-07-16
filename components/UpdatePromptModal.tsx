@@ -37,7 +37,7 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({ updateInfo
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden flex flex-col items-center p-6 text-center animate-in fade-in zoom-in duration-300">
 
         <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-6">

@@ -151,6 +151,19 @@ export const checkRequiredPermissions = async () => {
                 if (!results?.hasPermission) missing.push('Music');
             }
         }
+
+        // 8. Physical Activity / Motion (Android 10+ — ACTIVITY_RECOGNITION)
+        if (isAndroid) {
+            const permissions = (window as any).plugins?.permissions;
+            if (permissions) {
+                // ACTIVITY_RECOGNITION is available from the cordova-plugin-android-permissions plugin
+                const ACTIVITY_RECOGNITION = 'android.permission.ACTIVITY_RECOGNITION';
+                const results = await new Promise<any>((resolve) => {
+                    permissions.hasPermission(ACTIVITY_RECOGNITION, (status: any) => resolve(status), () => resolve({ hasPermission: false }));
+                });
+                if (!results?.hasPermission) missing.push('Physical Activity');
+            }
+        }
     } catch (e) {
         console.error('[PermissionUtils] Native check error:', e);
     }
@@ -335,6 +348,25 @@ export const requestAllPermissions = async (onProgress?: (id: string, missing: s
             await delay(reqDelay);
         }
     } catch (e) { console.error('Music req failed', e); }
+
+    // 8. Physical Activity (Android 10+ — ACTIVITY_RECOGNITION)
+    if (Capacitor.getPlatform() === 'android') {
+        try {
+            let { missing } = await checkRequiredPermissions();
+            if (missing.includes('Physical Activity')) {
+                if (onProgress) onProgress('Physical Activity', missing);
+                const permissions = (window as any).plugins?.permissions;
+                if (permissions) {
+                    const ACTIVITY_RECOGNITION = 'android.permission.ACTIVITY_RECOGNITION';
+                    await new Promise((resolve) => {
+                        permissions.requestPermission(ACTIVITY_RECOGNITION, resolve, resolve);
+                    });
+                }
+                await reCheck('Physical Activity');
+                await delay(reqDelay);
+            }
+        } catch (e) { console.error('Physical Activity req failed', e); }
+    }
 
     if (onProgress) onProgress('', (await checkRequiredPermissions()).missing);
 };

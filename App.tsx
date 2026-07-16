@@ -45,6 +45,7 @@ import { lazyWithRetry } from './utils/lazyLoad';
 import { useAppUpdate } from './hooks/useAppUpdate';
 import { UpdatePromptModal } from './components/UpdatePromptModal';
 import UpdateRequiredBanner, { isVersionOutdated } from './components/UpdateRequiredBanner';
+import OfflineScreen from './components/ui/OfflineScreen';
 import { APP_VERSION } from './src/config/appVersion';
 import { Network } from '@capacitor/network';
 
@@ -410,24 +411,111 @@ const App: React.FC = () => {
   const [showProvision, setShowProvision] = useState(false);
   const { isKioskMode, setKioskMode: updateKioskMode, setDeviceId, isKioskSkipped, setKioskSkipped } = useGateStore();
   const setIsOffline = useAuthStore(state => state.setIsOffline);
+  const isOffline = useAuthStore(state => state.isOffline);
 
   // ── Network Status Tracking ────────────────────────────────────────────────
   useEffect(() => {
-    const initNetwork = async () => {
-      const status = await Network.getStatus();
-      setIsOffline(!status.connected);
+    const syncData = async () => {
+      try {
+        const { settings, roles, holidays } = await apiService.getInitialAppData();
+        const recurringHolidays = await apiService.getRecurringHolidays();
+        if (settings.enrollmentRules) initEnrollmentRules(settings.enrollmentRules);
+        if (roles) initRoles(roles);
+        if (settings.attendanceSettings && holidays) {
+          initSettings({
+            holidays: holidays,
+            attendanceSettings: settings.attendanceSettings,
+            recurringHolidays: recurringHolidays || [],
+            apiSettings: settings.apiSettings,
+            addressSettings: settings.addressSettings,
+            geminiApiSettings: settings.geminiApiSettings,
+            kycApiSettings: settings.kycApiSettings,
+            esignApiSettings: settings.esignApiSettings,
+            offlineOcrSettings: settings.offlineOcrSettings,
+            perfiosApiSettings: settings.perfiosApiSettings,
+            otpSettings: settings.otpSettings,
+            siteManagementSettings: settings.siteManagementSettings,
+            notificationSettings: settings.notificationSettings,
+            voipSettings: settings.voipSettings,
+          });
+        }
+        await useAuthStore.getState().checkAttendanceStatus();
+        console.log('[Network] Successfully synced all app details after reconnecting.');
+        setIsOffline(false);
+      } catch (err) {
+        console.error('[Network] Failed to sync data after reconnecting:', err);
+        window.location.reload();
+      }
     };
-    initNetwork();
 
-    const networkListener = Network.addListener('networkStatusChange', status => {
-      console.log('[Network] Status changed:', status.connected ? 'Online' : 'Offline');
-      setIsOffline(!status.connected);
-    });
+    if (Capacitor.isNativePlatform()) {
+      // Native Android/iOS: use Capacitor Network plugin
+      const initNetwork = async () => {
+        const status = await Network.getStatus();
+        setIsOffline(!status.connected);
+      };
+      initNetwork();
 
-    return () => {
-      networkListener.then(h => h.remove());
-    };
-  }, [setIsOffline]);
+      const networkListener = Network.addListener('networkStatusChange', async status => {
+        console.log('[Network] Status changed:', status.connected ? 'Online' : 'Offline');
+        setIsOffline(!status.connected);
+        if (status.connected) await syncData();
+      });
+
+      return () => {
+        networkListener.then(h => h.remove());
+      };
+    } else {
+      // Web browser: active ping-based connectivity check (works even if WiFi is connected but no internet)
+      const PING_URL = 'https://app.paradigmfms.com/version.json';
+      const PING_INTERVAL_ONLINE = 5000;   // check every 5s when online
+      const PING_INTERVAL_OFFLINE = 3000;  // retry every 3s when offline
+
+      let pingTimer: ReturnType<typeof setTimeout> | null = null;
+      let wasOffline = false;
+
+      const checkConnectivity = async () => {
+        try {
+          await fetch(`${PING_URL}?_=${Date.now()}`, {
+            method: 'HEAD',
+            cache: 'no-cache',
+            signal: AbortSignal.timeout(4000),
+          });
+          // Successfully reached the internet
+          if (wasOffline) {
+            wasOffline = false;
+            await syncData(); // resync data now that we're back online
+          } else {
+            setIsOffline(false);
+          }
+          pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_ONLINE);
+        } catch {
+          // Failed — truly offline or no internet access
+          wasOffline = true;
+          setIsOffline(true);
+          console.log('[Network] Ping failed — marking offline.');
+          pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
+        }
+      };
+
+      // Also keep browser events as a fast-path trigger
+      const handleOffline = () => {
+        wasOffline = true;
+        setIsOffline(true);
+        if (pingTimer) clearTimeout(pingTimer);
+        pingTimer = setTimeout(checkConnectivity, PING_INTERVAL_OFFLINE);
+      };
+      window.addEventListener('offline', handleOffline);
+
+      // Start the first ping immediately
+      checkConnectivity();
+
+      return () => {
+        if (pingTimer) clearTimeout(pingTimer);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+  }, [setIsOffline, initEnrollmentRules, initRoles, initSettings]);
 
   // ── Sync Supabase Session to Cookie for /api/view-file proxy ──────────────
   useEffect(() => {
@@ -1315,6 +1403,7 @@ const App: React.FC = () => {
   // Once initialized, render the main application structure.
   return (
     <>
+      {isOffline && <OfflineScreen />}
       <ScrollToTop />
       <ThemeManager />
       {isAppOutdated && <UpdateRequiredBanner />}

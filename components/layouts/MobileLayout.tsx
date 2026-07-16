@@ -70,6 +70,7 @@ const MobileLayout: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-[#041b0f]">
+
             {/* Mobile Header - Auto-hide on scroll (FAST) */}
             {/* Hide global header for specific standalone pages like Apply for Leave or Site Attendance Tracker */}
              {!isFullScreenLoading &&
@@ -89,8 +90,6 @@ const MobileLayout: React.FC = () => {
                 </div>
             )}
 
-            {/* Main Content Area */}
-            {/* Increased bottom padding by 30% (9.1rem = 7rem * 1.3) for more clearance */}
             <main
                 ref={mainRef}
                 className={`flex-1 overflow-y-auto ${

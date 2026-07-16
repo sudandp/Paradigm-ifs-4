@@ -4,7 +4,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import Logo from './ui/Logo';
 import Button from './ui/Button';
 import { checkRequiredPermissions, requestAllPermissions } from '../utils/permissionUtils';
-import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Users } from 'lucide-react';
+import { ShieldCheck, AlertCircle, Settings, Camera, MapPin, Bell, CheckCircle2, Smartphone, Users, Activity } from 'lucide-react';
 import './PermissionsPrimer.css';
 
 interface PermissionsPrimerProps {
@@ -25,6 +25,7 @@ const PermissionsPrimer: React.FC<PermissionsPrimerProps> = ({ onComplete }) => 
       { id: 'Location', icon: MapPin, label: 'Location Services' },
       { id: 'Notifications', icon: Bell, label: 'Push Notifications' },
       { id: 'Contacts', icon: Users, label: 'Contacts' },
+      { id: 'Physical Activity', icon: Activity, label: 'Physical Activity' },
     ];
 
     if (Capacitor.isNativePlatform()) return fullList;

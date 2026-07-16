@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 94,
-  "latestVersionName": "18.4.0",
+  "latestVersionCode": 95,
+  "latestVersionName": "18.5.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "refactor: remove What's New modal and add dismissible UpdatePromptModal functionality\nfeat: add WhatsNewModal component and create extensive diagnostic scratch scripts\nfeat: add ProfilePage, auth store, and utility scripts for managing attendance and user sessions\nfeat: implement profile page, attendance tracking, and leave management system with associated services and store configurations\nfeat: implement site staff payroll, attendance, and leave management system modules",
+  "releaseNotes": "chore: update package-lock.json dependencies\nfeat: implement useAppUpdate hook to handle native Android updates and role-based version broadcast notifications\nfeat: implement support ticket creation page, add app update capability, and establish new mobile UI components.\nfeat: implement enterprise approvals inbox with analytics dashboard and request management components\nfeat: implement ApplyLeave component with multi-type request handling and validation schema",
   "isMandatory": true
 }
