@@ -26,8 +26,10 @@ import type { Notification, NotificationType, AttendanceUnlockRequest, LeaveRequ
 import Button from '../ui/Button';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-import { CheckCircle, XCircle, Calendar, FileText, MapPin, IndianRupee } from 'lucide-react';
+import { CheckCircle, XCircle, Calendar, FileText, MapPin, IndianRupee, Key } from 'lucide-react';
 import { ProfilePlaceholder } from '../ui/ProfilePlaceholder';
+import { supabase } from '../../services/supabase';
+import { isAdmin } from '../../utils/auth';
 import { calculateAllEmployeeScores, type EmployeeScoreWithUser } from '../../services/employeeScoring';
 
 const NotificationIcon: React.FC<{ type: NotificationType; size?: string }> = ({ type, size = "h-5 w-5" }) => {
@@ -75,11 +77,12 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     const navigate = useNavigate();
     const [currentPage, setCurrentPage] = React.useState(1);
     const [pageSize, setPageSize] = React.useState(20);
-    const [unlockRequests, setUnlockRequests] = React.useState<AttendanceUnlockRequest[]>([]);
+        const [unlockRequests, setUnlockRequests] = React.useState<AttendanceUnlockRequest[]>([]);
     const [leaveRequests, setLeaveRequests] = React.useState<LeaveRequest[]>([]);
     const [extraWorkClaims, setExtraWorkClaims] = React.useState<ExtraWorkLog[]>([]);
     const [financeRequests, setFinanceRequests] = React.useState<SiteFinanceRecord[]>([]);
     const [invoiceAlerts, setInvoiceAlerts] = React.useState<SiteInvoiceRecord[]>([]);
+    const [reportAccessRequests, setReportAccessRequests] = React.useState<any[]>([]);
     
     const [expandedSections, setExpandedSections] = React.useState({
         unlocks: false,
@@ -90,7 +93,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         general: false,
         violations: false,
         inactive: false,
-        team: false
+        team: false,
+        reportAccess: false
     });
     const [expandedDetails, setExpandedDetails] = React.useState<Record<string, boolean>>({});
 
@@ -114,7 +118,7 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
         return ['hr', 'hr_ops'].includes(role);
     }, [user]);
 
-    const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team') => {
+    const toggleSection = (section: 'unlocks' | 'leaves' | 'claims' | 'finance' | 'invoices' | 'general' | 'violations' | 'inactive' | 'team' | 'reportAccess') => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
@@ -222,7 +226,19 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
             const financeManagerId = user.id;
 
-            const [unlocksResult, leavesResult, claimsResult, financeResult, invoicesResult] = await Promise.allSettled([
+            let reportAccessPromise: Promise<any[]> = Promise.resolve([]);
+            if (role === 'admin' || role === 'super_admin' || role === 'developer') {
+                reportAccessPromise = (async () => {
+                    const { data } = await supabase
+                        .from('ops_approval_requests')
+                        .select('*')
+                        .eq('module_name', 'ReportAccess')
+                        .eq('status', 'Pending');
+                    return data || [];
+                })();
+            }
+
+            const [unlocksResult, leavesResult, claimsResult, financeResult, invoicesResult, reportAccessResult] = await Promise.allSettled([
                 api.getAttendanceUnlockRequests(isSuperAdmin ? undefined : user.id),
                 leavesPromise,
                 api.getExtraWorkLogs({ 
@@ -230,7 +246,8 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                     managerId: isSuperAdmin ? undefined : user.id 
                 }),
                 api.getPendingFinanceRecords(financeManagerId),
-                api.getSiteInvoiceRecords(financeManagerId)
+                api.getSiteInvoiceRecords(financeManagerId),
+                reportAccessPromise
             ]);
 
             if (unlocksResult.status === 'fulfilled') setUnlockRequests(unlocksResult.value.filter(r => r.userId !== user.id));
@@ -242,6 +259,9 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                 setInvoiceAlerts((invoicesResult.value || []).filter(inv => 
                     !inv.invoiceSentDate && inv.invoiceSharingTentativeDate && inv.invoiceSharingTentativeDate <= today
                 ));
+            }
+            if (reportAccessResult.status === 'fulfilled') {
+                setReportAccessRequests(reportAccessResult.value as any[]);
             }
 
             if (isSuperAdmin || isHR) {
@@ -298,6 +318,191 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             setIsActionLoading(null);
             // Refresh counts to update badge
             useNotificationStore.getState().fetchNotifications();
+        }
+    };
+
+    const generateDeterministicPasscode = (id: string): string => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            const char = id.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash |= 0;
+        }
+        const code = Math.abs(hash) % 1000000;
+        return code.toString().padStart(6, '0');
+    };
+
+    const extractPasscode = (comments?: string): string => {
+        if (!comments) return '';
+        const match = comments.match(/Passcode:\s*(\d{6})/i);
+        return match ? match[1] : '';
+    };
+
+    const extractReason = (comments?: string): string => {
+        if (!comments) return '';
+        const match = comments.match(/Reason:\s*([^|]+)/i);
+        if (match) return match[1].trim();
+        if (comments.includes('|')) {
+            const parts = comments.split('|');
+            return parts[1].replace(/Reason:\s*/i, '').trim();
+        }
+        if (comments.startsWith('Passcode:')) return '';
+        return comments.trim();
+    };
+
+    const handleRespondToReportAccess = async (reqId: string, status: 'Approved' | 'Rejected', rejectReason?: string) => {
+        if (!user) return;
+        setIsActionLoading(reqId);
+        try {
+            const request = reportAccessRequests.find(r => r.id === reqId);
+            if (!request) return;
+
+            let comments = '';
+            let passcode = '';
+            if (status === 'Approved') {
+                passcode = Math.floor(100000 + Math.random() * 900000).toString();
+                comments = `Passcode: ${passcode}${request.comments ? ` | Reason: ${request.comments}` : ''}`;
+            } else {
+                comments = `${rejectReason || 'Rejected via Notification Panel'}${request.comments ? ` | Reason: ${request.comments}` : ''}`;
+            }
+
+            const { error } = await supabase
+                .from('ops_approval_requests')
+                .update({
+                    status,
+                    approver_id: user.id,
+                    comments,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', reqId)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const passcodeToUse = passcode || (status === 'Approved' ? generateDeterministicPasscode(reqId) : '');
+            const message = status === 'Approved' 
+              ? `Your access request for ${request.title.replace('Access Request: ', '')} has been approved. Use passcode ${passcodeToUse} to unlock.`
+              : `Your access request for ${request.title.replace('Access Request: ', '')} was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ''}`;
+            
+            const link = '/attendance/dashboard';
+            
+            await supabase
+              .from('notifications')
+              .insert({
+                user_id: request.requested_by || request.requestedBy,
+                message,
+                type: 'info',
+                link_to: link,
+                severity: status === 'Approved' ? 'Medium' : 'High',
+                metadata: {
+                  requestId: reqId,
+                  status,
+                  link
+                }
+              });
+
+            await supabase.functions.invoke('send-notification', {
+              body: {
+                userIds: [request.requested_by || request.requestedBy],
+                title: status === 'Approved' ? 'Access Request Approved' : 'Access Request Rejected',
+                message,
+                data: {
+                  link,
+                  requestId: reqId
+                }
+              }
+            });
+
+            const { data: userData, error: userErr } = await supabase
+              .from('users')
+              .select('reporting_manager_id')
+              .eq('id', request.requested_by || request.requestedBy)
+              .maybeSingle();
+
+            if (!userErr && userData?.reporting_manager_id) {
+              const managerMessage = status === 'Approved'
+                ? `Access request by ${request.requestedByName || 'Employee'} for ${request.title.replace('Access Request: ', '')} has been approved. Passcode: ${passcodeToUse}`
+                : `Access request by ${request.requestedByName || 'Employee'} for ${request.title.replace('Access Request: ', '')} was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ''}`;
+
+              await supabase
+                .from('notifications')
+                .insert({
+                  user_id: userData.reporting_manager_id,
+                  message: managerMessage,
+                  type: 'info',
+                  link_to: link,
+                  severity: status === 'Approved' ? 'Medium' : 'High',
+                  metadata: {
+                    requestId: reqId,
+                    status,
+                    link
+                  }
+                });
+
+              await supabase.functions.invoke('send-notification', {
+                body: {
+                  userIds: [userData.reporting_manager_id],
+                  title: status === 'Approved' ? 'Team Access Request Approved' : 'Team Access Request Rejected',
+                  message: managerMessage,
+                  data: {
+                    link,
+                    requestId: reqId
+                  }
+                }
+              });
+            }
+
+            if (status === 'Approved') {
+                setReportAccessRequests(prev => prev.map(r => r.id === reqId ? { ...r, status, comments, approverId: user.id, approver_id: user.id } : r));
+            } else {
+                setReportAccessRequests(prev => prev.filter(r => r.id !== reqId));
+            }
+
+        } catch (err) {
+            console.error('Failed to respond to report access request:', err);
+        } finally {
+            setIsActionLoading(null);
+            useNotificationStore.getState().fetchNotifications();
+        }
+    };
+
+    const handleRejectClick = (reqId: string) => {
+        const reason = prompt("Enter rejection reason:");
+        if (reason === null) return;
+        if (!reason.trim()) {
+            alert("Rejection reason is required!");
+            return;
+        }
+        handleRespondToReportAccess(reqId, 'Rejected', reason);
+    };
+
+    const handleSharePasscode = async (req: any) => {
+        const passcode = extractPasscode(req.comments) || generateDeterministicPasscode(req.id);
+        const message = `Your access passcode for report is: ${passcode}`;
+        try {
+            await navigator.clipboard.writeText(passcode);
+        } catch (clipErr) {
+            console.warn('Failed to copy to clipboard:', clipErr);
+        }
+        try {
+            await supabase.functions.invoke('send-notification', {
+              body: {
+                userIds: [req.requested_by || req.requestedBy],
+                title: '🔑 Report Passcode',
+                message,
+                data: {
+                  link: '/attendance/dashboard',
+                  requestId: req.id
+                }
+              }
+            });
+            alert(`Passcode ${passcode} copied to clipboard and sent to user!`);
+            setReportAccessRequests(prev => prev.filter(r => r.id !== req.id));
+        } catch (fnErr) {
+            console.error('Failed to invoke notification for share:', fnErr);
+            alert(`Passcode ${passcode} copied to clipboard! (Notification delivery failed)`);
+            setReportAccessRequests(prev => prev.filter(r => r.id !== req.id));
         }
     };
 
@@ -496,8 +701,9 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
     }).length;
     const totalPages = Math.ceil(filteredNotifCount / pageSize);
 
+    const isUserAdmin = user && isAdmin(user.role);
     const pendingCount = isManagerRole 
-        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + inactiveEmployees.length + securityViolations.length + invoiceAlerts.length + teamActivityNotifications.length) 
+        ? (unlockRequests.length + leaveRequests.length + extraWorkClaims.length + financeRequests.length + inactiveEmployees.length + securityViolations.length + invoiceAlerts.length + teamActivityNotifications.length + (isUserAdmin ? reportAccessRequests.length : 0)) 
         : (securityViolations.length + invoiceAlerts.length);
 
     if (!isOpen) return null;
@@ -994,6 +1200,111 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
                                                             <XCircle className="w-3 h-3 mr-1" /> Reject
                                                         </Button>
                                                     </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {/* Report Access Requests */}
+                            {isUserAdmin && reportAccessRequests.length > 0 && (
+                                <div className={`group rounded-2xl overflow-hidden transition-all duration-300 border ${isMobile ? 'border-white/10 bg-transparent' : 'border-emerald-100 bg-white hover:shadow-md'}`}>
+                                    <button 
+                                        onClick={() => toggleSection('reportAccess')}
+                                        className="w-full p-3 flex items-center justify-between bg-transparent"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-xl flex items-center justify-center ${isMobile ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                <Key className="w-4 h-4" />
+                                            </div>
+                                            <div className="text-left">
+                                                <p className={`text-xs font-bold ${isMobile ? 'text-white' : 'text-gray-900'}`}>Report Access Requests</p>
+                                                <p className={`text-[10px] ${isMobile ? 'text-white/50' : 'text-gray-500'}`}>Approvals needed</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full text-[10px] font-bold ${isMobile ? 'bg-emerald-500 text-black shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                {reportAccessRequests.filter(r => r.status === 'Pending').length}
+                                            </span>
+                                            {expandedSections.reportAccess ? <ChevronUp className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} /> : <ChevronDown className={`w-4 h-4 ${isMobile ? 'text-white/50' : 'text-gray-400'}`} />}
+                                        </div>
+                                    </button>
+                                    
+                                    {expandedSections.reportAccess && (
+                                        <div className={`p-3 space-y-3 border-t ${isMobile ? 'border-white/5' : 'border-emerald-100/50'}`}>
+                                            <div className="flex items-center gap-2 px-1 py-1">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                                                <span className={`text-[10px] font-black uppercase tracking-wider ${isMobile ? 'text-amber-400' : 'text-amber-700'}`}>
+                                                    Attention: Report Unlock Required
+                                                </span>
+                                            </div>
+                                            {reportAccessRequests.map(req => (
+                                                <div key={req.id} className={`rounded-xl p-3 border ${isMobile ? 'bg-black/20 border-white/5' : 'bg-emerald-50/30 border-emerald-100'}`}>
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <p className={`text-xs font-bold truncate ${isMobile ? 'text-white' : 'text-gray-900'}`}>{req.requestedByName || 'Employee'}</p>
+                                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : req.status === 'Rejected' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'}`}>
+                                                                    {req.status}
+                                                                </span>
+                                                            </div>
+                                                            <p className={`text-[9px] ${isMobile ? 'text-white/50' : 'text-emerald-700/60'}`}>{req.title}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Reason/Comments for Request */}
+                                                    <div className={`rounded-lg p-2.5 border mb-3 ${isMobile ? 'bg-black/20 border-white/5' : 'bg-white border-emerald-100/50'}`}>
+                                                        <p className={`text-[11px] italic leading-relaxed ${isMobile ? 'text-white/70' : 'text-gray-700'}`}>
+                                                            "{(req.status === 'Pending' ? req.comments : extractReason(req.comments)) || 'No reason provided'}"
+                                                        </p>
+                                                    </div>
+
+                                                    {req.status === 'Pending' ? (
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                disabled={isActionLoading === req.id}
+                                                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 border-none text-[9px] uppercase font-bold h-8 shadow-lg shadow-emerald-900/20"
+                                                                onClick={() => handleRespondToReportAccess(req.id, 'Approved')}
+                                                            >
+                                                                Approve
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                disabled={isActionLoading === req.id}
+                                                                className={`flex-1 text-[9px] uppercase font-bold h-8 ${isMobile ? 'border-white/10 text-white hover:bg-white/5' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}
+                                                                onClick={() => handleRejectClick(req.id)}
+                                                            >
+                                                                Reject
+                                                            </Button>
+                                                        </div>
+                                                    ) : req.status === 'Approved' ? (
+                                                        <div className="space-y-3">
+                                                            <div className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex items-center justify-between">
+                                                                <div className="text-left">
+                                                                    <p className="text-[9px] uppercase font-bold tracking-wider text-emerald-500/70">Passcode</p>
+                                                                    <p className="text-sm font-black text-emerald-500 font-mono tracking-widest">
+                                                                        {extractPasscode(req.comments) || generateDeterministicPasscode(req.id)}
+                                                                    </p>
+                                                                </div>
+                                                                <Button 
+                                                                    size="sm"
+                                                                    className="bg-emerald-600 hover:bg-emerald-700 text-[9px] uppercase font-bold h-7 py-0 px-3 border-none text-white"
+                                                                    onClick={() => handleSharePasscode(req)}
+                                                                >
+                                                                    Share / Send
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 bg-rose-500/5 border border-rose-500/10 rounded-xl">
+                                                            <p className="text-[9px] uppercase font-bold tracking-wider text-rose-500/70">Rejection Reason</p>
+                                                            <p className="text-xs text-rose-500 font-medium italic">
+                                                                {req.comments?.split('|')[0] || 'Rejected'}
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

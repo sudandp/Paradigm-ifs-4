@@ -357,7 +357,7 @@ const ApprovalsInbox: React.FC = () => {
         .insert({
           user_id: request.requestedBy,
           message,
-          type: 'security',
+          type: 'info',
           link_to: link,
           severity: status === 'Approved' ? 'Medium' : 'High',
           metadata: {
@@ -378,6 +378,46 @@ const ApprovalsInbox: React.FC = () => {
           }
         }
       });
+
+      // Get the reporting manager of the requester
+      const { data: userData, error: userErr } = await supabase
+        .from('users')
+        .select('reporting_manager_id')
+        .eq('id', request.requestedBy)
+        .maybeSingle();
+
+      if (!userErr && userData?.reporting_manager_id) {
+        const managerMessage = status === 'Approved'
+          ? `Access request by ${request.requestedByName || 'Employee'} for ${request.title.replace('Access Request: ', '')} has been approved. Passcode: ${passcode}`
+          : `Access request by ${request.requestedByName || 'Employee'} for ${request.title.replace('Access Request: ', '')} was rejected. ${reason ? `Reason: ${reason}` : ''}`;
+
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: userData.reporting_manager_id,
+            message: managerMessage,
+            type: 'info',
+            link_to: link,
+            severity: status === 'Approved' ? 'Medium' : 'High',
+            metadata: {
+              requestId: request.id,
+              status,
+              link
+            }
+          });
+
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            userIds: [userData.reporting_manager_id],
+            title: status === 'Approved' ? 'Team Access Request Approved' : 'Team Access Request Rejected',
+            message: managerMessage,
+            data: {
+              link,
+              requestId: request.id
+            }
+          }
+        });
+      }
     } catch (err) {
       console.error('Failed to notify user of access request result:', err);
     }

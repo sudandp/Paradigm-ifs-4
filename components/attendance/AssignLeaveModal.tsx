@@ -7,6 +7,8 @@ import { api } from '../../services/api';
 import Button from '../ui/Button';
 import Toast from '../ui/Toast';
 import Select from '../ui/Select';
+import { useAuthStore } from '../../store/authStore';
+import { isAdmin } from '../../utils/auth';
 
 interface AssignLeaveModalProps {
     isOpen: boolean;
@@ -23,6 +25,9 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
     users,
     currentUserId
 }) => {
+    const { user: currentUser } = useAuthStore();
+    const isCurrentUserAdmin = currentUser && isAdmin(currentUser.role);
+
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const [leaveType, setLeaveType] = useState<LeaveType>('Earned');
     const [startDate, setStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -415,7 +420,7 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                         )}
 
                         {/* Balance Info */}
-                        {selectedUserId && !['Correction', 'Permission'].includes(leaveType) && (
+                        {isCurrentUserAdmin && selectedUserId && !['Correction', 'Permission'].includes(leaveType) && (
                             <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start gap-3">
                                 <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
                                 <div className="text-sm text-blue-800">

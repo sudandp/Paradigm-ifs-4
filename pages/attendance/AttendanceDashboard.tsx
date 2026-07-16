@@ -998,6 +998,7 @@ const AttendanceDashboard: React.FC = () => {
     const [isFetchingRequests, setIsFetchingRequests] = useState(false);
     const [unlockedReports, setUnlockedReports] = useState<Record<string, number>>({});
     const [passcodeInput, setPasscodeInput] = useState('');
+    const [requestReasonInput, setRequestReasonInput] = useState('');
     const [passcodeError, setPasscodeError] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const [isExportingLeaves, setIsExportingLeaves] = useState(false);
@@ -1250,9 +1251,12 @@ const AttendanceDashboard: React.FC = () => {
                     required_role: 'admin',
                     requested_by: user.id,
                     approval_stage: 1,
-                    status: 'Pending'
+                    status: 'Pending',
+                    comments: requestReasonInput.trim() || 'Request passcode for report access'
                 });
             if (error) throw error;
+            
+            setRequestReasonInput('');
             
             // Notify all admins of the new request
             await notifyAdminsOfRequest(reportNames[type]);
@@ -1345,13 +1349,22 @@ const AttendanceDashboard: React.FC = () => {
                         <Loader2 className="h-4 w-4 animate-spin" /> Checking request status...
                     </div>
                 ) : !latestRequest ? (
-                    <button
-                        type="button"
-                        onClick={() => handleRequestAccess(reportType)}
-                        className="px-8 py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold flex items-center gap-2 shadow-sm hover:shadow-emerald-500/10 transition-all hover:scale-[1.01] active:scale-[0.99]"
-                    >
-                        Request Passcode
-                    </button>
+                    <div className="w-full max-w-sm space-y-4">
+                        <textarea
+                            placeholder="Reason for requesting access (e.g. client meeting, audit review)..."
+                            value={requestReasonInput}
+                            onChange={e => setRequestReasonInput(e.target.value)}
+                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => handleRequestAccess(reportType)}
+                            disabled={!requestReasonInput.trim()}
+                            className="w-full py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold flex items-center justify-center gap-2 shadow-sm hover:shadow-emerald-500/10 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Request Passcode
+                        </button>
+                    </div>
                 ) : latestRequest.status === 'Pending' ? (
                     <div className="space-y-4">
                         <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl font-semibold text-sm">
@@ -1374,8 +1387,11 @@ const AttendanceDashboard: React.FC = () => {
                             <p className="text-sm text-emerald-800 font-bold mb-1 flex items-center justify-center gap-2">
                                 <CheckCircle2 className="w-5 h-5 text-emerald-600" /> Request Approved
                             </p>
+                            <p className="text-xs text-emerald-600 font-semibold mb-2">
+                                Passcode: <span className="font-mono bg-emerald-100 px-2 py-0.5 rounded text-sm text-emerald-800 font-black tracking-wider select-all">{extractPasscode(latestRequest.comments) || generateDeterministicPasscode(latestRequest.id)}</span>
+                            </p>
                             <p className="text-xs text-emerald-600 font-medium">
-                                Check your notifications or messages for the passcode.
+                                Check your notifications or messages for the passcode or enter the code above to unlock.
                             </p>
                         </div>
 
@@ -1404,20 +1420,27 @@ const AttendanceDashboard: React.FC = () => {
                         </div>
                     </div>
                 ) : latestRequest.status === 'Rejected' ? (
-                    <div className="space-y-4">
+                    <div className="w-full max-w-sm space-y-4">
                         <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl font-semibold text-sm">
                             Request Rejected
                         </div>
                         {latestRequest.comments && (
-                            <p className="text-xs text-gray-400 italic">
-                                "{latestRequest.comments}"
+                            <p className="text-xs text-rose-500 italic bg-rose-50/50 p-2 border border-rose-100 rounded-xl">
+                                "{latestRequest.comments.split('|')[0].replace(/Rejected:\s*/i, '').trim()}"
                             </p>
                         )}
+                        <textarea
+                            placeholder="Reason for requesting access again..."
+                            value={requestReasonInput}
+                            onChange={e => setRequestReasonInput(e.target.value)}
+                            className="w-full p-3 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:ring-2 focus:ring-[#22c55e] focus:border-[#22c55e] outline-none h-20 resize-none font-medium text-gray-700"
+                        />
                         <div className="pt-2">
                             <button
                                 type="button"
                                 onClick={() => handleRequestAccess(reportType)}
-                                className="px-6 py-2.5 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold shadow-sm transition-all active:scale-[0.99]"
+                                disabled={!requestReasonInput.trim()}
+                                className="w-full py-3 rounded-xl bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Submit New Request
                             </button>
