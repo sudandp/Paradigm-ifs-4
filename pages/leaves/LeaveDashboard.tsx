@@ -845,15 +845,8 @@ const LeaveDashboard: React.FC = () => {
         { title: 'Monthly Travel KM', value: '-', icon: MapPin, isLoading: true }
     ];
 
-    // Maternity card (only for female users with non-zero balances)
-    const maternityCards = (balanceDataState && isFemale) ? [
-        ...(balanceDataState.maternityTotal > 0 ? [{
-            title: 'Maternity Leave',
-            value: `${parseFloat((balanceDataState.maternityTotal - balanceDataState.maternityUsed - (balanceDataState.maternityPending || 0)).toFixed(0))} / ${parseFloat(balanceDataState.maternityTotal.toFixed(0))} days`,
-            description: `${Math.round(balanceDataState.maternityTotal / 7)} weeks total. Available: ${parseFloat((balanceDataState.maternityTotal - balanceDataState.maternityUsed - (balanceDataState.maternityPending || 0)).toFixed(0))} days.${(balanceDataState.maternityPending || 0) > 0 ? ` (Pending: ${balanceDataState.maternityPending}d)` : ''}`,
-            icon: Baby,
-        }] : []),
-    ] : [];
+    // Maternity card (hidden for all users as requested)
+    const maternityCards = [] as any[];
 
     return (
         <div

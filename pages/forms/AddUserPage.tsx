@@ -69,7 +69,7 @@ const createUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
-  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
 }).defined();
 
 const editUserSchema = yup.object({
@@ -102,7 +102,7 @@ const editUserSchema = yup.object({
   societyId: yup.string().optional().nullable(),
   societyName: yup.string().optional().nullable(),
   locationId: yup.string().optional().nullable(),
-  weeklyOffDays: yup.array().of(yup.number().required()).optional(),
+  weeklyOffDays: yup.array().of(yup.number().required()).optional().nullable(),
 }).defined();
 
 const AddUserPage: React.FC = () => {
@@ -933,7 +933,24 @@ const AddUserPage: React.FC = () => {
                   </div>
                 </div>
 
-
+                <div>
+                  <h3 className="text-sm font-semibold text-primary-text mb-4">Sick Leave Initial Balance</h3>
+                  <div className="space-y-4">
+                    <Input 
+                      label="Opening Balance (Days)" 
+                      type="number" 
+                      step="0.5" 
+                      registration={register('sickLeaveOpeningBalance')} 
+                      error={errors.sickLeaveOpeningBalance?.message}
+                    />
+                    <Input 
+                      label="Opening Date" 
+                      type="date" 
+                      registration={register('sickLeaveOpeningDate')} 
+                      error={errors.sickLeaveOpeningDate?.message}
+                    />
+                  </div>
+                </div>
 
                 <div>
                   <h3 className="text-sm font-semibold text-primary-text mb-4">Comp Off Initial Balance</h3>
@@ -1267,7 +1284,27 @@ const AddUserPage: React.FC = () => {
                 </div>
               </div>
 
-
+              {/* Sick Leave */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-lg inline-block text-sm">Sick Leave</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input 
+                    label="Opening Balance (Days)" 
+                    type="number" 
+                    step="0.5" 
+                    registration={register('sickLeaveOpeningBalance')} 
+                    error={errors.sickLeaveOpeningBalance?.message}
+                    description="Initial balance."
+                  />
+                  <Input 
+                    label="Opening Date" 
+                    type="date" 
+                    registration={register('sickLeaveOpeningDate')} 
+                    error={errors.sickLeaveOpeningDate?.message}
+                    description="Start date."
+                  />
+                </div>
+              </div>
 
               {/* Comp Off */}
               <div className="space-y-4">

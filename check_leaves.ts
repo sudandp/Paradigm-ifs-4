@@ -5,22 +5,64 @@ const SERVICE_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
-// We want to fetch the settings and user profile to calculate the balance of Sinchana KM
+// We want to fetch the settings and user profile to calculate the balance of Poojashree S
 async function main() {
-    const userId = "c9ffc969-8f2b-48cf-914c-0f30a661ba6f"; // Sinchana KM
-    
     // Fetch user profile
-    const { data: userProfile } = await admin.from('users').select('*').eq('id', userId).single();
-    console.log("User Profile:", userProfile);
+    const { data: userProfile, error: userError } = await admin
+  .from('users')
+  .select('*')
+  .ilike('name', '%Poojashree%')
+  .single();
+    console.log("User Profile before update:", userProfile);
+    
+    if (userProfile) {
+        await admin.from('users').update({ child_care_leave_opening_balance: 6 }).eq('id', userProfile.id);
+        console.log("Updated opening balance to 6");
+    }
+    
+    const userId = userProfile?.id;
 
     // Fetch leave requests
-    const { data: leaves } = await admin.from('leave_requests').select('*').eq('user_id', userId);
-    console.log("Leaves count:", leaves?.length);
+    const currentYear = new Date().getFullYear();
+    const accrualYearStart = new Date(`${currentYear}-01-01T00:00:00`);
     
-    // Print all leaves and their statuses
-    leaves?.forEach((l: any) => {
-        console.log(`${l.id} | ${l.leave_type} | ${l.status} | ${l.start_date} to ${l.end_date}`);
+    // Check earned leave calculation
+    const rules = {
+        earnedLeaveAccrual: { amountEarned: 1.5, daysRequired: 30 },
+        useWorkedDaysForEarnedLeave: true // I will fetch this from the DB actually
+    };
+    
+    const { data: attendanceSettings } = await admin.from('attendance_settings').select('rules').single();
+    const activeRules = attendanceSettings?.rules || {};
+    console.log("Earned Leave Rules:", {
+        amountEarned: activeRules.earnedLeaveAccrual?.amountEarned,
+        daysRequired: activeRules.earnedLeaveAccrual?.daysRequired,
+        useWorkedDaysForEarnedLeave: activeRules.useWorkedDaysForEarnedLeave,
+        annualEarnedLeaves: activeRules.annualEarnedLeaves
     });
+
+    const openingBalance = userProfile.earned_leave_opening_balance || 0;
+    const openingDate = userProfile.earned_leave_opening_date || `${currentYear}-01-01`;
+    console.log("EL Opening:", openingBalance, "Date:", openingDate);
+
+    // Let's count her approved Earned Leaves to see how many she used.
+    const { data: leaves } = await admin.from('leave_requests').select('*').eq('user_id', userId).eq('status', 'approved');
+    let elUsed = 0;
+    leaves?.forEach((l: any) => {
+        if (l.leave_type === 'Earned') {
+            const start = new Date(l.start_date);
+            const end = new Date(l.end_date);
+            // Rough calculation
+            let days = 0;
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                days++;
+            }
+            if (l.is_half_day) days = 0.5;
+            elUsed += days;
+        }
+    });
+    console.log("EL Used roughly:", elUsed);
+
 }
 
 main().catch(console.error);

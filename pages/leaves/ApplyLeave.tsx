@@ -42,10 +42,11 @@ type LeaveRequestFormData = {
     siteOtOut?: string;
     includeSite?: boolean;
     siteVisits?: { in: string; out: string }[];
+    compOffAgreement?: boolean;
 };
 
 const getLeaveValidationSchema = (threshold: number) => yup.object({
-    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
+    leaveType: yup.string<LeaveType>().oneOf(['Earned', 'Sick', 'Floating', 'Comp Off', 'Loss of Pay', 'Maternity', 'Child Care', 'Pink Leave', 'Blue Leave Work', 'WFH', 'Correction', 'Permission', 'Regularization']).required('Leave type is required'),
     startDate: yup.string().required('Start date is required')
         .test('is-valid-correction-date', 'Correction can only be raised for the same day (today) or within the last 48 hours', function (value) {
             const { leaveType } = this.parent as { leaveType?: string };
@@ -137,6 +138,11 @@ const getLeaveValidationSchema = (threshold: number) => yup.object({
                 out: yup.string().required('Site out time is required')
             })
         ).min(1, 'At least one site visit is required'),
+        otherwise: schema => schema.optional()
+    }),
+    compOffAgreement: yup.boolean().when('leaveType', {
+        is: (val: string) => ['Blue Leave Work'].includes(val),
+        then: schema => schema.oneOf([true], 'You must agree to the Comp Off expiry terms.'),
         otherwise: schema => schema.optional()
     })
 });
@@ -250,7 +256,8 @@ const ApplyLeave: React.FC = () => {
             siteOtIn: '20:00',
             siteOtOut: '22:00',
             includeSite: false,
-            siteVisits: [{ in: '10:00', out: '17:00' }]
+            siteVisits: [],
+            compOffAgreement: false
         }
     });
 
@@ -851,6 +858,15 @@ const ApplyLeave: React.FC = () => {
                 const now = new Date();
                 const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+                // Comp Off restriction: Cannot be applied in advance
+                if (formData.leaveType === 'Comp Off') {
+                    if (startDateObj > todayMidnight) {
+                        setToast({ message: 'Comp Off cannot be applied in advance. You must have already worked to earn it.', type: 'error' });
+                        setIsSubmitting(false);
+                        return;
+                    }
+                }
+
                 if (formData.leaveType === 'Earned') {
                     const isPastDate = startDateObj < todayMidnight;
 
@@ -1373,10 +1389,11 @@ const ApplyLeave: React.FC = () => {
                                             {!isProbation && <option value="Earned">Earned</option>}
                                             <option value="Sick">Sick</option>
                                             <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
+                                            {!isFemale && <option value="Blue Leave Work">Work on Blue Leave</option>}
                                             <option value="Comp Off">Comp Off</option>
                                             <option value="Loss of Pay">Loss of Pay</option>
                                             {(!isProbation && isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
-                                            {(isFemale && fullBalance && fullBalance.maternityTotal > 0) && <option value="Maternity">Maternity Leave</option>}
+                                            {/* Maternity Leave is temporarily hidden for all users */}
                                             <option value="WFH">Work From Home (WFH)</option>
                                             <option value="Correction">Request for Correction (RC)</option>
                                             {(rules?.enablePermission || rules?.enablePermission === undefined) && (
@@ -2057,6 +2074,36 @@ const ApplyLeave: React.FC = () => {
                                             )}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {watchLeaveType === 'Blue Leave Work' && (
+                                <div className={`p-4 rounded-xl border ${isMobile ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className="shrink-0 mt-0.5">
+                                            <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h4 className={`text-sm font-medium ${isMobile ? 'text-amber-400' : 'text-amber-800'}`}>Comp Off Expiry Notice</h4>
+                                            <p className={`mt-1 text-xs ${isMobile ? 'text-amber-400/80' : 'text-amber-700'}`}>
+                                                Any Comp Off earned from working on a Blue Leave must be used within this current month. It will NOT carry forward to the next month and will automatically expire.
+                                            </p>
+                                            <div className="mt-3 flex items-center gap-2">
+                                                <input 
+                                                    type="checkbox" 
+                                                    id="compOffAgreement" 
+                                                    {...register('compOffAgreement')} 
+                                                    className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                                />
+                                                <label htmlFor="compOffAgreement" className={`text-sm font-bold ${isMobile ? 'text-amber-300' : 'text-amber-900'}`}>
+                                                    I agree and understand the expiry terms.
+                                                </label>
+                                            </div>
+                                            {errors.compOffAgreement && <p className="mt-1 text-xs text-red-500 font-bold">{errors.compOffAgreement.message}</p>}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 

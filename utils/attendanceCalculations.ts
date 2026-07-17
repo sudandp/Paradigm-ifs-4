@@ -750,6 +750,7 @@ export function evaluateAttendanceStatus(params: {
       if (lType.includes('maternity')) return prefix + 'ML';
       if (lType.includes('child care')) return prefix + 'CCL';
       if (lType.includes('pink')) return prefix + 'PL'; // Pink Leave
+      if (lType.includes('blue leave work')) return prefix + 'BLW'; // Blue Leave Work
       if (lType.includes('permission')) return prefix + 'RP'; // Updated from 'P/M' to 'RP'
       if (lType.includes('loss') || lType.includes('lop')) return prefix + 'LOP';
       return prefix + 'EL';
@@ -990,6 +991,7 @@ export function evaluateAttendanceStatus(params: {
   const isCorrectionOrPermission = targetLeave && (
       String(targetLeave.leaveType || '').toLowerCase().includes('correction') ||
       String(targetLeave.leaveType || '').toLowerCase().includes('permission') ||
+      String(targetLeave.leaveType || '').toLowerCase().includes('blue leave work') ||
       String(targetLeave.status || '').toLowerCase() === 'correction_made'
   );
 

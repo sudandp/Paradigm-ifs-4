@@ -4576,8 +4576,8 @@ export const api = {
     workDatesSet.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
         
-        // Only count work within the CURRENT YEAR, up to the end of the viewed month
-        if (date < yearStartDate || date > endOfMonth(referenceDate)) return;
+        // Comp Offs expire at the end of the month, so only count work within the EXACT SAME MONTH as the viewed referenceDate
+        if (date.getMonth() !== referenceDate.getMonth() || date.getFullYear() !== referenceDate.getFullYear()) return;
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
@@ -4686,15 +4686,25 @@ export const api = {
     const monthEnd = endOfMonth(referenceDate);
     
     // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants (both 'earned' and 'used')
-    // We include 'used' in the total so that used comp offs don't decrement the total earned.
-    const manualCompOffGranted = (compOffData || []).filter((log: any) => log.status === 'earned' || log.status === 'used').length;
-    // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting
-    const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId).length;
+    // Since Comp Offs expire at the end of the month, we only count logs from the CURRENT viewed month
+    const manualCompOffGranted = (compOffData || []).filter((log: any) => {
+        if (log.status !== 'earned' && log.status !== 'used') return false;
+        const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
+        return logDate.getMonth() === referenceDate.getMonth() && logDate.getFullYear() === referenceDate.getFullYear();
+    }).length;
+    
+    // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting (filtered to current month)
+    const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => {
+        if (log.status !== 'used' || log.leave_request_id || (log as any).leaveRequestId) return false;
+        const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
+        return logDate.getMonth() === referenceDate.getMonth() && logDate.getFullYear() === referenceDate.getFullYear();
+    }).length;
     
     const compOffOpeningBalance = Number(userData.comp_off_opening_balance || userData.compOffOpeningBalance || 0);
     const compOffOpeningDate = userData.comp_off_opening_date;
     const compOffOpeningDateObj = compOffOpeningDate ? new Date(compOffOpeningDate.replace(/-/g, '/')) : null;
-    const hasReachedCompOffOpening = !compOffOpeningDateObj || accrualEndDate >= compOffOpeningDateObj;
+    // Opening balance also expires at month end, so only apply it if the opening date is in the current month
+    const hasReachedCompOffOpening = compOffOpeningDateObj && compOffOpeningDateObj.getMonth() === referenceDate.getMonth() && compOffOpeningDateObj.getFullYear() === referenceDate.getFullYear();
     const effectiveCompOffOpeningBalance = hasReachedCompOffOpening ? compOffOpeningBalance : 0;
     
     const compOffTotal = dynamicCompOffTotal + manualCompOffGranted + effectiveCompOffOpeningBalance;
@@ -4846,8 +4856,8 @@ export const api = {
                   if (hasAttendanceThisMonth) earnedCCL += 0.5;
               });
               
-              // Cap at the computed limit
-              balance.childCareTotal = Math.min(limit, effectiveOpeningBalanceCCL + earnedCCL);
+              // Cap the earned leave at the computed limit, then add the opening balance
+              balance.childCareTotal = effectiveOpeningBalanceCCL + Math.min(limit, earnedCCL);
             }
           }
         }
@@ -6161,8 +6171,8 @@ export const api = {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id, leave_type, start_date, end_date, day_option, correction_details').eq('id', id).single();
     if (fetchError) throw fetchError;
     
-    // Check balance - skip for 'Loss of Pay', 'WFH', 'Correction', and 'Permission'
-    if (!['Loss of Pay', 'WFH', 'Correction', 'Permission'].includes(request.leave_type as any)) {
+    // Check balance - skip for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Blue Leave Work'
+    if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Blue Leave Work'].includes(request.leave_type as any)) {
       const balance = await api.getLeaveBalancesForUser(request.user_id);
       const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
       
@@ -6500,6 +6510,60 @@ export const api = {
             type: 'approval_request',
             is_read: false,
             metadata: { title: 'Permission Approved ✅', leaveRequestId: id, date: request.start_date }
+        });
+        await api.markRelatedNotificationsAsRead(id);
+        return;
+    }
+
+    // If it's Blue Leave Work, enforce dual-manager approval if applicable
+    if (request.leave_type === 'Blue Leave Work') {
+        const { data: userProfile } = await supabase.from('users').select('reporting_manager_id, reporting_manager_2_id').eq('id', request.user_id).single();
+        
+        if (userProfile && userProfile.reporting_manager_id === approverId && userProfile.reporting_manager_2_id) {
+            // Forward to 2nd Manager
+            const { error } = await supabase.from('leave_requests').update({ 
+                status: 'pending_manager_approval', 
+                current_approver_id: userProfile.reporting_manager_2_id, 
+                approval_history: updatedHistory 
+            }).eq('id', id);
+            if (error) throw error;
+            
+            // Notify 2nd Manager
+            try {
+                dispatchNotificationFromRules('leave_request', {
+                    actorName: 'Blue Leave Work request',
+                    actionText: `has been approved by ${approverData.name} and requires your final approval`,
+                    locString: '',
+                    actor: { 
+                        id: request.user_id, 
+                        name: 'Employee', 
+                        role: 'staff', 
+                        reportingManagerId: userProfile.reporting_manager_2_id 
+                    },
+                    metadata: { leaveRequestId: id }
+                });
+            } catch (notifError) {
+                console.error('Failed to notify 2nd manager for Blue Leave Work:', notifError);
+            }
+            await api.markRelatedNotificationsAsRead(id);
+            return;
+        }
+
+        // If the current approver is the 2nd manager, or if there is no 2nd manager, fully approve it
+        const { error } = await supabase.from('leave_requests').update({ 
+            status: 'approved', 
+            current_approver_id: null, 
+            approval_history: updatedHistory 
+        }).eq('id', id);
+        if (error) throw error;
+
+        // Notify the employee that their request was approved
+        await supabase.from('notifications').insert({
+            user_id: request.user_id,
+            message: `Your Blue Leave Work request for ${request.start_date} has been fully approved by ${approverData.name}.`,
+            type: 'approval_request',
+            is_read: false,
+            metadata: { title: 'Blue Leave Work Approved ✅', leaveRequestId: id, date: request.start_date }
         });
         await api.markRelatedNotificationsAsRead(id);
         return;
