@@ -11,12 +11,16 @@ AS $$
 DECLARE
   is_admin boolean;
 BEGIN
-  -- Guard: Only admin/super_admin roles can delete users
+  -- Guard: Only users with 'manage_users' permission or admin/super_admin/developer roles can delete users
   SELECT EXISTS (
     SELECT 1
-    FROM public.users
-    WHERE id = auth.uid()
-      AND role_id IN ('admin', 'super_admin', 'superadmin', 'developer')
+    FROM public.users u
+    LEFT JOIN public.roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()
+      AND (
+        'manage_users' = ANY(r.permissions)
+        OR u.role_id IN ('admin', 'super_admin', 'superadmin', 'developer')
+      )
   ) INTO is_admin;
 
   IF NOT is_admin THEN

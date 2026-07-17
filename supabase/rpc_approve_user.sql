@@ -10,14 +10,16 @@ declare
   is_admin boolean;
   new_joining_date date;
 begin
-  -- Check if the executing user has admin privileges
-  -- Allowed roles: admin, super_admin, superadmin
-  -- We assume the 'auth.uid()' is the current user's ID
+  -- Check if the executing user has 'manage_users' permission or admin privileges
   select exists (
     select 1
-    from public.users
-    where id = auth.uid()
-    and role_id in ('admin', 'super_admin', 'superadmin')
+    from public.users u
+    left join public.roles r on u.role_id = r.id
+    where u.id = auth.uid()
+    and (
+      'manage_users' = any(r.permissions)
+      or u.role_id in ('admin', 'super_admin', 'superadmin', 'developer')
+    )
   ) into is_admin;
 
   if not is_admin then

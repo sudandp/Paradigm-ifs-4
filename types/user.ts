@@ -139,6 +139,7 @@ export interface User {
   homeAddress?: string | null;
   vehicle_type?: 'two_wheeler' | 'four_wheeler_petrol' | 'four_wheeler_diesel' | 'public_transport' | 'company_vehicle' | null;
   createdAt?: string;
+  isBlocked?: boolean;
 }
 
 

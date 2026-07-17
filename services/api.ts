@@ -2373,6 +2373,12 @@ export const api = {
     if (error) throw error;
   },
 
+  blockUser: async (id: string, blockStatus: boolean): Promise<void> => {
+    // Call the security-definer RPC which blocks/unblocks the user in public.users and auth.users
+    const { error } = await supabase.rpc('block_user', { target_user_id: id, block_status: blockStatus });
+    if (error) throw error;
+  },
+
   bulkUpdateUsers: async (userIds: string[], updates: Partial<User>): Promise<void> => {
     if (userIds.length === 0) return;
 

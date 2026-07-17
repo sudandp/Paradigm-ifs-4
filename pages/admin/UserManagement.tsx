@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import type { User, OrganizationGroup, Role } from '../../types';
-import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock } from 'lucide-react';
+import { ShieldCheck, Plus, Edit, Trash2, Info, UserCheck, MapPin, Search, Filter, FilterX, FileSpreadsheet, X, RotateCw, Copy, Check, Clock, Ban } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Toast from '../../components/ui/Toast';
@@ -64,11 +64,12 @@ interface UserActionProps {
     handleManageLocations: (u: User) => void;
     handleResetPasscode: (u: User) => void;
     handleDelete: (u: User) => void;
+    handleToggleBlock: (u: User) => void;
 }
 
 // Memoized Row for performance
 const UserRow = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <tr className={`hover:bg-slate-50 transition-colors border-b border-border ${isSelected ? 'bg-emerald-50/50' : ''}`}>
@@ -81,7 +82,14 @@ const UserRow = React.memo(({
                 </button>
             </td>
             <td data-label="Name" className="p-3 align-top">
-                <div className="font-semibold text-primary-text truncate" title={user.name}>{user.name}</div>
+                <div className="flex items-center gap-2">
+                    <div className="font-semibold text-primary-text truncate" title={user.name}>{user.name}</div>
+                    {user.isBlocked && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
+                            Blocked
+                        </span>
+                    )}
+                </div>
             </td>
             <td data-label="Email" className="p-3 align-top">
                 <div className="text-muted truncate" title={user.email}>{user.email}</div>
@@ -149,6 +157,14 @@ const UserRow = React.memo(({
                         <RotateCw className="h-4 w-4" />
                     </button>
                     <button 
+                        onClick={() => handleToggleBlock(user)} 
+                        aria-label={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
+                        title={`${user.isBlocked ? 'Unblock' : 'Block'} ${user.name}`} 
+                        className={`p-1 rounded transition-all ${user.isBlocked ? 'text-red-600 hover:text-red-700 hover:bg-red-100' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}
+                    >
+                        <Ban className="h-4 w-4" />
+                    </button>
+                    <button 
                         onClick={() => handleDelete(user)} 
                         aria-label={`Delete ${user.name}`} 
                         title={`Delete ${user.name}`} 
@@ -164,7 +180,7 @@ const UserRow = React.memo(({
 
 // Memoized Card for Mobile view performance
 const UserCard = React.memo(({ 
-    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, orgStructure 
+    user, isSelected, onSelect, handleApprove, handleEdit, handleManageLocations, handleResetPasscode, handleDelete, handleToggleBlock, orgStructure 
 }: UserActionProps & { orgStructure: OrganizationGroup[] }) => {
     return (
         <div className={`bg-card p-4 rounded-xl border shadow-sm flex flex-col gap-3 h-full transition-all ${isSelected ? 'border-emerald-500 bg-emerald-50/5 ring-1 ring-emerald-500' : 'border-border'}`}>
@@ -177,7 +193,14 @@ const UserCard = React.memo(({
                         {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
                     </button>
                     <div>
-                        <h3 className="font-semibold text-primary-text">{user.name}</h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-primary-text">{user.name}</h3>
+                            {user.isBlocked && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-800 uppercase tracking-wider">
+                                    Blocked
+                                </span>
+                            )}
+                        </div>
                         <p className="text-sm text-muted">{user.email}</p>
                     </div>
                 </div>
@@ -237,6 +260,19 @@ const UserCard = React.memo(({
                 <div className="flex-1" />
 
                 <button 
+                    onClick={() => handleToggleBlock(user)} 
+                    className={`p-2.5 rounded-xl !border transition-all active:scale-90 flex-shrink-0 ${
+                        user.isBlocked 
+                            ? '!bg-red-500/20 !border-red-500/40 text-red-500 hover:text-red-400 hover:bg-red-500/30' 
+                            : '!bg-white/5 !border-white/10 text-slate-400 hover:text-red-400 hover:bg-white/10 hover:border-red-500/20'
+                    }`}
+                    aria-label={user.isBlocked ? 'Unblock' : 'Block'}
+                    title={user.isBlocked ? 'Unblock' : 'Block'}
+                >
+                    <Ban className="h-4 w-4" />
+                </button>
+
+                <button 
                     onClick={() => handleDelete(user)} 
                     className="p-2.5 rounded-xl !bg-red-500/10 !border !border-red-500/20 text-red-500 hover:text-red-400 hover:bg-red-500/20 transition-all active:scale-90 flex-shrink-0"
                     aria-label="Delete"
@@ -289,6 +325,7 @@ const UserManagement: React.FC = () => {
 
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
     const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -476,6 +513,11 @@ const UserManagement: React.FC = () => {
         setIsDeleteModalOpen(true);
     }, []);
 
+    const handleToggleBlock = useCallback((user: User) => {
+        setCurrentUser(user);
+        setIsBlockModalOpen(true);
+    }, []);
+
     const handleManageLocations = useCallback((user: User) => {
         setCurrentUserForLocation(user);
         setIsLocationModalOpen(true);
@@ -558,6 +600,33 @@ const UserManagement: React.FC = () => {
                 fetchUsers();
             } catch (error) {
                 setToast({ message: 'Failed to delete user.', type: 'error' });
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    };
+
+    const handleConfirmBlock = async () => {
+        if (currentUser) {
+            const targetStatus = !currentUser.isBlocked;
+            setIsSaving(true);
+            try {
+                await api.blockUser(currentUser.id, targetStatus);
+                setToast({ 
+                    message: `User "${currentUser.name}" has been successfully ${targetStatus ? 'blocked' : 'unblocked'}.`, 
+                    type: 'success' 
+                });
+                setIsBlockModalOpen(false);
+                
+                // Instant UI Update: Update isBlocked locally in state
+                setUsers(prevUsers => 
+                    prevUsers.map(u => u.id === currentUser.id ? { ...u, isBlocked: targetStatus } : u)
+                );
+                
+                // Background fetch to sync
+                fetchUsers();
+            } catch (error) {
+                setToast({ message: `Failed to ${targetStatus ? 'block' : 'unblock'} user.`, type: 'error' });
             } finally {
                 setIsSaving(false);
             }
@@ -670,6 +739,7 @@ const UserManagement: React.FC = () => {
         });
         const statusesInUse = new Set<string>();
         matchingUsers.forEach(u => {
+            if (u.isBlocked) statusesInUse.add('blocked');
             if (u.role === 'unverified') statusesInUse.add('pending');
             else if (u.role === 'gate_only') statusesInUse.add('gate');
             else statusesInUse.add('active');
@@ -677,7 +747,8 @@ const UserManagement: React.FC = () => {
         return {
             active: statusesInUse.has('active'),
             pending: statusesInUse.has('pending'),
-            gate: statusesInUse.has('gate')
+            gate: statusesInUse.has('gate'),
+            blocked: statusesInUse.has('blocked')
         };
     }, [dbUsers, pendingFilters.location, pendingFilters.company, pendingFilters.site, pendingFilters.role, orgStructure]);
 
@@ -691,7 +762,8 @@ const UserManagement: React.FC = () => {
             if (pendingFilters.status !== 'all') {
                 if (pendingFilters.status === 'pending' && u.role !== 'unverified') return false;
                 if (pendingFilters.status === 'gate' && u.role !== 'gate_only') return false;
-                if (pendingFilters.status === 'active' && u.role === 'unverified') return false;
+                if (pendingFilters.status === 'active' && (u.role === 'unverified' || u.isBlocked)) return false;
+                if (pendingFilters.status === 'blocked' && !u.isBlocked) return false;
             }
             return true;
         }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -744,7 +816,8 @@ const UserManagement: React.FC = () => {
                 const isValidStatus = 
                     (next.status === 'active' && filteredStatusesCascade.active) ||
                     (next.status === 'pending' && filteredStatusesCascade.pending) ||
-                    (next.status === 'gate' && filteredStatusesCascade.gate);
+                    (next.status === 'gate' && filteredStatusesCascade.gate) ||
+                    (next.status === 'blocked' && filteredStatusesCascade.blocked);
                 if (!isValidStatus) {
                     next.status = 'all';
                     next.employee = '';
@@ -778,7 +851,8 @@ const UserManagement: React.FC = () => {
             if (activeFilters.status !== 'all') {
                 if (activeFilters.status === 'pending' && user.role !== 'unverified') return false;
                 if (activeFilters.status === 'gate' && user.role !== 'gate_only') return false;
-                if (activeFilters.status === 'active' && user.role === 'unverified') return false;
+                if (activeFilters.status === 'active' && (user.role === 'unverified' || user.isBlocked)) return false;
+                if (activeFilters.status === 'blocked' && !user.isBlocked) return false;
             }
 
             if (activeFilters.employee && user.id !== activeFilters.employee) return false;
@@ -811,6 +885,22 @@ const UserManagement: React.FC = () => {
                 isConfirming={isSaving}
             >
                 Are you sure you want to permanently delete <strong>{currentUser?.name}</strong>? This will remove their profile <em>and</em> revoke their login access. This action cannot be undone.
+            </Modal>
+
+            <Modal
+                isOpen={isBlockModalOpen}
+                onClose={() => setIsBlockModalOpen(false)}
+                onConfirm={handleConfirmBlock}
+                title={currentUser?.isBlocked ? "Confirm Unblock" : "Confirm Block"}
+                isConfirming={isSaving}
+                confirmButtonVariant={currentUser?.isBlocked ? "primary" : "danger"}
+                confirmButtonText={currentUser?.isBlocked ? "Unblock User" : "Block User"}
+            >
+                {currentUser?.isBlocked ? (
+                    <>Are you sure you want to unblock <strong>{currentUser?.name}</strong>? This will restore their login access.</>
+                ) : (
+                    <>Are you sure you want to block <strong>{currentUser?.name}</strong>? This will prevent them from signing in, but all of their user data and records will be kept.</>
+                )}
             </Modal>
 
             <Modal
@@ -918,11 +1008,11 @@ const UserManagement: React.FC = () => {
             <div className="bg-transparent md:bg-white p-0 md:p-4 rounded-xl shadow-none md:shadow-sm border-none md:border md:border-gray-100 mb-6 flex flex-col gap-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7 items-end gap-x-3 gap-y-4">
                     <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Location</label>
                         <div className="relative">
                             <select
                                 name="location"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.location}
                                 onChange={handleFilterChange}
                             >
@@ -938,11 +1028,11 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Company</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Company</label>
                         <div className="relative">
                             <select
                                 name="company"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.company}
                                 onChange={handleFilterChange}
                             >
@@ -958,11 +1048,11 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Site</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Site</label>
                         <div className="relative">
                             <select
                                 name="site"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.site}
                                 onChange={handleFilterChange}
                             >
@@ -978,11 +1068,11 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Role</label>
                         <div className="relative">
                             <select
                                 name="role"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.role}
                                 onChange={handleFilterChange}
                             >
@@ -998,11 +1088,11 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Approval Status</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Approval Status</label>
                         <div className="relative">
                             <select
                                 name="status"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.status}
                                 onChange={handleFilterChange}
                             >
@@ -1010,6 +1100,7 @@ const UserManagement: React.FC = () => {
                                 {filteredStatusesCascade.active && <option value="active">Active</option>}
                                 {filteredStatusesCascade.pending && <option value="pending">Pending Approval</option>}
                                 {filteredStatusesCascade.gate && <option value="gate">Gate Only</option>}
+                                {filteredStatusesCascade.blocked && <option value="blocked">Blocked</option>}
                             </select>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                                 <Filter className="h-3.5 w-3.5 opacity-50" />
@@ -1018,11 +1109,11 @@ const UserManagement: React.FC = () => {
                     </div>
 
                     <div className="col-span-2 md:col-span-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Employee</label>
+                        <label className="block text-xs font-medium text-gray-400 md:text-gray-500 mb-1">Employee</label>
                         <div className="relative">
                             <select
                                 name="employee"
-                                className="w-full border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
+                                className="w-full border border-[#1a3d2c] md:border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm bg-[#041b0f] md:bg-white text-white md:text-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none appearance-none shadow-sm transition-all"
                                 value={pendingFilters.employee}
                                 onChange={handleFilterChange}
                             >
@@ -1087,6 +1178,7 @@ const UserManagement: React.FC = () => {
                                     handleManageLocations={handleManageLocations}
                                     handleResetPasscode={handleResetPasscode}
                                     handleDelete={handleDelete}
+                                    handleToggleBlock={handleToggleBlock}
                                 />
                             ))}
                             {filteredUsers.length === 0 && (
@@ -1151,6 +1243,7 @@ const UserManagement: React.FC = () => {
                                         handleManageLocations={handleManageLocations}
                                         handleResetPasscode={handleResetPasscode}
                                         handleDelete={handleDelete}
+                                        handleToggleBlock={handleToggleBlock}
                                     />
                                 ))}
                             </tbody>
