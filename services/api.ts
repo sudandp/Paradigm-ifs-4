@@ -4768,7 +4768,9 @@ export const api = {
       
       // Use joining_date if available, fallback to created_at
       const tenureStartDateStr = userData.joining_date || userData.created_at;
-      const tenureStartDate = tenureStartDateStr ? new Date(tenureStartDateStr.replace(/-/g, '/')) : new Date();
+      const tenureStartDate = tenureStartDateStr
+        ? (tenureStartDateStr.includes('T') ? new Date(tenureStartDateStr) : new Date(tenureStartDateStr.replace(/-/g, '/')))
+        : new Date();
       
       // Use differenceInMonths for strict tenure (full months elapsed)
       const tenureMonths = differenceInMonths(referenceDate, tenureStartDate);
@@ -4820,7 +4822,9 @@ export const api = {
             // 2. Monthly Accrual: 0.5 per month with attendance
             const openingBalance = userData.child_care_leave_opening_balance || 0;
             const openingDate = userData.child_care_leave_opening_date || userData.joining_date || userData.created_at || `${currentYear}-01-01`;
-            const openingDateObj = new Date(openingDate.replace(/-/g, '/'));
+            const openingDateObj = openingDate.includes('T')
+              ? new Date(openingDate)
+              : new Date(openingDate.replace(/-/g, '/'));
             const effectiveOpeningDateCCL = openingDateObj < accrualYearStart ? accrualYearStart : openingDateObj;
             const effectiveOpeningBalanceCCL = openingDateObj < accrualYearStart ? 0 : openingBalance;
 
