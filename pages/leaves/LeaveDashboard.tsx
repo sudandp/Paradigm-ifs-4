@@ -89,6 +89,7 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
 const LeaveStatusChip: React.FC<{ status: LeaveRequestStatus }> = ({ status }) => {
     const statusClasses: Record<LeaveRequestStatus, string> = {
         pending_manager_approval: 'leave-status-chip--pending_manager_approval',
+        pending_rm2_approval: 'leave-status-chip--pending_rm2_approval',
         pending_hr_confirmation: 'leave-status-chip--pending_hr_confirmation',
         pending_admin_correction: 'leave-status-chip--pending_admin_correction',
         correction_made: 'leave-status-chip--correction_made',
