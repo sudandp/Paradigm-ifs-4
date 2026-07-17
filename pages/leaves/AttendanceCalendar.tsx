@@ -178,6 +178,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             }
 
             const dayEvents = eventsByGroup[dateStr] || [];
+            const { workingHours } = calculateWorkingHours(dayEvents, day);
             const hasCheckIn = dayEvents.some(e => ['punch-in', 'site-in', 'check-in'].includes(e.type.toLowerCase()));
             const hasCheckOut = dayEvents.some(e => ['punch-out', 'site-out', 'check-out'].includes(e.type.toLowerCase()));
             const hasOtPunchIn = dayEvents.some(e => e.type === 'site-ot-in');
@@ -239,7 +240,18 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                 finalStatus = isDetailedPresent ? 'weekend-present' : 'floating-holiday';
             } else if (foundLeave && foundLeave.dayOption !== 'half' && (foundLeave as any).day_option !== 'half') {
                 // Full-day approved/active leave takes priority over any presence/attendance logs
-                finalStatus = 'leave';
+                const lType = String(foundLeave.leaveType || (foundLeave as any).leave_type || '').toLowerCase();
+                const isPermission = lType.includes('permission');
+                
+                if (isPermission && (isDetailedPresent || (workingHours && workingHours > 0))) {
+                    if (isSunday) {
+                        finalStatus = 'weekend-present';
+                    } else {
+                        finalStatus = 'present';
+                    }
+                } else {
+                    finalStatus = 'leave';
+                }
             } else if (isDetailedPresent) {
                 if (isSunday) {
                     finalStatus = 'weekend-present';
@@ -365,8 +377,11 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                         return date >= start && date <= end;
                     });
                     const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
+                    const isPermission = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).leave_type || "").toLowerCase().includes('permission');
 
                     if (isCorrection) {
+                        normalPay = 1;
+                    } else if (isPermission) {
                         normalPay = 1;
                     } else if (relevantLeave && relevantLeave.dayOption === 'half') {
                         normalPay = 1; 
@@ -498,6 +513,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                             });
 
                             const isCorrection = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).type || "").toLowerCase().includes('correction');
+                            const isPermission = relevantLeave && String(relevantLeave.leaveType || (relevantLeave as any).leave_type || '').toLowerCase().includes('permission');
 
                             if (relevantLeave && relevantLeave.dayOption === 'half') {
                                 let leaveCode = getLeaveAbbreviation(relevantLeave.leaveType || (relevantLeave as any).leave_type);
@@ -522,6 +538,18 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 const rightColor = (leaveCode === 'PL' || leaveCode === 'Pink') ? '#ec4899' : '#2563eb';
                                 customStyle = {
                                     background: `linear-gradient(135deg, ${leftColor} 50%, ${leaveCode ? rightColor : leftColor} 50%)`, // Half Holiday/Sunday / Half Blue or Pink
+                                    borderColor: 'transparent'
+                                };
+                            } else if (isPermission) {
+                                const rawFraction = workingHours / shiftThreshold;
+                                let worked_fraction = Math.round(rawFraction * 20) / 20; // Round to nearest 0.05
+                                worked_fraction = Math.min(1.0, Math.max(0, worked_fraction));
+                                const permission_fraction = Math.round((1.0 - worked_fraction) * 100) / 100;
+                                
+                                overlayText = `${worked_fraction.toFixed(2)}P+${permission_fraction.toFixed(2)}RP`;
+                                const greenPct = Math.min(100, Math.max(0, Math.round(worked_fraction * 100)));
+                                customStyle = {
+                                    background: `linear-gradient(135deg, #10b981 ${greenPct}%, #2563eb ${greenPct}%)`, // Present (green) / Permission (blue)
                                     borderColor: 'transparent'
                                 };
                             } else if (isCorrection) {
@@ -646,7 +674,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                     {format(date, 'd')}
                                 </span>
                                  {overlayText && (
-                                    <span className={`text-[9px] font-black leading-none text-white drop-shadow-md`}>
+                                    <span className={`font-black leading-none text-white drop-shadow-md ${overlayText.length > 5 ? 'text-[7px]' : 'text-[9px]'}`}>
                                         {overlayText}
                                     </span>
                                 )}

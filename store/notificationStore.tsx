@@ -125,15 +125,9 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           
           let leavesPromise;
           if (isSuperAdmin) {
-              leavesPromise = Promise.all([
-                  api.getLeaveRequests({ status: 'pending_manager_approval' }),
-                  api.getLeaveRequests({ status: 'pending_hr_confirmation' })
-              ]).then(([res1, res2]) => ({ data: [...res1.data, ...res2.data] }));
+              leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
           } else if (isHR) {
-              leavesPromise = Promise.all([
-                  api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id }),
-                  api.getLeaveRequests({ status: 'pending_hr_confirmation' })
-              ]).then(([res1, res2]) => ({ data: [...res1.data, ...res2.data] }));
+              leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id });
           } else {
               leavesPromise = api.getLeaveRequests({ 
                   status: 'pending_manager_approval',
@@ -156,7 +150,11 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
           
           const counts = [
             (unlocks || []).filter((r: any) => r.userId !== user.id).length,
-            (leaves?.data || []).filter((r: any) => r.userId !== user.id).length,
+            (leaves?.data || []).filter((r: any) => {
+                const isNotSelf = r.userId !== user.id;
+                const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
+                return isNotSelf && !hasActioned;
+            }).length,
             (claims?.data || []).filter((c: any) => c.userId !== user.id).length,
             (finance || []).filter((f: any) => f.createdBy !== user.id).length,
             (invoices || []).filter((inv: any) => 

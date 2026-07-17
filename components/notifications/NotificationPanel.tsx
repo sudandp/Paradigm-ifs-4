@@ -208,15 +208,9 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
 
             let leavesPromise;
             if (isSuperAdmin) {
-                leavesPromise = Promise.all([
-                    api.getLeaveRequests({ status: 'pending_manager_approval' }),
-                    api.getLeaveRequests({ status: 'pending_hr_confirmation' })
-                ]).then(([res1, res2]) => ({ data: [...res1.data, ...res2.data] }));
+                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval' });
             } else if (isHR) {
-                leavesPromise = Promise.all([
-                    api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id }),
-                    api.getLeaveRequests({ status: 'pending_hr_confirmation' })
-                ]).then(([res1, res2]) => ({ data: [...res1.data, ...res2.data] }));
+                leavesPromise = api.getLeaveRequests({ status: 'pending_manager_approval', forApproverId: user.id });
             } else {
                 leavesPromise = api.getLeaveRequests({ 
                     status: 'pending_manager_approval',
@@ -251,7 +245,14 @@ export const NotificationPanel: React.FC<{ isOpen: boolean; onClose: () => void;
             ]);
 
             if (unlocksResult.status === 'fulfilled') setUnlockRequests(unlocksResult.value.filter(r => r.userId !== user.id));
-            if (leavesResult.status === 'fulfilled') setLeaveRequests(leavesResult.value.data.filter((r: any) => r.userId !== user.id));
+            if (leavesResult.status === 'fulfilled') {
+                const filtered = (leavesResult.value.data || []).filter((r: any) => {
+                    const isSelf = r.userId === user.id;
+                    const hasActioned = r.approvalHistory?.some((h: any) => h.approverId === user.id || h.approver_id === user.id);
+                    return !isSelf && !hasActioned;
+                });
+                setLeaveRequests(filtered);
+            }
             if (claimsResult.status === 'fulfilled') setExtraWorkClaims(claimsResult.value.data.filter((c: any) => c.userId !== user.id));
             if (financeResult.status === 'fulfilled') setFinanceRequests(financeResult.value.filter(f => f.createdBy !== user.id));
             if (invoicesResult.status === 'fulfilled') {

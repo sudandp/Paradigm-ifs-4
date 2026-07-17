@@ -13,13 +13,15 @@ interface LeaveDetailsModalProps {
     isOpen: boolean;
     onClose: () => void;
     request: LeaveRequest | null;
+    onStatusChanged?: () => void;
 }
 
-const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, request }) => {
+const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, request, onStatusChanged }) => {
     const [monthlyInsights, setMonthlyInsights] = useState<{ avgHours: number; daysWorked: number } | null>(null);
     const [isLoadingInsights, setIsLoadingInsights] = useState(false);
     const [leaveBalance, setLeaveBalance] = useState<any | null>(null);
     const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+    const [isActioning, setIsActioning] = useState(false);
 
     const { user: currentUser } = useAuthStore();
     const isManagerOrAdmin = currentUser && (
@@ -105,6 +107,54 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
         };
         fetchInsights();
     }, [isOpen, request]);
+
+    const isSuperAdmin = currentUser && ['admin', 'super_admin'].includes(currentUser.role);
+    const isHR = currentUser && ['admin', 'super_admin', 'hr', 'hr_ops'].includes(currentUser.role);
+    const canAction = request && (
+        request.currentApproverId === currentUser?.id || 
+        isSuperAdmin ||
+        (request.status === 'pending_hr_confirmation' && isHR)
+    );
+    const isPending = request && (request.status === 'pending_manager_approval' || request.status === 'pending_hr_confirmation');
+    const showActionButtons = canAction && isPending;
+
+    const handleAction = async (action: 'approve' | 'reject' | 'confirm') => {
+        if (!request || !currentUser) return;
+        
+        let comment = '';
+        if (action === 'reject') {
+            const reason = prompt("Enter rejection reason:");
+            if (reason === null) return;
+            if (!reason.trim()) {
+                alert("Rejection reason is required!");
+                return;
+            }
+            comment = reason.trim();
+        } else {
+            const confirmMsg = action === 'confirm' 
+                ? "Are you sure you want to confirm and finalize this leave request?"
+                : "Are you sure you want to approve this leave request?";
+            if (!window.confirm(confirmMsg)) return;
+        }
+
+        setIsActioning(true);
+        try {
+            if (action === 'approve') {
+                await api.approveLeaveRequest(request.id, currentUser.id);
+            } else if (action === 'reject') {
+                await api.rejectLeaveRequest(request.id, currentUser.id, comment);
+            } else if (action === 'confirm') {
+                await api.confirmLeaveByHR(request.id, currentUser.id);
+            }
+            onStatusChanged?.();
+            onClose();
+        } catch (error) {
+            console.error(`Failed to ${action} leave request:`, error);
+            alert(`Failed to perform action: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            setIsActioning(false);
+        }
+    };
 
     if (!isOpen || !request) return null;
 
@@ -509,10 +559,32 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ isOpen, onClose, 
                 )}
 
                 {/* Footer Controls */}
-                <div className="flex justify-end pt-4 border-t border-border/50">
-                    <Button variant="secondary" onClick={onClose} className="px-6 font-semibold">
+                <div className="flex justify-end items-center gap-3 pt-4 border-t border-border/50">
+                    <Button variant="secondary" onClick={onClose} disabled={isActioning} className="px-6 font-semibold">
                         Close
                     </Button>
+                    {showActionButtons && (
+                        <>
+                            <Button 
+                                variant="danger" 
+                                isLoading={isActioning}
+                                disabled={isActioning}
+                                onClick={() => handleAction('reject')} 
+                                className="font-semibold flex items-center gap-1.5"
+                            >
+                                <X className="h-4 w-4" /> Reject
+                            </Button>
+                            <Button 
+                                variant="primary" 
+                                isLoading={isActioning}
+                                disabled={isActioning}
+                                onClick={() => handleAction(request.status === 'pending_hr_confirmation' ? 'confirm' : 'approve')} 
+                                className="font-semibold flex items-center gap-1.5"
+                            >
+                                <Check className="h-4 w-4" /> {request.status === 'pending_hr_confirmation' ? 'Confirm' : 'Approve'}
+                            </Button>
+                        </>
+                    )}
                 </div>
             </div>
         </Modal>

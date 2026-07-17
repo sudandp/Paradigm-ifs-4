@@ -5070,6 +5070,17 @@ export const api = {
 
     return countableCount;
   },
+  markRelatedNotificationsAsRead: async (leaveRequestId: string): Promise<void> => {
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('is_read', false)
+        .filter('metadata->>leaveRequestId', 'eq', leaveRequestId);
+    } catch (err) {
+      console.warn('Failed to auto-resolve leave notification:', err);
+    }
+  },
   submitLeaveRequest: async (data: Omit<LeaveRequest, 'id' | 'status' | 'currentApproverId' | 'approvalHistory'>): Promise<LeaveRequest> => {
     const status = await Network.getStatus();
     if (!status.connected) {
@@ -5236,6 +5247,9 @@ export const api = {
             name: data.userName || 'Employee', 
             role: 'staff',
             reportingManagerId: userProfile.reporting_manager_id 
+          },
+          metadata: {
+            leaveRequestId: insertedData.id
           }
         });
       } catch (notifError) {
@@ -5313,7 +5327,21 @@ export const api = {
     const status = await Network.getStatus();
     if (!status.connected) {
         const cached = await offlineDb.getCache('leave_requests') || [];
-        return { data: cached, total: cached.length };
+        const filtered = cached.filter((r: any) => {
+            if (filter?.userId && r.userId !== filter.userId) return false;
+            if (filter?.userIds && !filter.userIds.includes(r.userId)) return false;
+            if (filter?.leaveType && r.leaveType !== filter.leaveType) return false;
+            if (filter?.leaveTypes && !filter.leaveTypes.includes(r.leaveType)) return false;
+            if (filter?.status) {
+                if (Array.isArray(filter.status)) {
+                    if (!filter.status.includes(r.status)) return false;
+                } else {
+                    if (r.status !== filter.status) return false;
+                }
+            }
+            return true;
+        });
+        return { data: filtered, total: filtered.length };
     }
 
     let query = supabase.from('leave_requests').select('*, users!leave_requests_user_id_fkey(name, photo_url)', { count: 'exact' });
@@ -6190,6 +6218,7 @@ export const api = {
       if (compOffLogs && compOffLogs.length > 0) {
            await supabase.from('comp_off_logs').update({ status: 'used', leave_request_id: id }).in('id', compOffLogs.map(l => l.id));
       }
+      await api.markRelatedNotificationsAsRead(id);
       return;
     }
 
@@ -6362,6 +6391,7 @@ export const api = {
             is_read: false,
             metadata: { title: 'Correction Approved ✅', leaveRequestId: id, date: request.start_date }
         });
+        await api.markRelatedNotificationsAsRead(id);
         return;
     }
 
@@ -6471,6 +6501,7 @@ export const api = {
             is_read: false,
             metadata: { title: 'Permission Approved ✅', leaveRequestId: id, date: request.start_date }
         });
+        await api.markRelatedNotificationsAsRead(id);
         return;
     }
 
@@ -6499,6 +6530,7 @@ export const api = {
         }).eq('id', id);
         if (error) throw error;
     }
+    await api.markRelatedNotificationsAsRead(id);
   },
   markCorrectionAsMade: async (id: string, adminId: string): Promise<void> => {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history').eq('id', id).single();
@@ -6551,6 +6583,7 @@ export const api = {
         is_read: false,
         metadata: { title: 'Request Rejected ❌', leaveRequestId: id, date: request.start_date }
     });
+    await api.markRelatedNotificationsAsRead(id);
   },
   reconsiderLeaveRequest: async (id: string, approverId: string): Promise<void> => {
     const { data: request, error: fetchError } = await supabase.from('leave_requests').select('approval_history, user_id').eq('id', id).single();
@@ -6619,6 +6652,7 @@ export const api = {
       if (logError && logError.code !== 'PGRST116') throw logError;
       if (availableLog) await supabase.from('comp_off_logs').update({ status: 'used', leave_request_id: id }).eq('id', availableLog.id);
     }
+    await api.markRelatedNotificationsAsRead(id);
   },
   submitExtraWorkClaim: async (claimData: Omit<ExtraWorkLog, 'id' | 'createdAt' | 'status'>): Promise<void> => {
     const status = await Network.getStatus();

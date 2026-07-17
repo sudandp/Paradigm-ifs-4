@@ -221,16 +221,18 @@ const EditLeaveTypeModal: React.FC<EditLeaveTypeModalProps> = ({
           </div>
 
           {/* Reason */}
-          <div className="space-y-1">
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</label>
-            <textarea
-              rows={2}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Provide a detailed explanation..."
-              className="w-full rounded-xl bg-gray-50 border border-gray-200 text-gray-900 text-sm font-medium p-4 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
-            />
-          </div>
+          {leaveType !== 'Pink Leave' && (
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Reason</label>
+              <textarea
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Provide a detailed explanation..."
+                className="w-full rounded-xl bg-gray-50 border border-gray-200 text-gray-900 text-sm font-medium p-4 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
+              />
+            </div>
+          )}
         </div>
 
         {/* Section 2: Time Correction / Permission Details */}

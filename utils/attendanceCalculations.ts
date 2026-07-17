@@ -760,28 +760,37 @@ export function evaluateAttendanceStatus(params: {
   const isApprovedCorrection = !!approvedCorrection;
   let effectiveWorkingHours = workingHours || 0;
 
-  if (isApprovedPermission && approvedPermission!.correctionDetails) {
+  const permDetails = approvedPermission?.correctionDetails || (approvedPermission as any)?.correction_details;
+  if (isApprovedPermission && permDetails) {
       const getMinutes = (timeStr: string) => {
           if (!timeStr) return 0;
           const [h, m] = timeStr.split(':').map(Number);
           return h * 60 + m;
       };
-      const inMins = getMinutes(approvedPermission!.correctionDetails.punchIn);
-      const outMins = getMinutes(approvedPermission!.correctionDetails.punchOut);
+      const punchInVal = permDetails.punchIn || permDetails.punch_in;
+      const punchOutVal = permDetails.punchOut || permDetails.punch_out;
+      const punchIn2Val = permDetails.punchIn2 || permDetails.punch_in2;
+      const punchOut2Val = permDetails.punchOut2 || permDetails.punch_out2;
+      const includeBreakVal = permDetails.includeBreak !== undefined ? permDetails.includeBreak : permDetails.include_break;
+      const breakInVal = permDetails.breakIn || permDetails.break_in;
+      const breakOutVal = permDetails.breakOut || permDetails.break_out;
+
+      const inMins = getMinutes(punchInVal);
+      const outMins = getMinutes(punchOutVal);
       let diffMins = outMins - inMins;
       if (diffMins < 0) diffMins += 24 * 60; // wrap around
       
-      if (approvedPermission!.correctionDetails.punchIn2 && approvedPermission!.correctionDetails.punchOut2) {
-          const inMins2 = getMinutes(approvedPermission!.correctionDetails.punchIn2);
-          const outMins2 = getMinutes(approvedPermission!.correctionDetails.punchOut2);
+      if (punchIn2Val && punchOut2Val) {
+          const inMins2 = getMinutes(punchIn2Val);
+          const outMins2 = getMinutes(punchOut2Val);
           let diffMins2 = outMins2 - inMins2;
           if (diffMins2 < 0) diffMins2 += 24 * 60;
           diffMins += diffMins2;
       }
 
-      if (approvedPermission!.correctionDetails.includeBreak && approvedPermission!.correctionDetails.breakIn && approvedPermission!.correctionDetails.breakOut) {
-          const bIn = getMinutes(approvedPermission!.correctionDetails.breakIn);
-          const bOut = getMinutes(approvedPermission!.correctionDetails.breakOut);
+      if (includeBreakVal && breakInVal && breakOutVal) {
+          const bIn = getMinutes(breakInVal);
+          const bOut = getMinutes(breakOutVal);
           let bDiff = bOut - bIn;
           if (bDiff < 0) bDiff += 24 * 60;
           diffMins -= bDiff;
@@ -790,28 +799,37 @@ export function evaluateAttendanceStatus(params: {
       effectiveWorkingHours = Math.max(0, (workingHours || 0) + (diffMins / 60));
   }
   
-  if (isApprovedCorrection && approvedCorrection!.correctionDetails) {
+  const corrDetails = approvedCorrection?.correctionDetails || (approvedCorrection as any)?.correction_details;
+  if (isApprovedCorrection && corrDetails) {
       const getMinutes = (timeStr: string) => {
           if (!timeStr) return 0;
           const [h, m] = timeStr.split(':').map(Number);
           return h * 60 + m;
       };
-      const inMins = getMinutes(approvedCorrection!.correctionDetails.punchIn);
-      const outMins = getMinutes(approvedCorrection!.correctionDetails.punchOut);
+      const punchInVal = corrDetails.punchIn || corrDetails.punch_in;
+      const punchOutVal = corrDetails.punchOut || corrDetails.punch_out;
+      const punchIn2Val = corrDetails.punchIn2 || corrDetails.punch_in2;
+      const punchOut2Val = corrDetails.punchOut2 || corrDetails.punch_out2;
+      const includeBreakVal = corrDetails.includeBreak !== undefined ? corrDetails.includeBreak : corrDetails.include_break;
+      const breakInVal = corrDetails.breakIn || corrDetails.break_in;
+      const breakOutVal = corrDetails.breakOut || corrDetails.break_out;
+
+      const inMins = getMinutes(punchInVal);
+      const outMins = getMinutes(punchOutVal);
       let diffMins = outMins - inMins;
       if (diffMins < 0) diffMins += 24 * 60; // wrap around
       
-      if (approvedCorrection!.correctionDetails.punchIn2 && approvedCorrection!.correctionDetails.punchOut2) {
-          const inMins2 = getMinutes(approvedCorrection!.correctionDetails.punchIn2);
-          const outMins2 = getMinutes(approvedCorrection!.correctionDetails.punchOut2);
+      if (punchIn2Val && punchOut2Val) {
+          const inMins2 = getMinutes(punchIn2Val);
+          const outMins2 = getMinutes(punchOut2Val);
           let diffMins2 = outMins2 - inMins2;
           if (diffMins2 < 0) diffMins2 += 24 * 60;
           diffMins += diffMins2;
       }
 
-      if (approvedCorrection!.correctionDetails.includeBreak && approvedCorrection!.correctionDetails.breakIn && approvedCorrection!.correctionDetails.breakOut) {
-          const bIn = getMinutes(approvedCorrection!.correctionDetails.breakIn);
-          const bOut = getMinutes(approvedCorrection!.correctionDetails.breakOut);
+      if (includeBreakVal && breakInVal && breakOutVal) {
+          const bIn = getMinutes(breakInVal);
+          const bOut = getMinutes(breakOutVal);
           let bDiff = bOut - bIn;
           if (bDiff < 0) bDiff += 24 * 60;
           diffMins -= bDiff;
@@ -876,20 +894,27 @@ export function evaluateAttendanceStatus(params: {
       
       // Calculate permission hours from approvedPermission
       let permHours = 0;
-      if (approvedPermission!.correctionDetails) {
+      const permDetails = approvedPermission?.correctionDetails || (approvedPermission as any)?.correction_details;
+      if (permDetails) {
           const getMinutes = (timeStr: string) => {
               if (!timeStr) return 0;
               const [h, m] = timeStr.split(':').map(Number);
               return h * 60 + m;
           };
-          const inMins = getMinutes(approvedPermission!.correctionDetails.punchIn);
-          const outMins = getMinutes(approvedPermission!.correctionDetails.punchOut);
+          const punchInVal = permDetails.punchIn || permDetails.punch_in;
+          const punchOutVal = permDetails.punchOut || permDetails.punch_out;
+          const includeBreakVal = permDetails.includeBreak !== undefined ? permDetails.includeBreak : permDetails.include_break;
+          const breakInVal = permDetails.breakIn || permDetails.break_in;
+          const breakOutVal = permDetails.breakOut || permDetails.break_out;
+
+          const inMins = getMinutes(punchInVal);
+          const outMins = getMinutes(punchOutVal);
           let diffMins = outMins - inMins;
           if (diffMins < 0) diffMins += 24 * 60; // wrap around
           
-          if (approvedPermission!.correctionDetails.includeBreak && approvedPermission!.correctionDetails.breakIn && approvedPermission!.correctionDetails.breakOut) {
-              const bIn = getMinutes(approvedPermission!.correctionDetails.breakIn);
-              const bOut = getMinutes(approvedPermission!.correctionDetails.breakOut);
+          if (includeBreakVal && breakInVal && breakOutVal) {
+              const bIn = getMinutes(breakInVal);
+              const bOut = getMinutes(breakOutVal);
               let bDiff = bOut - bIn;
               if (bDiff < 0) bDiff += 24 * 60;
               diffMins -= bDiff;

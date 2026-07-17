@@ -1047,6 +1047,7 @@ const LeaveManagement: React.FC = () => {
                     setSelectedLeaveRequest(null);
                 }}
                 request={selectedLeaveRequest}
+                onStatusChanged={fetchData}
             />
 
             <div className="flex justify-between items-center mb-6">
