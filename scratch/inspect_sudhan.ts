@@ -6,45 +6,46 @@ const SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function main() {
-    console.log("Searching for Sudhan M...");
-    const { data: users, error } = await supabase
+    const { data: users, error: userError } = await supabase
         .from('users')
         .select('*')
         .ilike('name', '%Sudhan%');
 
-    if (error) {
-        console.error("Error fetching users:", error);
+    if (userError) {
+        console.error("Error fetching users:", userError);
         return;
     }
 
-    console.log("Found users matching 'Sudhan':");
-    console.log(JSON.stringify(users, null, 2));
+    console.log("Users:", users);
 
-    if (!users || users.length === 0) {
-        console.log("No user named Sudhan found.");
-        return;
-    }
+    for (const user of users || []) {
+        console.log(`\n=== Inspecting user: ${user.name} (${user.id}) ===`);
+        
+        // Fetch comp off logs
+        const { data: compOffLogs, error: logError } = await supabase
+            .from('comp_off_logs')
+            .select('*')
+            .eq('user_id', user.id);
+            
+        if (logError) {
+            console.error("Error fetching comp off logs:", logError);
+        } else {
+            console.log("Comp Off Logs:");
+            console.log(JSON.stringify(compOffLogs, null, 2));
+        }
 
-    const sudhan = users[0];
-    const sudhanId = sudhan.id;
+        // Fetch leave requests
+        const { data: leaveRequests, error: reqError } = await supabase
+            .from('leave_requests')
+            .select('*')
+            .eq('user_id', user.id);
 
-    console.log(`\nFetching attendance events for Sudhan M (${sudhanId}) near yesterday 7:15 PM...`);
-    // Let's get today's date and calculate yesterday.
-    // Today is July 14, 2026. Yesterday was July 13, 2026.
-    // Let's fetch all events for July 13, 2026.
-    const { data: events, error: eErr } = await supabase
-        .from('attendance_events')
-        .select('*')
-        .eq('user_id', sudhanId)
-        .gte('timestamp', '2026-07-13T00:00:00')
-        .lte('timestamp', '2026-07-13T23:59:59')
-        .order('timestamp', { ascending: true });
-
-    if (eErr) {
-        console.error("Error fetching events:", eErr);
-    } else {
-        console.log("Yesterday's events:");
-        console.log(JSON.stringify(events, null, 2));
+        if (reqError) {
+            console.error("Error fetching leave requests:", reqError);
+        } else {
+            console.log("Leave Requests:");
+            console.log(JSON.stringify(leaveRequests, null, 2));
+        }
     }
 }
 

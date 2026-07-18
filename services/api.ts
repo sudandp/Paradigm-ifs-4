@@ -4958,9 +4958,12 @@ export const api = {
         if (isApproved) balance.maternityUsed += leaveAmount;
         if (isPending) balance.maternityPending += leaveAmount;
       } else if (type.includes('comp') || type === 'co') {
-        if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && leaveStart <= rules.compOffLeavesExpiryDate)) {
-          if (isApproved) balance.compOffUsed += leaveAmount;
-          if (isPending) balance.compOffPending += leaveAmount;
+        const monthStart = startOfMonth(referenceDate);
+        if (leaveStartDateObj >= monthStart && leaveStartDateObj <= monthEnd) {
+          if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && leaveStart <= rules.compOffLeavesExpiryDate)) {
+            if (isApproved) balance.compOffUsed += leaveAmount;
+            if (isPending) balance.compOffPending += leaveAmount;
+          }
         }
       } else if (type.includes('loss of pay') || type === 'lop') {
         // Loss of Pay doesn't reduce any leave balance but is tracked
@@ -5106,7 +5109,7 @@ export const api = {
     }
 
     // --- Server-side validation of leave balance, eligibility, and rules ---
-    const balances = await api.getLeaveBalancesForUser(data.userId);
+    const balances = await api.getLeaveBalancesForUser(data.userId, data.startDate);
     
     // Resolve rules for this user
     const { data: userProfile, error: userError } = await supabase
@@ -6173,7 +6176,7 @@ export const api = {
     
     // Check balance - skip for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Blue Leave Work'
     if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Blue Leave Work'].includes(request.leave_type as any)) {
-      const balance = await api.getLeaveBalancesForUser(request.user_id);
+      const balance = await api.getLeaveBalancesForUser(request.user_id, request.start_date);
       const leaveDays = request.day_option === 'half' ? 0.5 : differenceInCalendarDays(new Date(request.end_date), new Date(request.start_date)) + 1;
       
       const typeKeyStr = `${request.leave_type.toLowerCase()}Total`

@@ -276,7 +276,7 @@ const ApplyLeave: React.FC = () => {
             if (!user) return;
             try {
                 // Fetch Balances
-                const balance = await api.getLeaveBalancesForUser(user.id);
+                const balance = await api.getLeaveBalancesForUser(user.id, watchStartDate);
                 setFullBalance(balance);
                 
                 // Fetch Children
@@ -312,7 +312,7 @@ const ApplyLeave: React.FC = () => {
             }
         };
         fetchData();
-    }, [user, watchLeaveType]);
+    }, [user, watchLeaveType, watchStartDate]);
 
     React.useEffect(() => {
         if (rules) {
@@ -965,7 +965,7 @@ const ApplyLeave: React.FC = () => {
             // Check balance before submitting
             // Skip balance check for 'Loss of Pay', 'WFH', 'Correction', 'Permission', and 'Regularization'
             if (!['Loss of Pay', 'WFH', 'Correction', 'Permission', 'Regularization'].includes(formData.leaveType)) {
-                const balance = await api.getLeaveBalancesForUser(user.id);
+                const balance = await api.getLeaveBalancesForUser(user.id, formData.startDate);
                 
                 const baseType = formData.leaveType.toLowerCase().replace(/\s/g, '');
                 let balanceKeyBase = baseType;
