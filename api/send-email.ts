@@ -49,7 +49,7 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(new Date(todayStr).getTime()));
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).eq('is_deleted', false),
+      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
     ]);
@@ -165,7 +165,7 @@ const reportGenerators = {
 
     const [settingsRes, usersRes, snapshotsRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).eq('is_deleted', false).order('name'),
+      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).order('name'),
       supabase.from('attendance_month_snapshots').select('*').eq('year', targetDate.getFullYear()).eq('month', targetDate.getMonth() + 1),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', getISTDateString(firstDayOfMonth)).lte('start_date', getISTDateString(lastDayOfMonth)),
@@ -364,19 +364,17 @@ const reportGenerators = {
 async function resolveRecipientsInternal(supabase: SupabaseClient, rule: any): Promise<string[]> {
   if (rule.recipient_type === 'custom_emails') return rule.recipient_emails || [];
   if (rule.recipient_type === 'role') {
-    // [SECURITY FIX H11] Added is_active=true and is_deleted=false filters
+    // [SECURITY FIX H11] Added is_active=true filter
     const { data: users } = await supabase.from('users').select('email')
       .in('role_id', rule.recipient_roles || [])
-      .eq('is_active', true)
-      .eq('is_deleted', false);
+      .eq('is_active', true);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
   if (rule.recipient_type === 'users') {
-    // [SECURITY FIX H11] Added is_active=true and is_deleted=false filters
+    // [SECURITY FIX H11] Added is_active=true filter
     const { data: users } = await supabase.from('users').select('email')
       .in('id', rule.recipient_user_ids || [])
-      .eq('is_active', true)
-      .eq('is_deleted', false);
+      .eq('is_active', true);
     return (users || []).map((u: any) => u.email).filter(Boolean);
   }
   return [];
