@@ -119,7 +119,7 @@ const LeaveManagement: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
+    const [filter, setFilter] = useState<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'>(urlEmployeeId ? 'all' : 'pending_manager_approval');
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [chartRequests, setChartRequests] = useState<LeaveRequest[]>([]);
     const [isManualEntryModalOpen, setIsManualEntryModalOpen] = useState(false);
@@ -276,7 +276,7 @@ const LeaveManagement: React.FC = () => {
             
             // Determine filter based on role and current filter tab
             const leaveFilter: any = { 
-                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave' && filter !== 'permission' && filter !== 'child_care_leave') ? filter : undefined,
+                status: (filter !== 'all' && filter !== 'claims' && filter !== 'holiday_selection' && filter !== 'corrections' && filter !== 'sick_leave' && filter !== 'earned_leave' && filter !== 'lop_leave' && filter !== 'comp_off_leave' && filter !== 'permission' && filter !== 'child_care_leave' && filter !== 'blue_leave_work') ? filter : undefined,
                 userId: selectedUserId !== 'all' ? selectedUserId : undefined,
                 startDate: startDate || undefined,
                 endDate: endDate || undefined,
@@ -296,6 +296,8 @@ const LeaveManagement: React.FC = () => {
                 leaveFilter.leaveType = 'Permission';
             } else if (filter === 'child_care_leave') {
                 leaveFilter.leaveType = 'Child Care';
+            } else if (filter === 'blue_leave_work') {
+                leaveFilter.leaveType = 'Blue Leave Work';
             }
 
             // Admin / SuperAdmin / HR / Management see all requests.
@@ -569,6 +571,9 @@ const LeaveManagement: React.FC = () => {
         } else if (statusFilter === 'child_care_leave') {
             actualStatus = undefined;
             exportLeaveType = 'Child Care';
+        } else if (statusFilter === 'blue_leave_work') {
+            actualStatus = undefined;
+            exportLeaveType = 'Blue Leave Work';
         } else {
             // Inherit from active filter if the current tab is category-specific
             if (filter === 'sick_leave') {
@@ -583,6 +588,8 @@ const LeaveManagement: React.FC = () => {
                 exportLeaveType = 'Permission';
             } else if (filter === 'child_care_leave') {
                 exportLeaveType = 'Child Care';
+            } else if (filter === 'blue_leave_work') {
+                exportLeaveType = 'Blue Leave Work';
             }
         }
 
@@ -654,6 +661,7 @@ const LeaveManagement: React.FC = () => {
             lop_leave: 'LOP',
             comp_off_leave: 'Comp Off',
             child_care_leave: 'Child Care Leave',
+            blue_leave_work: 'Blue Leaves',
             all: 'All',
         };
         return labels[status] || status.replace(/_/g, ' ');
@@ -672,7 +680,7 @@ const LeaveManagement: React.FC = () => {
             
             let docTitle = `Leave Requests — ${getStatusLabel(statusFilter)}`;
             let filePrefix = `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}`;
-            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave' || filter === 'child_care_leave') {
+            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave' || filter === 'child_care_leave' || filter === 'blue_leave_work') {
                 const categoryLabel = getStatusLabel(filter);
                 if (statusFilter === 'all' || statusFilter === filter) {
                     docTitle = `${categoryLabel} Requests`;
@@ -717,7 +725,7 @@ const LeaveManagement: React.FC = () => {
             
             let docTitle = `Leave Requests — ${getStatusLabel(statusFilter)}`;
             let filePrefix = `Leave_${getStatusLabel(statusFilter).replace(/\s/g, '_')}_Report`;
-            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave' || filter === 'child_care_leave') {
+            if (filter === 'sick_leave' || filter === 'earned_leave' || filter === 'lop_leave' || filter === 'comp_off_leave' || filter === 'child_care_leave' || filter === 'blue_leave_work') {
                 const categoryLabel = getStatusLabel(filter);
                 if (statusFilter === 'all' || statusFilter === filter) {
                     docTitle = `${categoryLabel} Requests`;
@@ -787,7 +795,7 @@ const LeaveManagement: React.FC = () => {
         { label: 'All Leaves', value: 'all', color: '#475569', icon: '📋' },
     ];
 
-    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave'> = [
+    const filterTabs: Array<LeaveRequestStatus | 'all' | 'claims' | 'holiday_selection' | 'corrections' | 'sick_leave' | 'earned_leave' | 'lop_leave' | 'comp_off_leave' | 'permission' | 'child_care_leave' | 'blue_leave_work'> = [
         'pending_manager_approval', 
         'claims', 
         'pending_hr_confirmation', 
@@ -795,6 +803,7 @@ const LeaveManagement: React.FC = () => {
         'corrections', 
         'child_care_leave',
         'comp_off_leave',
+        'blue_leave_work',
         'earned_leave',
         'lop_leave',
         'permission',
@@ -944,6 +953,7 @@ const LeaveManagement: React.FC = () => {
         if (tab === 'earned_leave') return 'Earned Leave';
         if (tab === 'permission') return 'Permissions';
         if (tab === 'child_care_leave') return 'Child Care Leave';
+        if (tab === 'blue_leave_work') return 'Blue Leaves';
         return tab.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     };
 

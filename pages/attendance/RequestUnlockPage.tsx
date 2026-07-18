@@ -27,32 +27,39 @@ const RequestUnlockPage: React.FC = () => {
 
         setIsSubmitting(true);
         try {
-            const finalReason = isThirdSaturdayToday
-                ? `3rd Saturday Work Approval: ${unlockReason}`
-                : unlockReason;
-            await api.requestAttendanceUnlock(finalReason);
-            
-            // Dispatch notification to manager
-            if (user) {
-                await dispatchNotificationFromRules('punch_unlock_request', {
-                    actorName: user.name,
-                    actionText: isThirdSaturdayToday
-                        ? 'has requested 3rd Saturday punch approval'
-                        : isOTRequest 
+            if (isThirdSaturdayToday) {
+                const d = new Date();
+                const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                await api.submitLeaveRequest({
+                    leaveType: 'Blue Leave Work',
+                    startDate: todayStr,
+                    endDate: todayStr,
+                    dayOption: 'full',
+                    reason: unlockReason,
+                    userId: user?.id || '',
+                    userName: user?.name || ''
+                });
+            } else {
+                await api.requestAttendanceUnlock(unlockReason);
+                
+                // Dispatch notification to manager
+                if (user) {
+                    await dispatchNotificationFromRules('punch_unlock_request', {
+                        actorName: user.name,
+                        actionText: isOTRequest 
                             ? 'has requested an overtime (OT) punch unlock'
                             : 'has requested an emergency punch unlock',
-                    locString: '',
-                    title: isThirdSaturdayToday
-                        ? '3rd Saturday Punch Request'
-                        : isOTRequest ? 'OT Punch Request' : 'Emergency Punch Request',
-                    link: '/my-team',
-                    actor: {
-                        id: user.id,
-                        name: user.name,
-                        reportingManagerId: user.reportingManagerId,
-                        role: user.role
-                    }
-                });
+                        locString: '',
+                        title: isOTRequest ? 'OT Punch Request' : 'Emergency Punch Request',
+                        link: '/my-team',
+                        actor: {
+                            id: user.id,
+                            name: user.name,
+                            reportingManagerId: user.reportingManagerId,
+                            role: user.role
+                        }
+                    });
+                }
             }
 
             setToast({ message: isThirdSaturdayToday

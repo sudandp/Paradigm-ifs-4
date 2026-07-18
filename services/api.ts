@@ -3306,7 +3306,8 @@ export const api = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return 0;
     
-    const today = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const status = await Network.getStatus();
     
     if (status.connected) {
@@ -3323,8 +3324,25 @@ export const api = {
           'Unlock status check timed out'
         )) as any;
 
-        if (!error) {
-          const count = data?.length || 0;
+        const { data: leaveData, error: leaveError } = (await withTimeout(
+          supabase
+            .from('leave_requests')
+            .select('id, status, approval_history')
+            .eq('user_id', session.user.id)
+            .eq('leave_type', 'Blue Leave Work')
+            .eq('start_date', today) as any,
+          10000,
+          'Leave status check timed out'
+        )) as any;
+
+        if (!error && !leaveError) {
+          const approvedLeaves = (leaveData || []).filter((l: any) => {
+            if (l.status === 'approved') return true;
+            const history = l.approval_history || l.approvalHistory;
+            const historyArr = Array.isArray(history) ? history : [];
+            return historyArr.length > 0;
+          });
+          const count = (data?.length || 0) + approvedLeaves.length;
           await offlineDb.setCache(`unlock_count_${session.user.id}_${today}`, count);
           return count;
         }
@@ -3375,7 +3393,35 @@ export const api = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return null;
     
-    const today = new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
+    // 1. Check for active/pending/approved Blue Leave Work requests for today
+    const { data: leaveData } = await supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('leave_type', 'Blue Leave Work')
+      .eq('start_date', today)
+      .limit(1)
+      .maybeSingle();
+
+    if (leaveData) {
+      const history = leaveData.approval_history || leaveData.approvalHistory;
+      const historyArr = Array.isArray(history) ? history : [];
+      const hasRm1Approved = leaveData.status === 'approved' || historyArr.length > 0;
+      
+      return {
+        id: leaveData.id,
+        userId: leaveData.user_id,
+        userName: '',
+        requestedAt: leaveData.created_at || leaveData.start_date,
+        reason: leaveData.reason || '',
+        status: hasRm1Approved ? 'approved' : leaveData.status === 'rejected' ? 'rejected' : 'pending',
+      } as any;
+    }
+
+    // 2. Fallback to standard unlock requests
     const { data, error } = await supabase
       .from('attendance_unlock_requests')
       .select('*')
