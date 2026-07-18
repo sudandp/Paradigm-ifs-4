@@ -411,6 +411,7 @@ export const reportGenerators = {
 
     return {
       date: monthStr,
+      year: format(nowIST, 'yyyy'),
       totalEmployees: String(users.length),
       table: tableHtml
     };
