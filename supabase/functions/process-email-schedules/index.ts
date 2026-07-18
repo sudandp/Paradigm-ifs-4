@@ -314,9 +314,9 @@ serve(async (req: Request) => {
 
       let subject = template?.subject_template || rule.name;
       
-      // Use premium template for monthly report if no database template exists or specifically requested
+      // Use premium template for monthly report if no database template exists
       let html = template?.body_template;
-      if (!html || rule.report_type === 'attendance_monthly') {
+      if (!html) {
         console.log(`  [INFO] Using default premium template for ${rule.report_type}`);
         html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
       }
@@ -625,9 +625,10 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
 // ─── Generate Monthly Attendance Report (Grid Style) ────────────────────────
 // ─── Generate Monthly Attendance Report (Grid Style) ────────────────────────
 async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>> {
-  const firstDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
-  const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
-  const monthStr = format(nowIST, 'MMMM yyyy');
+  const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+  const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+  const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+  const monthStr = format(targetDate, 'MMMM yyyy');
   const daysInMonth = lastDayOfMonth.getDate();
   const today = new Date(nowIST.getTime());
   today.setUTCHours(0,0,0,0);
@@ -656,7 +657,25 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
   let totalAbsentCount = 0;
   let totalLateCount = 0;
 
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 10px; border: 1px solid #e2e8f0;">
+    let tableHtml = `<style>
+.report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
+.report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
+.report-grid td { border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; color: #334155; }
+.report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 120px; padding: 6px 6px; color: #0f172a; }
+.report-grid td.p { color: #166534; font-weight: bold; background-color: #f0fdf4; }
+.report-grid td.a { color: #991b1b; background-color: #fef2f2; }
+.report-grid td.wo { color: #4b5563; background-color: #f9fafb; }
+.report-grid td.h { color: #854d0e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.hd { color: #92400e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.ot { color: #075985; background-color: #f0f9ff; font-weight: bold; }
+.report-grid td.co { color: #9d174d; background-color: #fdf2f8; font-weight: bold; }
+.report-grid td.el { color: #5b21b6; background-color: #f5f3ff; font-weight: bold; }
+.report-grid td.sl { color: #9f1239; background-color: #fff1f2; font-weight: bold; }
+.report-grid td.tot { font-weight: 800; background-color: #ecfdf5; color: #065f46; border-left: 2px solid #10b981; }
+.report-grid tr.even { background-color: #ffffff; }
+.report-grid tr.odd { background-color: #f8fafc; }
+</style>
+<table class="report-grid">
     <thead>
       <tr style="background: #f8fafc; color: #1e293b; border-bottom: 2px solid #e2e8f0;">
         <th style="border: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; min-width: 140px; font-weight: 700;">Employee Name</th>`;
@@ -682,8 +701,8 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
   const configStartTime = attendanceSettings?.office?.fixedOfficeHours?.checkInTime || '09:30';
 
     users.forEach((user, idx) => {
-    tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-      <td style="border: 1px solid #e2e8f0; padding: 8px 6px; font-weight: 600; font-size: 11px; color: #334155;">${user.name}</td>`;
+    tableHtml += `<tr class="${idx % 2 === 0 ? 'even' : 'odd'}">
+      <td class="emp-name">${user.name}</td>`;
     
     let countP = 0;
     let countHalfP = 0;
@@ -816,22 +835,34 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
         daysPresentInWeek++;
       }
       
-      tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: ${color}; background: ${cellBg}; font-weight: 700; font-size: 8px;">${status || '—'}</td>`;
+      let cellClass = "";
+      if (status === 'P') cellClass = 'class="p"';
+      else if (status === 'A') cellClass = 'class="a"';
+      else if (status === 'W/O' || status === 'WO') cellClass = 'class="wo"';
+      else if (status === 'H') cellClass = 'class="h"';
+      else if (status.includes('0.5')) cellClass = 'class="hd"';
+      else if (status.includes('SL')) cellClass = 'class="sl"';
+      else if (status.includes('EL')) cellClass = 'class="el"';
+      else if (status.includes('CO') || status.includes('C/O')) cellClass = 'class="co"';
+      else if (status === '—') cellClass = '';
+      else cellClass = `style="color: ${color}; background: ${cellBg}; font-weight: 700;"`;
+
+      tableHtml += `<td ${cellClass}>${status || '—'}</td>`;
     }
 
     const payableDays = countP + (countHalfP * 0.5) + countWO + countH + userPaidLeave;
 
     tableHtml += `
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #166534; background: #f0fdf4;">${countP}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #92400e; background: #fffbeb;">${countHalfP}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #075985; background: #f0f9ff;">${countOT}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9d174d; background: #fdf2f8;">${countCO}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #5b21b6; background: #f5f3ff;">${countEL}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9f1239; background: #fff1f2;">${countSL}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #991b1b; background: #fef2f2;">${countA}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #4b5563; background: #f9fafb;">${countWO}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #854d0e; background: #fffbeb;">${countH}</td>
-      <td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 800; background: #ecfdf5; color: #064e3b; border-left: 2px solid #10b981;">${payableDays}</td>
+      <td class="p">${countP}</td>
+      <td class="hd">${countHalfP}</td>
+      <td class="ot">${countOT}</td>
+      <td class="co">${countCO}</td>
+      <td class="el">${countEL}</td>
+      <td class="sl">${countSL}</td>
+      <td class="a">${countA}</td>
+      <td class="wo">${countWO}</td>
+      <td class="h">${countH}</td>
+      <td class="tot">${payableDays}</td>
     </tr>`;
   });
 
@@ -1219,6 +1250,11 @@ function getMonthlyReportPremiumTemplate() {
     </div>
     
     <div style="padding: 40px;">
+      <!-- Greeting Block -->
+      <div style="color: #374151; font-size: 16px; line-height: 1.6; margin-bottom: 35px; border-left: 4px solid #10b981; padding-left: 20px; background: #f0fdf4; border-radius: 8px;">
+        <div style="padding: 15px 0;">{customGreeting}</div>
+      </div>
+
       <!-- Summary Cards -->
       <div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;">
         <div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;">

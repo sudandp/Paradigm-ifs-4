@@ -87,9 +87,10 @@ const reportGenerators = {
     };
   },
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date) => {
-    const firstDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
-    const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
-    const monthStr = format(nowIST, 'MMMM yyyy');
+    const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+    const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    const monthStr = format(targetDate, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
     const [usersRes, eventsRes] = await Promise.all([
       supabase.from('users').select('id, name').neq('role_id', 'unverified').order('name'),
@@ -202,10 +203,33 @@ async function processSchedules(req: VercelRequest) {
     const reportData = await generator(supabase, nowIST);
 
     const template = templateMap.get(rule.template_id);
+    let greetingMessage = `Here is your automated status update.`;
+    
+    if (rule.report_type === 'attendance_monthly') {
+        greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Please review the detailed monthly attendance grid below for any discrepancies.`;
+    }
+
     if (template?.variables) {
       const customVar = (template.variables as any[]).find(v => v.key === '_custom_message' || v.key === 'customMessage');
-      if (customVar) { reportData.customGreeting = customVar.description; reportData.customMessage = customVar.description; }
+      if (customVar && customVar.description && customVar.description.trim()) {
+        let evaluatedMsg = evaluateConditionals(customVar.description, reportData || {});
+        greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+      }
     }
+
+    const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
+      const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+      const dataKey = Object.keys(data).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
+      return dataKey ? (data as any)[dataKey] : match;
+    });
+
+    greetingMessage = render(greetingMessage, reportData || {});
+
+    reportData.greetingMessage = greetingMessage;
+    reportData.customGreeting = greetingMessage;
+    reportData.greeting_message = greetingMessage;
+    reportData.custom_greeting = greetingMessage;
+    reportData.summary = greetingMessage;
 
     let subject = template?.subject_template || rule.name;
     let html = template?.body_template || `<h2>Report</h2>{table}`;
@@ -213,12 +237,8 @@ async function processSchedules(req: VercelRequest) {
     subject = evaluateConditionals(subject, reportData);
     html = evaluateConditionals(html, reportData);
 
-    const render = (text: string) => text.replace(/\{(\w+)\}/g, (match, key) => {
-      const dataKey = Object.keys(reportData).find(k => k.toLowerCase() === key.toLowerCase());
-      return dataKey ? (reportData as any)[dataKey] : match;
-    });
-    subject = render(subject);
-    html = render(html);
+    subject = render(subject, reportData);
+    html = render(html, reportData);
 
     try {
       await transporter.sendMail({

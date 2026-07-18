@@ -127,9 +127,10 @@ export const reportGenerators = {
    * Generates Monthly Attendance Report (Matrix Grid)
    */
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date): Promise<ReportData> => {
-    const firstDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
-    const lastDayOfMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() + 1, 0);
-    const monthStr = format(nowIST, 'MMMM yyyy');
+    const targetDate = new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+    const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+    const monthStr = format(targetDate, 'MMMM yyyy');
     const daysInMonth = lastDayOfMonth.getDate();
 
     const bufferStartDate = new Date(firstDayOfMonth);
@@ -149,7 +150,26 @@ export const reportGenerators = {
     const holidays = (holidaysRes.data || []) as any[];
     const recurringHolidays = (recurringHolidaysRes.data || []) as any[];
 
-    let tableHtml = `<thead>
+    let tableHtml = `<style>
+.report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
+.report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
+.report-grid td { border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; color: #334155; }
+.report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 120px; padding: 6px 6px; color: #0f172a; }
+.report-grid td.p { color: #166534; font-weight: bold; background-color: #f0fdf4; }
+.report-grid td.a { color: #991b1b; background-color: #fef2f2; }
+.report-grid td.wo { color: #4b5563; background-color: #f9fafb; }
+.report-grid td.h { color: #854d0e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.hd { color: #92400e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.ot { color: #0d9488; background-color: #f0f9ff; font-weight: bold; }
+.report-grid td.co { color: #0891b2; background-color: #fdf2f8; font-weight: bold; }
+.report-grid td.el { color: #4f46e5; background-color: #f5f3ff; font-weight: bold; }
+.report-grid td.sl { color: #7c3aed; background-color: #fff1f2; font-weight: bold; }
+.report-grid td.tot { font-weight: 800; background-color: #f3f4f6; color: #1e293b; border-left: 2px solid #10b981; }
+.report-grid tr.even { background-color: #ffffff; }
+.report-grid tr.odd { background-color: #f8fafc; }
+</style>
+<table class="report-grid">
+<thead>
         <tr style="background: #e5e7eb; color: #111827;">
           <th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th>`;
     
@@ -172,8 +192,8 @@ export const reportGenerators = {
       <tbody>`;
 
     users.forEach((user, idx) => {
-      tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#fff' : '#f3f4f6'};">
-        <td style="border: 1px solid #bbb; padding: 4px; font-weight: 600;">${user.name}</td>`;
+      tableHtml += `<tr class="${idx % 2 === 0 ? 'even' : 'odd'}">
+        <td class="emp-name">${user.name}</td>`;
       
       let presentCount = 0;
       let halfDayCount = 0;
@@ -356,26 +376,37 @@ export const reportGenerators = {
 
         if (dayWorked) daysPresentInWeek++;
 
-        tableHtml += `<td style="border: 1px solid #bbb; padding: 2px; text-align: center; color: ${color}; background: ${bgColor}; font-weight: bold; font-size: 8px;">${status}</td>`;
+        let cellClass = "";
+        if (status === 'P') cellClass = 'class="p"';
+        else if (status === 'A') cellClass = 'class="a"';
+        else if (status === 'W/O') cellClass = 'class="wo"';
+        else if (status === 'H') cellClass = 'class="h"';
+        else if (status.includes('0.5')) cellClass = 'class="hd"';
+        else if (status.includes('SL')) cellClass = 'class="sl"';
+        else if (status.includes('EL')) cellClass = 'class="el"';
+        else if (status.includes('CO') || status.includes('C/O')) cellClass = 'class="co"';
+        else cellClass = `style="color: ${color}; background: ${bgColor}; font-weight: bold;"`;
+
+        tableHtml += `<td ${cellClass}>${status}</td>`;
       }
 
       const grandTotal = presentCount + (halfDayCount * 0.5) + sickLeaveCount + earnedLeaveCount + casualLeaveCount + compOffCount + weeklyOffCount + holidayCount + overtimeCount;
 
-      tableHtml += `<td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #16a34a;">${presentCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #d97706;">${halfDayCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0d9488;">${overtimeCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #0891b2;">${compOffCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #4f46e5;">${earnedLeaveCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #701a75;">${casualLeaveCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #7c3aed;">${sickLeaveCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: bold; color: #dc2626;">${absentCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #6b7280;">${weeklyOffCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; color: #ea580c;">${holidayCount}</td>
-        <td style="border: 1px solid #bbb; padding: 4px; text-align: center; font-weight: 900; background: #f3f4f6;">${grandTotal}</td>
+      tableHtml += `<td class="p">${presentCount}</td>
+        <td class="hd">${halfDayCount}</td>
+        <td class="ot">${overtimeCount}</td>
+        <td class="co">${compOffCount}</td>
+        <td class="el">${earnedLeaveCount}</td>
+        <td class="tot" style="color: #701a75;">${casualLeaveCount}</td>
+        <td class="sl">${sickLeaveCount}</td>
+        <td class="a">${absentCount}</td>
+        <td class="wo">${weeklyOffCount}</td>
+        <td class="h">${holidayCount}</td>
+        <td class="tot">${grandTotal}</td>
       </tr>`;
     });
 
-    tableHtml += `</tbody>`;
+    tableHtml += `</tbody></table>`;
 
     return {
       date: monthStr,

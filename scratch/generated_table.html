@@ -1,0 +1,1463 @@
+<style>
+.report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
+.report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
+.report-grid td { border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; color: #334155; }
+.report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 120px; padding: 6px 6px; color: #0f172a; }
+.report-grid td.p { color: #166534; font-weight: bold; background-color: #f0fdf4; }
+.report-grid td.a { color: #991b1b; background-color: #fef2f2; }
+.report-grid td.wo { color: #4b5563; background-color: #f9fafb; }
+.report-grid td.h { color: #854d0e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.hd { color: #92400e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.ot { color: #0d9488; background-color: #f0f9ff; font-weight: bold; }
+.report-grid td.co { color: #0891b2; background-color: #fdf2f8; font-weight: bold; }
+.report-grid td.el { color: #4f46e5; background-color: #f5f3ff; font-weight: bold; }
+.report-grid td.sl { color: #7c3aed; background-color: #fff1f2; font-weight: bold; }
+.report-grid td.tot { font-weight: 800; background-color: #f3f4f6; color: #1e293b; border-left: 2px solid #10b981; }
+.report-grid tr.even { background-color: #ffffff; }
+.report-grid tr.odd { background-color: #f8fafc; }
+</style>
+<table class="report-grid">
+<thead>
+        <tr style="background: #e5e7eb; color: #111827;">
+          <th style="border: 1px solid #999; padding: 4px; text-align: left; width: 120px;">Employee Name</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">01</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">02</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">03</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">04</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">05</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">06</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">07</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">08</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">09</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">10</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">11</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">12</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">13</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">14</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">15</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">16</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">17</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">18</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">19</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">20</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">21</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">22</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">23</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">24</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">25</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">26</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">27</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">28</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">29</th><th style="border: 1px solid #999; padding: 2px; text-align: center; width: 18px;">30</th><th style="border: 1px solid #999; padding: 4px; text-align: center; background: #d1fae5; color: #065f46;">P</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #dbeafe; color: #1e40af;">0.5P</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ccfbf1; color: #0f766e;">OT (P)</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #cffafe; color: #0e7490;">C/O</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #e0e7ff; color: #3730a3;">E/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #fdf4ff; color: #701a75;">C/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #f3e8ff; color: #6b21a8;">S/L</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #fee2e2; color: #991b1b;">A</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd;">W/O</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ffedd5; color: #9a3412;">H</th>
+          <th style="border: 1px solid #999; padding: 4px; text-align: center; background: #ddd; font-weight: 800;">Pay</th>
+        </tr>
+      </thead>
+      <tbody><tr class="even">
+        <td class="emp-name">Abhishek T</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Ajit Kumar K</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Akash</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Akash Kumar  Behera</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Alekha Behera</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Amarender Golla</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Anil </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Anil Hanmantrao Battewad </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Ankur</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Arbinda Nayak</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Arjun Kumar Arjun</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Arpitha Nairy</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Arun Goud</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Arun Kumar A V</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Arya Thomas</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Balla Yadagiri </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Basavaraj HB - Senior Manager Landscaping </td><td style="color: #4f46e5; background: transparent; font-weight: bold;">E/L</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">1</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">29</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">1</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Bhimas Bora</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Bududula praveen Praveen</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">canny forest edge</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Chandana R</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Chandraj Thami</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Chennamma </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Chethan V</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">chethana r k</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Chiranjib Das</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Dasari Venkatesh</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Debashish Sharma</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">divya settu</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Facility Manager VGPT</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Fortune 1 FM</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Gagan Saikia</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Ganesha C</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">gokul panneer</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Golekha Parida</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Google Reviewer</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Gowtham Mohan </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Hari krishna Bollam</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Harish H P </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Hemant Kumar Das</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Indrani </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Isaac Roy</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Jagadeesh </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Joy Immanuel</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Kalakanti Premkumar </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Kannaiah R</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Karthik K.s</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Kavya Hegde</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Kavya M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Keshav Murthy</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Ks Srikanth</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Kusha K S</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Lava K S</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Madhu NH</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Madhushree B M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Maibub Paradigm</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Manasa Chakali</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Manjunath</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Manojreddy Pundru</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">meena koutam</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Muralidhara B K</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Nagaraja</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Nakul R Alvar</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Narasimha </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Naresh </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Natarajan V</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Nithesh M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Nithin Gowda</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Omkar  </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Poojashree S</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Pradeepp Gangaiah</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Prashant</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Pravin Prasad</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Priyanka Avadhut Naik Karmali</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Pundru Manoj Reddy </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Rajeshwari </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Rakshitha bs</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Ramesh CV</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Ravi DEVA</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Rinju  P  R (Ops Technical)</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">S.venkata Thirupathirao</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sachin Kote</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Saikumar Palaki</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sainath B</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sampath </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sampath Kumar </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sanctuary FM</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sandeep B </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sandeep Biswas</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sandip Limboo</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sanjay Ganapati Naik</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Santosh Rathod</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">sashikanta das</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Shankar Namdev</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Shilpa M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Shivappa M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sinchana KM</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Siran jit Mandal</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sonjoy Kurmi</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Soumya Das</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sowndarya D</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Srikanth Ks</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sriya Vijayan </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Stany  D Souza </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sudhan (IOT Architect)</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Sudhan M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Sunilkumar Hs</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Surojit Mondal</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Tharun Boyapally</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Tikna Kanai</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Udita Paul</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Uma</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Veerabhadra T M</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Veerabhadraiah S</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Veerendra Obinni</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">Venkatachalam </td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">vinjam manoj kumar</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="odd">
+        <td class="emp-name">YOGESH SINGH</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr><tr class="even">
+        <td class="emp-name">Yuva Naidu</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="a">A</td><td class="p">0</td>
+        <td class="hd">0</td>
+        <td class="ot">0</td>
+        <td class="co">0</td>
+        <td class="el">0</td>
+        <td class="tot" style="color: #701a75;">0</td>
+        <td class="sl">0</td>
+        <td class="a">30</td>
+        <td class="wo">0</td>
+        <td class="h">0</td>
+        <td class="tot">0</td>
+      </tr></tbody></table>

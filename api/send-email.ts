@@ -49,7 +49,7 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(new Date(todayStr).getTime()));
     const [settingsRes, usersRes, eventsRes, leavesRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified'),
+      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).eq('is_deleted', false),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id').eq('status', 'approved').lte('start_date', todayStr).gte('end_date', todayStr)
     ]);
@@ -155,7 +155,7 @@ const reportGenerators = {
     };
   },
   attendance_monthly: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {
-    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : nowIST;
+    const targetDate = filters?.dateRange?.start ? new Date(filters.dateRange.start) : new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
     const firstDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
     const monthStr = format(targetDate, 'MMMM yyyy');
@@ -163,9 +163,10 @@ const reportGenerators = {
     const today = new Date(nowIST.getTime());
     today.setUTCHours(0,0,0,0);
 
-    const [settingsRes, usersRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
+    const [settingsRes, usersRes, snapshotsRes, eventsRes, leavesRes, holidaysRes] = await Promise.all([
       supabase.from('settings').select('attendance_settings').eq('id', 'singleton').maybeSingle(),
-      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').order('name'),
+      supabase.from('users').select('id, name, role:roles(display_name)').neq('role_id', 'unverified').eq('is_active', true).eq('is_deleted', false).order('name'),
+      supabase.from('attendance_month_snapshots').select('*').eq('year', targetDate.getFullYear()).eq('month', targetDate.getMonth() + 1),
       supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', firstDayOfMonth.toISOString()).lte('timestamp', lastDayOfMonth.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('leave_requests').select('user_id, start_date, end_date, leave_type, status, day_option').eq('status', 'approved').gte('end_date', getISTDateString(firstDayOfMonth)).lte('start_date', getISTDateString(lastDayOfMonth)),
       supabase.from('holidays').select('*').gte('date', getISTDateString(firstDayOfMonth)).lte('date', getISTDateString(lastDayOfMonth))
@@ -177,6 +178,7 @@ const reportGenerators = {
     const events = (eventsRes.data || []) as any[];
     const leaves = (leavesRes.data || []) as any[];
     const holidays = (holidaysRes.data || []) as any[];
+    const snapshots = (snapshotsRes.data || []) as any[];
 
     let targetUsers = users;
     if (filters?.user?.id) {
@@ -192,7 +194,25 @@ const reportGenerators = {
     let totalAbsentCount = 0;
     let totalLateCount = 0;
 
-    let tableHtml = `<table style="width:100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 10px; border: 1px solid #e2e8f0;">
+    let tableHtml = `<style>
+.report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
+.report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
+.report-grid td { border: 1px solid #e2e8f0; padding: 4px 2px; text-align: center; color: #334155; }
+.report-grid td.emp-name { text-align: left; font-weight: 600; min-width: 120px; padding: 6px 6px; color: #0f172a; }
+.report-grid td.p { color: #166534; font-weight: bold; background-color: #f0fdf4; }
+.report-grid td.a { color: #991b1b; background-color: #fef2f2; }
+.report-grid td.wo { color: #4b5563; background-color: #f9fafb; }
+.report-grid td.h { color: #854d0e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.hd { color: #92400e; background-color: #fffbeb; font-weight: bold; }
+.report-grid td.ot { color: #075985; background-color: #f0f9ff; font-weight: bold; }
+.report-grid td.co { color: #9d174d; background-color: #fdf2f8; font-weight: bold; }
+.report-grid td.el { color: #5b21b6; background-color: #f5f3ff; font-weight: bold; }
+.report-grid td.sl { color: #9f1239; background-color: #fff1f2; font-weight: bold; }
+.report-grid td.tot { font-weight: 800; background-color: #ecfdf5; color: #065f46; border-left: 2px solid #10b981; }
+.report-grid tr.even { background-color: #ffffff; }
+.report-grid tr.odd { background-color: #f8fafc; }
+</style>
+<table class="report-grid">
     <thead>
       <tr style="background: #f8fafc; color: #1e293b; border-bottom: 2px solid #e2e8f0;">
         <th style="border: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; min-width: 140px; font-weight: 700;">Employee Name</th>`;
@@ -216,11 +236,13 @@ const reportGenerators = {
     <tbody>`;
 
     targetUsers.forEach((user, idx) => {
-      tableHtml += `<tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="border: 1px solid #e2e8f0; padding: 8px 6px; font-weight: 600; font-size: 11px; color: #334155;">${user.name}</td>`;
+      tableHtml += `<tr class="${idx % 2 === 0 ? 'even' : 'odd'}">
+        <td class="emp-name">${user.name}</td>`;
       
       let countP = 0, countHalfP = 0, countOT = 0, countCO = 0, countEL = 0, countSL = 0, countA = 0, countWO = 0, countH = 0, userPaidLeave = 0;
       let daysPresentInWeek = 0;
+
+      const userSnapshot = snapshots.find(s => s.employee_id === user.id);
 
       for (let d = 1; d <= daysInMonth; d++) {
         const currentDate = new Date(firstDayOfMonth.getFullYear(), firstDayOfMonth.getMonth(), d);
@@ -235,55 +257,82 @@ const reportGenerators = {
           continue;
         }
 
-        const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
-        const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
-        const isPublicHoliday = holidays.find(h => h.date === dateStr);
-        
         let status = '', color = '#64748b', cellBg = 'transparent';
-        const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
-        const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
 
-        if (punchIn || punchOut) {
-          const durationHours = (punchIn && punchOut) ? (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000 : 0;
-          const punchInTime = punchIn ? format(new Date(new Date(punchIn.timestamp).getTime() + IST_OFFSET), 'HH:mm') : '—';
-          if (punchInTime !== '—' && punchInTime > configStartTime) totalLateCount++;
-          if (durationHours >= 5 || (!punchOut && punchIn)) {
-            status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
-          } else if (durationHours > 1) {
-            status = '0.5P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
-          } else {
-            status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
-          }
-        } else if (dayLeave) {
-          const isHalfDay = dayLeave.day_option === 'half';
-          const leaveType = dayLeave.leave_type?.toLowerCase() || '';
-          if (leaveType === 'loss of pay' || leaveType === 'lop') {
-            status = isHalfDay ? '0.5A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
-          } else {
-            if (leaveType.includes('sick')) { status = isHalfDay ? '0.5SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
-            else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '0.5EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
-            else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '0.5CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
-            else { status = isHalfDay ? '0.5L' : 'L'; cellBg = '#eff6ff'; }
-            color = '#2563eb'; userPaidLeave += isHalfDay ? 0.5 : 1;
-          }
-        } else if (isPublicHoliday) {
-          status = 'H'; color = '#854d0e'; cellBg = '#fef3c7'; countH++;
-        } else if (isSunday) {
-          if (daysPresentInWeek >= 3) {
-            status = 'W/O'; color = '#64748b'; cellBg = '#f1f5f9'; countWO++;
+        if (userSnapshot && userSnapshot.daily_data) {
+          const snapshotDay = userSnapshot.daily_data.find((d: any) => d.date === dateStr);
+          status = snapshotDay ? snapshotDay.status : 'A';
+          if (status === 'P') { countP++; totalPresentCount++; }
+          else if (status === '0.5P' || status === '1/2P') { countHalfP++; totalPresentCount += 0.5; status = '0.5P'; }
+          else if (status === 'H') countH++;
+          else if (status === 'W/O' || status === 'WO') countWO++;
+          else if (status.includes('SL')) { countSL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('EL') || status.includes('E/L')) { countEL += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('CO') || status.includes('C/O')) { countCO += status.includes('0.5') ? 0.5 : 1; userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status.includes('L') && !status.includes('SL') && !status.includes('EL') && !status.includes('E/L')) { userPaidLeave += status.includes('0.5') ? 0.5 : 1; }
+          else if (status === 'A' || status === '0.5A') { countA += status === '0.5A' ? 0.5 : 1; totalAbsentCount += status === '0.5A' ? 0.5 : 1; }
+        } else {
+          const dayEvents = events.filter(e => e.user_id === user.id && getISTDateString(e.timestamp) === dateStr);
+          const dayLeave = leaves.find(l => l.user_id === user.id && dateStr >= l.start_date && dateStr <= l.end_date);
+          const isPublicHoliday = holidays.find(h => h.date === dateStr);
+          
+          const punchIn = dayEvents.find(e => e.type === 'punch-in' || e.type === 'check_in');
+          const punchOut = dayEvents.filter(e => e.type === 'punch-out' || e.type === 'check_out').pop();
+
+          if (punchIn || punchOut) {
+            const durationHours = (punchIn && punchOut) ? (new Date(punchOut.timestamp).getTime() - new Date(punchIn.timestamp).getTime()) / 3600000 : 0;
+            const punchInTime = punchIn ? format(new Date(new Date(punchIn.timestamp).getTime() + IST_OFFSET), 'HH:mm') : '—';
+            if (punchInTime !== '—' && punchInTime > configStartTime) totalLateCount++;
+            if (durationHours >= 5 || (!punchOut && punchIn)) {
+              status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
+            } else if (durationHours > 1) {
+              status = '0.5P'; color = '#d97706'; cellBg = '#fffbeb'; countHalfP++; totalPresentCount += 0.5;
+            } else {
+              status = 'P'; color = '#16a34a'; cellBg = '#f0fdf4'; countP++; totalPresentCount++;
+            }
+          } else if (dayLeave) {
+            const isHalfDay = dayLeave.day_option === 'half';
+            const leaveType = dayLeave.leave_type?.toLowerCase() || '';
+            if (leaveType === 'loss of pay' || leaveType === 'lop') {
+              status = isHalfDay ? '0.5A' : 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA += isHalfDay ? 0.5 : 1; totalAbsentCount += isHalfDay ? 0.5 : 1;
+            } else {
+              if (leaveType.includes('sick')) { status = isHalfDay ? '0.5SL' : 'S/L'; countSL += isHalfDay ? 0.5 : 1; cellBg = '#fff1f2'; }
+              else if (leaveType.includes('earned') || leaveType.includes('annual')) { status = isHalfDay ? '0.5EL' : 'E/L'; countEL += isHalfDay ? 0.5 : 1; cellBg = '#f5f3ff'; }
+              else if (leaveType.includes('comp') || leaveType.includes('c/o')) { status = isHalfDay ? '0.5CO' : 'C/O'; countCO += isHalfDay ? 0.5 : 1; cellBg = '#fdf2f8'; }
+              else { status = isHalfDay ? '0.5L' : 'L'; cellBg = '#eff6ff'; }
+              color = '#2563eb'; userPaidLeave += isHalfDay ? 0.5 : 1;
+            }
+          } else if (isPublicHoliday) {
+            status = 'H'; color = '#854d0e'; cellBg = '#fef3c7'; countH++;
+          } else if (isSunday) {
+            if (daysPresentInWeek >= 3) {
+              status = 'W/O'; color = '#64748b'; cellBg = '#f1f5f9'; countWO++;
+            } else {
+              status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
+            }
           } else {
             status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
           }
-        } else {
-          status = 'A'; color = '#dc2626'; cellBg = '#fef2f2'; countA++; totalAbsentCount++;
-        }
 
-        if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'C/O', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
-        tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 2px; text-align: center; color: ${color}; background: ${cellBg}; font-weight: 700; font-size: 8px;">${status || '—'}</td>`;
+          if (['P', '0.5P', 'L', 'EL', 'SL', 'CO', 'C/O', 'H'].some(s => status.includes(s))) daysPresentInWeek++;
+        }
+        let cellClass = "";
+        if (status === 'P') cellClass = 'class="p"';
+        else if (status === 'A') cellClass = 'class="a"';
+        else if (status === 'W/O' || status === 'WO') cellClass = 'class="wo"';
+        else if (status === 'H') cellClass = 'class="h"';
+        else if (status.includes('0.5')) cellClass = 'class="hd"';
+        else if (status.includes('SL')) cellClass = 'class="sl"';
+        else if (status.includes('EL')) cellClass = 'class="el"';
+        else if (status.includes('CO') || status.includes('C/O')) cellClass = 'class="co"';
+        else if (status === '—') cellClass = '';
+        else cellClass = `style="color: ${color}; background: ${cellBg}; font-weight: 700;"`;
+
+        tableHtml += `<td ${cellClass}>${status || '—'}</td>`;
       }
 
       const payableDays = countP + (countHalfP * 0.5) + countWO + countH + userPaidLeave;
-      tableHtml += `<td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #166534; background: #f0fdf4;">${countP}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #92400e; background: #fffbeb;">${countHalfP}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #075985; background: #f0f9ff;">${countOT}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9d174d; background: #fdf2f8;">${countCO}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #5b21b6; background: #f5f3ff;">${countEL}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #9f1239; background: #fff1f2;">${countSL}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 700; color: #991b1b; background: #fef2f2;">${countA}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #4b5563; background: #f9fafb;">${countWO}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; color: #854d0e; background: #fffbeb;">${countH}</td><td style="border: 1px solid #e2e8f0; padding: 4px; text-align: center; font-weight: 800; background: #ecfdf5; color: #064e3b; border-left: 2px solid #10b981;">${payableDays}</td></tr>`;
+      tableHtml += `<td class="p">${countP}</td><td class="hd">${countHalfP}</td><td class="ot">${countOT}</td><td class="co">${countCO}</td><td class="el">${countEL}</td><td class="sl">${countSL}</td><td class="a">${countA}</td><td class="wo">${countWO}</td><td class="h">${countH}</td><td class="tot">${payableDays}</td></tr>`;
     });
     tableHtml += `</tbody></table>`;
     
@@ -417,12 +466,9 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     reportData.summary = greetingMessage;
 
     html = template?.body_template;
-    if (!html || rule.report_type === 'attendance_monthly') {
-        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .header-content { display: block !important; text-align: center !important; } .header-right { text-align: center !important; margin-top: 12px !important; } } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #e2e8f0; }</style></head><body style="margin: 0; padding: 0; background-color: #f8fafc;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background-color: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);"><div style="padding: 40px; border-bottom: 1px solid #f1f5f9; background: #ffffff;"><div style="display: flex; justify-content: space-between; align-items: center;" class="header-content"><div><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 50px; display: block; margin-bottom: 8px;"><div style="font-size: 14px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px;">Paradigm Services</div></div><div style="text-align: right;" class="header-right"><h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Monthly Attendance Report</h1><div style="font-size: 18px; font-weight: 600; color: #64748b; margin-top: 4px;">{date}</div><div style="font-size: 12px; color: #94a3b8; margin-top: 12px; font-weight: 500;">Generated: {generatedTime} | By: {generatedBy}</div></div></div></div><div style="padding: 40px;"><div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Monthly Presence</div><div style="font-size: 42px; font-weight: 900; color: #065f46;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #3b82f6;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Total Punches</div><div style="font-size: 42px; font-weight: 900; color: #1e40af;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #64748b;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Active Staff</div><div style="font-size: 42px; font-weight: 900; color: #334155;">{totalEmployees}</div></div></div><div style="margin-bottom: 40px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;"><h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Detailed Attendance Grid</h3><div style="font-size: 12px; color: #94a3b8; font-weight: 600;">Scroll horizontally if viewing on mobile</div></div><div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">{table}</div></div><div style="padding-top: 40px; border-top: 1px solid #f1f5f9; text-align: center;"><p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 13px; font-weight: 500;">This is an official automated compliance report from the Paradigm Attendance Management System.</p><div style="display: inline-flex; gap: 12px; justify-content: center;"><a href="https://app.paradigmfms.com" style="color: #059669; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard</a><span style="color: #e2e8f0;">|</span><span style="color: #64748b; font-size: 13px; font-weight: 600;">Paradigm Facility Management Services</span></div></div></div></div></body></html>`;
-
-
+    if (!html) {
+        const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .header-content { display: block !important; text-align: center !important; } .header-right { text-align: center !important; margin-top: 12px !important; } } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #e2e8f0; }</style></head><body style="margin: 0; padding: 0; background-color: #f8fafc;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background-color: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);"><div style="padding: 40px; border-bottom: 1px solid #f1f5f9; background: #ffffff;"><div style="display: flex; justify-content: space-between; align-items: center;" class="header-content"><div><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 50px; display: block; margin-bottom: 8px;"><div style="font-size: 14px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px;">Paradigm Services</div></div><div style="text-align: right;" class="header-right"><h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Monthly Attendance Report</h1><div style="font-size: 18px; font-weight: 600; color: #64748b; margin-top: 4px;">{date}</div><div style="font-size: 12px; color: #94a3b8; margin-top: 12px; font-weight: 500;">Generated: {generatedTime} | By: {generatedBy}</div></div></div></div><div style="padding: 40px;"><div style="color: #374151; font-size: 16px; line-height: 1.6; margin-bottom: 35px; border-left: 4px solid #10b981; padding-left: 20px; background: #f0fdf4; border-radius: 8px;"><div style="padding: 15px 0;">{customGreeting}</div></div><div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Monthly Presence</div><div style="font-size: 42px; font-weight: 900; color: #065f46;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #3b82f6;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Total Punches</div><div style="font-size: 42px; font-weight: 900; color: #1e40af;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #64748b;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Active Staff</div><div style="font-size: 42px; font-weight: 900; color: #334155;">{totalEmployees}</div></div></div><div style="margin-bottom: 40px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;"><h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Detailed Attendance Grid</h3><div style="font-size: 12px; color: #94a3b8; font-weight: 600;">Scroll horizontally if viewing on mobile</div></div><div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">{table}</div></div><div style="padding-top: 40px; border-top: 1px solid #f1f5f9; text-align: center;"><p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 13px; font-weight: 500;">This is an official automated compliance report from the Paradigm Attendance Management System.</p><div style="display: inline-flex; gap: 12px; justify-content: center;"><a href="https://app.paradigmfms.com" style="color: #059669; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard</a><span style="color: #e2e8f0;">|</span><span style="color: #64748b; font-size: 13px; font-weight: 600;">Paradigm Facility Management Services</span></div></div></div></div></body></html>`;
         const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Attendance Management System</div><div style="font-size: 16px; font-weight: 600;">{reportDate}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div class="stats-container" style="display: flex; gap: 16px; margin-bottom: 32px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Staff Presence</div><div style="font-size: 28px; font-weight: 800; color: #059669;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Total Present</div><div style="font-size: 28px; font-weight: 800; color: #10b981;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"><div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">Total Late</div><div style="font-size: 28px; font-weight: 800; color: #f59e0b;">{lateCount}</div></div></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Detailed Overview</h3></div><div style="overflow-x: auto;">{table}</div></div></div></div></body></html>`;
-
         html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
     }
 
@@ -479,7 +525,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
     reportData.greetingMessage = greetingMessage;
     reportData.customGreeting = greetingMessage;
 
-    const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .header-content { display: block !important; text-align: center !important; } .header-right { text-align: center !important; margin-top: 12px !important; } } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #e2e8f0; }</style></head><body style="margin: 0; padding: 0; background-color: #f8fafc;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background-color: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);"><div style="padding: 40px; border-bottom: 1px solid #f1f5f9; background: #ffffff;"><div style="display: flex; justify-content: space-between; align-items: center;" class="header-content"><div><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 50px; display: block; margin-bottom: 8px;"><div style="font-size: 14px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px;">Paradigm Services</div></div><div style="text-align: right;" class="header-right"><h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Monthly Attendance Report</h1><div style="font-size: 18px; font-weight: 600; color: #64748b; margin-top: 4px;">{date}</div><div style="font-size: 12px; color: #94a3b8; margin-top: 12px; font-weight: 500;">Generated: {generatedTime} | By: {generatedBy}</div></div></div></div><div style="padding: 40px;"><div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Monthly Presence</div><div style="font-size: 42px; font-weight: 900; color: #065f46;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #3b82f6;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Total Punches</div><div style="font-size: 42px; font-weight: 900; color: #1e40af;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #64748b;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Active Staff</div><div style="font-size: 42px; font-weight: 900; color: #334155;">{totalEmployees}</div></div></div><div style="margin-bottom: 40px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;"><h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Detailed Attendance Grid</h3><div style="font-size: 12px; color: #94a3b8; font-weight: 600;">Scroll horizontally if viewing on mobile</div></div><div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">{table}</div></div><div style="padding-top: 40px; border-top: 1px solid #f1f5f9; text-align: center;"><p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 13px; font-weight: 500;">This is an official automated compliance report from the Paradigm Attendance Management System.</p><div style="display: inline-flex; gap: 12px; justify-content: center;"><a href="https://app.paradigmfms.com" style="color: #059669; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard</a><span style="color: #e2e8f0;">|</span><span style="color: #64748b; font-size: 13px; font-weight: 600;">Paradigm Facility Management Services</span></div></div></div></div></body></html>`;
+    const getMonthlyReportPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .header-content { display: block !important; text-align: center !important; } .header-right { text-align: center !important; margin-top: 12px !important; } } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #e2e8f0; }</style></head><body style="margin: 0; padding: 0; background-color: #f8fafc;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 1000px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; background-color: #ffffff; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);"><div style="padding: 40px; border-bottom: 1px solid #f1f5f9; background: #ffffff;"><div style="display: flex; justify-content: space-between; align-items: center;" class="header-content"><div><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Paradigm Services" style="height: 50px; display: block; margin-bottom: 8px;"><div style="font-size: 14px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1.5px;">Paradigm Services</div></div><div style="text-align: right;" class="header-right"><h1 style="margin: 0; font-size: 32px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px;">Monthly Attendance Report</h1><div style="font-size: 18px; font-weight: 600; color: #64748b; margin-top: 4px;">{date}</div><div style="font-size: 12px; color: #94a3b8; margin-top: 12px; font-weight: 500;">Generated: {generatedTime} | By: {generatedBy}</div></div></div></div><div style="padding: 40px;"><div style="color: #374151; font-size: 16px; line-height: 1.6; margin-bottom: 35px; border-left: 4px solid #10b981; padding-left: 20px; background: #f0fdf4; border-radius: 8px;"><div style="padding: 15px 0;">{customGreeting}</div></div><div class="stats-container" style="display: flex; gap: 24px; margin-bottom: 40px;"><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #10b981;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Monthly Presence</div><div style="font-size: 42px; font-weight: 900; color: #065f46;">{attendancePercentage}%</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #3b82f6;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Total Punches</div><div style="font-size: 42px; font-weight: 900; color: #1e40af;">{totalPresent}</div></div><div class="stat-card" style="flex: 1; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); text-align: left; border-left: 5px solid #64748b;"><div style="font-size: 12px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">Active Staff</div><div style="font-size: 42px; font-weight: 900; color: #334155;">{totalEmployees}</div></div></div><div style="margin-bottom: 40px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;"><h3 style="margin: 0; color: #1e293b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Detailed Attendance Grid</h3><div style="font-size: 12px; color: #94a3b8; font-weight: 600;">Scroll horizontally if viewing on mobile</div></div><div style="overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px;">{table}</div></div><div style="padding-top: 40px; border-top: 1px solid #f1f5f9; text-align: center;"><p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 13px; font-weight: 500;">This is an official automated compliance report from the Paradigm Attendance Management System.</p><div style="display: inline-flex; gap: 12px; justify-content: center;"><a href="https://app.paradigmfms.com" style="color: #059669; text-decoration: none; font-weight: 700; font-size: 13px;">Open Dashboard</a><span style="color: #e2e8f0;">|</span><span style="color: #64748b; font-size: 13px; font-weight: 600;">Paradigm Facility Management Services</span></div></div></div></div></body></html>`;
 
 
     const getDefaultPremiumTemplate = () => `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@media only screen and (max-width: 600px) { .stats-container { display: block !important; } .stat-card { margin-bottom: 12px !important; width: 100% !important; } .attendance-table { font-size: 8px !important; } }</style></head><body style="margin: 0; padding: 0; background-color: #f1f5f9;"><div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 900px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);"><!-- Header --><div style="background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); padding: 32px; color: white;"><div style="display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; align-items: center; gap: 12px;"><div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);"><img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;" onerror="this.style.display='none'"><span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-left: 2px;">PARADIGM</span></div></div><div style="text-align: right;"><div style="font-size: 11px; opacity: 0.7; text-transform: uppercase; font-weight: 700;">${reportType.replace(/_/g, ' ')}</div><div style="font-size: 16px; font-weight: 600;">{date}</div></div></div></div><div style="padding: 32px;"><div style="margin-bottom: 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px;"><div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Hi,</div><p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">{greetingMessage}</p></div><div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;"><div style="background: #f8fafc; padding: 16px 24px; border-bottom: 1px solid #e2e8f0;"><h3 style="margin: 0; color: #1e293b; font-size: 16px; font-weight: 700;">Report Overview</h3></div><div style="overflow-x: auto;" class="attendance-table"><table style="width: 100%; border-collapse: collapse;"><thead><tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;"><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">S.No</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Employee Name</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Dept</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">In</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Out</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">B.In</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">B.Out</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">OT.In</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">OT.Out</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Dur</th><th style="padding: 12px 4px; text-align: left; font-size: 10px; color: #64748b; font-weight: 600;">Status</th></tr></thead><tbody>{table}</tbody></table></div></div></div></div></body></html>`;
@@ -489,6 +535,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
   const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
   if (toAddresses.length === 0) throw new Error('No valid recipients found');
+  (await import('fs')).writeFileSync('C:/Users/sudhan/.gemini/antigravity-ide/brain/483948d5-2302-49b6-9c3c-eacb7cc76dc2/scratch/last_email_sent.html', html);
   const ccAddresses = (Array.isArray(cc) ? cc : [cc]).filter(e => typeof e === 'string' && e.includes('@'));
 
   const transporter = nodemailer.createTransport({

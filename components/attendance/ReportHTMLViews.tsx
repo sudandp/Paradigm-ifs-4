@@ -334,7 +334,7 @@ export const MonthlyStatusView: React.FC<{
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Total Punches</span>
                     <div className="text-2xl font-black text-blue-600">
-                        {recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0), 0)}
+                        {Number(recalculatedRows.reduce((acc, curr) => acc + (curr.presentDays || 0), 0).toFixed(2))}
                     </div>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
