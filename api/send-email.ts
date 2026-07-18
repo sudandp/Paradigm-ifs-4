@@ -535,7 +535,7 @@ export async function sendEmailLogic(body: any, supabaseUrl?: string, supabaseSe
 
   const toAddresses = (Array.isArray(to) ? to : [to]).filter(e => typeof e === 'string' && e.includes('@'));
   if (toAddresses.length === 0) throw new Error('No valid recipients found');
-  (await import('fs')).writeFileSync('C:/Users/sudhan/.gemini/antigravity-ide/brain/483948d5-2302-49b6-9c3c-eacb7cc76dc2/scratch/last_email_sent.html', html);
+
   const ccAddresses = (Array.isArray(cc) ? cc : [cc]).filter(e => typeof e === 'string' && e.includes('@'));
 
   const transporter = nodemailer.createTransport({
