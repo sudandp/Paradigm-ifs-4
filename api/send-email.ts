@@ -338,11 +338,34 @@ const reportGenerators = {
     tableHtml += `</tbody></table>`;
     
     // Add Legend
-    tableHtml += `<div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;"><div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center;"><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a; display: inline-block;"></span> <strong style="color: #166534;">P:</strong> PRESENT</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #dc2626; display: inline-block;"></span> <strong style="color: #991b1b;">A:</strong> ABSENT</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #991b1b; display: inline-block;"></span> <strong style="color: #991b1b;">LOP:</strong> LOSS OF PAY</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #d97706; display: inline-block;"></span> <strong style="color: #92400e;">1/2P:</strong> HALF DAY</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0891b2; display: inline-block;"></span> <strong style="color: #155e75;">W/H:</strong> WFH</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0369a1; display: inline-block;"></span> <strong style="color: #0c4a6e;">W/P:</strong> WEEK OFF WORK</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #64748b; display: inline-block;"></span> <strong style="color: #475569;">W/O:</strong> WEEKLY OFF</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span> <strong style="color: #b45309;">H:</strong> HOLIDAY</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #0ea5e9; display: inline-block;"></span> <strong style="color: #0369a1;">OT(P):</strong> OT / EXTRAP</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; display: inline-block;"></span> <strong style="color: #6d28d9;">S/L:</strong> SICK LEAVE</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #6366f1; display: inline-block;"></span> <strong style="color: #4338ca;">E/L:</strong> EARNED LEAVE</div><div style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ec4899; display: inline-block;"></span> <strong style="color: #be185d;">C/O:</strong> COMP OFF</div></div><div style="text-align: center; margin-top: 10px; font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Paradigm Services - Monthly Status Report</div></div>`;
+    tableHtml += `<div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; font-family: sans-serif;">
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #166534; font-weight: bold;">P:</span> PRESENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">A:</span> ABSENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">LOP:</span> LOSS OF PAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #92400e; font-weight: bold;">0.5P:</span> HALF DAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #155e75; font-weight: bold;">W/H:</span> WFH</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0c4a6e; font-weight: bold;">W/P:</span> WEEK OFF WORK</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #475569; font-weight: bold;">W/O:</span> WEEKLY OFF</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #b45309; font-weight: bold;">H:</span> HOLIDAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0369a1; font-weight: bold;">OT(P):</span> OT / EXTRAP</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #6d28d9; font-weight: bold;">S/L:</span> SICK LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #4338ca; font-weight: bold;">E/L:</span> EARNED LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #be185d; font-weight: bold;">C/O:</span> COMP OFF</td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Paradigm Services - Monthly Status Report</div>
+    </div>`;
 
     const totalPossible = targetUsers.length * daysInMonth;
     const attendancePercentage = totalPossible > 0 ? Math.round((totalPresentCount / totalPossible) * 100) : 0;
     
+    // Add billing cycle text for top right text
+    const billingCycle = `01 ${safeFormat(targetDate, 'MMM yyyy')} - ${daysInMonth} ${safeFormat(targetDate, 'MMM yyyy')}`;
+
     return { 
       date: monthStr, 
       reportDate: safeFormat(nowIST, 'dd MMM yyyy'),
@@ -355,7 +378,8 @@ const reportGenerators = {
       lateCount: String(totalLateCount),
       logo: '<img src="https://app.paradigmfms.com/paradigm-logo.png" alt="Logo" style="height: 40px; display: block;">',
       totalPresent: String(Math.round(totalPresentCount)),
-      generatedBy: filters?.triggeredBy || 'Manual Request'
+      generatedBy: filters?.triggeredBy || 'Manual Request',
+      billingCycle: billingCycle
     };
   },
   document_expiry: async (supabase: SupabaseClient, nowIST: Date, filters?: any) => {

@@ -409,11 +409,43 @@ export const reportGenerators = {
 
     tableHtml += `</tbody></table>`;
 
+    const billingCycle = `01 ${format(targetDate, 'MMM yyyy')} - ${daysInMonth} ${format(targetDate, 'MMM yyyy')}`;
+    const totalPossibleDays = users.length * daysInMonth; // Or a more accurate calculation if needed
+    const attendancePercentage = totalPossibleDays > 0 ? Math.round((presentCount / totalPossibleDays) * 100).toString() : '0';
+
+    tableHtml += `<div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; font-family: sans-serif;">
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #166534; font-weight: bold;">P:</span> PRESENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">A:</span> ABSENT</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #991b1b; font-weight: bold;">LOP:</span> LOSS OF PAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #92400e; font-weight: bold;">0.5P:</span> HALF DAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #155e75; font-weight: bold;">W/H:</span> WFH</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0c4a6e; font-weight: bold;">W/P:</span> WEEK OFF WORK</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #475569; font-weight: bold;">W/O:</span> WEEKLY OFF</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #b45309; font-weight: bold;">H:</span> HOLIDAY</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #0369a1; font-weight: bold;">OT(P):</span> OT / EXTRAP</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #6d28d9; font-weight: bold;">S/L:</span> SICK LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #4338ca; font-weight: bold;">E/L:</span> EARNED LEAVE</td>
+          <td style="padding: 5px; font-size: 10px; color: #64748b;"><span style="color: #be185d; font-weight: bold;">C/O:</span> COMP OFF</td>
+        </tr>
+      </table>
+      <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Paradigm Services - Monthly Status Report</div>
+    </div>`;
+
     return {
       date: monthStr,
+      billingCycle: billingCycle,
+      reportDate: format(nowIST, 'dd MMM yyyy'),
+      generatedTime: format(nowIST, 'hh:mm a'),
       year: format(nowIST, 'yyyy'),
       totalEmployees: String(users.length),
-      table: tableHtml
+      totalPresent: String(presentCount),
+      attendancePercentage: attendancePercentage,
+      table: tableHtml,
+      generatedBy: 'Manual Request'
     };
   },
 
