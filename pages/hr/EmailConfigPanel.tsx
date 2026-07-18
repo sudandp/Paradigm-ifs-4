@@ -250,7 +250,8 @@ const EmailConfigPanel: React.FC = () => {
             lateCount: '2',
             totalEmployees: '50',
             date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-            generatedTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+            generatedTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+            year: new Date().getFullYear().toString()
         };
         
         // Evaluate conditionals

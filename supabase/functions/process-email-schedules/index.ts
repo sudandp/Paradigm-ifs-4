@@ -542,6 +542,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
+      year: format(nowIST, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: '0',
       totalAbsent: String(filteredUsers.length),
@@ -610,6 +611,7 @@ async function generateDailyAttendanceReport(supabase: ReturnType<typeof createC
     date: format(nowIST, 'EEEE, MMMM do, yyyy'),
     reportDate: format(nowIST, 'dd MMM yyyy'),
     generatedTime: format(nowIST, 'hh:mm a'),
+    year: format(nowIST, 'yyyy'),
     totalEmployees: String(filteredUsers.length),
     totalPresent: String(totalPresent),
     totalAbsent: String(totalAbsent),
@@ -897,6 +899,7 @@ async function generateMonthlyAttendanceReport(supabase: ReturnType<typeof creat
     date: monthStr,
     reportDate: format(nowIST, 'dd MMM yyyy'),
     generatedTime: format(nowIST, 'hh:mm a'),
+    year: format(nowIST, 'yyyy'),
     totalEmployees: String(totalEmployees),
     totalPresent: String(Math.round(totalPresentCount)),
     totalAbsent: String(Math.round(totalAbsentCount)),

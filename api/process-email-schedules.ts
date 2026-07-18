@@ -77,6 +77,7 @@ const reportGenerators = {
     return {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
+      year: format(nowIST, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(Math.max(0, filteredUsers.length - totalPresent - onLeaveCount)),

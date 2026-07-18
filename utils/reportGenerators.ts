@@ -112,6 +112,7 @@ export const reportGenerators = {
       date: format(nowIST, 'EEEE, MMMM do, yyyy'),
       reportDate: format(nowIST, 'dd MMM yyyy'),
       generatedTime: format(nowIST, 'hh:mm a'),
+      year: format(nowIST, 'yyyy'),
       totalEmployees: String(filteredUsers.length),
       totalPresent: String(totalPresent),
       totalAbsent: String(totalAbsent),
