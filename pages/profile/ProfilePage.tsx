@@ -30,6 +30,7 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { Capacitor } from '@capacitor/core';
 import { reverseGeocode, getPrecisePosition } from '../../utils/locationUtils';
 import { formatDistance, stepsToDistanceKm } from '../../utils/distanceUtils';
+import { isThirdSaturday } from '../../utils/date';
 
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { isAdmin } from '../../utils/auth';
@@ -759,8 +760,9 @@ const ProfilePage: React.FC = () => {
         });
     }, []);
     
-    // Blocked if: Punched Today AND Not Currently Checked In (office or field) AND Not Unlocked
-    const isPunchBlocked = hasPunchedToday && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
+    const isThirdSaturdayToday = isThirdSaturday(new Date());
+    // Blocked if: (Punched Today OR today is 3rd Saturday) AND Not Currently Checked In (office or field) AND Not Unlocked
+    const isPunchBlocked = (hasPunchedToday || isThirdSaturdayToday) && !isCheckedIn && !isFieldCheckedIn && !isSiteOtCheckedIn && !isPunchUnlocked;
     // Combined check-in state: true if user is checked in via either office or field
     const effectivelyCheckedIn = isCheckedIn || isFieldCheckedIn || isSiteOtCheckedIn;
 

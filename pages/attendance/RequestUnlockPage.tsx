@@ -4,6 +4,7 @@ import { AlertTriangle, Clock, MoveLeft } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { dispatchNotificationFromRules } from '../../services/notificationService';
+import { isThirdSaturday } from '../../utils/date';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
 
@@ -15,7 +16,8 @@ const RequestUnlockPage: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const dailyUnlockRequestCount = useAuthStore(s => s.dailyUnlockRequestCount);
-    const isOTRequest = dailyUnlockRequestCount >= 1;
+    const isThirdSaturdayToday = isThirdSaturday(new Date());
+    const isOTRequest = dailyUnlockRequestCount >= 1 && !isThirdSaturdayToday;
 
     const handleUnlockRequest = async () => {
         if (!unlockReason.trim()) {
@@ -23,20 +25,26 @@ const RequestUnlockPage: React.FC = () => {
             return;
         }
 
-        
         setIsSubmitting(true);
         try {
-            await api.requestAttendanceUnlock(unlockReason);
+            const finalReason = isThirdSaturdayToday
+                ? `3rd Saturday Work Approval: ${unlockReason}`
+                : unlockReason;
+            await api.requestAttendanceUnlock(finalReason);
             
             // Dispatch notification to manager
             if (user) {
                 await dispatchNotificationFromRules('punch_unlock_request', {
                     actorName: user.name,
-                    actionText: isOTRequest 
-                        ? 'has requested an overtime (OT) punch unlock'
-                        : 'has requested an emergency punch unlock',
+                    actionText: isThirdSaturdayToday
+                        ? 'has requested 3rd Saturday punch approval'
+                        : isOTRequest 
+                            ? 'has requested an overtime (OT) punch unlock'
+                            : 'has requested an emergency punch unlock',
                     locString: '',
-                    title: isOTRequest ? 'OT Punch Request' : 'Emergency Punch Request',
+                    title: isThirdSaturdayToday
+                        ? '3rd Saturday Punch Request'
+                        : isOTRequest ? 'OT Punch Request' : 'Emergency Punch Request',
                     link: '/my-team',
                     actor: {
                         id: user.id,
@@ -47,9 +55,11 @@ const RequestUnlockPage: React.FC = () => {
                 });
             }
 
-            setToast({ message: isOTRequest 
-                ? 'OT punch request submitted. Awaiting manager approval.' 
-                : 'Unlock request submitted successfully.', type: 'success' });
+            setToast({ message: isThirdSaturdayToday
+                ? '3rd Saturday work request submitted. Awaiting manager approval.'
+                : isOTRequest 
+                    ? 'OT punch request submitted. Awaiting manager approval.' 
+                    : 'Unlock request submitted successfully.', type: 'success' });
             
             // Redirect back to profile after a short delay
             setTimeout(() => {
@@ -76,7 +86,9 @@ const RequestUnlockPage: React.FC = () => {
                         <MoveLeft className="h-8 w-8" />
                     </button>
                     <h1 className="text-2xl md:text-3xl font-bold text-white md:text-gray-900">
-                        {isOTRequest ? 'Overtime Punch Request' : 'Emergency Punch'}
+                        {isThirdSaturdayToday 
+                            ? '3rd Saturday Work Request' 
+                            : isOTRequest ? 'Overtime Punch Request' : 'Emergency Punch'}
                     </h1>
                 </div>
 
@@ -85,38 +97,58 @@ const RequestUnlockPage: React.FC = () => {
                     <div className="space-y-6 md:space-y-8">
                         {/* Policy Box - Better contrast for both themes */}
                         <div className={`p-6 rounded-2xl border shadow-sm ${
-                            isOTRequest 
-                                ? 'bg-[#2c1a0d] md:bg-orange-50/50 border-orange-500/20 md:border-orange-100' 
-                                : 'bg-[#0d2c18] md:bg-emerald-50/50 border-amber-500/20 md:border-emerald-100'
+                            isThirdSaturdayToday
+                                ? 'bg-[#0f172a] md:bg-blue-50/50 border-blue-500/20 md:border-blue-100'
+                                : isOTRequest 
+                                    ? 'bg-[#2c1a0d] md:bg-orange-50/50 border-orange-500/20 md:border-orange-100' 
+                                    : 'bg-[#0d2c18] md:bg-emerald-50/50 border-amber-500/20 md:border-emerald-100'
                         }`}>
                             <div className="flex items-center gap-2 mb-3">
-                                <AlertTriangle className={`h-6 w-6 ${isOTRequest ? 'text-orange-500 md:text-orange-600' : 'text-amber-500 md:text-emerald-600'}`} />
-                                <h2 className={`font-bold text-lg mb-0 ${isOTRequest ? 'text-orange-500 md:text-orange-900' : 'text-amber-500 md:text-emerald-900'}`}>
-                                    {isOTRequest ? 'Overtime Policy' : 'Usage Policy'}
+                                <AlertTriangle className={`h-6 w-6 ${
+                                    isThirdSaturdayToday
+                                        ? 'text-blue-500 md:text-blue-600'
+                                        : isOTRequest ? 'text-orange-500 md:text-orange-600' : 'text-amber-500 md:text-emerald-600'
+                                }`} />
+                                <h2 className={`font-bold text-lg mb-0 ${
+                                    isThirdSaturdayToday
+                                        ? 'text-blue-500 md:text-blue-900'
+                                        : isOTRequest ? 'text-orange-500 md:text-orange-900' : 'text-amber-500 md:text-emerald-900'
+                                }`}>
+                                    {isThirdSaturdayToday 
+                                        ? '3rd Saturday Policy' 
+                                        : isOTRequest ? 'Overtime Policy' : 'Usage Policy'}
                                 </h2>
                             </div>
                             <p className={`text-sm md:text-base leading-relaxed font-medium ${
-                                isOTRequest 
-                                    ? 'text-white/80 md:text-orange-800/90' 
-                                    : 'text-white/80 md:text-emerald-800/90'
+                                isThirdSaturdayToday
+                                    ? 'text-white/80 md:text-blue-800/90'
+                                    : isOTRequest 
+                                        ? 'text-white/80 md:text-orange-800/90' 
+                                        : 'text-white/80 md:text-emerald-800/90'
                             }`}>
-                                {isOTRequest 
-                                    ? 'This is your 2nd punch request today and will be recorded as overtime (OT). The extra hours worked will appear in your OT calendar. Manager approval is required.'
-                                    : 'Emergency punches should only be used in exceptional circumstances. Your manager must approve this request before you can punch in again.'}
+                                {isThirdSaturdayToday
+                                    ? 'Today is the 3rd Saturday of the month. To punch in/out, you must request approval from your reporting manager. Once approved, you will be allowed to punch in and out for the rest of today.'
+                                    : isOTRequest 
+                                        ? 'This is your 2nd punch request today and will be recorded as overtime (OT). The extra hours worked will appear in your OT calendar. Manager approval is required.'
+                                        : 'Emergency punches should only be used in exceptional circumstances. Your manager must approve this request before you can punch in again.'}
                             </p>
                         </div>
                         
                         {/* Reason Field */}
                         <div className="space-y-3">
                             <label className="block text-sm font-bold text-white/80 md:text-gray-600 ml-1 uppercase tracking-wider">
-                                {isOTRequest ? 'Reason for Overtime Punch' : 'Reason for Emergency Punch'}
+                                {isThirdSaturdayToday 
+                                    ? 'Reason for 3rd Saturday Work' 
+                                    : isOTRequest ? 'Reason for Overtime Punch' : 'Reason for Emergency Punch'}
                             </label>
                             <textarea 
                                 value={unlockReason}
                                 onChange={(e) => setUnlockReason(e.target.value)}
-                                placeholder={isOTRequest 
-                                    ? 'e.g., Extended shift for urgent project delivery...'
-                                    : 'e.g., Forgot to punch in earlier, Network issues...'}
+                                placeholder={isThirdSaturdayToday
+                                    ? 'e.g., Working on client deliverables, special shifts...'
+                                    : isOTRequest 
+                                        ? 'e.g., Extended shift for urgent project delivery...'
+                                        : 'e.g., Forgot to punch in earlier, Network issues...'}
                                 className="w-full rounded-2xl bg-[#0d2c18] md:bg-gray-50 border border-emerald-500/20 md:border-gray-200 focus:border-emerald-500 focus:ring-emerald-500 min-h-[180px] p-5 text-white md:text-gray-900 placeholder:text-white/30 md:placeholder:text-gray-400 transition-all resize-none shadow-inner"
                             />
                         </div>
@@ -129,13 +161,17 @@ const RequestUnlockPage: React.FC = () => {
                                 isLoading={isSubmitting}
                                 disabled={!unlockReason.trim()}
                                 className={`w-full md:flex-1 !py-4 !rounded-2xl !text-lg shadow-lg transition-all active:scale-[0.98] ${
-                                    isOTRequest 
-                                        ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/20' 
-                                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
+                                    isThirdSaturdayToday
+                                        ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                                        : isOTRequest 
+                                            ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/20' 
+                                            : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
                                 }`}
                             >
                                 <Clock className="mr-2 h-5 w-5" />
-                                {isOTRequest ? 'Submit OT Request' : 'Submit Request'}
+                                {isThirdSaturdayToday 
+                                    ? 'Submit Work Request' 
+                                    : isOTRequest ? 'Submit OT Request' : 'Submit Request'}
                             </Button>
                             <Button 
                                 variant="secondary" 

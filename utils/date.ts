@@ -26,3 +26,12 @@ export function formatDate(date: string | Date | undefined | null): string {
   // Otherwise show full date
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+
+/**
+ * Checks if a given date is the 3rd Saturday of the month
+ */
+export function isThirdSaturday(date: Date = new Date()): boolean {
+  if (date.getDay() !== 6) return false; // 6 = Saturday
+  const dayOfMonth = date.getDate();
+  return dayOfMonth >= 15 && dayOfMonth <= 21;
+}
