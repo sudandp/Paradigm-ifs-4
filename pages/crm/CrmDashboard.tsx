@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCrmStore } from '../../store/crmStore';
 import { useAuthStore } from '../../store/authStore';
@@ -7,15 +7,44 @@ import { LEAD_STATUS_ORDER, LEAD_STATUS_COLORS } from '../../types/crm';
 import {
   Plus, Search, Filter, BarChart3, Users, Target, TrendingUp,
   Building2, Phone, Mail, Calendar, ChevronRight, ChevronLeft, Loader2,
-  ArrowUpRight, ArrowDownRight, Eye, EyeOff, Layers, Clock, MapPin, Edit2, Trash2, ChevronDown, Send
+  ArrowUpRight, ArrowDownRight, Eye, EyeOff, Layers, Clock, MapPin, Edit2, Trash2, ChevronDown, Send, Wand2
 } from 'lucide-react';
+import { crmApi } from '../../services/crmApi';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+
+// Hook: animates a number from prev value to next value
+const useAnimatedCounter = (target: number, duration = 400) => {
+  const [display, setDisplay] = useState(target);
+  const prev = useRef(target);
+  const raf = useRef<number>(0);
+
+  useLayoutEffect(() => {
+    const start = prev.current;
+    const end = target;
+    if (start === end) return;
+    const startTime = performance.now();
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(start + (end - start) * eased));
+      if (progress < 1) raf.current = requestAnimationFrame(tick);
+      else prev.current = end;
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [target, duration]);
+
+  return display;
+};
 
 const CrmDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter, deleteLead } = useCrmStore();
+  const { leads, isLoading, fetchLeads, searchQuery, setSearchQuery, kanbanFilter, setKanbanFilter, deleteLead, updateLead } = useCrmStore();
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+  const [isAssigning, setIsAssigning] = useState(false);
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [quickFilter, setQuickFilter] = useState<string>('all');
   const [showClosedLeads, setShowClosedLeads] = useState(false);
@@ -25,6 +54,19 @@ const CrmDashboard: React.FC = () => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const isMobile = useMediaQuery('(max-width: 767px)');
+  // Filter transition state: true = show skeleton for 150ms after any filter change
+  const [isFiltering, setIsFiltering] = useState(false);
+  const filterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Trigger skeleton shimmer whenever any filter changes
+  const triggerFilter = useCallback((setter: () => void) => {
+    setter();
+    setIsFiltering(true);
+    if (filterTimer.current) clearTimeout(filterTimer.current);
+    filterTimer.current = setTimeout(() => setIsFiltering(false), 350);
+  }, []);
+
+  useEffect(() => () => { if (filterTimer.current) clearTimeout(filterTimer.current); }, []);
 
   const updateScrollButtons = useCallback(() => {
     const el = kanbanScrollRef.current;
@@ -49,6 +91,35 @@ const CrmDashboard: React.FC = () => {
     const cities = leads.map(l => l.city).filter(Boolean) as string[];
     return [...new Set(cities)].sort();
   }, [leads]);
+
+  const handleAutoAssign = async () => {
+    if (!window.confirm('This will retroactively auto-assign all unassigned leads based on their location. Proceed?')) return;
+    
+    setIsAssigning(true);
+    let assignedCount = 0;
+    try {
+      const unassigned = leads.filter(l => !l.assignedTo && l.city);
+      for (const lead of unassigned) {
+        if (!lead.city) continue;
+        const newAssignee = await crmApi.autoAssignLeadByCity(lead.city);
+        if (newAssignee) {
+          await updateLead(lead.id, { assignedTo: newAssignee });
+          assignedCount++;
+        }
+      }
+      if (assignedCount > 0) {
+        alert(`Successfully assigned ${assignedCount} leads!`);
+        await fetchLeads(); // refresh the view
+      } else {
+        alert('No leads matched the auto-assignment rules, or they are all already assigned.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('An error occurred during auto-assignment.');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   // Filtered leads
   const filteredLeads = useMemo(() => {
@@ -197,6 +268,31 @@ const CrmDashboard: React.FC = () => {
         <StatCard isMobile={isMobile} icon={<ArrowDownRight className="w-5 h-5 md:w-6 md:h-6" />} label="Lost" value={stats.lost} suffix={`(${stats.formatVal(stats.lostValue)})`} color="#ef4444" trend="Closed Lost" />
       </div>
 
+      {/* Filter transition overlay shimmer */}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: -400px 0; }
+          100% { background-position: 400px 0; }
+        }
+        .skeleton-shimmer {
+          background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 75%);
+          background-size: 800px 100%;
+          animation: shimmer 1.2s infinite linear;
+        }
+        .skeleton-shimmer-light {
+          background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+          background-size: 800px 100%;
+          animation: shimmer 1.2s infinite linear;
+        }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .card-enter {
+          animation: fadeSlideUp 0.3s ease-out both;
+        }
+      `}</style>
+
       {/* Controls */}
       <div className={`flex flex-col lg:flex-row gap-4 items-stretch lg:items-center ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4 shadow-sm' : 'bg-white md:bg-white backdrop-blur-xl md:backdrop-blur-none p-3 md:p-5 rounded-3xl border border-border md:border-border shadow-sm md:shadow-sm max-md:bg-[#0d2c18]/40 max-md:border-white/5 max-md:shadow-2xl'}`}>
         <div className="relative flex-1 group">
@@ -216,7 +312,7 @@ const CrmDashboard: React.FC = () => {
           </div>
           <select
             value={locationFilter}
-            onChange={(e) => setLocationFilter(e.target.value)}
+            onChange={(e) => triggerFilter(() => setLocationFilter(e.target.value))}
             className={`w-full lg:w-40 h-11 md:h-12 rounded-2xl pl-10 pr-8 text-sm md:text-base outline-none appearance-none transition-all cursor-pointer ${isMobile ? 'bg-[#121f17] border border-transparent text-white focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:focus:bg-white/[0.08]'}`}
           >
             <option value="all">All Locations</option>
@@ -235,7 +331,7 @@ const CrmDashboard: React.FC = () => {
           </div>
           <select
             value={quickFilter}
-            onChange={(e) => setQuickFilter(e.target.value)}
+            onChange={(e) => triggerFilter(() => setQuickFilter(e.target.value))}
             className={`w-full lg:w-36 h-11 md:h-12 rounded-2xl pl-10 pr-8 text-sm md:text-base outline-none appearance-none transition-all cursor-pointer ${isMobile ? 'bg-[#121f17] border border-transparent text-white focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:focus:bg-white/[0.08]'}`}
           >
             <option value="all">All Leads</option>
@@ -253,7 +349,7 @@ const CrmDashboard: React.FC = () => {
           </div>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
+            onChange={(e) => triggerFilter(() => setSortBy(e.target.value))}
             className={`w-full lg:w-40 h-11 md:h-12 rounded-2xl pl-10 pr-8 text-sm md:text-base outline-none appearance-none transition-all cursor-pointer ${isMobile ? 'bg-[#121f17] border border-transparent text-white focus:bg-[#15251c]' : 'bg-white md:bg-white border border-border md:border-border text-primary-text md:text-primary-text focus:ring-2 focus:ring-emerald-500/20 max-md:bg-white/[0.05] max-md:border-transparent max-md:text-white max-md:focus:bg-white/[0.08]'}`}
           >
             <option value="created_desc">Creation Date (Newest)</option>
@@ -271,13 +367,13 @@ const CrmDashboard: React.FC = () => {
         <div className="flex items-center justify-between md:justify-start gap-3">
           <div className={`flex p-1 rounded-2xl border ${isMobile ? 'bg-[#0a140f] border-transparent' : 'bg-page md:bg-page border-border md:border-border max-md:bg-white/[0.05] max-md:border-white/5'}`}>
             <button
-              onClick={() => setKanbanFilter('all')}
+              onClick={() => triggerFilter(() => setKanbanFilter('all'))}
               className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'all' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
             >
               All
             </button>
             <button
-              onClick={() => setKanbanFilter('mine')}
+              onClick={() => triggerFilter(() => setKanbanFilter('mine'))}
               className={`px-4 py-2 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${kanbanFilter === 'mine' ? (isMobile ? 'bg-[#00a859] text-white shadow-lg' : 'bg-emerald-500 text-white md:bg-accent md:text-white shadow-lg shadow-emerald-500/20') : (isMobile ? 'text-white/40 hover:text-white' : 'text-muted md:text-muted hover:text-primary-text md:hover:text-primary-text max-md:text-white/40')}`}
             >
               Mine
@@ -323,6 +419,18 @@ const CrmDashboard: React.FC = () => {
             <Send className="w-4 h-4 md:w-5 md:h-5" />
             <span className="text-[10px] md:text-xs font-black uppercase tracking-widest hidden md:block">BD Report</span>
           </button>
+          
+          {['admin', 'super_admin', 'superadmin'].includes(user?.role || '') && (
+            <button
+              onClick={handleAutoAssign}
+              disabled={isAssigning}
+              className={`flex items-center gap-2 px-3 py-2 rounded-2xl border transition-all ${isAssigning ? 'opacity-50 cursor-not-allowed' : ''} ${isMobile ? 'bg-[#00a859]/20 border-[#00a859] text-[#00a859]' : 'bg-accent/10 border-accent/20 text-accent hover:bg-accent/20 hover:border-accent/40'}`}
+              title="Retroactively Auto-Assign Leads"
+            >
+              {isAssigning ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Wand2 className="w-4 h-4 md:w-5 md:h-5" />}
+              <span className="text-[10px] md:text-xs font-black uppercase tracking-widest hidden md:block">{isAssigning ? 'Assigning...' : 'Auto-Assign'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -343,7 +451,7 @@ const CrmDashboard: React.FC = () => {
       {!isLoading && viewMode === 'kanban' && (
         <div className="relative group/kanban">
           {/* Left Arrow */}
-          {canScrollLeft && (
+          {canScrollLeft && !isFiltering && (
             <button
               onClick={() => scrollKanban('left')}
               className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-white border border-border shadow-2xl items-center justify-center text-primary-text hover:bg-accent hover:text-white hover:border-accent transition-all opacity-80 hover:opacity-100 hover:scale-110"
@@ -353,7 +461,7 @@ const CrmDashboard: React.FC = () => {
             </button>
           )}
           {/* Right Arrow */}
-          {canScrollRight && (
+          {canScrollRight && !isFiltering && (
             <button
               onClick={() => scrollKanban('right')}
               className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-white border border-border shadow-2xl items-center justify-center text-primary-text hover:bg-accent hover:text-white hover:border-accent transition-all opacity-80 hover:opacity-100 hover:scale-110"
@@ -367,28 +475,62 @@ const CrmDashboard: React.FC = () => {
             onScroll={updateScrollButtons}
             className="overflow-x-auto pb-8 -mx-4 px-4 custom-scrollbar snap-x snap-mandatory scroll-smooth max-w-[calc(100vw-2rem)] md:max-w-full"
           >
-            <div className="flex gap-4 md:gap-5 w-max px-2 md:px-0">
-              {LEAD_STATUS_ORDER
-                .filter(status => showClosedLeads || !['Won', 'Lost'].includes(status))
-                .map(status => (
-                <div key={status} className="snap-center">
-                  <KanbanColumn
-                    status={status}
-                    leads={kanbanColumns[status] || []}
-                    color={LEAD_STATUS_COLORS[status]}
-                    onCardClick={(id) => navigate(`/crm/leads/${id}`)}
-                    onDeleteClick={async (id) => {
-                      if (window.confirm('Are you sure you want to delete this lead?')) {
-                        await deleteLead(id);
-                      }
-                    }}
-                    isMobile={isMobile}
-                    isCompact={isCompact}
-                    canDelete={['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
-                  />
-                </div>
-              ))}
-            </div>
+            {/* Skeleton shimmer while filtering */}
+            {isFiltering ? (
+              <div className="flex gap-4 md:gap-5 w-max px-2 md:px-0">
+                {LEAD_STATUS_ORDER
+                  .filter(status => showClosedLeads || !['Won', 'Lost'].includes(status))
+                  .map((status, colIdx) => (
+                    <div key={status} className="w-[85vw] md:w-[280px] lg:w-[300px] flex-shrink-0 flex flex-col" style={{ animationDelay: `${colIdx * 40}ms` }}>
+                      {/* Column header skeleton */}
+                      <div className="flex items-center justify-between mb-5 px-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: LEAD_STATUS_COLORS[status], opacity: 0.4 }} />
+                          <div className={`h-3 w-20 rounded-full ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                        </div>
+                        <div className={`h-5 w-8 rounded-lg ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                      </div>
+                      {/* Card skeletons */}
+                      <div className={`flex-1 space-y-4 h-[calc(100vh-280px)] overflow-hidden p-2 rounded-3xl md:rounded-2xl ${isMobile ? 'bg-transparent' : 'bg-white/[0.02] md:bg-page/30 border border-dashed border-white/5 md:border-border/60'}`}>
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className={`rounded-[2rem] md:rounded-2xl p-5 ${isMobile ? 'bg-[#182a20] border border-[#2a4536]' : 'bg-white/[0.03] md:bg-white border border-white/5 md:border-border'}`}>
+                            <div className={`h-4 w-3/4 rounded-full mb-3 ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                            <div className={`h-3 w-1/2 rounded-full mb-4 ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                            <div className="flex gap-2 mb-4">
+                              <div className={`h-5 w-16 rounded-lg ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                              <div className={`h-5 w-12 rounded-lg ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                            </div>
+                            <div className={`h-3 w-1/3 rounded-full ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="flex gap-4 md:gap-5 w-max px-2 md:px-0">
+                {LEAD_STATUS_ORDER
+                  .filter(status => showClosedLeads || !['Won', 'Lost'].includes(status))
+                  .map(status => (
+                  <div key={status} className="snap-center">
+                    <KanbanColumn
+                      status={status}
+                      leads={kanbanColumns[status] || []}
+                      color={LEAD_STATUS_COLORS[status]}
+                      onCardClick={(id) => navigate(`/crm/leads/${id}`)}
+                      onDeleteClick={async (id) => {
+                        if (window.confirm('Are you sure you want to delete this lead?')) {
+                          await deleteLead(id);
+                        }
+                      }}
+                      isMobile={isMobile}
+                      isCompact={isCompact}
+                      canDelete={['admin', 'super_admin', 'superadmin'].includes(user?.role || '')}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -407,10 +549,30 @@ const CrmDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border md:divide-border max-md:divide-white/5">
-                {filteredLeads.map(lead => (
+                {isFiltering
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i} style={{ animationDelay: `${i * 40}ms` }}>
+                      <td className="px-4 md:px-6 py-5">
+                        <div className={`h-4 w-32 rounded-full mb-2 ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                        <div className={`h-3 w-20 rounded-full ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                      </td>
+                      <td className="hidden md:table-cell px-6 py-5">
+                        <div className={`h-3 w-24 rounded-full mb-2 skeleton-shimmer-light`} />
+                        <div className={`h-3 w-16 rounded-full skeleton-shimmer-light`} />
+                      </td>
+                      <td className="px-4 md:px-6 py-5">
+                        <div className={`h-5 w-16 rounded-lg ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                      </td>
+                      <td className="px-4 md:px-6 py-5">
+                        <div className={`h-8 w-8 rounded-full ${isMobile ? 'skeleton-shimmer' : 'skeleton-shimmer-light'}`} />
+                      </td>
+                    </tr>
+                  ))
+                  : filteredLeads.map((lead, rowIdx) => (
                   <tr 
-                    key={lead.id} 
-                    className="hover:bg-accent/[0.02] md:hover:bg-accent/[0.02] cursor-pointer transition-colors group max-md:hover:bg-white/[0.02]" 
+                    key={lead.id}
+                    className="hover:bg-accent/[0.02] md:hover:bg-accent/[0.02] cursor-pointer transition-colors group max-md:hover:bg-white/[0.02] card-enter"
+                    style={{ animationDelay: `${Math.min(rowIdx * 30, 300)}ms` }}
                     onClick={() => navigate(`/crm/leads/${lead.id}`)}
                   >
                     <td className="px-4 md:px-6 py-5">
@@ -465,10 +627,10 @@ const CrmDashboard: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {filteredLeads.length === 0 && (
+                {!isFiltering && filteredLeads.length === 0 && (
                   <tr>
                     <td colSpan={7} className="text-center py-20">
-                      <div className="flex flex-col items-center">
+                      <div className="flex flex-col items-center card-enter">
                         <div className="w-16 h-16 bg-white/[0.05] md:bg-page rounded-full flex items-center justify-center mb-4 border border-white/5 md:border-border">
                           <Search className="w-8 h-8 text-white/10 md:text-muted/30" />
                         </div>
@@ -491,7 +653,9 @@ const CrmDashboard: React.FC = () => {
 // Sub-Components
 // ============================================================================
 
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; suffix?: string; trend?: string, isMobile?: boolean }> = ({ icon, label, value, color, suffix, trend, isMobile }) => (
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; suffix?: string; trend?: string, isMobile?: boolean }> = ({ icon, label, value, color, suffix, trend, isMobile }) => {
+  const animatedValue = useAnimatedCounter(value);
+  return (
   <div className={`relative overflow-hidden group hover:shadow-lg transition-all duration-300 ${isMobile ? 'bg-[#182a20] rounded-[24px] border border-[#2a4536] p-4' : 'bg-white md:bg-white rounded-3xl border border-border md:border-border p-4 md:p-5 shadow-sm md:shadow-sm max-md:bg-white/[0.03] max-md:backdrop-blur-xl max-md:border-white/5 max-md:shadow-2xl'}`}>
     <div className={`absolute top-0 right-0 p-3 transition-opacity ${isMobile ? 'opacity-5 group-hover:opacity-10' : 'opacity-[0.05] md:opacity-[0.05] group-hover:opacity-[0.08] max-md:opacity-[0.03]'}`}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-16 h-16 md:w-20 md:h-20' })}
@@ -502,8 +666,8 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; 
       </div>
       <div className="min-w-0">
         <p className={`text-[9px] md:text-xs font-black md:font-bold uppercase tracking-widest truncate ${isMobile ? 'text-white/60' : 'text-muted md:text-muted max-md:text-white/40'}`}>{label}</p>
-        <p className={`text-lg md:text-2xl font-black mt-0.5 ${isMobile ? 'text-white' : 'text-primary-text md:text-primary-text max-md:text-white'}`}>
-          {value}
+        <p className={`text-lg md:text-2xl font-black mt-0.5 tabular-nums ${isMobile ? 'text-white' : 'text-primary-text md:text-primary-text max-md:text-white'}`}>
+          {animatedValue}
           {suffix && <span className={`text-[10px] md:text-sm font-bold ml-1 md:ml-1.5 ${isMobile ? 'text-white/40' : 'text-muted md:text-muted max-md:text-white/30'}`}>{suffix}</span>}
         </p>
       </div>
@@ -515,7 +679,8 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; 
       </div>
     )}
   </div>
-);
+  );
+};
 
 interface KanbanColumnProps {
   status: LeadStatus;
@@ -578,14 +743,15 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ status, leads, color, onCar
       )}
     </div>
     <div className={`flex-1 space-y-4 h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar p-2 rounded-3xl md:rounded-2xl ${isMobile ? 'bg-transparent' : 'bg-white/[0.02] md:bg-page/30 border border-dashed border-white/5 md:border-border/60'}`}>
-      {leads.map(lead => {
+      {leads.map((lead, cardIdx) => {
         const isOverdue = lead.nextFollowupDate && new Date(lead.nextFollowupDate).getTime() < Date.now() && !['Won', 'Lost'].includes(lead.status);
         
         return (
         <div
           key={lead.id}
           onClick={() => onCardClick(lead.id)}
-          className={`cursor-pointer group relative overflow-hidden transition-all duration-300 ${isCompact ? 'p-3 rounded-2xl' : 'p-5 rounded-[2rem] md:rounded-2xl'} ${isMobile ? 'bg-[#182a20] border border-[#2a4536] hover:bg-[#1a2e23]' : 'bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none border border-white/5 md:border-border hover:bg-white/[0.05] md:hover:bg-slate-50 md:hover:shadow-xl hover:border-emerald-500/40 md:hover:border-accent/40 hover:-translate-y-1'}`}
+          className={`cursor-pointer group relative overflow-hidden transition-all duration-300 card-enter ${isCompact ? 'p-3 rounded-2xl' : 'p-5 rounded-[2rem] md:rounded-2xl'} ${isMobile ? 'bg-[#182a20] border border-[#2a4536] hover:bg-[#1a2e23]' : 'bg-white/[0.03] md:bg-white backdrop-blur-xl md:backdrop-blur-none border border-white/5 md:border-border hover:bg-white/[0.05] md:hover:bg-slate-50 md:hover:shadow-xl hover:border-emerald-500/40 md:hover:border-accent/40 hover:-translate-y-1'}`}
+          style={{ animationDelay: `${Math.min(cardIdx * 40, 400)}ms` }}
         >
           <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: color }} />
           

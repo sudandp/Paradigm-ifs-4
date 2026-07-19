@@ -123,8 +123,15 @@ export const crmApi = {
     try {
       const normalizedCity = city.toLowerCase();
 
-      // Special case: Bangalore/Bengaluru leads go to Nakul
-      if (normalizedCity === 'bangalore' || normalizedCity === 'bengaluru') {
+      // Cities within ~100km radius of Bangalore
+      const bangaloreRegion = [
+        'bangalore', 'bengaluru', 'bangarpet', 'kolar', 'tumkur', 'hosur', 
+        'ramanagara', 'chikkaballapur', 'doddaballapur', 'nelamangala', 
+        'malur', 'anekal', 'magadi', 'kanakapura', 'channapatna'
+      ];
+
+      // Special case: Bangalore region leads go to Nakul
+      if (bangaloreRegion.includes(normalizedCity)) {
         const { data: nakul } = await supabase
           .from('users')
           .select('id')
