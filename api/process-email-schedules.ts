@@ -116,7 +116,171 @@ const reportGenerators = {
     tableHtml += `</tbody></table>`;
     return { date: monthStr, totalEmployees: String(users.length), table: tableHtml };
   },
-  document_expiry: async (s:any,now:any) => { return {date:format(now,'yyyy-MM-dd')}; }
+  document_expiry: async (s:any,now:any) => { return {date:format(now,'yyyy-MM-dd')}; },
+  crm_bd_daily: async (supabase: SupabaseClient, nowIST: Date) => {
+    const todayStr = getISTDateString(nowIST);
+    const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+
+    // Fetch BD users
+    const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_active', true).eq('is_deleted', false);
+    const bdUsers = (usersRes || []).filter((u: any) => {
+      const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
+      return roleName.toLowerCase() === 'business developer' || roleName.toLowerCase() === 'business_developer';
+    });
+
+    if (bdUsers.length === 0) return [];
+
+    // Fetch related data for today
+    const [eventsRes, leadsRes, callsRes] = await Promise.all([
+      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()),
+      supabase.from('crm_calls').select('user_id, type, created_at').gte('created_at', startOfTodayUTC.toISOString())
+    ]);
+
+    const events = eventsRes.data || [];
+    const leads = leadsRes.data || [];
+    const calls = callsRes.data || [];
+
+    // Fetch ALL active leads for pipeline snapshot (not just today's)
+    const { data: allActiveLeads } = await supabase.from('crm_leads')
+      .select('assigned_to, created_by, status')
+      .neq('status', 'Won')
+      .neq('status', 'Lost');
+
+    const reports = [];
+
+    for (const bd of bdUsers) {
+      // 1. Attendance Data
+      const bdEvents = events.filter((e: any) => e.user_id === bd.id);
+      let attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
+      let check_in_time = 'N/A';
+      let check_out_time = 'N/A';
+      let working_hours = '0h 0m';
+      
+      const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'check_in');
+      const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'check_out');
+      
+      if (punchesIn.length > 0) {
+        const inDate = new Date(new Date(punchesIn[0].timestamp).getTime() + IST_OFFSET);
+        check_in_time = format(inDate, 'hh:mm a');
+      }
+      if (punchesOut.length > 0) {
+        const outDate = new Date(new Date(punchesOut[punchesOut.length - 1].timestamp).getTime() + IST_OFFSET);
+        check_out_time = format(outDate, 'hh:mm a');
+      }
+      if (punchesIn.length > 0 && punchesOut.length > 0) {
+        const inMs = new Date(punchesIn[0].timestamp).getTime();
+        const outMs = new Date(punchesOut[punchesOut.length - 1].timestamp).getTime();
+        if (outMs > inMs) {
+          const diffMs = outMs - inMs;
+          const hrs = Math.floor(diffMs / 3600000);
+          const mins = Math.floor((diffMs % 3600000) / 60000);
+          working_hours = `${hrs}h ${mins}m`;
+        }
+      }
+
+      // 2. Activity Summary
+      const prospect_calls = calls.filter((c: any) => c.user_id === bd.id && c.type === 'prospect').length;
+      const followup_calls = calls.filter((c: any) => c.user_id === bd.id && c.type === 'followup').length;
+      const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
+      const new_leads_count = newLeadsToday.length;
+      const sites_count = 0; // Not tracked automatically
+      const sites_visited = 'Not applicable (Automated Schedule)';
+      const kms_travelled = '0'; // Not tracked automatically
+
+      // 3. New Leads Added HTML
+      let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
+      if (newLeadsToday.length > 0) {
+        new_leads_table = `<table width="100%" style="border-collapse:collapse;">
+          <thead><tr style="background:#f8fafc;">
+            <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th>
+            <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th>
+            <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th>
+          </tr></thead><tbody>`;
+        newLeadsToday.forEach((lead: any, i: number) => {
+          const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+          new_leads_table += `<tr style="background:${bg};">
+            <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${lead.company_name}</td>
+            <td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td>
+            <td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;">
+              <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span>
+            </td>
+          </tr>`;
+        });
+        new_leads_table += `</tbody></table>`;
+      }
+
+      // 4. Metrics Table HTML
+      let metrics_table = `<table width="100%" style="border-collapse:collapse;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Target</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th>
+          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Remarks</th>
+        </tr></thead><tbody>`;
+      
+      const metricsData = [
+        { metric: 'Outbound Calls (New Prospects)', target: '-', actual: prospect_calls, remarks: '' },
+        { metric: 'Follow-up Calls / Emails', target: '-', actual: followup_calls, remarks: '' },
+        { metric: 'Site Visits Conducted', target: '-', actual: sites_count, remarks: 'Automated' },
+        { metric: 'Proposals Submitted', target: '-', actual: 0, remarks: 'Automated' },
+        { metric: 'New Leads Added', target: '-', actual: new_leads_count, remarks: '' }
+      ];
+
+      metricsData.forEach((row, i) => {
+        const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        metrics_table += `<tr style="background:${bg};">
+          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td>
+          <td style="padding:12px 14px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;">${row.target}</td>
+          <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:600;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td>
+          <td style="padding:12px 14px;font-size:11px;color:#64748b;font-style:italic;border-top:1px solid #f1f5f9;">${row.remarks || '-'}</td>
+        </tr>`;
+      });
+      metrics_table += `</tbody></table>`;
+
+      // 5. Pipeline Snapshot
+      const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+      const statuses = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation'];
+      let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th>
+        </tr></thead><tbody>`;
+      
+      let activeTotal = 0;
+      statuses.forEach((stage, i) => {
+        const count = myActiveLeads.filter((l: any) => l.status === stage).length;
+        activeTotal += count;
+        const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        pipeline_snapshot += `<tr style="background:${bg};">
+          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${stage}</td>
+          <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:700;color:#3b82f6;border-top:1px solid #f1f5f9;">${count}</td>
+        </tr>`;
+      });
+      pipeline_snapshot += `</tbody></table>
+      <div style="margin-top:8px;text-align:right;font-size:11px;color:#94a3b8;padding:8px;">Total active pipeline: ${activeTotal} leads</div>`;
+
+      reports.push({
+        bd_name: bd.name || 'BD',
+        report_date: format(nowIST, 'dd MMM yyyy'),
+        attendance_status,
+        check_in_time,
+        check_out_time,
+        working_hours,
+        kms_travelled,
+        prospect_calls: String(prospect_calls),
+        followup_calls: String(followup_calls),
+        new_leads_count: String(new_leads_count),
+        sites_count: String(sites_count),
+        sites_visited,
+        new_leads_table,
+        metrics_table,
+        pipeline_snapshot
+      });
+    }
+
+    return reports;
+  }
 };
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
@@ -204,58 +368,63 @@ async function processSchedules(req: VercelRequest) {
     const reportData = await generator(supabase, nowIST);
 
     const template = templateMap.get(rule.template_id);
-    let greetingMessage = `Here is your automated status update.`;
-    
-    if (rule.report_type === 'attendance_monthly') {
-        greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Please review the detailed monthly attendance grid below for any discrepancies.`;
-    }
+    const reportDataList = Array.isArray(reportData) ? reportData : [reportData];
 
-    if (template?.variables) {
-      const customVar = (template.variables as any[]).find(v => v.key === '_custom_message' || v.key === 'customMessage');
-      if (customVar && customVar.description && customVar.description.trim()) {
-        let evaluatedMsg = evaluateConditionals(customVar.description, reportData || {});
-        greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+    for (const dataItem of reportDataList) {
+      let greetingMessage = `Here is your automated status update.`;
+      
+      if (rule.report_type === 'attendance_monthly') {
+          greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Please review the detailed monthly attendance grid below for any discrepancies.`;
+      }
+
+      if (template?.variables) {
+        const customVar = (template.variables as any[]).find(v => v.key === '_custom_message' || v.key === 'customMessage');
+        if (customVar && customVar.description && customVar.description.trim()) {
+          let evaluatedMsg = evaluateConditionals(customVar.description, dataItem || {});
+          greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
+        }
+      }
+
+      const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
+        const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+        const dataKey = Object.keys(data).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
+        return dataKey ? (data as any)[dataKey] : match;
+      });
+
+      greetingMessage = render(greetingMessage, dataItem || {});
+
+      dataItem.greetingMessage = greetingMessage;
+      dataItem.customGreeting = greetingMessage;
+      dataItem.greeting_message = greetingMessage;
+      dataItem.custom_greeting = greetingMessage;
+      dataItem.summary = greetingMessage;
+
+      let subject = template?.subject_template || rule.name;
+      let html = template?.body_template || `<h2>Report</h2>{table}`;
+
+      subject = evaluateConditionals(subject, dataItem);
+      html = evaluateConditionals(html, dataItem);
+
+      subject = render(subject, dataItem);
+      html = render(html, dataItem);
+
+      try {
+        await transporter.sendMail({
+          from: `"${emailConfig.from_name || 'Paradigm FMS'}" <${emailConfig.from_email || emailConfig.user}>`,
+          to: emails.join(', '),
+          replyTo: emailConfig.reply_to || emailConfig.from_email,
+          subject, html
+        });
+        await Promise.all([
+          ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', metadata: { trigger_type: 'automatic' } }))
+        ]);
+        totalSent += emails.length;
+      } catch (mailErr: any) {
+        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, metadata: { trigger_type: 'automatic' } })));
       }
     }
-
-    const render = (text: string, data: any) => (text || '').replace(/\{(\w+)\}/g, (match, key) => {
-      const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
-      const dataKey = Object.keys(data).find(k => k.toLowerCase().replace(/[_-]/g, '') === cleanKey);
-      return dataKey ? (data as any)[dataKey] : match;
-    });
-
-    greetingMessage = render(greetingMessage, reportData || {});
-
-    reportData.greetingMessage = greetingMessage;
-    reportData.customGreeting = greetingMessage;
-    reportData.greeting_message = greetingMessage;
-    reportData.custom_greeting = greetingMessage;
-    reportData.summary = greetingMessage;
-
-    let subject = template?.subject_template || rule.name;
-    let html = template?.body_template || `<h2>Report</h2>{table}`;
-
-    subject = evaluateConditionals(subject, reportData);
-    html = evaluateConditionals(html, reportData);
-
-    subject = render(subject, reportData);
-    html = render(html, reportData);
-
-    try {
-      await transporter.sendMail({
-        from: `"${emailConfig.from_name || 'Paradigm FMS'}" <${emailConfig.from_email || emailConfig.user}>`,
-        to: emails.join(', '),
-        replyTo: emailConfig.reply_to || emailConfig.from_email,
-        subject, html
-      });
-      await Promise.all([
-        ...emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, template_id: rule.template_id, recipient_email: email, subject, status: 'sent', metadata: { trigger_type: 'automatic' } })),
-        supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id)
-      ]);
-      totalSent += emails.length;
-    } catch (mailErr: any) {
-      await Promise.all(emails.map(email => supabase.from('email_logs').insert({ rule_id: rule.id, recipient_email: email, subject, status: 'failed', error_message: mailErr.message, metadata: { trigger_type: 'automatic' } })));
-    }
+    
+    await supabase.from('email_schedule_rules').update({ last_sent_at: now.toISOString() }).eq('id', rule.id);
   }
   return { success: true, processed: totalSent };
 }

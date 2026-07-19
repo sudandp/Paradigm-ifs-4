@@ -285,7 +285,7 @@ const DEFAULT_BD_DAILY_REPORT_HTML = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-<body style="background:#f1f5f9;font-family:'Inter',-apple-system,sans-serif;margin:0;padding:16px;">
+<body style="background:#ffffff;font-family:'Inter',-apple-system,sans-serif;margin:0;padding:16px;">
 <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:760px;margin:0 auto;table-layout:fixed;">
 
   <!-- HEADER -->
