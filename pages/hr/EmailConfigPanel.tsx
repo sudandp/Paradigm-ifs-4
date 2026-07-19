@@ -11,6 +11,8 @@ import {
     Trash2,
     Pencil,
     X as CloseIcon,
+    ArrowLeft,
+    Monitor,
     Eye,
     FileText,
     Users,
@@ -279,6 +281,7 @@ const EmailTagInput: React.FC<{
 const EmailConfigPanel: React.FC = () => {
     const { user } = useAuthStore();
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('config');
+    const [activeTemplateDept, setActiveTemplateDept] = useState<string>('HRM');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -587,22 +590,78 @@ const EmailConfigPanel: React.FC = () => {
         <div className="space-y-6 animate-in fade-in duration-500">
             {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
-            {/* Preview Modal */}
-            {previewHtml && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setPreviewHtml(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-                            <h3 className="font-bold text-primary-text">Email Preview</h3>
-                            <button onClick={() => setPreviewHtml(null)} className="p-1 hover:bg-slate-100 rounded-lg"><CloseIcon className="h-5 w-5" /></button>
+            {/* Email Preview (Full Screen View) */}
+            {previewHtml ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden flex flex-col animate-in slide-in-from-right-4 duration-300" style={{ minHeight: 'calc(100vh - 200px)' }}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-white shadow-sm z-10 relative">
+                        <div className="flex items-center gap-4">
+                            <button 
+                                onClick={() => setPreviewHtml(null)} 
+                                className="flex items-center gap-2 text-slate-500 hover:text-accent hover:bg-accent/5 px-3 py-1.5 rounded-lg transition-all text-sm font-bold"
+                            >
+                                <ArrowLeft className="h-4 w-4" /> 
+                                Back to Templates
+                            </button>
+                            <div className="h-5 w-px bg-slate-200"></div>
+                            <div className="flex items-center gap-2">
+                                <Eye className="h-4 w-4 text-accent" />
+                                <h3 className="font-bold text-primary-text">Live Preview</h3>
+                            </div>
                         </div>
-                        <div className="p-6 overflow-y-auto max-h-[70vh]">
-                            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
+                        <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-md border border-slate-200 text-xs font-semibold text-slate-500">
+                                <Monitor className="h-3.5 w-3.5" /> Desktop View
+                             </div>
+                        </div>
+                    </div>
+                    
+                    {/* Preview Canvas */}
+                    <div className="p-8 flex-1 flex justify-center bg-slate-50 overflow-y-auto relative" style={{ backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+                        {/* Browser/Email Client Mockup */}
+                        <div className="w-full max-w-[800px] bg-white rounded-xl shadow-xl overflow-hidden self-start border border-slate-200/60 ring-1 ring-black/5 mt-4 mb-12">
+                            {/* Window Chrome */}
+                            <div className="bg-slate-100 border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+                                <div className="flex gap-1.5">
+                                    <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                                    <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                                    <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                                </div>
+                                <div className="ml-4 flex-1 flex justify-center">
+                                    <div className="bg-white px-4 py-1 rounded-md text-[10px] font-bold text-slate-400 tracking-widest uppercase shadow-sm border border-slate-200/50">Inbox - Paradigm FMS</div>
+                                </div>
+                                <div className="w-12"></div> {/* Spacer for centering */}
+                            </div>
+                            
+                            {/* Email Metadata */}
+                            <div className="px-6 py-4 border-b border-slate-100">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold">
+                                            PF
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-slate-800 text-sm">Paradigm FMS <span className="text-slate-400 font-normal ml-1">&lt;notifications@paradigm.com&gt;</span></div>
+                                            <div className="text-xs text-slate-500 mt-0.5">To: employee@company.com</div>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-slate-400 font-medium">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                </div>
+                            </div>
+
+                            {/* Email Body */}
+                            <div className="p-8 flex justify-center bg-white min-h-[400px]">
+                                <div 
+                                    className="w-full max-w-[700px]" 
+                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} 
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* Sub-tabs */}
+            ) : (
+                <>
+                    {/* Sub-tabs */}
             <div className="flex p-1 bg-slate-100/50 rounded-xl border border-slate-200/50">
                 {([
                     { id: 'config' as SubTab, label: 'Configuration', icon: Settings },
@@ -901,9 +960,30 @@ const EmailConfigPanel: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Horizontal Department Tabs (Matches top navigation design) */}
+                    <div className="border-b border-border overflow-x-auto no-scrollbar mb-8">
+                        <nav className="-mb-px flex space-x-1 sm:space-x-8" aria-label="Tabs">
+                            {['HRM', 'CRM', 'Operations', 'General'].map(dept => (
+                                <button
+                                    key={dept}
+                                    onClick={() => setActiveTemplateDept(dept)}
+                                    className={`
+                                        whitespace-nowrap py-3 px-4 border-b-2 font-bold text-sm tracking-wide transition-colors
+                                        ${activeTemplateDept === dept
+                                            ? 'border-accent text-accent'
+                                            : 'border-transparent text-muted hover:text-primary-text hover:border-slate-300'
+                                        }
+                                    `}
+                                >
+                                    {dept} Templates
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+
                     {/* Templates Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {templates.map(tmpl => {
+                        {templates.filter(t => t.name.startsWith(activeTemplateDept === 'Operations' ? 'Ops' : activeTemplateDept) || (activeTemplateDept === 'General' && !['HRM', 'CRM', 'Ops'].some(d => t.name.startsWith(d)))).map(tmpl => {
                             const catColor = CATEGORY_COLORS[tmpl.category] || CATEGORY_COLORS.alert;
                             return (
                                 <div key={tmpl.id} className={`bg-card p-5 rounded-2xl border border-border shadow-sm hover:shadow-md transition-all ${!tmpl.isActive ? 'opacity-50' : ''}`}>
@@ -1390,6 +1470,8 @@ const EmailConfigPanel: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+                </>
             )}
         </div>
     );

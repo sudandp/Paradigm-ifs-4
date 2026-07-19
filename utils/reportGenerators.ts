@@ -151,6 +151,8 @@ export const reportGenerators = {
     const holidays = (holidaysRes.data || []) as any[];
     const recurringHolidays = (recurringHolidaysRes.data || []) as any[];
 
+    let totalPresentCount = 0;
+
     let tableHtml = `<style>
 .report-grid { width: 100%; border-collapse: collapse; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 8px; border: 1px solid #e2e8f0; }
 .report-grid th { border: 1px solid #e2e8f0; padding: 6px 3px; font-weight: 700; background-color: #f8fafc; color: #1e293b; }
@@ -405,13 +407,15 @@ export const reportGenerators = {
         <td class="h">${holidayCount}</td>
         <td class="tot">${grandTotal}</td>
       </tr>`;
+      
+      totalPresentCount += presentCount;
     });
 
     tableHtml += `</tbody></table>`;
 
     const billingCycle = `01 ${format(targetDate, 'MMM yyyy')} - ${daysInMonth} ${format(targetDate, 'MMM yyyy')}`;
     const totalPossibleDays = users.length * daysInMonth; // Or a more accurate calculation if needed
-    const attendancePercentage = totalPossibleDays > 0 ? Math.round((presentCount / totalPossibleDays) * 100).toString() : '0';
+    const attendancePercentage = totalPossibleDays > 0 ? Math.round((totalPresentCount / totalPossibleDays) * 100).toString() : '0';
 
     tableHtml += `<div style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; font-family: sans-serif;">
       <table style="width: 100%; border-collapse: collapse; text-align: center;">
@@ -442,7 +446,7 @@ export const reportGenerators = {
       generatedTime: format(nowIST, 'hh:mm a'),
       year: format(nowIST, 'yyyy'),
       totalEmployees: String(users.length),
-      totalPresent: String(presentCount),
+      totalPresent: String(totalPresentCount),
       attendancePercentage: attendancePercentage,
       table: tableHtml,
       generatedBy: 'Manual Request'

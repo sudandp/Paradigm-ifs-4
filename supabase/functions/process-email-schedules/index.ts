@@ -304,7 +304,43 @@ serve(async (req: Request) => {
         reportData = { date: format(nowIST, 'yyyy-MM-dd') };
       } else if (rule.report_type === 'pending_approvals') {
         reportData = { items: '0' };
+
+      // ══ NEW REPORT TYPES ══════════════════════════════════════════════════
+
+      // HRM reports
+      } else if (rule.report_type === 'hrm_leave_summary') {
+        console.log(`  Generating HRM leave summary...`);
+        reportData = await generateHRMLeaveReport(supabase, nowIST);
+      } else if (rule.report_type === 'hrm_new_joiners') {
+        console.log(`  Generating HRM new joiners report...`);
+        reportData = await generateHRMNewJoinersReport(supabase, nowIST);
+      } else if (rule.report_type === 'hrm_pending_approvals') {
+        console.log(`  Generating HRM pending approvals report...`);
+        reportData = await generateHRMPendingApprovalsReport(supabase, nowIST);
+      } else if (rule.report_type === 'hrm_payroll_snapshot') {
+        console.log(`  Generating HRM payroll snapshot...`);
+        reportData = await generateHRMPayrollSnapshot(supabase, nowIST);
+
+      // CRM reports
+      } else if (rule.report_type === 'crm_daily_pipeline') {
+        console.log(`  Generating CRM daily pipeline report...`);
+        reportData = await generateCRMDailyPipelineReport(supabase, nowIST);
+      } else if (rule.report_type === 'crm_weekly_sales') {
+        console.log(`  Generating CRM weekly sales report...`);
+        reportData = await generateCRMWeeklySalesReport(supabase, nowIST);
+      } else if (rule.report_type === 'crm_lead_aging') {
+        console.log(`  Generating CRM lead aging report...`);
+        reportData = await generateCRMLeadAgingReport(supabase, nowIST);
+
+      // Operations reports
+      } else if (rule.report_type === 'ops_task_summary') {
+        console.log(`  Generating Ops task summary report...`);
+        reportData = await generateOpsTaskSummary(supabase, nowIST);
+      } else if (rule.report_type === 'ops_site_activity') {
+        console.log(`  Generating Ops site activity report...`);
+        reportData = await generateOpsSiteActivityReport(supabase, nowIST);
       }
+
 
       // ── Render template ──
       const template = templateMap.get(rule.template_id);
@@ -1357,3 +1393,360 @@ function getMonthlyReportPremiumTemplate() {
 </html>`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ▌ HRM REPORT GENERATORS
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function generateHRMLeaveReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const todayStr = format(nowIST, 'yyyy-MM-dd');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const year = format(nowIST, 'yyyy');
+  const { data: leaves } = await supabase
+    .from('leave_applications')
+    .select('id, status, leave_type, start_date, end_date, employee_id')
+    .lte('start_date', todayStr)
+    .gte('end_date', todayStr);
+  const all = leaves || [];
+  const approved = all.filter((l: any) => l.status === 'approved');
+  const pending  = all.filter((l: any) => l.status === 'pending');
+  const rejected = all.filter((l: any) => l.status === 'rejected');
+  const empIds = [...new Set(all.map((l: any) => l.employee_id))];
+  const { data: emps } = empIds.length
+    ? await supabase.from('employees').select('id, name').in('id', empIds)
+    : { data: [] };
+  const empMap: Record<string, string> = {};
+  (emps || []).forEach((e: any) => { empMap[e.id] = e.name; });
+  const badge = (s: string) => {
+    const c: Record<string,string> = { approved:'background:#dcfce7;color:#15803d', pending:'background:#fef9c3;color:#a16207', rejected:'background:#fee2e2;color:#dc2626' };
+    return `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;${c[s]||'background:#f3f4f6;color:#374151'}">${s}</span>`;
+  };
+  const rows = all.map((l: any, i: number) =>
+    `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6">${empMap[l.employee_id]||l.employee_id}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6">${l.leave_type||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #f3f4f6">${l.start_date}→${l.end_date}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #f3f4f6">${badge(l.status)}</td>
+    </tr>`).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    totalOnLeave: String(all.length),
+    approvedCount: String(approved.length),
+    pendingCount: String(pending.length),
+    rejectedCount: String(rejected.length),
+    table: rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#6b7280">No leaves today</td></tr>',
+    generatedTime, year,
+  };
+}
+
+async function generateHRMNewJoinersReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const todayStr  = format(nowIST, 'yyyy-MM-dd');
+  const weekStartDate = new Date(nowIST.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const weekStart = format(weekStartDate, 'yyyy-MM-dd');
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: joiners } = await supabase
+    .from('employees')
+    .select('id, name, role, department, location, date_of_joining')
+    .gte('date_of_joining', weekStart)
+    .lte('date_of_joining', todayStr)
+    .order('date_of_joining', { ascending: false });
+  const all = joiners || [];
+  const rows = all.map((e: any, i: number) =>
+    `<tr style="background:${i%2===0?'#fff':'#f9fafb'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6;font-weight:600">${e.name||'—'}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #f3f4f6">${e.role||e.department||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #f3f4f6">${e.location||'—'}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #f3f4f6">${e.date_of_joining||'—'}</td>
+    </tr>`).join('');
+  const depts = new Set(all.map((e: any) => e.department).filter(Boolean));
+  const locs  = new Set(all.map((e: any) => e.location).filter(Boolean));
+  return {
+    weekStart: format(weekStartDate, 'MMM do, yyyy'),
+    totalJoiners: String(all.length),
+    departmentCount: String(depts.size),
+    locationCount: String(locs.size),
+    table: rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#6b7280">No new joiners this week</td></tr>',
+    generatedTime, year,
+  };
+}
+
+async function generateHRMPendingApprovalsReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: pLeaves } = await supabase
+    .from('leave_applications')
+    .select('id, leave_type, applied_on, employee_id')
+    .eq('status', 'pending')
+    .order('applied_on', { ascending: true });
+  const leaves = pLeaves || [];
+  const empIds = [...new Set(leaves.map((l: any) => l.employee_id))];
+  const { data: emps } = empIds.length
+    ? await supabase.from('employees').select('id, name').in('id', empIds)
+    : { data: [] };
+  const empMap: Record<string, string> = {};
+  (emps || []).forEach((e: any) => { empMap[e.id] = e.name; });
+  const rows = leaves.slice(0, 20).map((l: any, i: number) => {
+    const days = l.applied_on ? Math.ceil((nowIST.getTime() - new Date(l.applied_on).getTime()) / 86400000) : '—';
+    return `<tr style="background:${i%2===0?'#fff':'#fffbeb'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #fef3c7;font-weight:600">${empMap[l.employee_id]||l.employee_id}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #fef3c7">Leave — ${l.leave_type||'General'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #fef3c7">${(l.applied_on||'').split('T')[0]}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #fef3c7;font-weight:700;color:#d97706">${days}</td>
+    </tr>`;
+  }).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    pendingLeaves: String(leaves.length),
+    pendingOT: '0',
+    pendingCompOff: '0',
+    totalPending: String(leaves.length),
+    table: rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#6b7280">No pending approvals</td></tr>',
+    generatedTime, year,
+  };
+}
+
+async function generateHRMPayrollSnapshot(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const month = format(nowIST, 'MMMM');
+  const year  = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const monthStart = format(nowIST, 'yyyy-MM-01');
+  const monthEnd   = format(nowIST, 'yyyy-MM-dd');
+  const { data: empsData } = await supabase.from('employees').select('id, name, department, basic_salary').eq('status', 'active');
+  const emps = empsData || [];
+  const totalPayroll = emps.reduce((s: number, e: any) => s + (Number(e.basic_salary) || 0), 0);
+  const { data: attRecs } = await supabase.from('attendance_records').select('employee_id, status').gte('date', monthStart).lte('date', monthEnd);
+  const recs = attRecs || [];
+  const present = recs.filter((r: any) => r.status === 'present' || r.status === 'P');
+  const pct = recs.length > 0 ? Math.round((present.length / recs.length) * 100) : 0;
+  const { data: joiners } = await supabase.from('employees').select('id').gte('date_of_joining', monthStart).lte('date_of_joining', monthEnd);
+  const deptMap: Record<string, { count: number; present: number; total: number }> = {};
+  emps.forEach((e: any) => { const d = e.department||'Unassigned'; if (!deptMap[d]) deptMap[d]={count:0,present:0,total:0}; deptMap[d].count++; });
+  recs.forEach((r: any) => {
+    const emp = emps.find((e: any) => e.id === r.employee_id);
+    if (!emp) return;
+    const d = emp.department||'Unassigned';
+    if (!deptMap[d]) deptMap[d]={count:0,present:0,total:0};
+    deptMap[d].total++;
+    if (r.status==='present'||r.status==='P') deptMap[d].present++;
+  });
+  const rows = Object.entries(deptMap).map(([dept, data], i) => {
+    const dp = (data as any).total > 0 ? Math.round(((data as any).present / (data as any).total) * 100) : 0;
+    return `<tr style="background:${i%2===0?'#fff':'#f0fdfa'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #ccfbf1;font-weight:600">${dept}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #ccfbf1">${(data as any).count}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #ccfbf1;font-weight:700;color:#0f766e">${dp}%</td>
+    </tr>`;
+  }).join('');
+  return {
+    month, year,
+    headcount: String(emps.length),
+    totalPayroll: totalPayroll.toLocaleString('en-IN'),
+    avgAttendance: String(pct),
+    newJoiners: String((joiners||[]).length),
+    table: rows || '<tr><td colspan="3" style="padding:20px;text-align:center;color:#6b7280">No department data</td></tr>',
+    generatedTime,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ▌ CRM REPORT GENERATORS
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function generateCRMDailyPipelineReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const todayStr = format(nowIST, 'yyyy-MM-dd');
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: leads } = await supabase.from('crm_leads').select('id, stage, status, created_at, updated_at');
+  const all = leads || [];
+  const todayStart = todayStr + 'T00:00:00';
+  const todayEnd   = todayStr + 'T23:59:59';
+  const wonToday  = all.filter((l: any) => l.status==='won'  && l.updated_at>=todayStart && l.updated_at<=todayEnd);
+  const lostToday = all.filter((l: any) => l.status==='lost' && l.updated_at>=todayStart && l.updated_at<=todayEnd);
+  const newToday  = all.filter((l: any) => l.created_at>=todayStart && l.created_at<=todayEnd);
+  const won = all.filter((l: any) => l.status==='won');
+  const convRate = all.length > 0 ? Math.round((won.length/all.length)*100) : 0;
+  const stageMap: Record<string, number> = {};
+  all.forEach((l: any) => { const s=l.stage||'Unknown'; stageMap[s]=(stageMap[s]||0)+1; });
+  const rows = Object.entries(stageMap).sort((a,b)=>b[1]-a[1]).map(([stage, count], i) => {
+    const pct = all.length > 0 ? Math.round((count/all.length)*100) : 0;
+    return `<tr style="background:${i%2===0?'#fff':'#eff6ff'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #dbeafe;font-weight:600">${stage}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #dbeafe">${count}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #dbeafe;font-weight:700;color:#2563eb">${pct}%</td>
+    </tr>`;
+  }).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    totalLeads: String(all.length),
+    wonToday: String(wonToday.length),
+    lostToday: String(lostToday.length),
+    newToday: String(newToday.length),
+    conversionRate: String(convRate),
+    table: rows || '<tr><td colspan="3" style="padding:20px;text-align:center;color:#6b7280">No pipeline data</td></tr>',
+    generatedTime, year,
+  };
+}
+
+async function generateCRMWeeklySalesReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const weekStartDate = new Date(nowIST.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const weekStart = format(weekStartDate, 'yyyy-MM-dd');
+  const weekRange = `${format(weekStartDate, 'MMM d')} – ${format(nowIST, 'MMM d, yyyy')}`;
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: leads } = await supabase.from('crm_leads').select('id, stage, status, assigned_to, created_at, updated_at').gte('created_at', weekStart + 'T00:00:00');
+  const weekLeads = leads || [];
+  const won  = weekLeads.filter((l: any) => l.status==='won');
+  const lost = weekLeads.filter((l: any) => l.status==='lost');
+  const { data: movers } = await supabase.from('crm_leads').select('id, assigned_to').gte('updated_at', weekStart+'T00:00:00').lt('created_at', weekStart+'T00:00:00');
+  const agentMap: Record<string, { handled: number; won: number }> = {};
+  weekLeads.forEach((l: any) => {
+    const a = l.assigned_to||'Unassigned';
+    if (!agentMap[a]) agentMap[a]={handled:0,won:0};
+    agentMap[a].handled++;
+    if (l.status==='won') agentMap[a].won++;
+  });
+  const sorted = Object.entries(agentMap).sort((a,b)=>b[1].won-a[1].won);
+  const topAgent = sorted[0]?.[0]||'—';
+  const topWon   = sorted[0]?.[1].won||0;
+  const rows = sorted.map(([agent, data], i) => {
+    const pct = data.handled > 0 ? Math.round((data.won/data.handled)*100) : 0;
+    return `<tr style="background:${i%2===0?'#fff':'#f0fdf4'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #bbf7d0;font-weight:600">${agent}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #bbf7d0">${data.handled}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #bbf7d0;font-weight:700;color:#15803d">${data.won}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #bbf7d0">${pct}%</td>
+    </tr>`;
+  }).join('');
+  const badge = topAgent !== '—'
+    ? `<div style="margin-top:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 18px;">
+        <span style="font-size:22px">&#127942;</span>
+        <strong style="color:#15803d"> Top: ${topAgent} — ${topWon} deals won</strong></div>`
+    : '';
+  return {
+    weekRange,
+    leadsCreated: String(weekLeads.length),
+    stageMovements: String((movers||[]).length),
+    wonThisWeek: String(won.length),
+    lostThisWeek: String(lost.length),
+    table: rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#6b7280">No sales data this week</td></tr>',
+    topPerformerBadge: badge,
+    generatedTime, year,
+  };
+}
+
+async function generateCRMLeadAgingReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const cutoff = format(new Date(nowIST.getTime() - 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd'T'HH:mm:ss");
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: stale } = await supabase
+    .from('crm_leads')
+    .select('id, client_name, stage, assigned_to, city, updated_at, created_at')
+    .neq('status', 'won').neq('status', 'lost')
+    .lt('updated_at', cutoff)
+    .order('updated_at', { ascending: true });
+  const leads = stale || [];
+  const daysStale = (l: any) => Math.ceil((nowIST.getTime() - new Date(l.updated_at||l.created_at).getTime()) / 86400000);
+  const avg = leads.length > 0 ? Math.round(leads.reduce((s: number, l: any) => s + daysStale(l), 0) / leads.length) : 0;
+  const oldest = leads.length > 0 ? daysStale(leads[0]) : 0;
+  const rows = leads.slice(0, 25).map((l: any, i: number) => {
+    const days = daysStale(l);
+    return `<tr style="background:${days>60?'#fef2f2':i%2===0?'#fff':'#fff5f5'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #fecaca;font-weight:600">${l.client_name||'—'}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #fecaca">${l.stage||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #fecaca">${l.assigned_to||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #fecaca">${l.city||'—'}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #fecaca;font-weight:800;color:${days>60?'#dc2626':'#d97706'}">${days}</td>
+    </tr>`;
+  }).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    totalStale: String(leads.length),
+    avgDaysInStage: String(avg),
+    oldestLeadDays: String(oldest),
+    table: rows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:#6b7280">No stale leads — great work!</td></tr>',
+    generatedTime, year,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ▌ OPS REPORT GENERATORS
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function generateOpsTaskSummary(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const todayStr = format(nowIST, 'yyyy-MM-dd');
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('id, title, assigned_to, priority, due_date, status')
+    .order('due_date', { ascending: true })
+    .limit(100);
+  const all = tasks || [];
+  const completed  = all.filter((t: any) => t.status==='completed'||t.status==='done');
+  const inProgress = all.filter((t: any) => t.status==='in_progress'||t.status==='in-progress');
+  const overdue    = all.filter((t: any) => t.due_date && t.due_date < todayStr && t.status!=='completed' && t.status!=='done');
+  const badge = (p: string) => {
+    const c: Record<string,string> = { high:'background:#fee2e2;color:#dc2626', medium:'background:#fef9c3;color:#a16207', low:'background:#dcfce7;color:#15803d' };
+    return `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;${c[(p||'').toLowerCase()]||'background:#f3f4f6;color:#374151'}">${p||'—'}</span>`;
+  };
+  const urgent = [...overdue, ...all.filter((t: any) => (t.priority||'').toLowerCase()==='high' && !overdue.find((o: any)=>o.id===t.id))].slice(0, 15);
+  const rows = urgent.map((t: any, i: number) => {
+    const isOverdue = overdue.find((o: any) => o.id === t.id);
+    return `<tr style="background:${isOverdue?'#fff5f5':i%2===0?'#fff':'#f0f9ff'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #e0f2fe;font-weight:600">${t.title||'—'}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #e0f2fe">${t.assigned_to||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #e0f2fe">${badge(t.priority)}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #e0f2fe">${t.due_date||'—'}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #e0f2fe;font-weight:700;color:${isOverdue?'#dc2626':t.status==='completed'?'#15803d':'#d97706'}">${t.status||'—'}</td>
+    </tr>`;
+  }).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    totalTasks: String(all.length),
+    completedTasks: String(completed.length),
+    inProgressTasks: String(inProgress.length),
+    overdueTasks: String(overdue.length),
+    table: rows || '<tr><td colspan="5" style="padding:20px;text-align:center;color:#6b7280">No urgent tasks</td></tr>',
+    generatedTime, year,
+  };
+}
+
+async function generateOpsSiteActivityReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
+  const todayStr = format(nowIST, 'yyyy-MM-dd');
+  const year = format(nowIST, 'yyyy');
+  const generatedTime = format(nowIST, 'hh:mm a');
+  const { data: recs } = await supabase
+    .from('attendance_records')
+    .select('employee_id, location, status, check_in_time, date')
+    .eq('date', todayStr);
+  const todayRecs = recs || [];
+  const siteMap: Record<string, { staff: Set<string>; pings: number; last: string }> = {};
+  todayRecs.forEach((r: any) => {
+    const s = r.location||'Main Office';
+    if (!siteMap[s]) siteMap[s]={staff:new Set(),pings:0,last:'—'};
+    siteMap[s].staff.add(r.employee_id);
+    siteMap[s].pings++;
+    if (r.check_in_time && (siteMap[s].last==='—' || r.check_in_time > siteMap[s].last)) siteMap[s].last = r.check_in_time;
+  });
+  const { data: allEmps } = await supabase.from('employees').select('location').eq('status', 'active');
+  const allLocs = new Set((allEmps||[]).map((e: any) => e.location).filter(Boolean));
+  const inactive = [...allLocs].filter(l => !siteMap[l]).length;
+  const rows = Object.entries(siteMap).sort((a,b)=>b[1].pings-a[1].pings).map(([site, data], i) => {
+    const last = data.last !== '—' ? (data.last.split('T')[1]||data.last).substring(0,5) : '—';
+    return `<tr style="background:${i%2===0?'#fff':'#f0fdf4'}">
+      <td style="padding:10px 14px;border-bottom:1px solid #bbf7d0;font-weight:600">${site}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #bbf7d0">${data.staff.size}</td>
+      <td style="padding:10px 14px;text-align:center;border-bottom:1px solid #bbf7d0;font-weight:700;color:#15803d">${data.pings}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #bbf7d0">${last}</td>
+    </tr>`;
+  }).join('');
+  return {
+    date: format(nowIST, 'EEEE, MMMM do, yyyy'),
+    activeSites: String(Object.keys(siteMap).length),
+    totalPings: String(todayRecs.length),
+    fieldStaffActive: String(new Set(todayRecs.map((r: any) => r.employee_id)).size),
+    inactiveSites: String(inactive),
+    table: rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:#6b7280">No site activity today</td></tr>',
+    generatedTime, year,
+  };
+}
