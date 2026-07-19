@@ -278,6 +278,114 @@ const EmailTagInput: React.FC<{
     );
 };
 
+const DEFAULT_BD_DAILY_REPORT_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="background:#f1f5f9;font-family:'Inter',-apple-system,sans-serif;margin:0;padding:24px;">
+<table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:760px;margin:0 auto;">
+
+  <!-- HEADER -->
+  <tr><td style="background:#ffffff;border-radius:16px 16px 0 0;padding:28px 36px;border-bottom:4px solid #16a34a;">
+    <table width="100%" border="0" cellpadding="0" cellspacing="0"><tr>
+      <td valign="middle" width="50%">
+        <img src="https://app.paradigmfms.com/Paradigm-Logo-3-1024x157.png" alt="Paradigm" style="height:44px;display:block;">
+        <div style="margin-top:10px;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Business Development</div>
+      </td>
+      <td valign="top" align="right" width="50%">
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;display:inline-block;text-align:left;">
+          <div style="font-size:11px;color:#166534;text-transform:uppercase;font-weight:700;">Daily Activity Report</div>
+          <div style="font-size:22px;color:#15803d;font-weight:800;margin-top:4px;">{report_date}</div>
+          <div style="font-size:11px;color:#374151;margin-top:4px;">BD: <strong>{bd_name}</strong></div>
+        </div>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- SECTION 1: ATTENDANCE -->
+  <tr><td style="background:#ffffff;padding:24px 36px;">
+    <div style="font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9;">1. Attendance &amp; Time</div>
+    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px 0;"><tr>
+      <td style="background:#f0fdf4;border:1px solid #bbf7d030;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</div>
+        <div style="font-size:18px;font-weight:800;color:#059669;margin-top:6px;">{attendance_status}</div>
+      </td>
+      <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check In</div>
+        <div style="font-size:16px;font-weight:700;color:#1e293b;margin-top:6px;">{check_in_time}</div>
+      </td>
+      <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Check Out</div>
+        <div style="font-size:16px;font-weight:700;color:#1e293b;margin-top:6px;">{check_out_time}</div>
+      </td>
+      <td style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">Work Hours</div>
+        <div style="font-size:16px;font-weight:800;color:#1d4ed8;margin-top:6px;">{working_hours}</div>
+      </td>
+      <td style="background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#92400e;font-weight:700;text-transform:uppercase;">KMs Travelled</div>
+        <div style="font-size:16px;font-weight:800;color:#d97706;margin-top:6px;">{kms_travelled} km</div>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <!-- SECTION 2: ACTIVITY SUMMARY -->
+  <tr><td style="background:#ffffff;padding:0 36px 24px;">
+    <div style="font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9;">2. Activity Summary</div>
+    <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px 0;margin-bottom:20px;"><tr>
+      <td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:20px;text-align:center;">
+        <div style="font-size:10px;color:#166534;font-weight:700;text-transform:uppercase;">New Prospect Calls</div>
+        <div style="font-size:40px;font-weight:800;color:#059669;margin-top:6px;line-height:1;">{prospect_calls}</div>
+      </td>
+      <td style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:20px;text-align:center;">
+        <div style="font-size:10px;color:#1d4ed8;font-weight:700;text-transform:uppercase;">Follow-up Calls</div>
+        <div style="font-size:40px;font-weight:800;color:#2563eb;margin-top:6px;line-height:1;">{followup_calls}</div>
+      </td>
+      <td style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:20px;text-align:center;">
+        <div style="font-size:10px;color:#92400e;font-weight:700;text-transform:uppercase;">New Leads Added</div>
+        <div style="font-size:40px;font-weight:800;color:#d97706;margin-top:6px;line-height:1;">{new_leads_count}</div>
+      </td>
+      <td style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:20px;text-align:center;">
+        <div style="font-size:10px;color:#5b21b6;font-weight:700;text-transform:uppercase;">Sites Visited</div>
+        <div style="font-size:40px;font-weight:800;color:#7c3aed;margin-top:6px;line-height:1;">{sites_count}</div>
+      </td>
+    </tr></table>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">{sites_visited}</div>
+  </td></tr>
+
+  <!-- SECTION 3: NEW LEADS -->
+  <tr><td style="background:#ffffff;padding:0 36px 24px;">
+    <div style="font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9;">3. New Leads Added Today</div>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">{new_leads_table}</div>
+  </td></tr>
+
+  <!-- SECTION 4: METRICS -->
+  <tr><td style="background:#ffffff;padding:0 36px 24px;">
+    <div style="font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9;">4. Activity Metrics — Target vs Actual</div>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">{metrics_table}</div>
+  </td></tr>
+
+  <!-- SECTION 5: PIPELINE -->
+  <tr><td style="background:#ffffff;padding:0 36px 24px;">
+    <div style="font-size:12px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #f1f5f9;">5. CRM Pipeline Snapshot</div>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">{pipeline_snapshot}</div>
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;border-radius:0 0 16px 16px;padding:20px 36px;">
+    <table width="100%" border="0" cellpadding="0" cellspacing="0"><tr>
+      <td><p style="margin:0;font-size:12px;color:#6b7280;">&copy; Paradigm FMS &middot; BD Daily Activity Report</p></td>
+      <td style="text-align:right;"><p style="margin:0;font-size:11px;color:#16a34a;text-transform:uppercase;font-weight:700;letter-spacing:1px;">Confidential Internal Report</p></td>
+    </tr></table>
+  </td></tr>
+
+</table>
+</body>
+</html>`;
+
 const EmailConfigPanel: React.FC = () => {
     const { user } = useAuthStore();
     const [activeSubTab, setActiveSubTab] = useState<SubTab>('config');
@@ -940,6 +1048,8 @@ const EmailConfigPanel: React.FC = () => {
                                                 setEditingTemplate({ ...editingTemplate, bodyTemplate: DEFAULT_MONTHLY_HTML });
                                             } else if (editingTemplate.name === 'Daily Attendance Report') {
                                                 setEditingTemplate({ ...editingTemplate, bodyTemplate: DEFAULT_DAILY_HTML });
+                                            } else if (editingTemplate.name === 'CRM BD Daily Report') {
+                                                setEditingTemplate({ ...editingTemplate, bodyTemplate: DEFAULT_BD_DAILY_REPORT_HTML });
                                             } else {
                                                 setToast({ message: 'No default design available for this template type.', type: 'error' });
                                             }

@@ -11,6 +11,8 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
+import QuotationBuilder from './QuotationBuilder';
+import { LostLeadModal } from '../../components/crm/LostLeadModal';
 import {
   ArrowLeft, Save, Plus, Phone, Mail, MapPin, Building2,
   Calendar, MessageSquare, Clock, User, ChevronDown, ChevronUp,
@@ -58,6 +60,8 @@ const LeadDetail: React.FC = () => {
     organizationId: user?.organizationId,
   });
 
+  const [showQuotation, setShowQuotation] = useState(false);
+  const [showLostModal, setShowLostModal] = useState(false);
   const [showFollowupForm, setShowFollowupForm] = useState(false);
   const [followupForm, setFollowupForm] = useState<Partial<CrmFollowup>>({
     type: 'Call',
@@ -210,6 +214,12 @@ const LeadDetail: React.FC = () => {
       setToast({ message: 'Please fill in all mandatory fields', type: 'error' });
       return;
     }
+
+    if (form.status !== 'New Lead' && !form.assignedTo) {
+      setToast({ message: 'Lead must be assigned to an owner when it is past the New Lead stage.', type: 'error' });
+      return;
+    }
+
     setFormErrors({});
     setIsSaving(true);
     try {
@@ -905,6 +915,20 @@ const LeadDetail: React.FC = () => {
                           : 'opacity-40 md:opacity-50'
                     }`}
                     onClick={async () => {
+                      if (status !== 'New Lead' && !form.assignedTo) {
+                        setToast({ message: 'Lead must be assigned to an owner before moving to the next stage.', type: 'error' });
+                        return;
+                      }
+                      
+                      if (status === 'Lost') {
+                        if (isNew || !id) {
+                          setForm(p => ({ ...p, status }));
+                        } else {
+                          setShowLostModal(true);
+                        }
+                        return;
+                      }
+                      
                       if (isNew || !id) {
                         setForm(p => ({ ...p, status }));
                       } else {
@@ -1026,6 +1050,35 @@ const LeadDetail: React.FC = () => {
           )}
         </div>
       </div>
+      
+      {showLostModal && id && (
+        <LostLeadModal
+          lead={form as CrmLead}
+          isOpen={showLostModal}
+          onClose={() => setShowLostModal(false)}
+          onSubmit={async (data) => {
+            setIsSaving(true);
+            try {
+              await updateLead(id, {
+                ...form,
+                lostReason: data.lostReason,
+                notes: data.notes,
+                competitor: data.competitor,
+                lostDate: data.lostDate,
+                dealValue: data.dealValue,
+                status: 'Lost'
+              });
+              setForm(p => ({ ...p, ...data, status: 'Lost' }));
+              setToast({ message: 'Lead marked as lost', type: 'success' });
+            } catch (err: any) {
+              setToast({ message: err.message, type: 'error' });
+              throw err;
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

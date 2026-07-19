@@ -65,7 +65,12 @@ export interface CrmLead {
   assignedToName?: string;
   expectedStartDate?: string;
   lostReason?: string;
+  competitor?: string;
+  lostDate?: string;
   notes?: string;
+  dealValue?: number;
+  stageUpdatedAt?: string;
+  nextFollowupDate?: string;
 
   // Referral Details (when source = 'Referral')
   referrerIsEmployee?: boolean;

@@ -167,10 +167,10 @@ export const crmApi = {
   // -------------------------------------------------------------------------
 
   getLeads: async (): Promise<CrmLead[]> => {
-    // Plain select — no FK joins (auth.users has no 'name' column)
+    // Plain select — no FK joins for name, but we fetch followups to get next action
     const { data, error } = await supabase
       .from('crm_leads')
-      .select('*')
+      .select('*, crm_followups(next_followup_date, notes, created_at)')
       .order('created_at', { ascending: false });
     if (error) throw error;
 
@@ -189,9 +189,19 @@ export const crmApi = {
     }
 
     return rows.map((row: any) => {
-      const lead = toCamelCase(row);
+      // Find latest followup for next action
+      const followups = row.crm_followups || [];
+      let latestFollowup = followups
+        .filter((f: any) => f.next_followup_date)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+      const { crm_followups, ...cleanRow } = row;
+      const lead = toCamelCase(cleanRow);
       lead.assignedToName = userMap[row.assigned_to] || null;
       lead.createdByName = userMap[row.created_by] || null;
+      if (latestFollowup) {
+        lead.nextFollowupDate = latestFollowup.next_followup_date;
+      }
       return lead;
     });
   },
@@ -278,7 +288,7 @@ export const crmApi = {
     
     const { data, error } = await supabase
       .from('crm_leads')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ status, stage_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single();

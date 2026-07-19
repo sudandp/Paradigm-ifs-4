@@ -154,6 +154,7 @@ const LeadDetail = lazyWithRetry(() => import('./pages/crm/LeadDetail'));
 const ChecklistBuilder = lazyWithRetry(() => import('./pages/crm/ChecklistBuilder'));
 const SiteSurveyForm = lazyWithRetry(() => import('./pages/crm/SiteSurveyForm'));
 const QuotationBuilder = lazyWithRetry(() => import('./pages/crm/QuotationBuilder'));
+const BdDailyReport = lazyWithRetry(() => import('./pages/crm/BdDailyReport'));
 
 // Operations Module (Phase 2)
 const HelpdeskTickets = lazyWithRetry(() => import('./pages/operations/HelpdeskTickets'));
@@ -1654,6 +1655,7 @@ const App: React.FC = () => {
           {/* CRM */}
           <Route element={<ProtectedRoute requiredPermission="view_crm_pipeline" />}>
             <Route path="crm" element={<CrmDashboard />} />
+            <Route path="crm/bd-report" element={<BdDailyReport />} />
             <Route path="crm/leads/:id" element={<LeadDetail />} />
             <Route path="crm/leads/:id/survey" element={<SiteSurveyForm />} />
             <Route path="crm/leads/:id/quotation" element={<QuotationBuilder />} />

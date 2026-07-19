@@ -63,7 +63,7 @@ import {
     startOfDay,
     endOfDay
 } from 'date-fns';
-import { Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Phone, Loader2, Download, Users, UserCheck, UserX, UserMinus, Clock, BarChart3, TrendingUp, Calendar, FileDown, Mail, Send, Save, Filter, ChevronDown, Monitor, MapPin, Lock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 // Removed incorrect store imports
 // Import reverse geocode utility to convert lat/lon into human addresses for logs
 import { reverseGeocode } from '../../utils/locationUtils';
@@ -142,9 +142,37 @@ const resolveUserLocation = (user: User, orgStructure: OrganizationGroup[]) => {
 };
 
 
+// --- Plugins ---
+// CSS `zoom` breaks Chart.js coordinate mapping because offsetX is scaled but clientWidth is not.
+// This plugin intercepts mouse events and un-zooms the coordinates so hover works perfectly on large screens.
+const zoomFixPlugin = {
+    id: 'zoomFix',
+    beforeEvent(chart: any, args: any) {
+        const event = args.event;
+        if (!event || event.x === undefined) return;
+
+        let zoom = 1;
+        let el = chart.canvas;
+        while (el && el !== document.body) {
+            const style = window.getComputedStyle(el);
+            const z = style.zoom as string;
+            if (z && z !== '1' && z !== 'normal') {
+                const parsed = parseFloat(z);
+                if (!isNaN(parsed)) zoom *= parsed;
+            }
+            el = el.parentElement;
+        }
+
+        if (zoom !== 1) {
+            event.x = event.x / zoom;
+            event.y = event.y / zoom;
+        }
+    }
+};
+
 // --- Reusable Dashboard Components ---
 const BarChartSkeleton: React.FC = () => (
-    <div className="h-64 md:h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse mt-4">
+    <div className="h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse mt-4">
         <div className="flex-1 flex items-end justify-around px-4 pb-4 border-b border-slate-100 dark:border-[#1a3d2c]">
             {[
                 { p: 70, a: 30 },
@@ -170,7 +198,7 @@ const BarChartSkeleton: React.FC = () => (
 );
 
 const LineChartSkeleton: React.FC = () => (
-    <div className="h-64 md:h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse">
+    <div className="h-[320px] w-full flex flex-col justify-between pt-4 animate-pulse">
         <div className="flex-1 relative border-b border-slate-100 dark:border-[#1a3d2c]">
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                 <path 
@@ -212,19 +240,23 @@ const ReportTableSkeleton: React.FC = () => (
     </div>
 );
 
+// The correctHoverIndexPlugin was removed as we now use external React-based tooltips for all bar charts.
+
 const ChartContainer: React.FC<{ title: string, icon: React.ElementType, children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
     <div className="bg-card p-4 md:p-6 rounded-xl shadow-card col-span-1">
         <div className="flex items-center mb-4">
             <Icon className="h-5 w-5 mr-3 text-muted" />
             <h3 className="font-semibold text-primary-text">{title}</h3>
         </div>
-        <div className="h-64 md:h-80 relative">{children}</div>
+        <div className="h-[320px] relative">{children}</div>
     </div>
 );
 
 const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number[], absent: number[], wfh?: number[], onLeave?: number[] } }> = ({ data }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<HTMLCanvasElement>(null);
     const chartInstance = useRef<Chart | null>(null);
+    const [tooltip, setTooltip] = useState<{ label: string; items: { name: string; value: string; color: string }[]; x: number; y: number } | null>(null);
 
     useEffect(() => {
         if (chartRef.current) {
@@ -233,6 +265,34 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
             }
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
+                const externalTooltipHandler = (context: any) => {
+                    const { tooltip: tip } = context;
+                    if (tip.opacity === 0) {
+                        setTooltip(null);
+                        return;
+                    }
+                    if (!tip.dataPoints?.length) return;
+                    const canvas = chartRef.current;
+                    const container = containerRef.current;
+                    if (!canvas || !container) return;
+
+                    const idx = tip.dataPoints[0].dataIndex;
+                    const label = data.labels[idx] ?? '';
+                    
+                    const items = tip.dataPoints.map((dp: any) => ({
+                        name: dp.dataset.label,
+                        value: String(dp.parsed.y ?? 0),
+                        color: dp.dataset.backgroundColor
+                    }));
+
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    const x = canvasRect.left - containerRect.left + tip.caretX;
+                    const y = canvasRect.top - containerRect.top + tip.caretY;
+
+                    setTooltip({ label, items, x, y });
+                };
+
                 chartInstance.current = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -283,10 +343,14 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        onHover: (event: any, chartElement: any[]) => {
+                            if (event.native && event.native.target) {
+                                event.native.target.style.cursor = chartElement.length ? 'pointer' : 'default';
+                            }
+                        },
                         interaction: {
-                            mode: 'index' as const,
+                            mode: 'index',
                             intersect: false,
-                            axis: 'x' as const,
                         },
                         scales: {
                             y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,0.1)' } },
@@ -310,94 +374,16 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
                                     pointStyle: 'rectRounded',
                                     boxWidth: 12,
                                     padding: 20,
-                                    font: {
-                                        family: "'Manrope', sans-serif",
-                                        size: 12,
-                                    }
+                                    font: { family: "'Manrope', sans-serif", size: 12 }
                                 }
                             },
                             tooltip: {
-                                mode: 'index' as const,
-                                intersect: false,
-                                backgroundColor: '#0F172A',
-                                titleFont: { family: "'Manrope', sans-serif", weight: 'bold' as const },
-                                bodyFont: { family: "'Manrope', sans-serif" },
-                                cornerRadius: 8,
-                                padding: 12,
-                                displayColors: true,
-                                boxPadding: 4,
-                                callbacks: {
-                                    title: (items: any[]) => {
-                                        // Use dataIndex to pull the correct label from chart data
-                                        // This avoids any mismatch from Chart.js internal label resolution
-                                        if (items.length > 0) {
-                                            const idx = items[0].dataIndex;
-                                            return items[0].chart.data.labels?.[idx] as string ?? '';
-                                        }
-                                        return '';
-                                    },
-                                    label: (ctx: any) => {
-                                        const label = ctx.dataset.label ?? '';
-                                        const value = ctx.parsed.y ?? 0;
-                                        return ` ${label}: ${value} employees`;
-                                    }
-                                }
+                                enabled: false,
+                                external: externalTooltipHandler
                             }
                         }
                     },
-                    plugins: [{
-                        id: 'correctHoverIndex',
-                        beforeEvent(chart: any, args: any) {
-                            const event = args.event;
-                            if (event.type !== 'mousemove' && event.type !== 'click') return;
-                            
-                            const xScale = chart.scales.x;
-                            if (!xScale) return;
-                            
-                            // For category scales, use getValueForPixel to find the correct index
-                            // based on the cursor's x position within the chart area
-                            const mouseX = event.x;
-                            if (mouseX < xScale.left || mouseX > xScale.right) return;
-                            
-                            const rawIdx = xScale.getValueForPixel(mouseX);
-                            if (rawIdx == null) return;
-                            
-                            const idx = Math.max(0, Math.min(chart.data.labels.length - 1, Math.round(rawIdx)));
-                            
-                            // Store the correct index for tooltip use
-                            (chart as any)._correctHoverIndex = idx;
-                        },
-                        beforeTooltipDraw(chart: any, args: any) {
-                            const tooltip = args.tooltip;
-                            if (!tooltip || tooltip.dataPoints?.length === 0) return;
-                            
-                            const correctIdx = (chart as any)._correctHoverIndex;
-                            if (correctIdx == null) return;
-                            
-                            // If the tooltip's detected index doesn't match the correct one,
-                            // update all tooltip data points to use the correct index
-                            const currentIdx = tooltip.dataPoints[0]?.dataIndex;
-                            if (currentIdx !== correctIdx) {
-                                tooltip.title = [chart.data.labels[correctIdx]];
-                                tooltip.dataPoints.forEach((dp: any, i: number) => {
-                                    dp.dataIndex = correctIdx;
-                                    dp.label = chart.data.labels[correctIdx];
-                                    dp.parsed.y = chart.data.datasets[i]?.data[correctIdx] ?? 0;
-                                    dp.formattedValue = String(dp.parsed.y);
-                                    dp.raw = dp.parsed.y;
-                                });
-                                // Re-run label callbacks with corrected data
-                                const callbacks = chart.options.plugins?.tooltip?.callbacks;
-                                if (callbacks?.label) {
-                                    tooltip.body = tooltip.dataPoints.map((dp: any) => ({
-                                        before: [],
-                                        lines: [callbacks.label(dp)],
-                                        after: [],
-                                    }));
-                                }
-                            }
-                        }
-                    }]
+                    plugins: [zoomFixPlugin]
                 });
             }
         }
@@ -410,15 +396,39 @@ const AttendanceTrendChart: React.FC<{ data: { labels: string[], present: number
     }, [JSON.stringify(data)]);
 
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }} onMouseLeave={() => setTooltip(null)}>
             <canvas ref={chartRef}></canvas>
+            {tooltip && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        left: tooltip.x,
+                        top: tooltip.y,
+                        transform: 'translate(-50%, -110%)',
+                        pointerEvents: 'none',
+                        zIndex: 50,
+                    }}
+                    className="bg-white dark:bg-[#0F172A] text-gray-800 dark:text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap border border-gray-100 dark:border-gray-800"
+                >
+                    <div className="font-semibold mb-1 pb-1 border-b border-gray-200 dark:border-gray-700">{tooltip.label}</div>
+                    {tooltip.items.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 mt-1">
+                            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }}></span>
+                            <span className="text-gray-600 dark:text-gray-300">{item.name}:</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{item.value} employees</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };
 
 const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: number[] } }> = ({ data }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<HTMLCanvasElement>(null);
     const chartInstance = useRef<Chart | null>(null);
+    const [tooltip, setTooltip] = useState<{ label: string; value: string; x: number; y: number } | null>(null);
 
     useEffect(() => {
         if (chartRef.current) {
@@ -427,6 +437,29 @@ const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: nu
             }
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
+                const externalTooltipHandler = (context: any) => {
+                    const { tooltip: tip } = context;
+                    if (tip.opacity === 0) {
+                        setTooltip(null);
+                        return;
+                    }
+                    if (!tip.dataPoints?.length) return;
+                    const canvas = chartRef.current;
+                    const container = containerRef.current;
+                    if (!canvas || !container) return;
+
+                    const idx = tip.dataPoints[0].dataIndex;
+                    const label = data.labels[idx] ?? '';
+                    const value = String(tip.dataPoints[0].parsed.y ?? 0);
+
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+                    const x = canvasRect.left - containerRect.left + tip.caretX;
+                    const y = canvasRect.top - containerRect.top + tip.caretY;
+
+                    setTooltip({ label, value, x, y });
+                };
+
                 chartInstance.current = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -442,6 +475,10 @@ const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: nu
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
                         scales: {
                             y: {
                                 beginAtZero: true,
@@ -456,14 +493,12 @@ const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: nu
                         plugins: {
                             legend: { display: false },
                             tooltip: {
-                                backgroundColor: '#0F172A',
-                                titleFont: { family: "'Manrope', sans-serif" },
-                                bodyFont: { family: "'Manrope', sans-serif" },
-                                cornerRadius: 8,
-                                padding: 12,
+                                enabled: false,
+                                external: externalTooltipHandler
                             }
                         }
-                    }
+                    },
+                    plugins: [zoomFixPlugin]
                 });
             }
         }
@@ -476,8 +511,24 @@ const DepartmentAttendanceChart: React.FC<{ data: { labels: string[], values: nu
     }, [JSON.stringify(data)]);
 
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }} onMouseLeave={() => setTooltip(null)}>
             <canvas ref={chartRef}></canvas>
+            {tooltip && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        left: tooltip.x,
+                        top: tooltip.y,
+                        transform: 'translate(-50%, -110%)',
+                        pointerEvents: 'none',
+                        zIndex: 50,
+                    }}
+                    className="bg-white dark:bg-[#0F172A] text-gray-800 dark:text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap border border-gray-100 dark:border-gray-800"
+                >
+                    <div className="font-semibold mb-1 text-gray-900 dark:text-white">{tooltip.label}</div>
+                    <div className="text-emerald-600 dark:text-emerald-400 font-medium">Present: {tooltip.value} employees</div>
+                </div>
+            )}
         </div>
     );
 };
@@ -516,10 +567,11 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        devicePixelRatio: 1, // FIX: prevent coordinate scaling bug
                         interaction: {
-                            mode: 'index' as const,
-                            intersect: false,
+                            mode: 'nearest' as const,
                             axis: 'x' as const,
+                            intersect: false,
                         },
                         scales: {
                             // Use whole-number tick steps on the y-axis so average hours are easy to read.  If
@@ -564,7 +616,8 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                                 },
                             },
                             tooltip: {
-                                mode: 'index' as const,
+                                mode: 'nearest' as const,
+                            axis: 'x' as const,
                                 intersect: false,
                                 backgroundColor: '#0F172A',
                                 titleFont: { family: "'Manrope', sans-serif", weight: 'bold' as const },
@@ -582,7 +635,8 @@ const ProductivityChart: React.FC<{ data: { labels: string[], hours: number[] } 
                                 }
                             },
                         },
-                    }
+                    },
+                    plugins: [zoomFixPlugin]
                 });
             }
         }
@@ -859,10 +913,85 @@ const TodayMetricsRow = ({ data, loading }: { data: TodayMetrics | null, loading
     );
 };
 
+const SalesMetricsRow = () => {
+    const [salesData, setSalesData] = useState({
+        newLeads: 0,
+        sitesVisited: 0,
+        followUpCalls: 0,
+        newProspectCalls: 0,
+        kmTravelled: 0 // Placeholder until field tracking is integrated
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchSalesMetrics = async () => {
+            try {
+                const todayStr = new Date().toISOString().split('T')[0];
+                
+                // Fetch New Leads today
+                const { count: newLeadsCount } = await supabase
+                    .from('crm_leads')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', todayStr);
+                    
+                // Fetch followups today
+                const { data: followups } = await supabase
+                    .from('crm_followups')
+                    .select('type, lead_id')
+                    .gte('created_at', todayStr);
+
+                let sitesVisited = 0;
+                let followUpCalls = 0;
+                let newProspectCalls = 0; // Simplified to just calls today
+
+                if (followups) {
+                    followups.forEach(f => {
+                        if (f.type === 'Site Visit') sitesVisited++;
+                        if (f.type === 'Call') {
+                            followUpCalls++;
+                            newProspectCalls++; // In a real scenario, check lead status
+                        }
+                    });
+                }
+
+                setSalesData({
+                    newLeads: newLeadsCount || 0,
+                    sitesVisited,
+                    followUpCalls,
+                    newProspectCalls,
+                    kmTravelled: 0
+                });
+            } catch (err) {
+                console.error("Failed to fetch sales metrics", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchSalesMetrics();
+    }, []);
+
+    if (loading) return (
+        <>
+            {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-24 w-full bg-[#0b291a] md:bg-gray-100 animate-pulse rounded-xl"></div>)}
+        </>
+    );
+
+    return (
+        <>
+            <DashboardStatCard icon={TrendingUp} label="New Leads" value={salesData.newLeads} color="#8b5cf6" suffix="Today" />
+            <DashboardStatCard icon={MapPin} label="Sites Visited" value={salesData.sitesVisited} color="#f59e0b" suffix="Visits" />
+            <DashboardStatCard icon={Phone} label="Follow-ups" value={salesData.followUpCalls} color="#3b82f6" suffix="Calls" />
+            <DashboardStatCard icon={UserCheck} label="Prospect Calls" value={salesData.newProspectCalls} color="#10b981" suffix="Calls" />
+            <DashboardStatCard icon={MapPin} label="KM Travelled" value={salesData.kmTravelled} color="#06b6d4" suffix="KM" />
+        </>
+    );
+};
+
 const AttendanceCharts = ({ data, loading }: { data: ReturnType<typeof buildChartDatasets> | null, loading: boolean }) => {
     if (loading || !data) return <BarChartSkeleton />;
     return (
-        <div className="h-64 md:h-[320px] relative mt-4">
+        <div className="h-[320px] relative mt-4">
             <AttendanceTrendChart data={{ 
                 labels: data.labels, 
                 present: data.presentTrend, 
@@ -4777,7 +4906,7 @@ const AttendanceDashboard: React.FC = () => {
                             <TrendingUp className="h-5 w-5 mr-3 text-[#22c55e] md:text-muted" />
                             <h3 className="font-semibold text-white md:text-primary-text">Productivity Trend</h3>
                         </div>
-                        <div className="h-64 md:h-[320px] relative">
+                        <div className="h-[320px] relative">
                             {isLoading || !dashboardData?.productivityTrend ? (
                                 <LineChartSkeleton />
                             ) : (
@@ -5005,8 +5134,10 @@ const AttendanceDashboard: React.FC = () => {
 };
 
 const DepartmentPerformanceChart: React.FC<{ labels: string[]; values: number[] }> = ({ labels, values }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const instanceRef = useRef<Chart | null>(null);
+    const [tooltip, setTooltip] = useState<{ label: string; value: string; x: number; y: number } | null>(null);
 
     useEffect(() => {
         if (!canvasRef.current) return;
@@ -5032,14 +5163,44 @@ const DepartmentPerformanceChart: React.FC<{ labels: string[]; values: number[] 
             return;
         }
 
+        const slicedLabels = labels.slice(0, 7);
+        const slicedValues = values.slice(0, 7);
+
+        const externalTooltipHandler = (context: any) => {
+            const { tooltip: tip } = context;
+            if (tip.opacity === 0) {
+                setTooltip(null);
+                return;
+            }
+            if (!tip.dataPoints?.length) return;
+            const dp = tip.dataPoints[0];
+            const canvas = canvasRef.current;
+            const container = containerRef.current;
+            if (!canvas || !container) return;
+
+            // Use the dataIndex from Chart.js directly (correct index)
+            const idx = dp.dataIndex;
+            const label = slicedLabels[idx] ?? '';
+            const value = (slicedValues[idx] ?? 0).toFixed(1);
+
+            // caretX and caretY are already in CSS pixels relative to the canvas
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const x = canvasRect.left - containerRect.left + tip.caretX;
+            const y = canvasRect.top - containerRect.top + tip.caretY;
+
+            setTooltip({ label, value, x, y });
+        };
+
         instanceRef.current = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels.slice(0, 7),
+                labels: slicedLabels,
                 datasets: [{
                     label: 'Avg Hours Worked / Day',
-                    data: values.slice(0, 7),
+                    data: slicedValues,
                     backgroundColor: '#10B981',
+                    hoverBackgroundColor: 'red',
                     borderRadius: 6,
                     maxBarThickness: 35
                 }]
@@ -5047,6 +5208,7 @@ const DepartmentPerformanceChart: React.FC<{ labels: string[]; values: number[] 
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                devicePixelRatio: 1, // FIX: forces 1:1 coordinate mapping to prevent hover bugs on scaled displays
                 scales: {
                     y: {
                         beginAtZero: true,
@@ -5062,23 +5224,43 @@ const DepartmentPerformanceChart: React.FC<{ labels: string[]; values: number[] 
                         ticks: { font: { size: 10 } }
                     }
                 },
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#1e293b',
-                        padding: 10,
-                        cornerRadius: 6
+                        enabled: false,
+                        external: externalTooltipHandler
                     }
                 }
-            }
+            },
+            plugins: [zoomFixPlugin]
         });
 
         return () => { instanceRef.current?.destroy(); };
     }, [labels, values]);
 
     return (
-        <div className="h-64 md:h-[320px] relative w-full">
+        <div ref={containerRef} className="h-[320px] relative w-full" onMouseLeave={() => setTooltip(null)}>
             <canvas ref={canvasRef}></canvas>
+            {tooltip && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        left: tooltip.x,
+                        top: tooltip.y,
+                        transform: 'translate(-50%, -110%)',
+                        pointerEvents: 'none',
+                        zIndex: 50,
+                    }}
+                    className="bg-white dark:bg-[#0F172A] text-gray-800 dark:text-white text-xs rounded-lg px-3 py-2 shadow-xl whitespace-nowrap border border-gray-100 dark:border-gray-800"
+                >
+                    <div className="font-semibold mb-1 text-gray-900 dark:text-white">{tooltip.label}</div>
+                    <div className="text-emerald-600 dark:text-emerald-400 font-medium">Avg Hours: {tooltip.value} hrs</div>
+                </div>
+            )}
         </div>
     );
 };
@@ -5105,9 +5287,11 @@ const AttritionRatioChart: React.FC<{ active: number; inactive: number }> = ({ a
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    devicePixelRatio: 1, // FIX: prevent coordinate scaling bug
                     cutout: '70%',
                     plugins: { legend: { display: false }, tooltip: { enabled: false } }
-                }
+                },
+                plugins: [zoomFixPlugin]
             });
             return;
         }
@@ -5126,6 +5310,7 @@ const AttritionRatioChart: React.FC<{ active: number; inactive: number }> = ({ a
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                devicePixelRatio: 1, // FIX: prevent coordinate scaling bug
                 cutout: '65%',
                 plugins: {
                     legend: {
@@ -5144,7 +5329,8 @@ const AttritionRatioChart: React.FC<{ active: number; inactive: number }> = ({ a
                         cornerRadius: 6
                     }
                 }
-            }
+            },
+            plugins: [zoomFixPlugin]
         });
 
         return () => { instanceRef.current?.destroy(); };
@@ -5154,7 +5340,7 @@ const AttritionRatioChart: React.FC<{ active: number; inactive: number }> = ({ a
     const rate = total > 0 ? Math.round((inactive / total) * 100) : 0;
 
     return (
-        <div className="h-64 md:h-[320px] relative w-full flex items-center justify-center">
+        <div className="h-[320px] relative w-full flex items-center justify-center">
             <canvas ref={canvasRef}></canvas>
             <div className="absolute flex flex-col items-center justify-center translate-y-[-15px]">
                 <span className="text-2xl font-black text-gray-900 md:text-gray-800">{rate}%</span>
