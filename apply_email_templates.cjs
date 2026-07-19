@@ -35,6 +35,11 @@ const MONTHLY_HTML = `<!DOCTYPE html>
     <!-- Content Row -->
     <tr>
       <td style="padding: 40px;">
+        <!-- Greeting Message -->
+        <div style="margin-bottom: 32px; color: #374151; font-size: 15px; line-height: 1.6;">
+          {greetingMessage}
+        </div>
+        
         <!-- Stats Cards Row (Using Table for Email Compatibility) -->
         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
           <tr>
@@ -103,6 +108,11 @@ const DAILY_HTML = `<!DOCTYPE html>
     <!-- Title Area -->
     <div style="padding: 20px 35px; background-color: #f8fafc; border-bottom: 1px solid #f3f4f6;">
       <h3 style="margin: 0; font-size: 18px; color: #15803d; font-weight: 700;">Daily Attendance Summary</h3>
+    </div>
+
+    <!-- Greeting Area -->
+    <div style="padding: 20px 35px; background-color: #ffffff; font-size: 14px; color: #374151; line-height: 1.6;">
+      {greetingMessage}
     </div>
 
     <!-- KPI Section (Enhanced Cards) -->

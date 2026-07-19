@@ -116,13 +116,19 @@ ALTER TABLE public.email_schedule_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.email_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to read
+DROP POLICY IF EXISTS "Allow authenticated read on email_templates" ON public.email_templates;
 CREATE POLICY "Allow authenticated read on email_templates" ON public.email_templates FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Allow authenticated read on email_schedule_rules" ON public.email_schedule_rules;
 CREATE POLICY "Allow authenticated read on email_schedule_rules" ON public.email_schedule_rules FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Allow authenticated read on email_logs" ON public.email_logs;
 CREATE POLICY "Allow authenticated read on email_logs" ON public.email_logs FOR SELECT TO authenticated USING (true);
 
 -- Allow authenticated users to insert/update/delete (admin-level operations go through service role)
+DROP POLICY IF EXISTS "Allow authenticated write on email_templates" ON public.email_templates;
 CREATE POLICY "Allow authenticated write on email_templates" ON public.email_templates FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow authenticated write on email_schedule_rules" ON public.email_schedule_rules;
 CREATE POLICY "Allow authenticated write on email_schedule_rules" ON public.email_schedule_rules FOR ALL TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow authenticated write on email_logs" ON public.email_logs;
 CREATE POLICY "Allow authenticated write on email_logs" ON public.email_logs FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 9. Insert default email templates
@@ -137,6 +143,9 @@ VALUES
     <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">{date}</p>
   </div>
   <div style="padding: 32px;">
+    <div style="margin-bottom: 24px; font-size: 14px; color: #374151; line-height: 1.6;">
+      {greetingMessage}
+    </div>
     <div style="display: flex; gap: 16px; margin-bottom: 28px;">
       <div style="flex: 1; background: #f0fdf4; border-radius: 10px; padding: 20px; text-align: center; border: 1px solid #bbf7d0;">
         <div style="font-size: 28px; font-weight: 800; color: #059669;">{totalPresent}</div>
