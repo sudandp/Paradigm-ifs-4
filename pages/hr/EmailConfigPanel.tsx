@@ -1219,6 +1219,7 @@ const EmailConfigPanel: React.FC = () => {
                                     <option value="attendance_audit">🔍 Audit Log Report</option>
                                     <option value="leave_summary">🌴 Leave Summary</option>
                                     <option value="invoice_summary">💰 Invoice Summary</option>
+                                    <option value="crm_bd_daily">💼 CRM BD Daily Report</option>
                                 </Select>
                             </div>
 
