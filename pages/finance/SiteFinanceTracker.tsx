@@ -22,9 +22,12 @@ const SiteFinanceTracker: React.FC = () => {
     const [isExporting, setIsExporting] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [previewData, setPreviewData] = useState<Partial<SiteFinanceRecord>[]>([]);
+    const [importedMonth, setImportedMonth] = useState<string>(''); // billing month read from uploaded file
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [siteDefaults, setSiteDefaults] = useState<SiteInvoiceDefault[]>([]);
+    const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const exportDropdownRef = React.useRef<HTMLDivElement>(null);
     const { user } = useAuthStore();
     const [revisionModal, setRevisionModal] = useState<{ isOpen: boolean; recordId: string; siteName: string }>({ isOpen: false, recordId: '', siteName: '' });
 
@@ -91,6 +94,17 @@ const SiteFinanceTracker: React.FC = () => {
         fetchData();
     }, [fetchData]);
 
+    // Close export dropdown when clicking outside
+    useEffect(() => {
+        const handleOutsideClick = (e: MouseEvent) => {
+            if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+                setExportDropdownOpen(false);
+            }
+        };
+        if (exportDropdownOpen) document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [exportDropdownOpen]);
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
@@ -102,42 +116,147 @@ const SiteFinanceTracker: React.FC = () => {
     const handleDownloadTemplate = async () => {
         setIsExporting(true);
         try {
+            // Always use the CURRENT calendar month — finance team downloads for the present month
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; // 1-indexed
+            const billingMonthLabel = format(new Date(currentYear, currentMonth - 1, 1), 'MMMM yyyy'); // e.g. "July 2026"
+            const billingMonthCode = format(new Date(currentYear, currentMonth - 1, 1), 'yyyy-MM-dd');  // stored in hidden cell
+
             const workbook = new ExcelJS.Workbook();
             const ws = workbook.addWorksheet('Finance Template');
 
-            ws.columns = [
-                { header: 'Site Name', key: 'siteName', width: 25 },
-                { header: 'Company Name', key: 'companyName', width: 20 },
-                { header: 'Contract Amount', key: 'contractAmount', width: 15 },
-                { header: 'Contract Management Fee', key: 'contractManagementFee', width: 25 },
-                { header: 'Billed Amount', key: 'billedAmount', width: 15 },
-                { header: 'Billed Management Fee', key: 'billedManagementFee', width: 25 },
+            // ── Row 1: Metadata / Month header (hidden meta row) ──────────────────
+            // Col A = label, Col B = billing month ISO value (read back on import)
+            ws.getRow(1).getCell(1).value = 'BILLING_MONTH';
+            ws.getRow(1).getCell(2).value = billingMonthCode;
+            ws.getRow(1).font = { size: 7, color: { argb: 'FFBFBFBF' } };
+            ws.getRow(1).height = 14;
+
+            // ── Row 2: Banner ─────────────────────────────────────────────────────
+            ws.mergeCells('A2:F2');
+            const bannerCell = ws.getCell('A2');
+            bannerCell.value = `📅  PARADIGM SERVICES — Finance Upload Template  |  Month: ${billingMonthLabel}`;
+            bannerCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+            bannerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+            bannerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            ws.getRow(2).height = 22;
+
+            // ── Row 3: Instruction banner ─────────────────────────────────────────
+            ws.mergeCells('A3:F3');
+            const instrCell = ws.getCell('A3');
+            instrCell.value = '⚠️  Fill ONLY the yellow columns (Billed Amount & Billed Fee). Do NOT edit grey pre-filled columns.';
+            instrCell.font = { italic: true, size: 9, color: { argb: 'FF7A5800' } };
+            instrCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+            instrCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            ws.getRow(3).height = 18;
+
+            // ── Row 4: Column headers ─────────────────────────────────────────────
+            const GREY_FILL  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFD9D9D9' } };
+            const YELLOW_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFF00' } };
+            const GREEN_FILL  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF006B3F' } };
+
+            const headers = [
+                { label: 'Site Name',              key: 'siteName',              width: 32 },
+                { label: 'Company Name',            key: 'companyName',            width: 22 },
+                { label: 'Contract Amount (₹)',     key: 'contractAmount',         width: 20 },
+                { label: 'Contract Mgmt Fee (₹)',   key: 'contractManagementFee',  width: 22 },
+                { label: 'Billed Amount (₹) ✏️',   key: 'billedAmount',           width: 20 },
+                { label: 'Billed Mgmt Fee (₹) ✏️', key: 'billedManagementFee',    width: 22 },
             ];
 
-            ws.getRow(1).font = { bold: true };
-            ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
-            ws.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
+            headers.forEach((h, idx) => {
+                const col = idx + 1;
+                const cell = ws.getRow(4).getCell(col);
+                cell.value = h.label;
+                cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill = GREEN_FILL;
+                cell.alignment = { horizontal: col <= 4 ? 'left' : 'center', vertical: 'middle' };
+                cell.border = {
+                    bottom: { style: 'medium', color: { argb: 'FF00D27F' } }
+                };
+                ws.getColumn(col).width = h.width;
+            });
+            ws.getRow(4).height = 20;
 
-            siteDefaults.forEach(site => {
-                ws.addRow({
-                    siteName: site.siteName,
-                    companyName: site.companyName || '',
-                    contractAmount: site.contractAmount || 0,
-                    contractManagementFee: site.contractManagementFee || 0,
-                    billedAmount: '',
-                    billedManagementFee: ''
+            // ── Data rows ─────────────────────────────────────────────────────────
+            // Build merged site list: records (dashboard data) + siteDefaults
+            // This ensures sites added via "New Entry" form are also included
+            type TemplateSite = { siteName: string; companyName: string; contractAmount: number; contractManagementFee: number };
+            const siteMap = new Map<string, TemplateSite>();
+
+            // Start with siteDefaults as base
+            siteDefaults.forEach(s => {
+                siteMap.set(s.siteName, {
+                    siteName: s.siteName,
+                    companyName: s.companyName || '',
+                    contractAmount: s.contractAmount || 0,
+                    contractManagementFee: s.contractManagementFee || 0,
                 });
+            });
+
+            // Enrich / add from records — records always have the latest contract values
+            records.forEach(r => {
+                const existing = siteMap.get(r.siteName);
+                siteMap.set(r.siteName, {
+                    siteName: r.siteName,
+                    companyName: r.companyName || existing?.companyName || '',
+                    contractAmount: r.contractAmount || existing?.contractAmount || 0,
+                    contractManagementFee: r.contractManagementFee || existing?.contractManagementFee || 0,
+                });
+            });
+
+            const templateSites = Array.from(siteMap.values()).sort((a, b) => a.siteName.localeCompare(b.siteName));
+
+            templateSites.forEach((site, i) => {
+                const row = ws.getRow(5 + i);
+
+                // Pre-filled (grey / locked visually) ─ cols 1-4
+                const preFilled = [
+                    site.siteName,
+                    site.companyName || '',
+                    site.contractAmount || 0,
+                    site.contractManagementFee || 0,
+                ];
+                preFilled.forEach((val, ci) => {
+                    const cell = row.getCell(ci + 1);
+                    cell.value = val;
+                    cell.fill = GREY_FILL;
+                    cell.font = { size: 10, color: { argb: 'FF555555' } };
+                    if (ci >= 2) cell.numFmt = '#,##0';
+                    cell.protection = { locked: true };
+                });
+
+                // Editable (yellow) ─ cols 5-6
+                [5, 6].forEach(ci => {
+                    const cell = row.getCell(ci);
+                    cell.value = null;
+                    cell.fill = YELLOW_FILL;
+                    cell.font = { size: 10, bold: true };
+                    cell.numFmt = '#,##0';
+                    cell.protection = { locked: false };
+                    cell.border = {
+                        top:    { style: 'thin', color: { argb: 'FFCCCC00' } },
+                        bottom: { style: 'thin', color: { argb: 'FFCCCC00' } },
+                        left:   { style: 'thin', color: { argb: 'FFCCCC00' } },
+                        right:  { style: 'thin', color: { argb: 'FFCCCC00' } },
+                    };
+                });
+
+                row.height = 18;
+            });
+
+            // Protect sheet so pre-filled cells cannot be edited
+            ws.protect('paradigm_finance', {
+                selectLockedCells: true,
+                selectUnlockedCells: true,
+                formatCells: false,
             });
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            
-            const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
-            const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
-            const templateMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM');
-            
-            saveAs(blob, `Site_Finance_Template_${templateMonth}.xlsx`);
-            setToast({ message: 'Template downloaded!', type: 'success' });
+            saveAs(blob, `Finance_Template_${billingMonthLabel.replace(' ', '_')}.xlsx`);
+            setToast({ message: `Template for ${billingMonthLabel} downloaded!`, type: 'success' });
         } catch (error) {
             console.error('Template error:', error);
             setToast({ message: 'Failed to generate template', type: 'error' });
@@ -157,25 +276,44 @@ const SiteFinanceTracker: React.FC = () => {
             const ws = workbook.getWorksheet(1);
 
             const parsed: Partial<SiteFinanceRecord>[] = [];
-            
-            const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
-            const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
-            const effectiveBillingMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM-dd');
+
+            // ── Read billing month from metadata row 1 (embedded by handleDownloadTemplate) ──
+            // Row 1, Col A = 'BILLING_MONTH', Col B = 'yyyy-MM-dd'
+            let effectiveBillingMonth: string;
+            const metaLabel = ws?.getRow(1).getCell(1).value?.toString() || '';
+            const metaValue = ws?.getRow(1).getCell(2).value?.toString() || '';
+
+            if (metaLabel === 'BILLING_MONTH' && metaValue) {
+                // Template downloaded from the app — use embedded month
+                effectiveBillingMonth = metaValue;
+            } else {
+                // Fallback: use current filter or current month for older/manual templates
+                const uploadYearStr = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
+                const uploadMonthStr = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
+                effectiveBillingMonth = format(new Date(Number(uploadYearStr), Number(uploadMonthStr) - 1, 1), 'yyyy-MM-dd');
+            }
+
+            const billingMonthDisplay = format(new Date(effectiveBillingMonth), 'MMMM yyyy');
+
+            // ── Parse data rows ─────────────────────────────────────────────────────
+            // Our new template: row 1 = meta, row 2 = banner, row 3 = instructions, row 4 = headers, row 5+ = data
+            // Legacy template: row 1 = headers, row 2+ = data
+            // Detect by checking if row 1 col A is 'BILLING_MONTH'
+            const dataStartRow = metaLabel === 'BILLING_MONTH' ? 5 : 2;
 
             ws?.eachRow((row, rowNumber) => {
-                if (rowNumber === 1) return;
+                if (rowNumber < dataStartRow) return;
 
-                const siteName = row.getCell(1).value?.toString() || '';
-                if (!siteName) return;
+                const siteName = row.getCell(1).value?.toString().trim() || '';
+                if (!siteName || siteName === 'Site Name') return; // skip header rows
 
                 const siteDef = siteDefaults.find(s => s.siteName === siteName);
-                
-                // UUID Validation helper
+
                 const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
                 const validatedSiteId = siteDef?.siteId && isValidUUID(siteDef.siteId) ? siteDef.siteId : undefined;
 
                 const bAmount = Number(row.getCell(5).value) || 0;
-                const bFee = Number(row.getCell(6).value) || 0;
+                const bFee    = Number(row.getCell(6).value) || 0;
 
                 parsed.push({
                     siteId: validatedSiteId,
@@ -194,8 +332,9 @@ const SiteFinanceTracker: React.FC = () => {
             if (parsed.length === 0) {
                 setToast({ message: 'No valid records found in file', type: 'error' });
             } else {
+                setImportedMonth(billingMonthDisplay);
                 setPreviewData(parsed);
-                setToast({ message: `${parsed.length} records parsed for preview`, type: 'success' });
+                setToast({ message: `${parsed.length} records parsed for ${billingMonthDisplay}`, type: 'success' });
             }
         } catch (error) {
             console.error('Import error:', error);
@@ -244,43 +383,262 @@ const SiteFinanceTracker: React.FC = () => {
         }
     };
 
-    const handleExport = async () => {
+    // ── Shared helper: apply header styling to a worksheet row ─────────────────
+    const applySheetHeader = (ws: ExcelJS.Worksheet, label: string) => {
+        ws.mergeCells('A1:J1');
+        const banner = ws.getCell('A1');
+        banner.value = label;
+        banner.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+        banner.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+        banner.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 22;
+
+        const cols = [
+            { header: 'Site Name',          key: 'siteName',              width: 30 },
+            { header: 'Contract Amt (₹)',    key: 'contractAmount',         width: 18 },
+            { header: 'Contract Fee (₹)',    key: 'contractManagementFee',  width: 18 },
+            { header: 'Billed Amt (₹)',      key: 'billedAmount',           width: 18 },
+            { header: 'Billed Fee (₹)',      key: 'billedManagementFee',    width: 18 },
+            { header: 'Total Billed (₹)',    key: 'totalBilledAmount',      width: 18 },
+            { header: 'Billing Diff (₹)',    key: 'billingVar',             width: 18 },
+            { header: 'Fee Diff (₹)',        key: 'feeVar',                 width: 16 },
+            { header: 'Net Variation (₹)',   key: 'netVar',                 width: 18 },
+            { header: 'Status',             key: 'status',                 width: 12 },
+        ];
+        ws.columns = cols;
+        const headerRow = ws.getRow(2);
+        cols.forEach((c, i) => {
+            const cell = headerRow.getCell(i + 1);
+            cell.value = c.header;
+            cell.font  = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+            cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF004D2E' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        headerRow.height = 18;
+    };
+
+    // ── Shared helper: write one data row to a worksheet ────────────────────────
+    const writeDataRow = (ws: ExcelJS.Worksheet, r: SiteFinanceRecord, rowIdx: number) => {
+        const bVar = (r.billedAmount || 0) - (r.contractAmount || 0);
+        const fVar = (r.billedManagementFee || 0) - (r.contractManagementFee || 0);
+        const netVar = bVar + fVar;
+        const isEven = rowIdx % 2 === 0;
+        const row = ws.addRow({
+            siteName: r.siteName,
+            contractAmount: r.contractAmount || 0,
+            contractManagementFee: r.contractManagementFee || 0,
+            billedAmount: r.billedAmount || 0,
+            billedManagementFee: r.billedManagementFee || 0,
+            totalBilledAmount: r.totalBilledAmount || 0,
+            billingVar: bVar,
+            feeVar: fVar,
+            netVar,
+            status: netVar >= 0 ? 'Profit' : 'Loss',
+        });
+        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFF5FFF9' : 'FFFFFFFF' } };
+        // Color net variation
+        const netCell = row.getCell(9);
+        netCell.font = { bold: true, color: { argb: netVar >= 0 ? 'FF006B3F' : 'FFCC0000' } };
+        const statusCell = row.getCell(10);
+        statusCell.font = { bold: true, color: { argb: netVar >= 0 ? 'FF006B3F' : 'FFCC0000' } };
+        // Number format for money cols
+        [2,3,4,5,6,7,8,9].forEach(ci => { row.getCell(ci).numFmt = '#,##0'; });
+        row.height = 17;
+    };
+
+    // ── Export: Current Month/Filter ────────────────────────────────────────────
+    const handleExportCurrentMonth = async () => {
         setIsExporting(true);
+        setExportDropdownOpen(false);
         try {
             const workbook = new ExcelJS.Workbook();
-            const ws = workbook.addWorksheet('Finance Records');
-
-            ws.columns = [
-                { header: 'Site Name', key: 'siteName', width: 25 },
-                { header: 'Contract Amount', key: 'contractAmount', width: 15 },
-                { header: 'Contract Fee', key: 'contractManagementFee', width: 15 },
-                { header: 'Billed Amount', key: 'billedAmount', width: 15 },
-                { header: 'Billed Fee', key: 'billedManagementFee', width: 15 },
-                { header: 'Total Billed', key: 'totalBilledAmount', width: 15 },
-                { header: 'Billing Variation', key: 'billingVar', width: 15 },
-                { header: 'Fee Variation', key: 'feeVar', width: 15 },
-                { header: 'Net Variation', key: 'netVar', width: 15 },
-            ];
-
-            records.forEach(r => {
-                const bVar = (r.billedAmount || 0) - (r.contractAmount || 0);
-                const fVar = (r.billedManagementFee || 0) - (r.contractManagementFee || 0);
-                ws.addRow({
-                    ...r,
-                    billingVar: bVar,
-                    feeVar: fVar,
-                    netVar: bVar + fVar
-                });
-            });
-
-            const buffer = await workbook.xlsx.writeBuffer();
             const exportYear = filters.year === 'all' ? new Date().getFullYear().toString() : filters.year;
             const exportMonth = filters.month === 'all' ? (new Date().getMonth() + 1).toString() : filters.month;
-            const exportDate = format(new Date(Number(exportYear), Number(exportMonth) - 1, 1), 'yyyy-MM');
-            saveAs(new Blob([buffer]), `Finance_Export_${exportDate}.xlsx`);
+            const exportDate = format(new Date(Number(exportYear), Number(exportMonth) - 1, 1), 'MMMM yyyy');
+
+            const ws = workbook.addWorksheet(exportDate);
+            applySheetHeader(ws, `Paradigm Services — Finance Report  |  ${exportDate}`);
+
+            records.forEach((r, i) => writeDataRow(ws, r, i));
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            saveAs(new Blob([buffer]), `Finance_Export_${exportDate.replace(' ', '_')}.xlsx`);
+            setToast({ message: `Exported ${records.length} records for ${exportDate}`, type: 'success' });
         } catch (error) {
             console.error('Export error:', error);
             setToast({ message: 'Failed to export data', type: 'error' });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    // ── Export: Full Year — one sheet per month ─────────────────────────────────
+    const handleExportFullYear = async () => {
+        setIsExporting(true);
+        setExportDropdownOpen(false);
+        try {
+            const exportYear = filters.year === 'all' ? new Date().getFullYear() : Number(filters.year);
+            const currentMonth = new Date().getFullYear() === exportYear ? new Date().getMonth() + 1 : 12;
+
+            // Fetch ALL records for the year (not filtered by month)
+            const userRole = (user?.role || '').toLowerCase();
+            const isSuperAdmin = ['admin', 'super_admin', 'finance_manager', 'management', 'hr', 'hr_ops'].includes(userRole);
+            const managerId = isSuperAdmin ? undefined : user?.id;
+            const allRecords = await api.getSiteFinanceRecords(undefined as any, managerId);
+            const yearRecords = allRecords.filter(r => {
+                const d = r.billingMonth || r.createdAt || '';
+                return d.startsWith(exportYear.toString());
+            });
+
+            const workbook = new ExcelJS.Workbook();
+
+            // ── Summary sheet (first) ────────────────────────────────────────────
+            const summaryWs = workbook.addWorksheet('📊 Annual Summary');
+            summaryWs.mergeCells('A1:H1');
+            const summaryBanner = summaryWs.getCell('A1');
+            summaryBanner.value = `Paradigm Services — Annual Finance Summary  |  ${exportYear}`;
+            summaryBanner.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+            summaryBanner.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF006B3F' } };
+            summaryBanner.alignment = { horizontal: 'center', vertical: 'middle' };
+            summaryWs.getRow(1).height = 26;
+
+            const summaryHeaders = ['Month', 'Sites', 'Total Contract (₹)', 'Total Billed (₹)', 'Net Variation (₹)', 'Profit Sites', 'Loss Sites', 'Status'];
+            const summaryHeaderRow = summaryWs.getRow(2);
+            summaryHeaders.forEach((h, i) => {
+                const cell = summaryHeaderRow.getCell(i + 1);
+                cell.value = h;
+                cell.font  = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF004D2E' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+            summaryWs.getRow(2).height = 18;
+            summaryWs.columns = [
+                { width: 14 }, { width: 8 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 14 }, { width: 12 }, { width: 12 }
+            ];
+
+            let summaryRowIdx = 3;
+
+            // ── Monthly sheets ───────────────────────────────────────────────────
+            for (let m = 1; m <= currentMonth; m++) {
+                const monthLabel = format(new Date(exportYear, m - 1, 1), 'MMMM');
+                const monthCode  = format(new Date(exportYear, m - 1, 1), 'yyyy-MM');
+
+                const monthRecords = yearRecords.filter(r => {
+                    const d = r.billingMonth || r.createdAt || '';
+                    return d.startsWith(monthCode);
+                });
+
+                const ws = workbook.addWorksheet(monthLabel);
+                applySheetHeader(ws, `Paradigm Services — Finance Report  |  ${monthLabel} ${exportYear}`);
+
+                if (monthRecords.length === 0) {
+                    ws.getRow(3).getCell(1).value = 'No records for this month';
+                    ws.getRow(3).getCell(1).font = { italic: true, color: { argb: 'FF999999' } };
+                } else {
+                    monthRecords.forEach((r, i) => writeDataRow(ws, r, i));
+                }
+
+                // Add to summary
+                const totalContract = monthRecords.reduce((s, r) => s + (r.contractAmount || 0) + (r.contractManagementFee || 0), 0);
+                const totalBilled   = monthRecords.reduce((s, r) => s + (r.totalBilledAmount || 0), 0);
+                const netVar = totalBilled - totalContract;
+                const profitSites = monthRecords.filter(r => ((r.billedAmount||0)+(r.billedManagementFee||0)) - ((r.contractAmount||0)+(r.contractManagementFee||0)) >= 0).length;
+
+                const sumRow = summaryWs.getRow(summaryRowIdx++);
+                const isEven = (summaryRowIdx % 2 === 0);
+                sumRow.values = [monthLabel, monthRecords.length, totalContract, totalBilled, netVar, profitSites, monthRecords.length - profitSites, netVar >= 0 ? 'Profit' : 'Loss'];
+                sumRow.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFF5FFF9' : 'FFFFFFFF' } };
+                sumRow.getCell(5).font = { bold: true, color: { argb: netVar >= 0 ? 'FF006B3F' : 'FFCC0000' } };
+                sumRow.getCell(8).font = { bold: true, color: { argb: netVar >= 0 ? 'FF006B3F' : 'FFCC0000' } };
+                [3,4,5].forEach(ci => { sumRow.getCell(ci).numFmt = '#,##0'; });
+                sumRow.height = 17;
+            }
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            saveAs(new Blob([buffer]), `Finance_Annual_Report_${exportYear}.xlsx`);
+            setToast({ message: `Full year ${exportYear} exported — ${currentMonth} month sheets created`, type: 'success' });
+        } catch (error) {
+            console.error('Full year export error:', error);
+            setToast({ message: 'Failed to export full year data', type: 'error' });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    // ── Export: Current filter data as uploadable template ──────────────────────
+    const handleExportAsTemplate = async () => {
+        setIsExporting(true);
+        setExportDropdownOpen(false);
+        try {
+            const exportYear = filters.year === 'all' ? new Date().getFullYear() : Number(filters.year);
+            const exportMonth = filters.month === 'all' ? new Date().getMonth() + 1 : Number(filters.month);
+            const monthLabel = format(new Date(exportYear, exportMonth - 1, 1), 'MMMM yyyy');
+            const billingMonthCode = format(new Date(exportYear, exportMonth - 1, 1), 'yyyy-MM-dd');
+
+            const workbook = new ExcelJS.Workbook();
+            const ws = workbook.addWorksheet('Finance Template');
+
+            // ── Metadata row (same format as handleDownloadTemplate) ──────────────
+            ws.getRow(1).getCell(1).value = 'BILLING_MONTH';
+            ws.getRow(1).getCell(2).value = billingMonthCode;
+            ws.getRow(1).font = { size: 7, color: { argb: 'FFBFBFBF' } };
+            ws.getRow(1).height = 14;
+
+            ws.mergeCells('A2:F2');
+            const bannerCell = ws.getCell('A2');
+            bannerCell.value = `📅  PARADIGM SERVICES — Re-Upload Template  |  Month: ${monthLabel}  (Exported for correction)`;
+            bannerCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+            bannerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF004488' } };
+            bannerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            ws.getRow(2).height = 22;
+
+            ws.mergeCells('A3:F3');
+            const instrCell = ws.getCell('A3');
+            instrCell.value = '✏️  Correct the yellow columns (Billed Amount & Billed Fee) then re-import this file.';
+            instrCell.font = { italic: true, size: 9, color: { argb: 'FF003366' } };
+            instrCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCE5FF' } };
+            instrCell.alignment = { horizontal: 'center', vertical: 'middle' };
+            ws.getRow(3).height = 18;
+
+            const GREY_FILL   = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFD9D9D9' } };
+            const YELLOW_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFFF00' } };
+            const GREEN_FILL  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF006B3F' } };
+
+            const headerLabels = ['Site Name', 'Company Name', 'Contract Amount (₹)', 'Contract Mgmt Fee (₹)', 'Billed Amount (₹) ✏️', 'Billed Mgmt Fee (₹) ✏️'];
+            const colWidths = [32, 22, 20, 22, 20, 22];
+            headerLabels.forEach((label, idx) => {
+                const cell = ws.getRow(4).getCell(idx + 1);
+                cell.value = label;
+                cell.font  = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.fill  = GREEN_FILL;
+                ws.getColumn(idx + 1).width = colWidths[idx];
+            });
+            ws.getRow(4).height = 20;
+
+            records.forEach((r, i) => {
+                const row = ws.getRow(5 + i);
+                [r.siteName, r.companyName || '', r.contractAmount || 0, r.contractManagementFee || 0].forEach((val, ci) => {
+                    const cell = row.getCell(ci + 1);
+                    cell.value = val;
+                    cell.fill  = GREY_FILL;
+                    if (ci >= 2) cell.numFmt = '#,##0';
+                });
+                [5, 6].forEach((ci, offset) => {
+                    const cell = row.getCell(ci);
+                    cell.value = offset === 0 ? (r.billedAmount || 0) : (r.billedManagementFee || 0);
+                    cell.fill  = YELLOW_FILL;
+                    cell.font  = { bold: true };
+                    cell.numFmt = '#,##0';
+                });
+                row.height = 18;
+            });
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            saveAs(new Blob([buffer]), `Finance_Reupload_${monthLabel.replace(' ', '_')}.xlsx`);
+            setToast({ message: `Re-upload template for ${monthLabel} exported`, type: 'success' });
+        } catch (error) {
+            console.error('Export as template error:', error);
+            setToast({ message: 'Failed to export as template', type: 'error' });
         } finally {
             setIsExporting(false);
         }
@@ -640,14 +998,63 @@ const SiteFinanceTracker: React.FC = () => {
                             <Upload className="h-3.5 w-3.5" />
                             <span>Import Data</span>
                         </button>
-                        <button
-                            onClick={handleExport}
-                            disabled={isExporting}
-                            className="whitespace-nowrap h-11 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-blue-400 md:text-blue-700 bg-blue-500/10 md:bg-blue-50 border border-blue-500/20 md:border-blue-100 rounded-lg hover:bg-blue-500/20 md:hover:bg-blue-100 transition-all disabled:opacity-50"
-                        >
-                            {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-                            <span>Export Data</span>
-                        </button>
+
+                        {/* Export Dropdown */}
+                        <div className="relative" ref={exportDropdownRef}>
+                            <button
+                                onClick={() => setExportDropdownOpen(v => !v)}
+                                disabled={isExporting}
+                                className="whitespace-nowrap h-11 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-blue-400 md:text-blue-700 bg-blue-500/10 md:bg-blue-50 border border-blue-500/20 md:border-blue-100 rounded-lg hover:bg-blue-500/20 md:hover:bg-blue-100 transition-all disabled:opacity-50"
+                            >
+                                {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                                <span>Export Data</span>
+                                <svg className={`h-3 w-3 transition-transform ${exportDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+
+                            {exportDropdownOpen && (
+                                <div className="absolute right-0 top-12 z-50 w-64 bg-white md:bg-white dark:bg-[#06251c] rounded-xl shadow-2xl border border-gray-200 md:border-gray-200 dark:border-white/10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                                    {/* Option 1 — Current Month */}
+                                    <button
+                                        onClick={handleExportCurrentMonth}
+                                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors text-left border-b border-gray-100 dark:border-white/5"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <FileSpreadsheet className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-800 dark:text-white">Export Current View</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-emerald-400/40 mt-0.5">Current filter — single sheet</p>
+                                        </div>
+                                    </button>
+                                    {/* Option 2 — Full Year */}
+                                    <button
+                                        onClick={handleExportFullYear}
+                                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors text-left border-b border-gray-100 dark:border-white/5"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-800 dark:text-white">Full Year Export</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-emerald-400/40 mt-0.5">Jan → current month, one sheet each + summary</p>
+                                        </div>
+                                    </button>
+                                    {/* Option 3 — Re-upload template */}
+                                    <button
+                                        onClick={handleExportAsTemplate}
+                                        className="w-full flex items-start gap-3 px-4 py-3 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors text-left"
+                                    >
+                                        <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <Upload className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-gray-800 dark:text-white">Export as Re-upload Template</p>
+                                            <p className="text-[10px] text-gray-500 dark:text-emerald-400/40 mt-0.5">Editable yellow columns — import back after corrections</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1151,45 +1558,53 @@ const SiteFinanceTracker: React.FC = () => {
             {/* ── Import Preview Modal ── */}
             {previewData.length > 0 && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-                    <div className="bg-[#06251c] rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-white/10">
-                        <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
+                    <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-gray-200">
+                        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
                             <div>
-                                <h2 className="text-lg font-bold text-white">Financial Import Preview</h2>
-                                <p className="text-sm text-emerald-400/40 mt-0.5">{previewData.length} records ready to import</p>
+                                <h2 className="text-lg font-bold text-gray-900">Financial Import Preview</h2>
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                    {previewData.length} records ready to import
+                                    {importedMonth && (
+                                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                                            <Clock className="h-3 w-3" />
+                                            {importedMonth}
+                                        </span>
+                                    )}
+                                </p>
                             </div>
-                            <button onClick={() => setPreviewData([])} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
-                                <X className="h-5 w-5 text-emerald-400/40" />
+                            <button onClick={() => setPreviewData([])} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                                <X className="h-5 w-5 text-gray-400" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto bg-[#041b0f]/50">
+                        <div className="flex-1 overflow-auto bg-gray-50">
                             <table className="w-full text-sm">
-                                <thead className="bg-[#041b0f] border-b border-white/5 sticky top-0 z-10">
+                                <thead className="bg-white border-b border-gray-200 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-5 py-3 text-left text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Site Name</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Contract</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Fee</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Billed</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Billed Fee</th>
-                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-emerald-400/60 uppercase tracking-widest">Net Var</th>
+                                        <th className="px-5 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest">Site Name</th>
+                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Contract</th>
+                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Fee</th>
+                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed</th>
+                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Billed Fee</th>
+                                        <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 uppercase tracking-widest">Net Var</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-white/5">
+                                <tbody className="divide-y divide-gray-100">
                                     {previewData.map((record, idx) => {
                                         const totalContract = (record.contractAmount || 0) + (record.contractManagementFee || 0);
                                         const totalBilled = (record.billedAmount || 0) + (record.billedManagementFee || 0);
                                         const variations = totalBilled - totalContract;
                                         const isProfit = variations >= 0;
                                         return (
-                                            <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                            <tr key={idx} className="hover:bg-gray-100/50 transition-colors bg-white">
                                                 <td className="px-5 py-3">
-                                                    <div className="font-bold text-white">{record.siteName}</div>
-                                                    <div className="text-[10px] text-emerald-400/40 mt-1 font-bold uppercase tracking-wider">{record.companyName}</div>
+                                                    <div className="font-bold text-gray-900">{record.siteName}</div>
+                                                    <div className="text-[10px] text-gray-500 mt-1 font-bold uppercase tracking-wider">{record.companyName}</div>
                                                 </td>
-                                                <td className="px-4 py-3 text-right font-mono text-emerald-400/60">{formatCurrency(record.contractAmount || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono text-emerald-400/60">{formatCurrency(record.contractManagementFee || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono font-bold text-white">{formatCurrency(record.billedAmount || 0)}</td>
-                                                <td className="px-4 py-3 text-right font-mono font-bold text-white">{formatCurrency(record.billedManagementFee || 0)}</td>
-                                                <td className={`px-4 py-3 text-right font-mono font-black ${isProfit ? 'text-[#00D27F]' : 'text-rose-400'}`}>
+                                                <td className="px-4 py-3 text-right font-mono text-gray-600">{formatCurrency(record.contractAmount || 0)}</td>
+                                                <td className="px-4 py-3 text-right font-mono text-gray-600">{formatCurrency(record.contractManagementFee || 0)}</td>
+                                                <td className="px-4 py-3 text-right font-mono font-bold text-gray-900">{formatCurrency(record.billedAmount || 0)}</td>
+                                                <td className="px-4 py-3 text-right font-mono font-bold text-gray-900">{formatCurrency(record.billedManagementFee || 0)}</td>
+                                                <td className={`px-4 py-3 text-right font-mono font-black ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>
                                                     {isProfit ? '+' : ''}{formatCurrency(variations)}
                                                 </td>
                                             </tr>
@@ -1198,12 +1613,12 @@ const SiteFinanceTracker: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="px-6 py-4 border-t border-white/5 bg-[#041b0f] flex justify-end gap-3">
-                            <button onClick={() => setPreviewData([])} className="px-5 py-2 text-sm font-bold text-emerald-400/60 hover:text-emerald-400 hover:bg-white/5 rounded-xl transition-all border border-white/10">Cancel</button>
+                        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                            <button onClick={() => setPreviewData([])} className="px-5 py-2 text-sm font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-all border border-gray-200">Cancel</button>
                             <button
                                 onClick={handleConfirmImport}
                                 disabled={isImporting}
-                                className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-[#041b0f] bg-[#00D27F] rounded-xl hover:bg-[#00b86e] transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                                className="inline-flex items-center gap-1.5 px-6 py-2 text-sm font-black text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                             >
                                 {isImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                                 Confirm Import
