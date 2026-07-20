@@ -599,7 +599,7 @@ const UserManagement: React.FC = () => {
                 // Background fetch to sync
                 fetchUsers();
             } catch (error) {
-                setToast({ message: 'Failed to delete user.', type: 'error' });
+                console.error('Delete error:', error); setToast({ message: 'Failed to delete user: ' + (error.message || 'Unknown error'), type: 'error' });
             } finally {
                 setIsSaving(false);
             }

@@ -184,11 +184,10 @@ export const ActivityTimelinePage: React.FC = () => {
             ) : (
                 <div className="bg-card rounded-2xl p-4 md:p-6 shadow-card border border-border">
                     <div className="relative border-l-2 border-border/50 ml-3 md:ml-6 space-y-8 py-4">
-                        {records.filter(r => type === 'travel' ? r.travelKm > 0 : r.steps > 0).length === 0 ? (
+                        {records.length === 0 ? (
                              <p className="text-center text-muted-foreground text-sm py-4">No records to display for this category.</p>
                         ) : (
                             records
-                            .filter(r => type === 'travel' ? r.travelKm > 0 : r.steps > 0)
                             .map((record) => (
                             <div key={record.dateStr} className="relative pl-6 md:pl-8">
                                 <div className="absolute left-[-5px] top-1.5 w-3 h-3 rounded-full bg-accent ring-4 ring-card"></div>
@@ -234,27 +233,34 @@ export const ActivityTimelinePage: React.FC = () => {
                                     {/* Metrics Section */}
                                     <div className="flex items-center gap-4 flex-wrap w-full">
                                         {type === 'travel' ? (
-                                            <>
-                                            <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-                                                <MapPin className="w-4 h-4 text-emerald-600" />
-                                                <span className="font-bold text-emerald-800 text-sm">{record.travelKm.toFixed(2)} KM</span>
-                                            </div>
-                                            {record.travelDuration > 0 && (
-                                                <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                                                    <Clock className="w-4 h-4 text-blue-600" />
-                                                    <span className="font-medium text-blue-800 text-sm">{formatDuration(record.travelDuration)}</span>
+                                            record.travelKm > 0 ? (
+                                                <>
+                                                <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                                                    <MapPin className="w-4 h-4 text-emerald-600" />
+                                                    <span className="font-bold text-emerald-800 text-sm">{record.travelKm.toFixed(2)} KM</span>
                                                 </div>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={() => handleToggleMap(record.dateStr)}
-                                                className="flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors text-xs font-bold ml-auto shadow-sm"
-                                            >
-                                                <Navigation className="w-3.5 h-3.5 text-gray-500" />
-                                                {selectedDateForMap === record.dateStr ? 'Hide Route' : 'Show Route'}
-                                            </button>
-                                            </>
-                                        ) : (
+                                                {record.travelDuration > 0 && (
+                                                    <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                                                        <Clock className="w-4 h-4 text-blue-600" />
+                                                        <span className="font-medium text-blue-800 text-sm">{formatDuration(record.travelDuration)}</span>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleMap(record.dateStr)}
+                                                    className="flex items-center gap-1.5 bg-white hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg border border-gray-200 transition-colors text-xs font-bold ml-auto shadow-sm"
+                                                >
+                                                    <Navigation className="w-3.5 h-3.5 text-gray-500" />
+                                                    {selectedDateForMap === record.dateStr ? 'Hide Route' : 'Show Route'}
+                                                </button>
+                                                </>
+                                            ) : (
+                                                <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                                                    <MapPin className="w-4 h-4 text-gray-400" />
+                                                    <span className="text-gray-500 text-sm italic">No GPS route data captured for this day</span>
+                                                </div>
+                                            )
+                                        ) : record.steps > 0 ? (
                                             <>
                                             <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
                                                 <Footprints className="w-4 h-4 text-indigo-600" />
@@ -266,6 +272,11 @@ export const ActivityTimelinePage: React.FC = () => {
                                                 <span className="font-medium text-green-800 text-sm">{formatDistance(stepsToDistanceKm(record.steps))}</span>
                                             </div>
                                             </>
+                                        ) : (
+                                            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+                                                <Footprints className="w-4 h-4 text-gray-400" />
+                                                <span className="text-gray-500 text-sm italic">Step data not captured by app for this day</span>
+                                            </div>
                                         )}
                                     </div>
 
