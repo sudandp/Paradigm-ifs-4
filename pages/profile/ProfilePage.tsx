@@ -3164,7 +3164,16 @@ const ProfilePage: React.FC = () => {
                                 </div>
                                 <h3 className="text-sm font-bold text-gray-900">Home Location</h3>
                             </div>
-                            <form onSubmit={handleSaveHomeLocation} className="space-y-3">
+                            <form 
+                                onSubmit={async (e) => {
+                                    if (isFirstTime) {
+                                        await handleSaveHomeLocation(e);
+                                    } else {
+                                        await handleRequestLocationChange(e);
+                                    }
+                                }} 
+                                className="space-y-3"
+                            >
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-500 mb-1">Location Name</label>
                                     <input
@@ -3206,6 +3215,35 @@ const ProfilePage: React.FC = () => {
                                         placeholder="Enter your home address"
                                     />
                                 </div>
+
+                                {/* Subsequent Change Requests Flow */}
+                                {!isFirstTime && (
+                                    <div className="space-y-3 pt-2">
+                                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-[11px] text-amber-800 space-y-1">
+                                            <p className="font-bold flex items-center gap-1.5">⚠️ Calendar Year Update Limit</p>
+                                            <p>You can update your home location only 3 times per calendar year.</p>
+                                            <p>Approved updates this year: <strong className="text-amber-900">{updateCount} / 3</strong></p>
+                                        </div>
+                                        {updateCount >= 3 ? (
+                                            <div className="text-rose-600 font-bold text-xs p-3 text-center bg-rose-50 rounded-lg border border-rose-200">
+                                                You have reached the maximum limit of 3 home location updates for this calendar year.
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <label className="block text-xs font-semibold text-amber-600 mb-1">Reason for Updating Address</label>
+                                                <textarea
+                                                    value={changeReason}
+                                                    onChange={e => setChangeReason(e.target.value)}
+                                                    rows={2}
+                                                    required
+                                                    className="form-input bg-white border-gray-200 text-sm py-2 px-3 rounded-lg w-full resize-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                                    placeholder="Please explain why you are updating your home address..."
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="flex gap-2 justify-end pt-3 mt-3 border-t border-gray-100">
                                     <Button 
                                         type="button" 
@@ -3220,9 +3258,10 @@ const ProfilePage: React.FC = () => {
                                     <Button 
                                         type="submit" 
                                         isLoading={isSavingLocation}
-                                        className="!h-[38px] text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        disabled={!isFirstTime && (updateCount >= 3 || !changeReason.trim())}
+                                        className={`!h-[38px] text-xs font-semibold text-white ${!isFirstTime ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                                     >
-                                        Save
+                                        {isFirstTime ? 'Save' : 'Request Update'}
                                     </Button>
                                 </div>
                             </form>

@@ -4622,8 +4622,8 @@ export const api = {
     workDatesSet.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
         
-        // Comp Offs expire at the end of the month, so only count work within the EXACT SAME MONTH as the viewed referenceDate
-        if (date.getMonth() !== referenceDate.getMonth() || date.getFullYear() !== referenceDate.getFullYear()) return;
+        // Comp Offs accumulate up to the viewed referenceDate (expiry logic removed per user request)
+        if (date > accrualEndDate) return;
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
@@ -4731,26 +4731,26 @@ export const api = {
 
     const monthEnd = endOfMonth(referenceDate);
     
-    // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants (both 'earned' and 'used')
-    // Since Comp Offs expire at the end of the month, we only count logs from the CURRENT viewed month
+    // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants
+    // Accumulate up to the accrualEndDate
     const manualCompOffGranted = (compOffData || []).filter((log: any) => {
         if (log.status !== 'earned' && log.status !== 'used') return false;
         const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
-        return logDate.getMonth() === referenceDate.getMonth() && logDate.getFullYear() === referenceDate.getFullYear();
+        return logDate <= accrualEndDate;
     }).length;
     
-    // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting (filtered to current month)
+    // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting
     const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => {
         if (log.status !== 'used' || log.leave_request_id || (log as any).leaveRequestId) return false;
         const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
-        return logDate.getMonth() === referenceDate.getMonth() && logDate.getFullYear() === referenceDate.getFullYear();
+        return logDate <= accrualEndDate;
     }).length;
     
     const compOffOpeningBalance = Number(userData.comp_off_opening_balance || userData.compOffOpeningBalance || 0);
     const compOffOpeningDate = userData.comp_off_opening_date;
     const compOffOpeningDateObj = compOffOpeningDate ? new Date(compOffOpeningDate.replace(/-/g, '/')) : null;
-    // Opening balance also expires at month end, so only apply it if the opening date is in the current month
-    const hasReachedCompOffOpening = compOffOpeningDateObj && compOffOpeningDateObj.getMonth() === referenceDate.getMonth() && compOffOpeningDateObj.getFullYear() === referenceDate.getFullYear();
+    // Opening balance applies if we have reached the opening date
+    const hasReachedCompOffOpening = compOffOpeningDateObj && compOffOpeningDateObj <= accrualEndDate;
     const effectiveCompOffOpeningBalance = hasReachedCompOffOpening ? compOffOpeningBalance : 0;
     
     const compOffTotal = dynamicCompOffTotal + manualCompOffGranted + effectiveCompOffOpeningBalance;
@@ -5004,8 +5004,8 @@ export const api = {
         if (isApproved) balance.maternityUsed += leaveAmount;
         if (isPending) balance.maternityPending += leaveAmount;
       } else if (type.includes('comp') || type === 'co') {
-        const monthStart = startOfMonth(referenceDate);
-        if (leaveStartDateObj >= monthStart && leaveStartDateObj <= monthEnd) {
+        // Accumulate used Comp Offs up to the reference date
+        if (leaveStartDateObj <= monthEnd) {
           if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && leaveStart <= rules.compOffLeavesExpiryDate)) {
             if (isApproved) balance.compOffUsed += leaveAmount;
             if (isPending) balance.compOffPending += leaveAmount;
@@ -5016,6 +5016,116 @@ export const api = {
         if (isApproved) balance.earnedUsed += 0; // no deduction
       }
     });
+
+    // --- COMP OFF CAP SIMULATION ---
+    // The user policy strictly caps the max available Comp Off balance at 4 at any time.
+    // Any balance > 4 at the end of the month is permanently forfeited.
+    // We simulate this month-by-month to accurately calculate lost leaves and adjust the total.
+    if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && new Date() <= new Date(rules.compOffLeavesExpiryDate.replace(/-/g, '/')))) {
+        const startMonth = new Date(yearStart.replace(/-/g, '/')).getMonth();
+        const endMonth = referenceDate.getMonth();
+        
+        let simulatedBalance = 0;
+        if (!compOffOpeningDateObj || compOffOpeningDateObj < new Date(currentYear, startMonth, 1)) {
+            simulatedBalance += effectiveCompOffOpeningBalance;
+        }
+        
+        let totalLost = 0;
+        
+        for (let m = startMonth; m <= endMonth; m++) {
+            let earnedThisMonth = 0;
+            let usedThisMonth = 0;
+            
+            if (compOffOpeningDateObj && compOffOpeningDateObj.getMonth() === m && compOffOpeningDateObj.getFullYear() === currentYear) {
+                simulatedBalance += effectiveCompOffOpeningBalance;
+            }
+            
+            // 1. Dynamic Earned
+            workDatesSet.forEach(dateStr => {
+                const date = new Date(dateStr.replace(/-/g, '/'));
+                if (date.getMonth() === m && date.getFullYear() === currentYear && date <= accrualEndDate) {
+                    const dayOfWeek = date.getDay();
+                    if (weeklyOffDays.includes(dayOfWeek) || holidayDates.has(dateStr)) {
+                        const hasCorrection = approvedLeaves.some(l => {
+                            const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
+                            const lStatus = String(l.status || '').toLowerCase();
+                            return lType.includes('correction') && 
+                                   (lStatus === 'approved' || lStatus === 'correction_made') && 
+                                   l.start_date === dateStr;
+                        });
+                        if (hasCorrection) {
+                            earnedThisMonth += 1;
+                        } else {
+                            const dayEvents = eventsByDay[dateStr] || [];
+                            const { workingHours } = calculateWorkingHours(dayEvents, date);
+                            if (workingHours >= fullThreshold) earnedThisMonth += 1;
+                            else if (workingHours >= halfThreshold) earnedThisMonth += 0.5;
+                        }
+                    }
+                }
+            });
+            
+            // 2. Manual Granted
+            (compOffData || []).forEach((log: any) => {
+                if (log.status === 'earned') {
+                    const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
+                    if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
+                        earnedThisMonth += 1;
+                    }
+                }
+            });
+            
+            // 3. Manual Used
+            (compOffData || []).forEach((log: any) => {
+                if (log.status === 'used' && !log.leave_request_id && !(log as any).leaveRequestId) {
+                    const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
+                    if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
+                        usedThisMonth += 1;
+                    }
+                }
+            });
+            
+            // 4. Leave Requests (Approved + Pending)
+            approvedLeaves.forEach(leave => {
+                const type = (leave.leave_type || '').toLowerCase();
+                if (type.includes('comp') || type === 'co') {
+                    const leaveStart = new Date(leave.start_date.replace(/-/g, '/'));
+                    if (leaveStart.getMonth() === m && leaveStart.getFullYear() === currentYear && leaveStart <= monthEnd) {
+                        let amount = 0;
+                        if (leave.day_option === 'half') amount = 0.5;
+                        else {
+                            const days = eachDayOfInterval({ start: leaveStart, end: new Date(leave.end_date.replace(/-/g, '/')) });
+                            days.forEach(d => {
+                                const dStr = format(d, 'yyyy-MM-dd');
+                                if (!weeklyOffDays.includes(d.getDay()) && !holidayDates.has(dStr)) {
+                                    if (!workDatesSet.has(dStr)) amount += 1;
+                                }
+                            });
+                        }
+                        if (leave.status === 'approved' || leave.status === 'pending_manager_approval' || leave.status === 'pending_hr_confirmation') {
+                            usedThisMonth += amount;
+                        }
+                    }
+                }
+            });
+            
+            simulatedBalance += earnedThisMonth;
+            
+            // Apply max cap of 4
+            if (simulatedBalance > 4) {
+                totalLost += (simulatedBalance - 4);
+                simulatedBalance = 4;
+            }
+            
+            simulatedBalance -= usedThisMonth;
+            if (simulatedBalance < 0) simulatedBalance = 0;
+        }
+        
+        balance.compOffTotal -= totalLost;
+        if (balance.compOffTotal < balance.compOffUsed + balance.compOffPending) {
+             balance.compOffTotal = balance.compOffUsed + balance.compOffPending;
+        }
+    }
 
     balance.debug = {
         staffType,

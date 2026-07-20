@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import { supabase } from '../../services/supabase';
 import type { LeaveBalance, LeaveRequest, LeaveType, LeaveRequestStatus, UploadedFile, CompOffLog, AttendanceEvent, UserHoliday, AttendanceSettings, StaffAttendanceRules, RecurringHolidayRule, UserChild, RoutePoint } from '../../types';
-import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, AlertTriangle, Briefcase, HeartPulse, Plane, CalendarClock, Clock, Edit, Trash2, XCircle, Search, Calendar, Settings, Check, Baby, Heart, Calculator, MapPin, Upload, Footprints, Eye, Info } from 'lucide-react';
 import { HOLIDAY_SELECTION_POOL, FIXED_HOLIDAYS } from '../../utils/constants';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -42,7 +42,7 @@ import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 
 // --- Reusable Components ---
 
-const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean; onViewDetails?: () => void }> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails }) => {
+const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean; onViewDetails?: () => void; infoMessage?: string }> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails, infoMessage }) => {
     const isMobileCard = useMediaQuery('(max-width: 767px)');
     return (
     <div className={`relative p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
@@ -72,6 +72,16 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
             <div className="flex items-center justify-center lg:justify-start gap-2">
                 <p className="text-xs md:text-sm text-muted font-medium">{title}</p>
                 {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
+                {infoMessage && (
+                    <div className="relative group/info flex items-center">
+                        <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" />
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none w-48 text-[10px] bg-card text-primary-text p-2 rounded shadow-xl border border-border text-center">
+                            {infoMessage}
+                            <div className="absolute -bottom-[5px] left-1/2 -translate-x-1/2 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-border" />
+                            <div className="absolute -bottom-[4px] left-1/2 -translate-x-1/2 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-card" />
+                        </div>
+                    </div>
+                )}
             </div>
             {isLoading ? (
                 <div className="h-7 md:h-8 w-24 bg-gray-100 animate-pulse rounded mt-1 mx-auto lg:mx-0" />
@@ -790,7 +800,8 @@ const LeaveDashboard: React.FC = () => {
             value: `${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))} / ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}`, 
             description: `Total: ${parseFloat(balanceDataState.compOffTotal.toFixed(1))}d. Available: ${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
             icon: CalendarClock,
-            isExpired: balanceDataState.expiryStates?.compOff
+            isExpired: balanceDataState.expiryStates?.compOff,
+            infoMessage: "As per policy, it's restricted for only 4 max limit, even if you have earned more."
         },
         {
             title: 'Monthly Pay Days',

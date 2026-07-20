@@ -69,6 +69,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
         const staffCategory = getStaffCategory(user?.roleId || user?.role || '', user?.societyId, { missedCheckoutConfig: attendance?.missedCheckoutConfig });
         const userRules = (attendance as any)?.[staffCategory];
         const halfThreshold = userRules?.minimumHoursHalfDay || 4;
+        const fullThreshold = userRules?.minimumHoursFullDay || userRules?.dailyWorkingHours?.min || 8;
         const dateStr = format(date, 'yyyy-MM-dd');
 
         // 1. Check for taken comp-offs from leave requests
@@ -87,7 +88,10 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
             return isSameDay(logDate, date);
         });
 
-        if (hasCompOffLog) return 'earned';
+        if (hasCompOffLog) {
+            // Technically a log might be a manual 0.5 addition, but we don't have that info in the log trivially here without amounts. Assume 'earned' full for now unless we know otherwise.
+            return 'earned'; 
+        }
 
         // 3. Check for earned comp-offs from attendance (worked on holiday/Sunday)
         const dayEvents = eventsByDay[dateStr] || [];
@@ -169,8 +173,10 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 });
 
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
-                if (hasCorrection || workingHours >= halfThreshold) {
+                if (hasCorrection || workingHours >= fullThreshold) {
                     return 'earned';
+                } else if (workingHours >= halfThreshold) {
+                    return 'earned-half';
                 }
             }
         }
@@ -181,6 +187,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'earned': return 'bg-emerald-500 text-white border-emerald-600 shadow-sm'; // Green for Earned
+            case 'earned-half': return 'bg-emerald-300 text-emerald-900 border-emerald-400 shadow-sm'; // Lighter green for Half
             case 'taken': return 'bg-red-500 text-white border-red-600 shadow-sm'; // Red for Taken
             default: return 'bg-gray-50 text-gray-400 border-gray-100'; // Neutral
         }
@@ -218,7 +225,7 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                         const status = getDayStatus(date);
                         const colorClass = getStatusColor(status);
                         return (
-                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`}>
+                            <div key={date.toISOString()} className={`h-9 rounded flex flex-col items-center justify-center ${colorClass} transition-colors border border-transparent hover:border-border/50`} title={status === 'earned-half' ? 'Half Day Earned' : status === 'earned' ? 'Full Day Earned' : undefined}>
                                 <span className="text-xs font-bold">{format(date, 'd')}</span>
                             </div>
                         );
@@ -226,8 +233,9 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                 </div>
             )}
             
-            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
-                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Earned</div>
+            <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] text-muted-foreground uppercase font-bold tracking-tight leading-tight">
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Earned (Full)</div>
+                <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-300 rounded-full flex-shrink-0"></div> Earned (Half)</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0"></div> Taken</div>
             </div>
         </div>
