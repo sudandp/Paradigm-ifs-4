@@ -10,6 +10,50 @@ function getISTDateString(date: Date): string {
   return istDate.toISOString().substring(0, 10);
 }
 
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000; // Earth radius in meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function calculateDailyTravelKm(events: any[]): number {
+  if (!events || events.length === 0) return 0;
+  let savedDistance = 0;
+  let hasNonZeroSavedDistance = false;
+  events.forEach(e => {
+    if (e.travel_distance !== undefined && e.travel_distance !== null && e.travel_distance > 0) {
+      savedDistance += e.travel_distance;
+      hasNonZeroSavedDistance = true;
+    }
+  });
+  if (hasNonZeroSavedDistance) {
+    return Number(savedDistance.toFixed(2));
+  }
+  const sorted = [...events]
+      .filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out')
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  let totalDist = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+          const dist = calculateDistanceMeters(
+              Number(current.latitude), Number(current.longitude),
+              Number(next.latitude), Number(next.longitude)
+          ) / 1000;
+          totalDist += dist;
+      }
+  }
+  return Number(totalDist.toFixed(2));
+}
+
+
 function evaluateConditionals(str: string, data: Record<string, string>) {
   if (!str) return '';
   return str.replace(/\{(\w+)\s*([><!=]=?)\s*([0-9.]+)\s*\?\s*["']([^"']+)["']\s*:\s*["']([^"']+)["']\}/ig, (m, key, op, val2Str, t, f) => {
@@ -122,7 +166,7 @@ const reportGenerators = {
     const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
 
     // Fetch BD users
-    const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_active', true).eq('is_deleted', false);
+    const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false);
     const bdUsers = (usersRes || []).filter((u: any) => {
       const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
       return roleName.toLowerCase() === 'business developer' || roleName.toLowerCase() === 'business_developer';
@@ -132,9 +176,9 @@ const reportGenerators = {
 
     // Fetch related data for today
     const [eventsRes, leadsRes, callsRes] = await Promise.all([
-      supabase.from('attendance_events').select('user_id, type, timestamp').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+      supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
       supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()),
-      supabase.from('crm_calls').select('user_id, type, created_at').gte('created_at', startOfTodayUTC.toISOString())
+      supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString())
     ]);
 
     const events = eventsRes.data || [];
@@ -151,42 +195,66 @@ const reportGenerators = {
 
     for (const bd of bdUsers) {
       // 1. Attendance Data
-      const bdEvents = events.filter((e: any) => e.user_id === bd.id);
+      const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       let attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
       let check_in_time = 'N/A';
       let check_out_time = 'N/A';
       let working_hours = '0h 0m';
       
-      const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'check_in');
-      const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'check_out');
+      const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
+      const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
       
       if (punchesIn.length > 0) {
-        const inDate = new Date(new Date(punchesIn[0].timestamp).getTime() + IST_OFFSET);
-        check_in_time = format(inDate, 'hh:mm a');
+        check_in_time = new Date(punchesIn[0].timestamp).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
       }
       if (punchesOut.length > 0) {
-        const outDate = new Date(new Date(punchesOut[punchesOut.length - 1].timestamp).getTime() + IST_OFFSET);
-        check_out_time = format(outDate, 'hh:mm a');
+        check_out_time = new Date(punchesOut[punchesOut.length - 1].timestamp).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
       }
-      if (punchesIn.length > 0 && punchesOut.length > 0) {
-        const inMs = new Date(punchesIn[0].timestamp).getTime();
-        const outMs = new Date(punchesOut[punchesOut.length - 1].timestamp).getTime();
-        if (outMs > inMs) {
-          const diffMs = outMs - inMs;
-          const hrs = Math.floor(diffMs / 3600000);
-          const mins = Math.floor((diffMs % 3600000) / 60000);
-          working_hours = `${hrs}h ${mins}m`;
+    
+      let netWorkMinutes = 0;
+      let isOnBreak = false;
+      let lastTime: Date | null = null;
+      let isPunchedIn = false;
+  
+      bdEvents.forEach((e: any) => {
+        const evTime = new Date(e.timestamp);
+        if (lastTime) {
+          const elapsed = (evTime.getTime() - lastTime.getTime()) / 60000;
+          if (isPunchedIn && !isOnBreak && elapsed > 0 && elapsed < 30 * 60) {
+            netWorkMinutes += elapsed;
+          }
         }
+        
+        if (e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in') {
+          isPunchedIn = true;
+        } else if (e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out') {
+          isPunchedIn = false;
+          isOnBreak = false;
+        } else if (e.type === 'break-in') {
+          isOnBreak = true;
+        } else if (e.type === 'break-out') {
+          isOnBreak = false;
+        }
+        lastTime = evTime;
+      });
+  
+      if (netWorkMinutes > 0) {
+        const hrs = Math.floor(netWorkMinutes / 60);
+        const mins = Math.floor(netWorkMinutes % 60);
+        working_hours = `${hrs}h ${mins}m`;
       }
 
       // 2. Activity Summary
-      const prospect_calls = calls.filter((c: any) => c.user_id === bd.id && c.type === 'prospect').length;
-      const followup_calls = calls.filter((c: any) => c.user_id === bd.id && c.type === 'followup').length;
       const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
+      const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
+      
+      const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && newLeadsIds.has(c.lead_id)).length;
+      const followup_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && !newLeadsIds.has(c.lead_id)).length;
+      
       const new_leads_count = newLeadsToday.length;
-      const sites_count = 0; // Not tracked automatically
+      const sites_count = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Site Visit').length;
       const sites_visited = 'Not applicable (Automated Schedule)';
-      const kms_travelled = '0'; // Not tracked automatically
+      let kms_travelled = calculateDailyTravelKm(bdEvents).toString();
 
       // 3. New Leads Added HTML
       let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
@@ -240,7 +308,7 @@ const reportGenerators = {
 
       // 5. Pipeline Snapshot
       const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
-      const statuses = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation'];
+      const statuses = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
       let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
         <thead><tr style="background:#f8fafc;">
           <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
@@ -330,7 +398,7 @@ async function processSchedules(req: VercelRequest) {
     port: emailConfig.port || 587,
     secure: emailConfig.secure || false,
     auth: { user: emailConfig.user, pass: emailConfig.pass },
-    // [SECURITY FIX C6] TLS validation enabled (removed rejectUnauthorized: false)
+    tls: { rejectUnauthorized: false }
   });
 
   const now = new Date();
@@ -350,11 +418,10 @@ async function processSchedules(req: VercelRequest) {
     let emails: string[] = [];
     if (rule.recipient_type === 'custom_emails') emails = rule.recipient_emails || [];
     else if (rule.recipient_type === 'role') {
-      const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_active', true);
+      const { data: users } = await supabase.from('users').select('email').in('role_id', rule.recipient_roles || []).eq('is_blocked', false);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
     } else if (rule.recipient_type === 'users') {
-      // [SECURITY FIX] Added is_active + is_deleted filters (matches send-email.ts fix H11)
-      const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []).eq('is_active', true).eq('is_deleted', false);
+      const { data: users } = await supabase.from('users').select('email').in('id', rule.recipient_user_ids || []).eq('is_blocked', false);
       emails = (users || []).map((u: any) => u.email).filter(Boolean);
     }
     
