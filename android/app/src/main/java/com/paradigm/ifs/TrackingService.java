@@ -72,6 +72,8 @@ public class TrackingService extends Service implements SensorEventListener {
     public static final String EXTRA_INTERVAL_MINUTES  = "intervalMinutes";
     public static final String EXTRA_SUPABASE_URL      = "supabaseUrl";
     public static final String EXTRA_SUPABASE_KEY      = "supabaseKey";
+    public static final String EXTRA_SUPABASE_TOKEN    = "supabaseToken"; // [AUTH FIX] user JWT
+
 
     // ── Step counter ───────────────────────────────────────────────────────
     private SensorManager sensorManager;
@@ -97,10 +99,12 @@ public class TrackingService extends Service implements SensorEventListener {
     private ExecutorService networkExecutor;
 
     // Runtime config (set from Intent or SharedPrefs fallback)
-    private String userId           = null;
-    private String supabaseUrl      = null;
-    private String supabaseAnonKey  = null;
-    private int    intervalMinutes  = 15;
+    private String userId            = null;
+    private String supabaseUrl       = null;
+    private String supabaseAnonKey   = null;
+    private String supabaseAccessToken = null; // [AUTH FIX] JWT Bearer token
+    private int    intervalMinutes   = 15;
+
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -130,10 +134,11 @@ public class TrackingService extends Service implements SensorEventListener {
     public int onStartCommand(Intent intent, int flags, int startId) {
         // ── Read config from Intent ───────────────────────────────────────
         if (intent != null) {
-            if (intent.hasExtra(EXTRA_USER_ID))          userId          = intent.getStringExtra(EXTRA_USER_ID);
-            if (intent.hasExtra(EXTRA_SUPABASE_URL))     supabaseUrl     = intent.getStringExtra(EXTRA_SUPABASE_URL);
-            if (intent.hasExtra(EXTRA_SUPABASE_KEY))     supabaseAnonKey = intent.getStringExtra(EXTRA_SUPABASE_KEY);
-            if (intent.hasExtra(EXTRA_INTERVAL_MINUTES)) intervalMinutes = intent.getIntExtra(EXTRA_INTERVAL_MINUTES, 15);
+            if (intent.hasExtra(EXTRA_USER_ID))          userId               = intent.getStringExtra(EXTRA_USER_ID);
+            if (intent.hasExtra(EXTRA_SUPABASE_URL))     supabaseUrl          = intent.getStringExtra(EXTRA_SUPABASE_URL);
+            if (intent.hasExtra(EXTRA_SUPABASE_KEY))     supabaseAnonKey      = intent.getStringExtra(EXTRA_SUPABASE_KEY);
+            if (intent.hasExtra(EXTRA_SUPABASE_TOKEN))   supabaseAccessToken  = intent.getStringExtra(EXTRA_SUPABASE_TOKEN);
+            if (intent.hasExtra(EXTRA_INTERVAL_MINUTES)) intervalMinutes      = intent.getIntExtra(EXTRA_INTERVAL_MINUTES, 15);
         }
 
         // Persist config so it survives service restart (START_STICKY)
@@ -142,15 +147,18 @@ public class TrackingService extends Service implements SensorEventListener {
                 .putString("tracking_user_id",      userId)
                 .putString("tracking_supabase_url", supabaseUrl != null ? supabaseUrl : "")
                 .putString("tracking_supabase_key", supabaseAnonKey != null ? supabaseAnonKey : "")
+                .putString("tracking_supabase_token", supabaseAccessToken != null ? supabaseAccessToken : "")
                 .putInt("tracking_interval_mins",   intervalMinutes)
                 .apply();
         } else {
             // Restore from prefs when service is restarted by OS
-            userId          = prefs.getString("tracking_user_id",      null);
-            supabaseUrl     = prefs.getString("tracking_supabase_url", null);
-            supabaseAnonKey = prefs.getString("tracking_supabase_key", null);
-            intervalMinutes = prefs.getInt("tracking_interval_mins",   15);
+            userId              = prefs.getString("tracking_user_id",        null);
+            supabaseUrl         = prefs.getString("tracking_supabase_url",   null);
+            supabaseAnonKey     = prefs.getString("tracking_supabase_key",   null);
+            supabaseAccessToken = prefs.getString("tracking_supabase_token", null);
+            intervalMinutes     = prefs.getInt("tracking_interval_mins",     15);
         }
+
 
         String title = intent != null ? intent.getStringExtra("title") : null;
         String text  = intent != null ? intent.getStringExtra("text")  : null;
@@ -277,7 +285,13 @@ public class TrackingService extends Service implements SensorEventListener {
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type",  "application/json");
                 conn.setRequestProperty("apikey",        supabaseAnonKey);
-                conn.setRequestProperty("Authorization", "Bearer " + supabaseAnonKey);
+                // [AUTH FIX] Use the user JWT as Bearer — anon key only identifies the project,
+                // not the user. Supabase RLS checks auth.uid() from the JWT, not the anon key.
+                String bearer = (supabaseAccessToken != null && !supabaseAccessToken.isEmpty())
+                        ? supabaseAccessToken
+                        : supabaseAnonKey; // fallback to anon (will 401 if RLS is strict)
+                conn.setRequestProperty("Authorization", "Bearer " + bearer);
+
                 conn.setRequestProperty("Prefer",        "return=minimal");
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(15_000);

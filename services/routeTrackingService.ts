@@ -4,7 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { Device } from '@capacitor/device';
 import { Network } from '@capacitor/network';
 import { registerPlugin, Capacitor } from '@capacitor/core';
-import { supabaseUrl, supabaseAnonKey } from './supabase';
+import { supabaseUrl, supabaseAnonKey, supabase } from './supabase';
+
 
 interface TrackingPlugin {
   startForegroundService(options: {
@@ -12,11 +13,13 @@ interface TrackingPlugin {
     text: string;
     userId: string;
     supabaseUrl: string;
-    supabaseKey: string;
+    supabaseKey: string;        // anon key — used as apikey header only
+    supabaseToken: string;     // user JWT — used as Authorization Bearer header
     intervalMinutes: number;
   }): Promise<void>;
   stopForegroundService(): Promise<void>;
 }
+
 
 const Tracking = registerPlugin<TrackingPlugin>('Tracking');
 
@@ -36,25 +39,29 @@ class RouteTrackingService {
     // so it keeps running even when the WebView JS runtime is paused in background.
     if (Capacitor.getPlatform() === 'android') {
       try {
-        // Read Supabase connection details from the exported constants so the
-        // native service can POST directly to Supabase REST without going through JS.
+        // [AUTH FIX] Read the live JWT access token from the current session.
+        // The anon key is NOT a valid Bearer token — it identifies the project,
+        // not the user. Sending it as Authorization causes 401 on RLS-protected tables.
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token || supabaseAnonKey || '';
+
         await Tracking.startForegroundService({
           title: 'Paradigm Field Ops',
           text:  'Location tracking is active',
           userId,
-          supabaseUrl:  supabaseUrl  || '',
-          supabaseKey:  supabaseAnonKey || '',
+          supabaseUrl:   supabaseUrl  || '',
+          supabaseKey:   supabaseAnonKey || '',  // still needed as apikey header
+          supabaseToken: accessToken,             // JWT for Authorization header
           intervalMinutes,
         });
         console.log('[RouteTracking] Native Android foreground service started — GPS handled natively');
       } catch (err) {
         console.error('[RouteTracking] Failed to start foreground service:', err);
       }
-      // On Android the native service handles GPS; JS interval is not needed.
-      // Still record an immediate first ping via JS as a warm-up.
       this.recordPosition(userId);
       return;
     }
+
 
     // ── Web / iOS fallback: JS-based interval ─────────────────────────────
     // Immediate first ping

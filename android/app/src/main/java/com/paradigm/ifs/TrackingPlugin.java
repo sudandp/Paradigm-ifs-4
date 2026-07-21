@@ -16,15 +16,18 @@ public class TrackingPlugin extends Plugin {
         String userId          = call.getString("userId",          null);
         String supabaseUrl     = call.getString("supabaseUrl",     null);
         String supabaseKey     = call.getString("supabaseKey",     null);
+        String supabaseToken   = call.getString("supabaseToken",   null); // [AUTH FIX] user JWT
         int    intervalMinutes = call.getInt("intervalMinutes",    15);
 
         Intent intent = new Intent(getContext(), TrackingService.class);
         intent.putExtra("title",           title);
         intent.putExtra("text",            text);
-        intent.putExtra(TrackingService.EXTRA_USER_ID,          userId);
-        intent.putExtra(TrackingService.EXTRA_SUPABASE_URL,     supabaseUrl);
-        intent.putExtra(TrackingService.EXTRA_SUPABASE_KEY,     supabaseKey);
-        intent.putExtra(TrackingService.EXTRA_INTERVAL_MINUTES, intervalMinutes);
+        intent.putExtra(TrackingService.EXTRA_USER_ID,           userId);
+        intent.putExtra(TrackingService.EXTRA_SUPABASE_URL,      supabaseUrl);
+        intent.putExtra(TrackingService.EXTRA_SUPABASE_KEY,      supabaseKey);
+        intent.putExtra(TrackingService.EXTRA_SUPABASE_TOKEN,    supabaseToken); // [AUTH FIX]
+        intent.putExtra(TrackingService.EXTRA_INTERVAL_MINUTES,  intervalMinutes);
+
 
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
