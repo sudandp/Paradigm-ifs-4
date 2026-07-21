@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 97,
-  "latestVersionName": "18.7.0",
+  "latestVersionCode": 98,
+  "latestVersionName": "18.8.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement Gemini API key rotation service and add leave application UI components\nfeat: implement comprehensive leave management dashboard with status tracking and request submission capabilities\nfeat: implement attendance management system with new services, calculation logic, and dashboard pages\nfeat: implement centralized notification system and HR leave management module with expanded UI components\nfeat: implement Gemini API key rotation logic and add LeaveManagement page skeleton",
+  "releaseNotes": "feat: implement native Android foreground service for persistent background location tracking\nfeat: add local storage and synchronization utilities for route history tracking\nfeat: add email scheduling processing logic and attendance report generators\nfeat: add ActivityTimelinePage for tracking daily travel and footsteps and SiteFinanceTracker for managing site expenses.\nfeat: implement user management dashboard and leave dashboard interfaces",
   "isMandatory": true
 }
