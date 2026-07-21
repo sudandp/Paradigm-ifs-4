@@ -403,6 +403,10 @@ export function evaluateSiteStaffStatus(params: any): string {
       // Worked on weekly off -> W/P or W/0.5P
       return baseWorkStatus === 'P' ? 'W/P' : 'W/0.5P';
     }
+    if (params.isRecurringHoliday && params.recurringHolidayType) {
+      // Worked on a recurring holiday (e.g., BL, PL)
+      return baseWorkStatus === 'P' ? `${params.recurringHolidayType}/P` : `${params.recurringHolidayType}/0.5P`;
+    }
     return baseWorkStatus;
   }
 
@@ -449,6 +453,13 @@ export function evaluateSiteStaffStatus(params: any): string {
     const threshold = userRules?.weekendPresentThreshold ?? 3;
     const meetsThreshold = (daysPresentInWeek ?? 0) >= threshold;
     return meetsThreshold ? 'W/O' : 'A';
+  }
+
+  // Recurring Holiday logic (Blue Leave, Pink Leave, etc.) if they didn't work
+  if (params.isRecurringHoliday && params.recurringHolidayType) {
+    const threshold = userRules?.weekendPresentThreshold ?? 3;
+    const meetsThreshold = (daysPresentInWeek ?? 0) >= threshold;
+    return meetsThreshold ? params.recurringHolidayType : 'A';
   }
 
   // Non-working Holiday logic (if it is a holiday but they didn't work)

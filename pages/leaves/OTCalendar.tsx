@@ -74,11 +74,9 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
             }
         }
 
-        const otMinutes = Math.max(0, (workingHours * 60) - (threshold * 60));
-        
         return { 
-            hoursOT: isSiteOt ? siteOtHours : Math.floor(otMinutes / 60), 
-            minutesOT: isSiteOt ? siteOtMinutes : Math.round(otMinutes % 60), 
+            hoursOT: siteOtHours, 
+            minutesOT: siteOtMinutes, 
             hasOtPunch,
             isSiteOt
         };
@@ -95,15 +93,29 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
     const monthlySummary = useMemo(() => {
         let totalMins = 0;
         let siteOtDays = 0;
+        let breakdownVisits = 0;
         const processedDays = new Set<string>();
 
+        const viewMonthStart = startOfMonth(viewingDate);
+        const viewMonthEnd = endOfMonth(viewingDate);
+
         events.forEach(event => {
-            const dateStr = format(new Date(event.timestamp), 'yyyy-MM-dd');
-            if (!processedDays.has(dateStr)) {
-                const { hoursOT, minutesOT, isSiteOt } = getDailyOT(new Date(event.timestamp));
-                totalMins += (hoursOT * 60) + minutesOT;
-                if (isSiteOt) siteOtDays += 1;
-                processedDays.add(dateStr);
+            const date = new Date(event.timestamp);
+            if (date >= viewMonthStart && date <= viewMonthEnd) {
+                const dateStr = format(date, 'yyyy-MM-dd');
+                if (!processedDays.has(dateStr)) {
+                    const { hoursOT, minutesOT, isSiteOt } = getDailyOT(date);
+                    totalMins += (hoursOT * 60) + minutesOT;
+                    if (isSiteOt) {
+                        const totalDailyMins = (hoursOT * 60) + minutesOT;
+                        if (totalDailyMins > 0 && totalDailyMins <= 5 * 60) {
+                            breakdownVisits += 1;
+                        } else if (totalDailyMins > 5 * 60) {
+                            siteOtDays += 1;
+                        }
+                    }
+                    processedDays.add(dateStr);
+                }
             }
         });
 
@@ -111,7 +123,8 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
             h: Math.floor(totalMins / 60),
             m: totalMins % 60,
             totalMins,
-            siteOtDays
+            siteOtDays,
+            breakdownVisits
         };
     }, [events, threshold]);
 
@@ -123,7 +136,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
     return (
         <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                <h3 className="text-xs font-semibold text-primary-text">Overtime</h3>
+                <h3 className="text-xs font-semibold text-primary-text">Site Attendance</h3>
                 <div className="flex items-center gap-1">
                     <Button variant="secondary" size="sm" className="btn-icon !p-0.5 h-5 w-5" onClick={() => onDateChange(subMonths(viewingDate, 1))}><ChevronLeft className="h-3 w-3" /></Button>
                     <span className="font-medium min-w-[70px] text-center text-[10px]">{format(viewingDate, 'MMM yyyy')}</span>
@@ -145,13 +158,13 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                         const { hoursOT, minutesOT, hasOtPunch, isSiteOt } = getDailyOT(date);
                         const hasHoursOT = hoursOT + minutesOT > 0;
 
-                        const bgClass = isSiteOt
-                            ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-                            : hasOtPunch 
-                                ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-                                : hasHoursOT 
-                                    ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                                    : 'bg-gray-50 text-gray-400 border-gray-100';
+                        const isBreakdown = isSiteOt && hasHoursOT && (hoursOT * 60 + minutesOT) <= 5 * 60;
+
+                        const bgClass = isBreakdown
+                            ? 'bg-red-50 text-red-600 border-red-500 border shadow-sm'
+                            : isSiteOt
+                            ? 'bg-orange-600 text-white border-orange-700 border shadow-sm'
+                            : 'bg-gray-50 text-gray-400 border-gray-100 border';
 
                         return (
                             <div key={date.toISOString()} className={`h-7 rounded flex flex-col items-center justify-center transition-colors ${bgClass}`}>
@@ -161,7 +174,6 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                                         {formatOT(hoursOT, minutesOT)}
                                     </span>
                                 )}
-                                {(hasOtPunch || isSiteOt) && !hasHoursOT && <span className="text-[7px] font-bold">P</span>}
                             </div>
                         );
                     })}
@@ -174,8 +186,12 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                     <span className="text-xs font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>
                 </div>
                 <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted font-medium">Site OT Days</span>
+                    <span className="text-[10px] text-muted font-medium">Site Duty Days</span>
                     <span className="text-xs font-bold text-accent-dark">{monthlySummary.siteOtDays} Days</span>
+                </div>
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted font-medium">Breakdown Visits</span>
+                    <span className="text-xs font-bold text-accent-dark">{monthlySummary.breakdownVisits}</span>
                 </div>
             </div>
         </div>

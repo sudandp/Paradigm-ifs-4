@@ -470,12 +470,7 @@ export function getStaffCategory(
 export function isBangaloreLocation(location?: string): boolean {
   if (!location) return false;
   const loc = location.trim().toLowerCase();
-  return loc === 'bangalore' || 
-         loc === 'bengaluru' || 
-         loc === 'blr' || 
-         loc === 'bgl' || 
-         loc.includes('bangalore') || 
-         loc.includes('bengaluru');
+  return /\b(bangalore|bengaluru|blr|bgl)\b/.test(loc) || loc.includes('bangalore') || loc.includes('bengaluru');
 }
 
 export function evaluateAttendanceStatus(params: {
@@ -517,14 +512,9 @@ export function evaluateAttendanceStatus(params: {
 
   // ── LOCATION-BASED RULE ENGINE ─────────────────────────────────────────────
   // BL (Blue Leave) and PL (Pink Leave) are Bangalore-specific recurring holidays
-  // applicable only to office and field category staff.
-  // Site staff and all non-Bangalore locations: recurring holidays resolve to W/O / A / P only.
-  const isBangaloreStaff = isBangaloreLocation(userLocation) && (userCategory === 'office' || userCategory === 'field');
+  // now applicable to all Bangalore staff, including technical relievers/site staff.
+  const isBangaloreStaff = isBangaloreLocation(userLocation);
   // ──────────────────────────────────────────────────────────────────────────
-
-  if (userCategory === 'site') {
-    return evaluateSiteStaffStatus(params);
-  }
 
   const dateStr = format(day, 'yyyy-MM-dd');
   const dayName = format(day, 'EEEE');
@@ -583,7 +573,13 @@ export function evaluateAttendanceStatus(params: {
           }
       }
 
-      const categoryMatches = ruleOccurrence === occurrence && ruleType === userCategory;
+      let categoryMatches = ruleOccurrence === occurrence && ruleType === userCategory;
+      
+      // Override: 3rd Saturday Blue Leave for Bangalore applies across all categories (including site staff)
+      if (isBangaloreStaff && ruleDay === 'saturday' && ruleOccurrence === 3) {
+          categoryMatches = ruleOccurrence === occurrence;
+      }
+
       if (!categoryMatches) return false;
 
       // ROLE WHITELIST: If the rule specifies eligibleRoles, only those roles qualify.
@@ -610,12 +606,20 @@ export function evaluateAttendanceStatus(params: {
           if (ruleLabel.includes('pink') || isFemale) {
               recurringHolidayType = 'PL';
           } else {
-              recurringHolidayType = 'BL'; // Blue Leave for Bangalore male/gents office+field staff
+              recurringHolidayType = 'BL'; // Blue Leave for Bangalore male/gents staff
           }
       } else {
           // Non-Bangalore staff: recurring holiday is just a standard weekly-off day
           recurringHolidayType = 'W/O';
       }
+  }
+
+  if (userCategory === 'site') {
+    return evaluateSiteStaffStatus({
+      ...params,
+      isRecurringHoliday,
+      recurringHolidayType
+    });
   }
 
   // Configured Holidays (Manual additions)
@@ -1227,8 +1231,8 @@ export function calculateStatsForDateRange(statuses: string[], days: Date[]): Ra
 
   const resolvePayableValue = (s: string): number => {
     if (s.includes('+')) return s.split('+').reduce((acc, part) => acc + resolvePayableValue(part.trim()), 0);
-    if (['W/P', 'H/P', 'BL/P', 'PL/P'].includes(s)) return 1.5; 
-    if (['P', 'W/O', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
+    if (['W/P', 'WP', 'H/P', 'HP', 'BL/P', 'BLP', 'PL/P', 'PLP'].includes(s)) return 1.5; 
+    if (['P', 'W/O', 'WO', 'WOP', 'H', 'SL', 'S/L', 'EL', 'E/L', 'CL', 'C/L', 'C/O', 'CO', 'W/H', 'WH', 'BL', 'F/H', 'FH', 'PL', 'P/L', 'ML', 'M/L', 'CC', 'C/C', 'CCL'].includes(s)) return 1;
     // Handle half-day leave types explicitly (e.g. '0.5SL', '0.5WH', '0.5EL', '0.5CL')
     if (s.startsWith('0.5') && (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('WH') || s.includes('W/H') || s.includes('BL') || s.includes('PL') || s.includes('ML') || s.includes('CCL') || s.includes('CO') || s.includes('C/O'))) return 0.5;
     if (s.includes('SL') || s.includes('S/L') || s.includes('EL') || s.includes('E/L') || s.includes('CL') || s.includes('C/L') || s.includes('C/O') || s.includes('CO') || s.includes('BL') || s.includes('F/H') || s.includes('FH') || s.includes('PL') || s.includes('P/L') || s.includes('ML') || s.includes('M/L') || s.includes('CCL') || s.includes('WH') || s.includes('W/H')) {

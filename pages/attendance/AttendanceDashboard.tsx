@@ -89,7 +89,7 @@ import {
     GenericReportColumn,
     LeaveBalanceRow
 } from '../../utils/excelExport';
-import { calculateWorkingHours, processDailyEvents, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn } from '../../utils/attendanceCalculations';
+import { calculateWorkingHours, processDailyEvents, evaluateAttendanceStatus, getStaffCategory, isLateCheckIn, isTechnicalRole } from '../../utils/attendanceCalculations';
 import { getFieldStaffStatus } from '../../utils/fieldStaffTracking';
 import { FIXED_HOLIDAYS } from '../../utils/constants';
 import { exportToCsv } from '../../utils/fastExport';
@@ -1809,7 +1809,7 @@ const AttendanceDashboard: React.FC = () => {
     }, [user]);
 
     // Employee View State
-    const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0, elBalance: 0, woBalance: 0 });
+    const [employeeStats, setEmployeeStats] = useState({ present: 0, absent: 0, ot: 0, compOff: 0, elBalance: 0, woBalance: 0, extraDuty: 0, totalPayableDays: 0 });
     const [employeeLogs, setEmployeeLogs] = useState<any[]>([]);
 
     const resolveUserRules = useCallback((userId?: string, userCategoryOverride?: 'office' | 'field' | 'site') => {
@@ -1906,6 +1906,9 @@ const AttendanceDashboard: React.FC = () => {
                 // Add 36-hour lookahead to capture night shift completions
                 const endStr = new Date(dateRange.endDate.getTime() + 36 * 60 * 60 * 1000).toISOString();
 
+                // Only call getSiteSpecificHolidays if organizationId is a valid UUID
+                // (short codes like 'pifs-bgl' will cause Supabase to throw error code 22P02)
+                const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
                 const [events, compOffs, userHolidays, userLeaves, siteSpecificHolidays, leaveBalances] = await Promise.all([
                     api.getAttendanceEvents(user.id, startStr, endStr),
                     api.getCompOffLogs(user.id),
@@ -1916,7 +1919,7 @@ const AttendanceDashboard: React.FC = () => {
                         endDate: endStr, 
                         status: ['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'] 
                     }),
-                    user.organizationId ? api.getSiteSpecificHolidays(user.organizationId) : Promise.resolve([]),
+                    (user.organizationId && isValidUUID(user.organizationId)) ? api.getSiteSpecificHolidays(user.organizationId) : Promise.resolve([]),
                     api.getLeaveBalances(user.id, dateRange.endDate.getFullYear(), dateRange.endDate.getMonth() + 1)
                 ]);
                 
@@ -2002,8 +2005,8 @@ const AttendanceDashboard: React.FC = () => {
                         }
                     }
 
-                    // Map specific utility codes to dashboard display format (e.g., 'H/P' -> 'HP')
-                    const status = statusRaw.replace('/', '');
+                    // Normalize all slashes out of status code (e.g. 'H/P' -> 'HP', 'BL/P' -> 'BLP', 'W/O' -> 'WO')
+                    const status = statusRaw.replace(/\//g, '');
 
                     let checkIn = '-';
                     let checkOut = '-';
@@ -2039,11 +2042,17 @@ const AttendanceDashboard: React.FC = () => {
 
                 // 4. Calculate Final Stats based on displayLogs
                 const present = displayLogs.reduce((acc, l) => {
-                    if (l.status === 'P' || l.status === 'W/H' || l.status === 'W/P' || l.status === 'H/P' || l.status === '0.5P' || l.status === 'BL/P' || l.status === 'PL/P') return acc + 1;
-                    if (l.status.startsWith('0.5P')) return acc + 0.5;
+                    const s = l.status;
+                    // Full present: P, WH (WFH), HP (Holiday+P), WP (Weekend+P), BLP, PLP, WO (as 1 if worked)
+                    if (s === 'P' || s === 'WH' || s === 'HP' || s === 'WP' || s === 'BLP' || s === 'PLP') return acc + 1;
+                    // Partial present codes like '0.5P', '0.75P', or combined '0.5P+0.5EL'
+                    if (s.includes('P') && !s.startsWith('RP') && (s.startsWith('0.') || s.startsWith('1P'))) return acc + 0.5;
                     return acc;
                 }, 0);
-                const absent = displayLogs.filter(l => (l.status === 'A' || l.status === '1/2A') && l.rawDate <= new Date()).length;
+                const absent = displayLogs.filter(l => {
+                    const s = l.status;
+                    return (s === 'A' || s === '12A' || s === '1/2A') && l.rawDate <= new Date();
+                }).length;
                 const otHours = displayLogs.reduce((acc, l) => acc + l.ot, 0);
 
                 // Comp Offs (Count earned in this period)
@@ -2052,13 +2061,56 @@ const AttendanceDashboard: React.FC = () => {
                     return d >= dateRange.startDate! && d <= dateRange.endDate! && log.status === 'earned';
                 }).length;
 
+                // Extra Duty calculation (Site Duty + Break Down)
+                let extraDuty = 0;
+                if (!isOfficeUser(user.role)) {
+                    const processedDays = new Set<string>();
+                    events.forEach(event => {
+                        const d = new Date(event.timestamp);
+                        if (d >= dateRange.startDate! && d <= dateRange.endDate!) {
+                            const dateStr = d.toISOString().split('T')[0];
+                            if (!processedDays.has(dateStr)) {
+                                const inEvent = events.find(e => e.type === 'site-ot-in' && e.timestamp.startsWith(dateStr));
+                                if (inEvent) {
+                                    const outEvent = events.find(e => e.type === 'site-ot-out' && new Date(e.timestamp) > new Date(inEvent.timestamp));
+                                    let diff = 0;
+                                    if (outEvent) {
+                                        diff = Math.max(0, differenceInMinutes(new Date(outEvent.timestamp), new Date(inEvent.timestamp)));
+                                    } else if (new Date().toISOString().split('T')[0] === dateStr) {
+                                        diff = Math.max(0, differenceInMinutes(new Date(), new Date(inEvent.timestamp)));
+                                    }
+                                    if (diff > 0) {
+                                        extraDuty += 1;
+                                    }
+                                }
+                                processedDays.add(dateStr);
+                            }
+                        }
+                    });
+                }
+
+                const statsForPayable = calculateStatsForDateRange(
+                    displayLogs.map(l => l.status), 
+                    displayLogs.map(l => l.rawDate)
+                );
+
+                let currentElBalance = 0;
+                try {
+                    const balanceData = await api.getLeaveBalancesForUser(user.id, format(dateRange.endDate || new Date(), 'yyyy-MM-dd'));
+                    currentElBalance = Number(((balanceData.earnedTotal || 0) - (balanceData.earnedUsed || 0) - (balanceData.earnedPending || 0)).toFixed(1));
+                } catch (err) {
+                    console.error("Failed to fetch balance for user", err);
+                }
+
                 setEmployeeStats({ 
                     present, 
                     absent, 
                     ot: Math.round(otHours * 10) / 10, 
                     compOff: compOffCount,
-                    elBalance: leaveBalances ? leaveBalances.el_closing : 0,
-                    woBalance: leaveBalances ? leaveBalances.wo_closing : 0
+                    elBalance: currentElBalance,
+                    woBalance: 0,
+                    extraDuty,
+                    totalPayableDays: statsForPayable.totalPayableDays
                 });
                 setEmployeeLogs(displayLogs.reverse()); // Newest first
 
@@ -4849,29 +4901,40 @@ const AttendanceDashboard: React.FC = () => {
 
             
             {/* Stats Summary */}
-            <div className={`grid grid-cols-2 gap-3 md:gap-6 ${isEmployeeView ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} bg-transparent p-0 rounded-none`}>
-                {isEmployeeView ? (
-                    // Personal Stats for Normal Users
-                    [
-                        { title: "Present", value: employeeStats.present, icon: UserCheck, color: "#10b981" },
-                        { title: "Absent", value: employeeStats.absent, icon: UserX, color: "#df0637" },
-                        { title: "Overtime", value: `${employeeStats.ot}h`, icon: Clock, color: "#1d63ff" },
-                        { title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "#8b5cf6" },
-                        { title: "Leave Bal.", value: employeeStats.elBalance.toFixed(1), icon: TrendingUp, color: "#f59e0b" },
-                        { title: "WO Bal.", value: employeeStats.woBalance.toFixed(1), icon: TrendingUp, color: "#0d9488" }
-                    ].map((stat, i) => (
-                        <DashboardStatCard
-                            key={i}
-                            icon={stat.icon}
-                            label={stat.title}
-                            value={stat.value}
-                            color={stat.color}
-                        />
-                    ))
-                ) : (
-                    <TodayMetricsRow data={todayMetrics} loading={!todayMetrics} />
-                )}
-            </div>
+            {(() => {
+                const isCompOffEligible = !isTechnicalRole(user?.role);
+                const hasExtraDutyRole = isTechnicalRole(user?.role) || !isOfficeUser(user?.role);
+                const combinedLeaveBal = isCompOffEligible 
+                    ? (employeeStats.elBalance + employeeStats.compOff).toFixed(1)
+                    : employeeStats.elBalance.toFixed(1);
+
+                const employeeCards = [
+                    { title: "Present", value: employeeStats.present, icon: UserCheck, color: "#10b981" },
+                    { title: "Absent", value: employeeStats.absent, icon: UserX, color: "#df0637" },
+                    { title: "Total Pay Count", value: employeeStats.totalPayableDays, icon: TrendingUp, color: "#1d63ff" },
+                    ...(isCompOffEligible ? [{ title: "Comp Offs", value: employeeStats.compOff, icon: TrendingUp, color: "#8b5cf6" }] : []),
+                    { title: "Leave Bal.", value: combinedLeaveBal, icon: TrendingUp, color: "#f59e0b" },
+                    ...(hasExtraDutyRole ? [{ title: "Extra Duty", value: employeeStats.extraDuty, icon: TrendingUp, color: "#0d9488" }] : [])
+                ];
+                const colCount = isEmployeeView ? employeeCards.length : 4;
+                return (
+                    <div className={`grid grid-cols-2 gap-3 md:gap-6 lg:grid-cols-${colCount} bg-transparent p-0 rounded-none`}>
+                        {isEmployeeView ? (
+                            employeeCards.map((stat, i) => (
+                                <DashboardStatCard
+                                    key={i}
+                                    icon={stat.icon}
+                                    label={stat.title}
+                                    value={stat.value}
+                                    color={stat.color}
+                                />
+                            ))
+                        ) : (
+                            <TodayMetricsRow data={todayMetrics} loading={!todayMetrics} />
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Charts Section */}
             {isClientOrManagerView ? (

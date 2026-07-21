@@ -177,6 +177,8 @@ const LeaveDashboard: React.FC = () => {
     const navigate = useNavigate();
     const [calculatedOTHours, setCalculatedOTHours] = useState<number>(0);
     const [calculatedShortfallMins, setCalculatedShortfallMins] = useState<number>(0);
+    const [calculatedSiteOtDays, setCalculatedSiteOtDays] = useState<number>(0);
+    const [calculatedBreakdownVisits, setCalculatedBreakdownVisits] = useState<number>(0);
     const [userChildren, setUserChildren] = useState<UserChild[]>([]);
     const [selectedLeaveRequest, setSelectedLeaveRequest] = useState<LeaveRequest | null>(null);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -474,6 +476,8 @@ const LeaveDashboard: React.FC = () => {
             let totalTravelKm = 0;
             let totalTravelDurationMins = 0;
             let totalMonthlySteps = 0;
+            let siteOtCount = 0;
+            let breakdownCount = 0;
             const targetHours = 8;
 
             const viewMonthStart = startOfMonth(viewingDate);
@@ -540,23 +544,42 @@ const LeaveDashboard: React.FC = () => {
                         startLocation,
                         endLocation
                     });
-                }
 
-                const { workingHours } = calculateWorkingHours(dayEvents, date);
-                
-                // OT
-                if (workingHours > shiftThreshold) {
-                    totalOTHours += (workingHours - shiftThreshold);
-                }
+                    const { workingHours } = calculateWorkingHours(dayEvents, date);
+                    
+                    // OT
+                    if (workingHours > shiftThreshold) {
+                        totalOTHours += (workingHours - shiftThreshold);
+                    }
 
-                // Shortfall - Skip Sundays
-                if (getDay(date) !== 0 && workingHours < targetHours) {
-                    totalShortfallMinutes += (targetHours * 60) - (workingHours * 60);
+                    // Shortfall - Skip Sundays
+                    if (getDay(date) !== 0 && workingHours < targetHours) {
+                        totalShortfallMinutes += (targetHours * 60) - (workingHours * 60);
+                    }
+
+                    // Site OT & Breakdown Visits
+                    const inEvent = dayEvents.find(e => e.type === 'site-ot-in');
+                    if (inEvent) {
+                        const outEvent = eventsData.find(e => e.type === 'site-ot-out' && new Date(e.timestamp) > new Date(inEvent.timestamp));
+                        let mins = 0;
+                        if (outEvent) {
+                            mins = Math.max(0, differenceInMinutes(new Date(outEvent.timestamp), new Date(inEvent.timestamp)));
+                        } else if (isSameDay(date, new Date())) {
+                            mins = Math.max(0, differenceInMinutes(new Date(), new Date(inEvent.timestamp)));
+                        }
+                        if (mins > 0 && mins <= 5 * 60) {
+                            breakdownCount += 1;
+                        } else if (mins > 5 * 60) {
+                            siteOtCount += 1;
+                        }
+                    }
                 }
             });
 
             setCalculatedOTHours(parseFloat(totalOTHours.toFixed(1)));
             setCalculatedShortfallMins(totalShortfallMinutes);
+            setCalculatedSiteOtDays(siteOtCount);
+            setCalculatedBreakdownVisits(breakdownCount);
             setMonthlyTravelKm(Number(totalTravelKm.toFixed(2)));
             setMonthlyTravelDuration(totalTravelDurationMins);
             setMonthlySteps(totalMonthlySteps);
@@ -854,15 +877,22 @@ const LeaveDashboard: React.FC = () => {
             isExpired: false,
             onViewDetails: () => navigate('/leaves/activity-timeline', { state: { records: dailyActivityRecords, type: 'steps', userId: user?.id } })
         },
-        ...(isTechnicalRole(user?.role) ? [{
-            title: 'Site OT Days',
-            value: snapshotData?.summary?.overtimeDays !== undefined 
-                ? `${snapshotData.summary.overtimeDays}`
-                : `${siteOtDays || (balanceDataState?.siteOtDaysThisMonth || 0)}`,
-            description: `Total Site OT shifts performed in ${format(viewingDate, 'MMMM yyyy')}.`,
-            icon: Clock,
-            isExpired: false
-        }] : []),
+        ...(isTechnicalRole(user?.role) ? [
+            {
+                title: 'Site Duty Days',
+                value: `${calculatedSiteOtDays}`,
+                description: `Total Site Duty shifts (>5 hrs) performed in ${format(viewingDate, 'MMMM yyyy')}.`,
+                icon: Clock,
+                isExpired: false
+            },
+            {
+                title: 'Breakdown Visits',
+                value: `${calculatedBreakdownVisits}`,
+                description: `Total Breakdown visits (1-5 hrs) performed in ${format(viewingDate, 'MMMM yyyy')}.`,
+                icon: Clock,
+                isExpired: false
+            }
+        ] : []),
         ...(isShortfallEnabled ? [{
             title: 'Monthly Shortfall',
             value: formatPreciseHours(calculatedShortfallMins / 60),
