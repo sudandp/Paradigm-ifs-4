@@ -190,7 +190,7 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
             // Normal Duty Status
             const isDetailedPresent = (hasCheckIn && hasCheckOut) || (hasCheckIn && isToday);
             // Site OT Status
-            const isSiteOtPresent = hasOtPunchIn && (hasOtPunchOut || isToday);
+            const isSiteOtPresent = !!dayEvents.find(e => e.type === 'site-ot-in');
 
             const isRecurringHoliday = recurringHolidayDates.some(d => isSameDay(d, day));
             const isFloatingExpired = !isFloatingHolidayValid(dateStr);
@@ -775,9 +775,12 @@ const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({
                                 return;
                             }
                             const code = getLeaveAbbreviation(req.leaveType || (req as any).leave_type);
-                            usedCodes.add(code);
+                            if (code && !usedCodes.has(code)) {
+                                usedCodes.add(code);
+                            }
                         }
                     });
+
                     // Also add OT if any site OT days
                     const hasSiteOt = Array.from(dayStatusMap.values()).some(v => v.isSiteOtPresent);
                     if (hasSiteOt) usedCodes.add('OT');

@@ -53,13 +53,32 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
 
         const { workingHours } = calculateWorkingHours(dayEvents, date);
         const hasOtPunch = dayEvents.some(e => e.type === 'punch-in' && e.isOt);
-        const isSiteOt = dayEvents.some(e => e.type === 'site-ot-in') && (dayEvents.some(e => e.type === 'site-ot-out') || isSameDay(date, new Date()));
+        
+        const inEvent = dayEvents.find(e => e.type === 'site-ot-in');
+        const isSiteOt = !!inEvent;
+
+        let siteOtHours = 0;
+        let siteOtMinutes = 0;
+        
+        if (isSiteOt && inEvent) {
+            // Find the next site-ot-out event after the inEvent in the global events array
+            const outEvent = events.find(e => e.type === 'site-ot-out' && new Date(e.timestamp) > new Date(inEvent.timestamp));
+            if (outEvent) {
+                const diff = Math.max(0, differenceInMinutes(new Date(outEvent.timestamp), new Date(inEvent.timestamp)));
+                siteOtHours = Math.floor(diff / 60);
+                siteOtMinutes = diff % 60;
+            } else if (isSameDay(date, new Date())) {
+                const diff = Math.max(0, differenceInMinutes(new Date(), new Date(inEvent.timestamp)));
+                siteOtHours = Math.floor(diff / 60);
+                siteOtMinutes = diff % 60;
+            }
+        }
 
         const otMinutes = Math.max(0, (workingHours * 60) - (threshold * 60));
         
         return { 
-            hoursOT: Math.floor(otMinutes / 60), 
-            minutesOT: Math.round(otMinutes % 60), 
+            hoursOT: isSiteOt ? siteOtHours : Math.floor(otMinutes / 60), 
+            minutesOT: isSiteOt ? siteOtMinutes : Math.round(otMinutes % 60), 
             hasOtPunch,
             isSiteOt
         };
@@ -102,7 +121,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
 
 
     return (
-        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full md:max-w-[260px] flex flex-col h-full">
+        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
                 <h3 className="text-xs font-semibold text-primary-text">Overtime</h3>
                 <div className="flex items-center gap-1">
@@ -149,7 +168,7 @@ const OTCalendar: React.FC<OTCalendarProps> = ({ viewingDate, onDateChange, even
                 </div>
             )}
 
-            <div className="mt-4 pt-3 border-t border-border flex flex-col gap-1 flex-shrink-0">
+            <div className="mt-auto pt-3 border-t border-border flex flex-col gap-1 flex-shrink-0">
                 <div className="flex items-center justify-between">
                     <span className="text-[10px] text-muted font-medium">Monthly Total</span>
                     <span className="text-xs font-bold text-primary-text">{monthlySummary.h}h {monthlySummary.m}m</span>

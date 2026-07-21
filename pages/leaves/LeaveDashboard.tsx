@@ -44,6 +44,8 @@ import LeaveDetailsModal from '../../components/modals/LeaveDetailsModal';
 
 const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.ElementType; isExpired?: boolean; description?: string; isLoading?: boolean; onViewDetails?: () => void; infoMessage?: string }> = ({ title, value, icon: Icon, isExpired, description, isLoading, onViewDetails, infoMessage }) => {
     const isMobileCard = useMediaQuery('(max-width: 767px)');
+    const [showInfo, setShowInfo] = useState(false);
+    
     return (
     <div className={`relative p-3 md:p-4 rounded-xl flex flex-col lg:flex-row items-center lg:items-center gap-2 md:gap-4 border text-center lg:text-left w-full h-full justify-center lg:justify-start ${
         isExpired
@@ -73,13 +75,19 @@ const LeaveBalanceCard: React.FC<{ title: string; value: string; icon: React.Ele
                 <p className="text-xs md:text-sm text-muted font-medium">{title}</p>
                 {isExpired && <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Expired</span>}
                 {infoMessage && (
-                    <div className="relative group/info flex items-center">
-                        <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" />
-                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 group-hover/info:opacity-100 transition-opacity z-50 pointer-events-none w-48 text-[10px] bg-card text-primary-text p-2 rounded shadow-xl border border-border text-center">
-                            {infoMessage}
-                            <div className="absolute -bottom-[5px] left-1/2 -translate-x-1/2 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-border" />
-                            <div className="absolute -bottom-[4px] left-1/2 -translate-x-1/2 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-card" />
-                        </div>
+                    <div className="relative flex items-center">
+                        <Info 
+                            className="w-3.5 h-3.5 text-muted-foreground hover:text-primary cursor-pointer transition-colors" 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowInfo(true);
+                            }}
+                        />
+                        <Modal isOpen={showInfo} onClose={() => setShowInfo(false)} title={`${title} Info`}>
+                            <div className="p-5 text-sm text-primary-text leading-relaxed">
+                                {infoMessage}
+                            </div>
+                        </Modal>
                     </div>
                 )}
             </div>
@@ -814,6 +822,7 @@ const LeaveDashboard: React.FC = () => {
             description: `Max Capacity: 4d. Available: ${parseFloat((balanceDataState.compOffTotal - balanceDataState.compOffUsed - (balanceDataState.compOffPending || 0)).toFixed(1))}d.${(balanceDataState.compOffPending || 0) > 0 ? ` (Pending: ${balanceDataState.compOffPending}d)` : ''}`,
             icon: CalendarClock,
             isExpired: balanceDataState.expiryStates?.compOff,
+            isHidden: isTechnicalRole(user?.role),
             infoMessage: "As per policy, it's restricted for only 4 max limit, even if you have earned more."
         },
         {
@@ -865,7 +874,7 @@ const LeaveDashboard: React.FC = () => {
         { title: 'Earned Leave', value: '0 / 0', icon: Briefcase, isLoading: true },
         { title: 'Blue Leave', value: '0 / 0', icon: Plane, isLoading: true },
         ...(isFemale ? [{ title: 'Pink Leave', value: '0 / 0', icon: Heart, isLoading: true }] : []),
-        { title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true },
+        ...(isTechnicalRole(user?.role) ? [] : [{ title: 'Compensatory Off', value: '0 / 0', icon: CalendarClock, isLoading: true }]),
         { title: 'Monthly Pay Days', value: '-', icon: Calculator, isLoading: true },
         { title: 'Monthly Travel KM', value: '-', icon: MapPin, isLoading: true }
     ];
@@ -976,15 +985,17 @@ const LeaveDashboard: React.FC = () => {
                     onMonthPaydaysChange={setMonthlyPaydays}
                     onSiteOtDaysChange={setSiteOtDays}
                 />
-                <CompOffCalendar 
-                    logs={compOffLogs} 
-                    leaveRequests={requests} 
-                    userHolidays={userHolidays} 
-                    isLoading={isLoading} 
-                    viewingDate={viewingDate}
-                    onDateChange={setViewingDate}
-                    events={events}
-                />
+                {!isTechnicalRole(user?.role) && (
+                    <CompOffCalendar 
+                        logs={compOffLogs} 
+                        leaveRequests={requests} 
+                        userHolidays={userHolidays} 
+                        isLoading={isLoading} 
+                        viewingDate={viewingDate}
+                        onDateChange={setViewingDate}
+                        events={events}
+                    />
+                )}
                 <HolidayCalendar 
                     adminHolidays={adminHolidays} 
                     userSelectedHolidays={userHolidays} 
@@ -1159,9 +1170,10 @@ const LeaveDashboard: React.FC = () => {
                 </div>
             </div>
 
-            <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full md:w-full">
-                <h3 className="text-lg font-semibold mb-4 text-primary-text">Compensatory Off Tracker</h3>
-                {isCompOffHistoryDisabled ? (
+            {!isTechnicalRole(user?.role) && (
+                <div className="border-0 shadow-none md:bg-card md:p-6 md:rounded-xl md:shadow-card w-full md:w-full">
+                    <h3 className="text-lg font-semibold mb-4 text-primary-text">Compensatory Off Tracker</h3>
+                    {isCompOffHistoryDisabled ? (
                     <div className="text-center py-10 text-muted bg-page rounded-lg">
                         <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
                         <p className="font-semibold">Feature Unavailable</p>
@@ -1202,6 +1214,7 @@ const LeaveDashboard: React.FC = () => {
                     </div>
                 )}
             </div>
+            )}
 
             {/* Employee Attendance Log */}
             <EmployeeLog initialEvents={events} />

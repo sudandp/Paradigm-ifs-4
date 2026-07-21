@@ -1389,12 +1389,12 @@ const ApplyLeave: React.FC = () => {
                                             {!isProbation && <option value="Earned">Earned</option>}
                                             <option value="Sick">Sick</option>
                                             <option value={isFemale ? "Pink Leave" : "Floating"}>{isFemale ? "Pink Leave" : "Blue Leave"}</option>
-                                            {!isFemale && <option value="Blue Leave Work">Work on Blue Leave</option>}
-                                            <option value="Comp Off">Comp Off</option>
+                                            {user?.role !== 'technical_reliever' && !isFemale && <option value="Blue Leave Work">Work on Blue Leave</option>}
+                                            {user?.role !== 'technical_reliever' && <option value="Comp Off">Comp Off</option>}
                                             <option value="Loss of Pay">Loss of Pay</option>
                                             {(!isProbation && isFemale && (userChildren.length > 0 || (fullBalance && fullBalance.childCareTotal > 0))) && <option value="Child Care">Child Care</option>}
                                             {/* Maternity Leave is temporarily hidden for all users */}
-                                            <option value="WFH">Work From Home (WFH)</option>
+                                            {user?.role !== 'technical_reliever' && <option value="WFH">Work From Home (WFH)</option>}
                                             <option value="Correction">Request for Correction (RC)</option>
                                             {(rules?.enablePermission || rules?.enablePermission === undefined) && (
                                                 <option value="Permission">Request for Permission (RP)</option>

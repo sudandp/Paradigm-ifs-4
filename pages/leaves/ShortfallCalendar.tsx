@@ -76,7 +76,7 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
     const startDay = getDay(startOfMonth(viewingDate));
 
     return (
-        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full md:max-w-[260px] flex flex-col h-full">
+        <div className="bg-card p-3 rounded-xl shadow-card border border-border w-full flex flex-col h-full">
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <h3 className="text-xs font-semibold text-primary-text">Shortfall</h3>
@@ -126,7 +126,7 @@ const ShortfallCalendar: React.FC<ShortfallCalendarProps> = ({ viewingDate, onDa
                 </div>
             )}
 
-            <div className="mt-4 pt-3 border-t border-border space-y-1.5 flex-shrink-0">
+            <div className="mt-auto pt-3 border-t border-border space-y-1.5 flex-shrink-0">
                 <div className="flex items-center justify-between text-red-600">
                     <span className="text-[10px] font-medium">Monthly Shortfall</span>
                     <span className="text-xs font-bold">{monthlySummary.h}h {monthlySummary.m}m</span>

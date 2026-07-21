@@ -106,7 +106,7 @@ const HolidayCalendar: React.FC<HolidayCalendarProps> = ({ adminHolidays, userSe
                 </div>
             )}
             
-            <div className={`mt-4 pt-3 border-t grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight ${isMobile ? 'border-[#2a4536] text-white/40' : 'border-border/50 text-muted-foreground'}`}>
+            <div className={`mt-auto pt-3 border-t grid grid-cols-3 gap-x-2 gap-y-2 text-[10px] uppercase font-bold tracking-tight leading-tight ${isMobile ? 'border-[#2a4536] text-white/40' : 'border-border/50 text-muted-foreground'}`}>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0"></div> Gov</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0"></div> Admin</div>
                 <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-violet-600 rounded-full flex-shrink-0"></div> User</div>

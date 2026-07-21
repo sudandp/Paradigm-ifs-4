@@ -98,11 +98,16 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
         const monthlyLeaves = Array(12).fill(0);
         const monthlyHolidays = Array(12).fill(0);
         const monthlySundays = Array(12).fill(0);
+        const monthlySiteOt = Array(12).fill(0);
 
         const workedDaysSet = new Set<string>();
+        const siteOtDaysSet = new Set<string>();
         events.forEach(e => {
             if (e.type.toLowerCase().includes('punch-in')) {
                 workedDaysSet.add(format(new Date(e.timestamp), 'yyyy-MM-dd'));
+            }
+            if (e.type.toLowerCase() === 'site-ot-in') {
+                siteOtDaysSet.add(format(new Date(e.timestamp), 'yyyy-MM-dd'));
             }
         });
 
@@ -139,9 +144,14 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
             let monthLeaveCount = 0;
             let monthHolidayCount = 0;
             let monthSundayCount = 0;
+            let monthSiteOtCount = 0;
 
             daysInMonth.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
+                
+                if (siteOtDaysSet.has(dateStr)) {
+                    monthSiteOtCount++;
+                }
                 
                 // 1. Worked (Highest priority)
                 if (workedDaysSet.has(dateStr)) {
@@ -216,9 +226,10 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
             monthlyLeaves[m] = monthLeaveCount;
             monthlyHolidays[m] = monthHolidayCount;
             monthlySundays[m] = monthSundayCount;
+            monthlySiteOt[m] = monthSiteOtCount;
         }
 
-        return { monthlyWorked, monthlyLeaves, monthlyHolidays, monthlySundays };
+        return { monthlyWorked, monthlyLeaves, monthlyHolidays, monthlySundays, monthlySiteOt };
     }, [events, userHolidays, leaves, recurringHolidays, attendance, user, currentYear, fieldHolidays, officeHolidays]);
 
 
@@ -236,6 +247,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
             stats.monthlyLeaves,
             stats.monthlyHolidays,
             stats.monthlySundays,
+            stats.monthlySiteOt,
         ];
 
         // ── Update in-place if chart already exists (no destroy → no flicker) ──
@@ -280,6 +292,13 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                         data: stats.monthlySundays,
                         backgroundColor: '#f59e0b',
                         stack: 'payable',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'SITE OT',
+                        data: stats.monthlySiteOt,
+                        backgroundColor: '#ea580c',
+                        stack: 'siteot',
                         borderRadius: 4,
                     }
                 ]
@@ -377,7 +396,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 </div>
             </div>
 
-            <div className="flex-1 relative min-h-[160px]">
+            <div className="flex-1 relative min-h-[300px] md:min-h-[280px]">
                 {isLoading ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
                         <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
@@ -386,7 +405,7 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                 <canvas ref={chartRef}></canvas>
             </div>
             
-            <div className="mt-4 pt-3 border-t border-border/50 flex flex-col gap-1 text-[10px] text-muted">
+            <div className="mt-auto pt-3 border-t border-border/50 flex flex-col gap-1 text-[10px] text-muted">
                 <div className="flex justify-between items-center text-xs">
                     <span className="font-medium text-gray-600">Total Paydays:</span>
                     <span className="font-bold text-indigo-600 text-sm">{totalPayable} days</span>
@@ -399,6 +418,10 @@ const YearlyAttendanceChart: React.FC<YearlyAttendanceChartProps> = ({ data, isL
                          WO: {stats.monthlySundays.reduce((a, b) => a + b, 0)})
                     </span>
                     <span>Avg: {(totalPayable / (currentYear < new Date().getFullYear() ? 12 : new Date().getMonth() + 1)).toFixed(1)}/mo</span>
+                </div>
+                <div className="flex justify-between items-center text-xs mt-1 border-t border-border/30 pt-1">
+                    <span className="font-medium text-gray-600">Site OT Days:</span>
+                    <span className="font-bold text-orange-600 text-sm">{stats.monthlySiteOt.reduce((a, b) => a + b, 0)} days</span>
                 </div>
             </div>
         </div>
