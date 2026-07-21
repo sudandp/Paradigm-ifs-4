@@ -180,6 +180,15 @@ export async function pushLocalPointsToSupabase(userId: string): Promise<{ succe
     return { successCount: 0, failedCount: 0 };
   }
 
+  // [RLS FIX] Verify we have an active session before attempting any inserts.
+  // Without a session, auth.uid() is null and every insert will fail WITH CHECK.
+  const { data: { session } } = await supabase.auth.getSession();
+  const liveUid = session?.user?.id;
+  if (!liveUid) {
+    console.warn('[localRouteHistory] No active session — deferring sync until user is signed in.');
+    return { successCount: 0, failedCount: 0 };
+  }
+
   console.log(`[localRouteHistory] Attempting to sync ${unsynced.length} local route points for user ${userId}...`);
 
   let successCount = 0;
@@ -191,8 +200,10 @@ export async function pushLocalPointsToSupabase(userId: string): Promise<{ succe
       // 1. Remove local metadata key (synced) and local generated id so Supabase creates a new DB UUID
       const { synced, id, ...rawPoint } = point;
 
-      // 2. Insert snake_case fields
-      const dbPayload = toSnakeCase(rawPoint);
+      // 2. Build payload — always use the live session uid (liveUid) as user_id.
+      //    The locally-cached userId can be stale after token refresh, which causes
+      //    `user_id != auth.uid()` and fails the WITH CHECK RLS policy.
+      const dbPayload = toSnakeCase({ ...rawPoint, userId: liveUid });
 
       const { error } = await supabase
         .from('route_history')
