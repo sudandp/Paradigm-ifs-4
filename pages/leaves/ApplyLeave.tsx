@@ -923,14 +923,17 @@ const ApplyLeave: React.FC = () => {
                     const hasPunchOut = punchOuts.length > 0;
                     const forgotPunchOut = hasPunchIn && !hasPunchOut;
                     
+                    // Check if user has not filled punch out timing in the form
+                    const isPunchOutTimingEmpty = !formData.punchOut || formData.punchOut.trim() === '';
+                    
                     // Calculate working hours
                     const hoursData = calculateWorkingHours(dayEvents);
                     const hoursWorked = hoursData.workingHours;
                     
-                    // Validate: must have worked >= 4 hours OR forgot to punch out (has punch-in but no punch-out)
-                    if (hoursWorked < 4 && !forgotPunchOut) {
+                    // Validate: must have worked >= 4 hours OR active session without filled/logged punch-out
+                    if (hoursWorked < 4 && !forgotPunchOut && !isPunchOutTimingEmpty) {
                         setToast({ 
-                            message: `You can only raise a correction for today if you have worked more than 4 hours (currently ${hoursWorked.toFixed(2)} hours) or if you have incomplete punch logs (forgot to punch out).`, 
+                            message: `You can only raise a correction for today if you have worked more than 4 hours (currently ${hoursWorked.toFixed(2)} hours), if you have incomplete punch logs (forgot to punch out), or if punch out timing is not filled.`, 
                             type: 'error' 
                         });
                         setIsSubmitting(false);

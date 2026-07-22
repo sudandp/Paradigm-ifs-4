@@ -15,7 +15,7 @@ import {
 
 Chart.register(BarController, BarElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 import { LeaveRequest, LeaveRequestStatus, ExtraWorkLog, UserHoliday, LeaveType } from '../../types';
-import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye } from 'lucide-react';
+import { Loader2, Check, X, Plus, XCircle, User, Calendar, FilterX, ChevronLeft, ChevronRight, Info, Pencil, Download, RotateCcw, PenTool, FileText, FileSpreadsheet, ChevronDown, Trash2, Eye, Undo2 } from 'lucide-react';
 import ManualAttendanceModal from '../../components/attendance/ManualAttendanceModal';
 import Button from '../../components/ui/Button';
 import Toast from '../../components/ui/Toast';
@@ -926,6 +926,20 @@ const LeaveManagement: React.FC = () => {
                             <PenTool className="h-4 w-4 text-indigo-600" />
                         </Button>
                     )}
+                    {/* Revoke / Undo Action (Corrected / Pending Correction) */}
+                    {(request.status === 'correction_made' || request.status === 'pending_admin_correction') && isAuthorizedToManage && (
+                        <Button 
+                            size="sm" 
+                            variant="icon" 
+                            onClick={() => handleReconsiderLeave(request)} 
+                            disabled={actioningId === request.id} 
+                            title="Revoke / Undo Correction" 
+                            aria-label="Revoke or undo correction request"
+                        >
+                            <Undo2 className="h-4 w-4 text-amber-600" />
+                        </Button>
+                    )}
+
                     {/* Delete Action (Admin Only for Cleanup) */}
                     {isSuperAdmin && ['rejected', 'cancelled', 'withdrawn'].includes(request.status) && (
                         <Button 
