@@ -28,20 +28,24 @@ async function main() {
     .select('*')
     .eq('user_id', user.id)
 
-  const result = processEmployeeMonth({
+  const result = processEmployeeMonth(
     user,
-    events: events || [],
-    allLeaves: leaves || [],
-    userHolidays: [],
-    officeHolidays: [],
-    fieldHolidays: [],
-    siteHolidays: [],
-    recurringHolidays: [],
-    routePoints: [],
-    attendance: {} as any,
-    year: 2026,
-    month: 6
-  })
+    events || [],
+    leaves || [],
+    [],
+    2026,
+    6,
+    [],
+    [],
+    [],
+    [],
+    leaves || [],
+    undefined,
+    [],
+    null,
+    { office: {}, field: {}, site: {} },
+    []
+  )
 
   console.log('=== June 27 Data ===')
   const day27 = result.dailyData.find(d => d.date === 27)

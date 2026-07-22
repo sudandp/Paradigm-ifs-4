@@ -140,17 +140,17 @@ export function resolveUserRules(
   scopedSettings: any[]
 ) {
   const userCategory = getStaffCategory(resolvedRole || user.role, user.societyId || user.organizationId, { 
-    attendance, 
-    missedCheckoutConfig: (attendance as any).missedCheckoutConfig 
+    attendance: attendance || {}, 
+    missedCheckoutConfig: attendance?.missedCheckoutConfig 
   });
   
-  const entitySetting = scopedSettings.find(s => s.scope_type === 'entity' && s.scope_id === user.organizationId);
-  if (entitySetting) return entitySetting.settings[userCategory] || attendance[userCategory];
+  const entitySetting = (scopedSettings || []).find(s => s.scope_type === 'entity' && s.scope_id === user.organizationId);
+  if (entitySetting) return entitySetting.settings[userCategory] || attendance?.[userCategory] || {};
 
-  const companySetting = scopedSettings.find(s => s.scope_type === 'company' && s.scope_id === user.societyId);
-  if (companySetting) return companySetting.settings[userCategory] || attendance[userCategory];
+  const companySetting = (scopedSettings || []).find(s => s.scope_type === 'company' && s.scope_id === user.societyId);
+  if (companySetting) return companySetting.settings[userCategory] || attendance?.[userCategory] || {};
 
-  return attendance[userCategory];
+  return attendance?.[userCategory] || {};
 }
 
 export function processEmployeeMonth(
@@ -400,12 +400,13 @@ export function processEmployeeMonth(
     const dateStr = format(currentDate, 'yyyy-MM-dd');
     
     // Find approved permission for the current day
-    const approvedPermissionOnDay = allLeaves.find(l => {
-      const lStartDate = l.startDate || l.date || l.leave_date;
-      const lEndDate = l.endDate || l.date || l.leave_date;
+    const leavesToSearch = (allLeaves && allLeaves.length > 0) ? allLeaves : (userLeaves || []);
+    const approvedPermissionOnDay = leavesToSearch.find(l => {
+      const lStartDate = l.startDate || l.start_date || l.date || l.leave_date;
+      const lEndDate = l.endDate || l.end_date || l.date || l.leave_date;
       if (!lStartDate || !lEndDate) return false;
       const lUserId = l.userId || l.user_id;
-      if (String(lUserId) !== String(user.id)) return false;
+      if (lUserId && String(lUserId) !== String(user.id)) return false;
       const lStatus = String(l.status || l.leaveStatus || '').toLowerCase();
       if (!['approved', 'approved_by_reporting', 'approved_by_admin', 'correction_made'].includes(lStatus)) return false;
 
