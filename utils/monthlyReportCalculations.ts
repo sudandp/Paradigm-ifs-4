@@ -37,6 +37,14 @@ export const parsePermissionDurationFromReason = (reason: string): number => {
   if (!reason) return 0;
   const text = reason.toLowerCase();
   
+  // Try matching HH:MM format like "0:37", "1:30", "01:15"
+  const timeFormatMatch = text.match(/(\d{1,2}):(\d{2})/);
+  if (timeFormatMatch) {
+    const hrs = parseInt(timeFormatMatch[1], 10);
+    const mins = parseInt(timeFormatMatch[2], 10);
+    return hrs * 60 + mins;
+  }
+
   // Try matching formats like "1hr 15 mints", "1 hour 15 mins", "1h 15m", "1 hr 15 mins", "1 hour 15 minutes"
   const hrMinRegex = /(\d+)\s*(?:hr|hour|h)s?\s*(\d+)\s*(?:mint|min|m)/;
   const hrMinMatch = text.match(hrMinRegex);
@@ -409,11 +417,21 @@ export function processEmployeeMonth(
 
       const startDateStr = normalize(lStartDate);
       const endDateStr = normalize(lEndDate);
-      return dateStr >= startDateStr && dateStr <= endDateStr && String(l.leaveType || '').toLowerCase().includes('permission');
+      const lType = String(l.leaveType || l.leave_type || (l as any).type || '').toLowerCase();
+      return dateStr >= startDateStr && dateStr <= endDateStr && (lType.includes('permission') || lType === 'rp' || lType.includes('rp'));
     });
 
     if (approvedPermissionOnDay) {
-      const permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason);
+      let permMinutes = parsePermissionDurationFromReason(approvedPermissionOnDay.reason || '');
+      if (!permMinutes && (approvedPermissionOnDay as any).permission_duration) {
+        permMinutes = parsePermissionDurationFromReason(String((approvedPermissionOnDay as any).permission_duration));
+      }
+      if (!permMinutes && typeof (approvedPermissionOnDay as any).duration === 'number') {
+        permMinutes = Math.round((approvedPermissionOnDay as any).duration * 60);
+      }
+      if (!permMinutes) {
+        permMinutes = 120; // Default fallback to 2 hours if no specific duration parsed
+      }
       currentDayPermDuration = formatTime(permMinutes / 60);
     }
 
