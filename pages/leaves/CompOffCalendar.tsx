@@ -93,15 +93,25 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
             return 'earned'; 
         }
 
-        // 3. Check for earned comp-offs from attendance (worked on holiday/Sunday)
+        // 3. Check for earned comp-offs from attendance (worked on holiday/Week Off)
         const dayEvents = eventsByDay[dateStr] || [];
         const hasCheckIn = dayEvents.some(e => 
             e.type.toLowerCase().includes('check') || e.type.toLowerCase().includes('in')
         );
 
-        if (hasCheckIn) {
-            // Check if it's a Sunday (weekly off)
-            const isSunday = getDay(date) === 0;
+        // Check if there is an approved attendance correction request for that day
+        const hasCorrection = leaveRequests.some(l => {
+            const lType = String(l.leaveType || (l as any).type || '').toLowerCase();
+            const lStatus = String(l.status || '').toLowerCase();
+            return lType.includes('correction') && 
+                   (lStatus === 'approved' || lStatus === 'correction_made') && 
+                   l.startDate === dateStr;
+        });
+
+        if (hasCheckIn || hasCorrection) {
+            // Check if it's a Weekly Off
+            const weeklyOffDays = userRules?.weeklyOffDays || [0];
+            const isWeeklyOff = weeklyOffDays.includes(getDay(date));
 
             // Check for FIXED holidays (like Republic Day on 26th)
             const isFixedHoliday = FIXED_HOLIDAYS.some(fh => {
@@ -161,17 +171,8 @@ const CompOffCalendar: React.FC<CompOffCalendarProps> = ({
                  return rhN === nth;
             }) || (isBangaloreStaff && isMale && dayName === 'Saturday' && Math.ceil(date.getDate() / 7) === 3 && isFloatingHolidayValid(dateStr));
 
-            // If worked on any type of holiday/Sunday, it's earned comp-off
-            if (isSunday || isFixedHoliday || isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
-                // Check if there is an approved attendance correction request for that day
-                const hasCorrection = leaveRequests.some(l => {
-                    const lType = String(l.leaveType || (l as any).type || '').toLowerCase();
-                    const lStatus = String(l.status || '').toLowerCase();
-                    return lType.includes('correction') && 
-                           (lStatus === 'approved' || lStatus === 'correction_made') && 
-                           l.startDate === dateStr;
-                });
-
+            // If worked on any type of holiday/Week Off, it's earned comp-off
+            if (isWeeklyOff || isFixedHoliday || isPoolHoliday || isConfiguredHoliday || isRecurringHoliday) {
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
                 if (hasCorrection || workingHours >= fullThreshold) {
                     return 'earned';

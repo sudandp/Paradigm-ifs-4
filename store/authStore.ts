@@ -711,13 +711,20 @@ export const useAuthStore = create<AuthState>()(
                 // that cross midnight. Office/Field staff always start from today midnight.
                 // Technical relievers get a 48-hour lookback to detect open sessions from previous days.
                 const { attendance: attendanceSettings } = useSettingsStore.getState();
-                const roleMapping = attendanceSettings.missedCheckoutConfig?.roleMapping || {
-                    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
-                    field: ['field_staff', 'field_officer', 'operation_manager', 'technical_reliever'],
-                    site: ['site_manager', 'security_guard', 'supervisor']
+                const configMapping = (attendanceSettings as any)?.missedCheckoutConfig?.roleMapping
+                    || (attendanceSettings as any)?.missed_checkout_config?.role_mapping
+                    || (attendanceSettings as any)?.missedCheckoutConfig?.role_mapping
+                    || (attendanceSettings as any)?.missed_checkout_config?.roleMapping
+                    || (attendanceSettings as any)?.roleMapping
+                    || (attendanceSettings as any)?.role_mapping;
+
+                const roleMapping = {
+                    office: configMapping?.office || ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff'],
+                    field: configMapping?.field || ['field_staff', 'field_officer', 'operation_manager', 'operations_manager', 'bd', 'business_developer', 'technical_reliever'],
+                    site: configMapping?.site || ['site_manager', 'security_guard', 'supervisor']
                 };
                 const officeRoles = roleMapping.office || [];
-                const isOfficeStaffRole = officeRoles.includes(user.role) || officeRoles.includes(user.roleId);
+                const isOfficeStaffRole = officeRoles.some((r: string) => r.toLowerCase() === (user.role || '').toLowerCase() || (user.roleId && r.toLowerCase() === user.roleId.toLowerCase()));
                 
                 // --- 14-Day Offline Limit Check ---
                 const isSessionValid = await get().checkOfflineSession();

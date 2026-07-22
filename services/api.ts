@@ -4551,8 +4551,8 @@ export const api = {
     // 3rd Saturday rule applies to gents/male employees (defaulting empty/null gender to gents/male as well)
     const isFemale = ['female', 'ladies'].includes((userData.gender || '').toLowerCase());
     const isMale = !isFemale;
-    const userLocationStr = userData.location || userData.location_name || userData.organization_name || userData.society_name || '';
-    const isBangaloreStaff = isBangaloreLocation(userLocationStr) && (staffType === 'office' || staffType === 'field');
+    const userLocationStr = userData.location || userData.location_name || userData.organization_name || userData.society_name || 'Bangalore';
+    const isBangaloreStaff = (isBangaloreLocation(userLocationStr) || !userData.location) && (staffType === 'office' || staffType === 'field');
 
     const intervalDays = eachDayOfInterval({ start: new Date(yearStart.replace(/-/g, '/')), end: endOfMonth(referenceDate) });
     intervalDays.forEach(day => {
@@ -4564,15 +4564,15 @@ export const api = {
              const rhType = rh.type || rh.roleType;
              const rhN = typeof rh.n !== 'undefined' ? rh.n : rh.occurrence;
              
-             if (rhType && rhType !== staffType) return false;
+             const is3rdSat = rh.day === 'Saturday' && rhN === 3;
+             if (rhType && rhType !== staffType && !is3rdSat) return false;
              if (rh.day !== dayName) return false;
              
              // If this rule matches a Saturday, only apply to Bangalore male employees
              // AND ONLY if the policy has not expired (Monthly Floating Holidays expiry applies)
-             if (rh.day === 'Saturday' && rhN === 3) {
+             if (is3rdSat) {
                  if (!isBangaloreStaff) return false;
                  if (!isMale) return false;
-                 if (!isFloatingHolidayValid(dateStr)) return false;
              }
              
              if (rhN === 0) return true; 
@@ -4643,10 +4643,14 @@ export const api = {
                 // Priority 2: Hours-based calculation (supports 0.5 for half-day work)
                 const dayEvents = eventsByDay[dateStr] || [];
                 const { workingHours } = calculateWorkingHours(dayEvents, date);
+                const hasPunch = dayEvents.some(e => ['punch-in', 'site-in', 'check-in', 'site-ot-in'].includes(String(e.type || '').toLowerCase()));
                 if (workingHours >= fullThreshold) {
                     dynamicCompOffTotal += 1;
                 } else if (workingHours >= halfThreshold) {
                     dynamicCompOffTotal += 0.5;
+                } else if (hasPunch) {
+                    // Fallback: Default to 1.0 Comp Off if present on Week Off/Holiday, even if missed checkout or hours < threshold
+                    dynamicCompOffTotal += 1;
                 }
             }
         }
@@ -4790,7 +4794,7 @@ export const api = {
       floatingTotal: floatingTotalValue, 
       floatingUsed: 0,
       floatingPending: 0,
-      compOffTotal: (isNotValid(rules.compOffLeavesValidFrom, rules.compOffLeavesExpiryDate)) ? 0 : finalCompOffTotal, 
+      compOffTotal: finalCompOffTotal, 
       compOffUsed: manualCompOffUsedNotLinked, // Start with manual 'used' logs not linked to requests
       compOffPending: 0,
       maternityTotal: 0,
@@ -5021,7 +5025,7 @@ export const api = {
     // The user policy strictly caps the max available Comp Off balance at 4 at any time.
     // Any balance > 4 at the end of the month is permanently forfeited.
     // We simulate this month-by-month to accurately calculate lost leaves and adjust the total.
-    if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && new Date() <= new Date(rules.compOffLeavesExpiryDate.replace(/-/g, '/')))) {
+    {
         const startMonth = new Date(yearStart.replace(/-/g, '/')).getMonth();
         const endMonth = referenceDate.getMonth();
         
@@ -5058,8 +5062,10 @@ export const api = {
                         } else {
                             const dayEvents = eventsByDay[dateStr] || [];
                             const { workingHours } = calculateWorkingHours(dayEvents, date);
+                            const hasPunch = dayEvents.some(e => ['punch-in', 'site-in', 'check-in', 'site-ot-in'].includes(String(e.type || '').toLowerCase()));
                             if (workingHours >= fullThreshold) earnedThisMonth += 1;
                             else if (workingHours >= halfThreshold) earnedThisMonth += 0.5;
+                            else if (hasPunch) earnedThisMonth += 1;
                         }
                     }
                 }

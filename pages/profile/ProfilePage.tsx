@@ -857,18 +857,29 @@ const ProfilePage: React.FC = () => {
     
     // Role Categorization from Settings
     const { attendance: settingsAttendance } = useSettingsStore();
-    const roleMapping = settingsAttendance.missedCheckoutConfig?.roleMapping || {
-        office: ['admin', 'hr', 'finance', 'developer'],
-        field: ['field_staff', 'field_officer', 'technical_reliever'],
-        site: [
+    const configMapping = (settingsAttendance as any)?.missedCheckoutConfig?.roleMapping 
+        || (settingsAttendance as any)?.missed_checkout_config?.role_mapping 
+        || (settingsAttendance as any)?.missedCheckoutConfig?.role_mapping 
+        || (settingsAttendance as any)?.missed_checkout_config?.roleMapping 
+        || (settingsAttendance as any)?.roleMapping 
+        || (settingsAttendance as any)?.role_mapping;
+
+    const roleMapping = {
+        office: configMapping?.office || ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'accountant', 'finance_manager'],
+        field: configMapping?.field || ['field_staff', 'field_officer', 'technical_reliever', 'operation_manager', 'operations_manager', 'bd', 'business_developer'],
+        site: configMapping?.site || [
             'site_manager', 'security_guard', 'supervisor', 'technician', 'plumber', 'multitech', 'hvac_technician', 'plumber_carpenter',
-            'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer'
+            'afm_-_soft', 'associate_facility_manager', 'afm_-_technical', 'asst_facility_manager_operations', 'asst_facility_manager', 'asst_manager_civil_engineer',
+            'electrical_supervisor', 'electrician', 'lift_technician'
         ]
     };
     
-    const isSiteStaffRole = (roleMapping.site || []).includes(user?.role || '') || (roleMapping.site || []).includes(user?.roleId || '') || isTechnicalReliever;
-    const isFieldStaffRole = (roleMapping.field || []).includes(user?.role || '') || (roleMapping.field || []).includes(user?.roleId || '');
-    const isOfficeStaffRole = (roleMapping.office || []).includes(user?.role || '') || (roleMapping.office || []).includes(user?.roleId || '');
+    const userRoleLower = (user?.role || '').toLowerCase();
+    const userRoleIdLower = (user?.roleId || '').toLowerCase();
+
+    const isSiteStaffRole = (roleMapping.site || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== '')) || isTechnicalReliever;
+    const isFieldStaffRole = (roleMapping.field || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
+    const isOfficeStaffRole = (roleMapping.office || []).some((r: string) => r.toLowerCase() === userRoleLower || (r.toLowerCase() === userRoleIdLower && userRoleIdLower !== ''));
 
     // Check for existing unlock request
     // Check for existing unlock request on mount/update

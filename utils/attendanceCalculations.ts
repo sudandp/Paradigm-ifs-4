@@ -423,10 +423,11 @@ export function getStaffCategory(
 ): 'office' | 'field' | 'site' {
   // PRIMARY: Use saved roleMapping from Admin UI → Attendance Rules → Staff Selections
   // FALLBACK: Use hardcoded defaults only if settings haven't loaded yet
-  const mapping = settings?.missedCheckoutConfig?.roleMapping || settings?.roleMapping || {
-    office: ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'accountant'],
-    field: ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager'],
-    site: ['site_manager', 'security_guard']
+  const rawMapping = settings?.missedCheckoutConfig?.roleMapping || settings?.missed_checkout_config?.role_mapping || settings?.missedCheckoutConfig?.role_mapping || settings?.missed_checkout_config?.roleMapping || settings?.roleMapping || settings?.role_mapping;
+  const mapping = {
+    office: rawMapping?.office || ['admin', 'hr', 'finance', 'developer', 'hr_ops', 'management', 'back_office_staff', 'accountant'],
+    field: rawMapping?.field || ['field_staff', 'field_officer', 'technical_reliever', 'supervisor', 'site_supervisor', 'operation_manager', 'operations_manager', 'bd', 'business_developer'],
+    site: rawMapping?.site || ['site_manager', 'security_guard']
   };
 
   const roleLower = String(roleId || '').toLowerCase();
