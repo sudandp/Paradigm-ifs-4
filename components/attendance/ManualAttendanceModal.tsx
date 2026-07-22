@@ -45,6 +45,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
     // Enhanced State
     const [userCategory, setUserCategory] = useState<'office' | 'field' | 'site'>('office');
+    const [includeSiteVisit, setIncludeSiteVisit] = useState<boolean>(false);
     const [siteOtInTime, setSiteOtInTime] = useState<string>('19:30');
     const [siteOtOutTime, setSiteOtOutTime] = useState<string>('21:30');
     const [includeSiteOt, setIncludeSiteOt] = useState<boolean>(false);
@@ -69,6 +70,7 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             setBreakInTime('13:00');
             setBreakOutTime('14:00');
             setIncludeBreak(false);
+            setIncludeSiteVisit(false);
             setLocationName('Office');
             setReason('');
             setExistingEventIds([]);
@@ -232,24 +234,20 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             return;
         }
 
-        if (includeBreak && !isToday) {
-            if (!breakInTime || !breakOutTime) {
-                setToast({ message: 'Please provide both break in and break out times.', type: 'error' });
-                return;
-            }
-            
-            const checkInDate = new Date(`${date}T${checkInTime}:00`);
-            const checkOutDate = new Date(`${date}T${checkOutTime}:00`);
-            const breakInDate = new Date(`${date}T${breakInTime}:00`);
-            const breakOutDate = new Date(`${date}T${breakOutTime}:00`);
+        if (includeBreak) {
+            if (breakInTime && breakOutTime) {
+                const checkInDate = new Date(`${date}T${checkInTime}:00`);
+                const breakInDate = new Date(`${date}T${breakInTime}:00`);
+                const breakOutDate = new Date(`${date}T${breakOutTime}:00`);
 
-            if (breakInDate <= checkInDate || breakInDate >= checkOutDate) {
-                setToast({ message: 'Break in time must be between punch in and punch out.', type: 'error' });
-                return;
-            }
-            if (breakOutDate <= breakInDate || breakOutDate >= checkOutDate) {
-                setToast({ message: 'Break out time must be after break in and before punch out.', type: 'error' });
-                return;
+                if (breakInDate <= checkInDate) {
+                    setToast({ message: 'Break in time must be after punch in.', type: 'error' });
+                    return;
+                }
+                if (breakOutDate <= breakInDate) {
+                    setToast({ message: 'Break out time must be after break in.', type: 'error' });
+                    return;
+                }
             }
         }
 
@@ -271,20 +269,20 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     user_id: selectedUserId,
                     timestamp: mainInDate.toISOString(),
                     type: 'punch-in',
-                    location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? locationName : 'Site Deployment'),
+                    location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? (locationName || 'Office') : (locationName || 'Site Deployment')),
                     work_type: 'office',
                     is_manual: true,
                     created_by: currentUserId,
                     reason: reason
                 });
 
-                if (!isToday) {
+                if (checkOutTime && checkOutTime.trim() !== '') {
                     const mainOutDate = new Date(`${timestampBase}T${checkOutTime}:00`);
                     eventsToInsert.push({
                         user_id: selectedUserId,
                         timestamp: mainOutDate.toISOString(),
                         type: 'punch-out',
-                        location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? locationName : 'Site Deployment'),
+                        location_name: status === 'W/H' ? 'Work From Home' : (userCategory === 'office' ? (locationName || 'Office') : (locationName || 'Site Deployment')),
                         work_type: 'office',
                         is_manual: true,
                         created_by: currentUserId,
@@ -292,90 +290,99 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                     });
                 }
 
-                // B. Field/Site Visit Session (For Field Staff)
-                if (userCategory !== 'office' && status === 'Site Visit' && !isToday) {
+                // B. Field/Site Visit Session (For Field Staff or when Site Visit / includeSiteVisit selected)
+                if (status === 'Site Visit' || userCategory !== 'office' || includeSiteVisit) {
                     siteVisits.forEach(visit => {
-                        const siteInDate = new Date(`${timestampBase}T${visit.in}:00`);
-                        const siteOutDate = new Date(`${timestampBase}T${visit.out}:00`);
-                        
-                        eventsToInsert.push({
-                            user_id: selectedUserId,
-                            timestamp: siteInDate.toISOString(),
-                            type: 'punch-in',
-                            location_name: locationName,
-                            work_type: 'field',
-                            is_manual: true,
-                            created_by: currentUserId,
-                            reason: reason
-                        });
+                        if (visit.in && visit.in.trim() !== '') {
+                            const siteInDate = new Date(`${timestampBase}T${visit.in}:00`);
+                            eventsToInsert.push({
+                                user_id: selectedUserId,
+                                timestamp: siteInDate.toISOString(),
+                                type: 'punch-in',
+                                location_name: locationName || 'Site Location',
+                                work_type: 'field',
+                                is_manual: true,
+                                created_by: currentUserId,
+                                reason: reason
+                            });
+                        }
 
-                        eventsToInsert.push({
-                            user_id: selectedUserId,
-                            timestamp: siteOutDate.toISOString(),
-                            type: 'punch-out',
-                            location_name: locationName,
-                            work_type: 'field',
-                            is_manual: true,
-                            created_by: currentUserId,
-                            reason: reason
-                        });
+                        if (visit.out && visit.out.trim() !== '') {
+                            const siteOutDate = new Date(`${timestampBase}T${visit.out}:00`);
+                            eventsToInsert.push({
+                                user_id: selectedUserId,
+                                timestamp: siteOutDate.toISOString(),
+                                type: 'punch-out',
+                                location_name: locationName || 'Site Location',
+                                work_type: 'field',
+                                is_manual: true,
+                                created_by: currentUserId,
+                                reason: reason
+                            });
+                        }
                     });
                 }
 
-                // C. Site Overtime (Optional for Field Staff)
-                if (userCategory !== 'office' && includeSiteOt && !isToday) {
-                    const otInDate = new Date(`${timestampBase}T${siteOtInTime}:00`);
-                    const otOutDate = new Date(`${timestampBase}T${siteOtOutTime}:00`);
-                    
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: otInDate.toISOString(),
-                        type: 'site-ot-in',
-                        location_name: locationName,
-                        work_type: 'field',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
-                    });
+                // C. Site Overtime (Optional)
+                if (includeSiteOt) {
+                    if (siteOtInTime && siteOtInTime.trim() !== '') {
+                        const otInDate = new Date(`${timestampBase}T${siteOtInTime}:00`);
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: otInDate.toISOString(),
+                            type: 'site-ot-in',
+                            location_name: locationName || 'Site Location',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
+                    }
 
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: otOutDate.toISOString(),
-                        type: 'site-ot-out',
-                        location_name: locationName,
-                        work_type: 'field',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
-                    });
+                    if (siteOtOutTime && siteOtOutTime.trim() !== '') {
+                        const otOutDate = new Date(`${timestampBase}T${siteOtOutTime}:00`);
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: otOutDate.toISOString(),
+                            type: 'site-ot-out',
+                            location_name: locationName || 'Site Location',
+                            work_type: 'field',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
+                    }
                 }
 
                 // D. Break Events
-                if (includeBreak && !isToday) {
-                    const breakInDate = new Date(`${timestampBase}T${breakInTime}:00`);
-                    const breakOutDate = new Date(`${timestampBase}T${breakOutTime}:00`);
-                    
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: breakInDate.toISOString(),
-                        type: 'break-in',
-                        location_name: status === 'W/H' ? 'Work From Home' : locationName,
-                        work_type: status === 'Site Visit' ? 'field' : 'office',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
-                    });
+                if (includeBreak) {
+                    if (breakInTime && breakInTime.trim() !== '') {
+                        const breakInDate = new Date(`${timestampBase}T${breakInTime}:00`);
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: breakInDate.toISOString(),
+                            type: 'break-in',
+                            location_name: status === 'W/H' ? 'Work From Home' : (locationName || 'Office'),
+                            work_type: status === 'Site Visit' ? 'field' : 'office',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
+                    }
 
-                    eventsToInsert.push({
-                        user_id: selectedUserId,
-                        timestamp: breakOutDate.toISOString(),
-                        type: 'break-out',
-                        location_name: status === 'W/H' ? 'Work From Home' : locationName,
-                        work_type: status === 'Site Visit' ? 'field' : 'office',
-                        is_manual: true,
-                        created_by: currentUserId,
-                        reason: reason
-                    });
+                    if (breakOutTime && breakOutTime.trim() !== '') {
+                        const breakOutDate = new Date(`${timestampBase}T${breakOutTime}:00`);
+                        eventsToInsert.push({
+                            user_id: selectedUserId,
+                            timestamp: breakOutDate.toISOString(),
+                            type: 'break-out',
+                            location_name: status === 'W/H' ? 'Work From Home' : (locationName || 'Office'),
+                            work_type: status === 'Site Visit' ? 'field' : 'office',
+                            is_manual: true,
+                            created_by: currentUserId,
+                            reason: reason
+                        });
+                    }
                 }
             }
 
@@ -576,53 +583,64 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                        Last Punch Out {!isToday && <span className="text-red-500 ml-1">*</span>}
+                                        Last Punch Out
                                     </label>
                                     <input
                                         type="time"
-                                        value={isToday ? '' : checkOutTime}
+                                        value={checkOutTime}
                                         onChange={(e) => setCheckOutTime(e.target.value)}
-                                        disabled={isToday}
-                                        placeholder={isToday ? 'N/A' : ''}
-                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-gray-100 disabled:text-gray-400 bg-white text-sm"
-                                        required={!isToday}
+                                        placeholder="Optional if unpunched"
+                                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-sm"
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        {/* 2. Site Visit Section (Eligibility Based) */}
-                        {userCategory !== 'office' && status === 'Site Visit' && !isToday && (
-                            <div className="space-y-4 pt-2 border-t border-gray-100">
+                        {/* 2. Site Visit Section */}
+                        <div className="space-y-4 pt-2 border-t border-gray-100">
+                            <div className="flex items-center justify-between">
                                 <h3 className="text-sm font-bold text-gray-800 flex items-center">
                                     <FileText className="w-4 h-4 mr-2 text-green-600" /> Site Deployment Details
                                 </h3>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="includeSiteVisit"
+                                        checked={includeSiteVisit || status === 'Site Visit'}
+                                        onChange={(e) => setIncludeSiteVisit(e.target.checked)}
+                                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                                    />
+                                    <label htmlFor="includeSiteVisit" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        {(includeSiteVisit || status === 'Site Visit') ? 'Remove' : 'Add Site Visit'}
+                                    </label>
+                                </div>
+                            </div>
+
+                            {(includeSiteVisit || status === 'Site Visit' || userCategory !== 'office') && (
                                 <div className="space-y-4 bg-green-50/40 p-4 rounded-xl border border-green-100/50">
                                     {siteVisits.map((visit, idx) => (
                                         <div key={idx} className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-md">
                                             <div className="flex-1 space-y-1.5">
                                                 <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                    Site Check In <span className="text-red-500 ml-1">*</span>
+                                                    Site Check In
                                                 </label>
                                                 <input
                                                     type="time"
                                                     value={visit.in}
                                                     onChange={(e) => updateSiteVisit(idx, 'in', e.target.value)}
                                                     className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                                    required
                                                 />
                                             </div>
 
                                             <div className="flex-1 space-y-1.5">
                                                 <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                    Site Check Out <span className="text-red-500 ml-1">*</span>
+                                                    Site Check Out
                                                 </label>
                                                 <input
                                                     type="time"
                                                     value={visit.out}
                                                     onChange={(e) => updateSiteVisit(idx, 'out', e.target.value)}
                                                     className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-white text-sm"
-                                                    required
                                                 />
                                             </div>
                                             {siteVisits.length > 1 && (
@@ -656,62 +674,58 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                         />
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         {/* 3. Break Selection */}
-                        {!isToday && (
-                            <div className="space-y-4 pt-2 border-t border-gray-100">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-bold text-gray-800">Lunch Break</h3>
-                                    <div className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            id="includeBreak"
-                                            checked={includeBreak}
-                                            onChange={(e) => setIncludeBreak(e.target.checked)}
-                                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                        />
-                                        <label htmlFor="includeBreak" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                            {includeBreak ? 'Remove' : 'Add Break'}
+                        <div className="space-y-4 pt-2 border-t border-gray-100">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-gray-800">Lunch Break</h3>
+                                <div className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="includeBreak"
+                                        checked={includeBreak}
+                                        onChange={(e) => setIncludeBreak(e.target.checked)}
+                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="includeBreak" className="ml-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                        {includeBreak ? 'Remove' : 'Add Break'}
+                                    </label>
+                                </div>
+                            </div>
+
+                            {includeBreak && (
+                                <div className="grid grid-cols-2 gap-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                            Break In
                                         </label>
+                                        <input
+                                            type="time"
+                                            value={breakInTime}
+                                            onChange={(e) => setBreakInTime(e.target.value)}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
+                                            Break Out
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={breakOutTime}
+                                            onChange={(e) => setBreakOutTime(e.target.value)}
+                                            className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
+                                        />
                                     </div>
                                 </div>
+                            )}
+                        </div>
 
-                                {includeBreak && (
-                                    <div className="grid grid-cols-2 gap-4 bg-amber-50/40 p-4 rounded-xl border border-amber-100/50">
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                Break In <span className="text-red-500 ml-1">*</span>
-                                            </label>
-                                            <input
-                                                type="time"
-                                                value={breakInTime}
-                                                onChange={(e) => setBreakInTime(e.target.value)}
-                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                                required
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                Break Out <span className="text-red-500 ml-1">*</span>
-                                            </label>
-                                            <input
-                                                type="time"
-                                                value={breakOutTime}
-                                                onChange={(e) => setBreakOutTime(e.target.value)}
-                                                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all bg-white text-sm"
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 4. Site OT Selection (Field Staff only) */}
-                        {userCategory !== 'office' && !isToday && (
+                        {/* 4. Site OT Selection */}
+                        {(status === 'Site Visit' || userCategory !== 'office') && (
                             <div className="space-y-4 pt-2 border-t border-gray-100">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-bold text-gray-800">Site Overtime</h3>
@@ -733,27 +747,25 @@ const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                     <div className="grid grid-cols-2 gap-4 bg-purple-50/40 p-4 rounded-xl border border-purple-100/50">
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                OT Start <span className="text-red-500 ml-1">*</span>
+                                                OT Start
                                             </label>
                                             <input
                                                 type="time"
                                                 value={siteOtInTime}
                                                 onChange={(e) => setSiteOtInTime(e.target.value)}
                                                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-white text-sm"
-                                                required
                                             />
                                         </div>
 
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-gray-600 uppercase tracking-tighter flex items-center">
-                                                OT End <span className="text-red-500 ml-1">*</span>
+                                                OT End
                                             </label>
                                             <input
                                                 type="time"
                                                 value={siteOtOutTime}
                                                 onChange={(e) => setSiteOtOutTime(e.target.value)}
                                                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-white text-sm"
-                                                required
                                             />
                                         </div>
                                     </div>

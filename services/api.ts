@@ -4649,8 +4649,8 @@ export const api = {
                 } else if (workingHours >= halfThreshold) {
                     dynamicCompOffTotal += 0.5;
                 } else if (hasPunch) {
-                    // Fallback: Default to 1.0 Comp Off if present on Week Off/Holiday, even if missed checkout or hours < threshold
-                    dynamicCompOffTotal += 1;
+                    // Fallback: Default to 0.5 Comp Off if present on Week Off/Holiday with hours < threshold
+                    dynamicCompOffTotal += 0.5;
                 }
             }
         }
@@ -4735,13 +4735,26 @@ export const api = {
 
     const monthEnd = endOfMonth(referenceDate);
     
-    // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants
+    // Total Comp Off = (Attendance on Holidays/Sundays) + all manual grants (deduplicated)
     // Accumulate up to the accrualEndDate
-    const manualCompOffGranted = (compOffData || []).filter((log: any) => {
-        if (log.status !== 'earned' && log.status !== 'used') return false;
-        const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
-        return logDate <= accrualEndDate;
-    }).length;
+    const manualCompOffGranted = (compOffData || []).reduce((sum: number, log: any) => {
+        if (log.status !== 'earned' && log.status !== 'used') return sum;
+        const logDateStr = log.date_earned || log.dateEarned;
+        
+        // Deduplicate: If this date was already processed via dynamic attendance calculation, don't double count it!
+        if (logDateStr && workDatesSet.has(logDateStr)) {
+            return sum;
+        }
+
+        const logDate = new Date(logDateStr || log.created_at || log.createdAt);
+        if (logDate > accrualEndDate) return sum;
+
+        const val = typeof log.amount === 'number' 
+            ? log.amount 
+            : ((log.day_option === 'half' || (log.reason && String(log.reason).toLowerCase().includes('half'))) ? 0.5 : 1);
+
+        return sum + val;
+    }, 0);
     
     // compOffUsed starts with manual used logs that are NOT linked to any leave request to avoid double-counting
     const manualCompOffUsedNotLinked = (compOffData || []).filter((log: any) => {

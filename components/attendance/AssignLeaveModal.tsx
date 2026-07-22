@@ -452,7 +452,13 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                         <label className="text-xs font-semibold text-gray-700">Status</label>
                                         <select
                                             value={correctionStatus}
-                                            onChange={(e) => setCorrectionStatus(e.target.value as any)}
+                                            onChange={(e) => {
+                                                const val = e.target.value as any;
+                                                setCorrectionStatus(val);
+                                                if (val === 'Site Visit') {
+                                                    setIncludeSite(true);
+                                                }
+                                            }}
                                             className="w-full p-2 border border-gray-300 rounded-md text-sm"
                                         >
                                             <option value="Present">Present (Office)</option>
@@ -460,14 +466,14 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                             <option value="W/H">Work From Home</option>
                                         </select>
                                     </div>
-                                    {(correctionStatus === 'Present' || correctionStatus === 'Site Visit') && (
+                                    {(correctionStatus === 'Present' || correctionStatus === 'Site Visit' || includeSite) && (
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-semibold text-gray-700">Location Name</label>
                                             <input
                                                 type="text"
                                                 value={locationName}
                                                 onChange={(e) => setLocationName(e.target.value)}
-                                                placeholder={correctionStatus === 'Site Visit' ? "e.g. Client Site" : "e.g. Office"}
+                                                placeholder={correctionStatus === 'Site Visit' || includeSite ? "e.g. Client Site" : "e.g. Office"}
                                                 className="w-full p-2 border border-gray-300 rounded-md text-sm"
                                             />
                                         </div>
@@ -494,6 +500,7 @@ const AssignLeaveModal: React.FC<AssignLeaveModalProps> = ({
                                             type="time"
                                             value={punchOut}
                                             onChange={(e) => setPunchOut(e.target.value)}
+                                            placeholder="Optional"
                                             className="w-full p-2 border border-gray-300 rounded-md text-sm"
                                         />
                                     </div>
