@@ -793,6 +793,7 @@ const LeaveDashboard: React.FC = () => {
     };
 
     const staffCategory = user ? getStaffCategory(user.roleId || user.role || '', user.societyId || user.organizationId, attendanceSettings) : 'office';
+    const userRulesForDisplay = attendanceSettings ? attendanceSettings[staffCategory] : null;
     const blueLeaveStatus = getBlueLeaveStatusForViewingDate();
 
     const balanceCards = balanceDataState ? [
@@ -1152,6 +1153,19 @@ const LeaveDashboard: React.FC = () => {
                                             </td>
                                             <td data-label="Status" className="px-6 py-4">
                                                 <LeaveStatusChip status={req.status} />
+                                                {lType.includes('correction') && req.status === 'correction_made' && (
+                                                    <div className="text-[10px] text-emerald-600 font-semibold mt-1.5 leading-tight">
+                                                        Auto-approved by Paradigm AI<br/>
+                                                        (Used {
+                                                            requests.filter(r => 
+                                                                String(r.leaveType).toLowerCase().includes('correction') &&
+                                                                new Date(r.startDate.replace(/-/g, '/')).getMonth() === new Date(req.startDate.replace(/-/g, '/')).getMonth() &&
+                                                                new Date(r.startDate.replace(/-/g, '/')).getFullYear() === new Date(req.startDate.replace(/-/g, '/')).getFullYear() &&
+                                                                ['approved', 'correction_made', 'pending_manager_approval'].includes(r.status)
+                                                            ).length
+                                                        } / {userRulesForDisplay?.maxCorrectionsPerMonth || 3} this month)
+                                                    </div>
+                                                )}
                                             </td>
                                             <td data-label="Actions" className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-1 flex-wrap items-center">

@@ -170,7 +170,7 @@ interface AuthState {
     /** True when a technical_reliever has an unclosed session from a previous day */
     hasPreviousDayOpenSession: boolean;
     /** Info about the open previous-day session (date, last event type) */
-    previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null;
+    previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; } | null;
     isBreakingOut: boolean;
     setIsBreakingOut: (val: boolean) => void;
     loginWithPasscode: (email: string, passcode: string, rememberMe: boolean) => Promise<{ error: { message: string } | null }>;
@@ -861,6 +861,34 @@ export const useAuthStore = create<AuthState>()(
                     }
                 }
 
+                // If user is NOT currently checked in today (e.g. past session resolved by correction/regularization or closed),
+                // do not leak yesterday's check-in/break timestamps into today's tracking UI!
+                const isCheckedInNow = currentlyCheckedIn || isFieldCheckedIn || (!isOfficeStaffRole && isSiteOtCheckedIn);
+                
+                // Check if any check-in event actually occurred TODAY
+                const todayEvents = events.filter(e => getLocalDateKey(new Date(e.timestamp)) === todayDateStr);
+                const hasPunchToday = todayEvents.some(e => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
+
+                let finalCheckIn = checkIn;
+                let finalCheckOut = lastEvent?.type === 'punch-out' ? checkOut : null;
+                let finalFirstBreakIn = firstBreakIn;
+                let finalLastBreakIn = lastBreakIn;
+                let finalLastBreakOut = breakOut;
+                let finalBreakHours = breakHours;
+                let finalWorkingHours = workingHours;
+                let finalBreakIntervals = breakIntervals;
+
+                if (!isCheckedInNow && !hasPunchToday) {
+                    finalCheckIn = null;
+                    finalCheckOut = null;
+                    finalFirstBreakIn = null;
+                    finalLastBreakIn = null;
+                    finalLastBreakOut = null;
+                    finalBreakHours = 0;
+                    finalWorkingHours = 0;
+                    finalBreakIntervals = [];
+                }
+
                 // Count daily primary punches using the logic from processDailyEvents
                 // which correctly ignores previous day's completed shifts.
                 const dailyPunchCount = processedDailyPunchCount;
@@ -872,7 +900,7 @@ export const useAuthStore = create<AuthState>()(
                 // If the last punch-in or site-ot-in is from a day before today and has no
                 // corresponding punch-out/site-ot-out, the session is considered "open from previous day".
                 let hasPreviousDayOpenSession = false;
-                let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string } | null = null;
+                let previousDaySessionInfo: { date: string; lastEventType: string; lastEventTime: string; firstIn?: string | null; lastOut?: string | null; firstBreakIn?: string | null; lastBreakOut?: string | null; workingHours?: number; } | null = null;
 
                 if (lastEvent) {
                     const todayDateStr = getLocalDateKey(today);
@@ -913,10 +941,18 @@ export const useAuthStore = create<AuthState>()(
 
                             if (!isResolvedByRequest) {
                                 hasPreviousDayOpenSession = true;
+                                const previousDayEvents = events.filter(e => e.timestamp.startsWith(sessionDateStr));
+                                const { checkIn, checkOut, firstBreakIn, breakOut, workingHours: calculatedWorkingHours } = processDailyEvents(previousDayEvents, earliestSessionTime);
+
                                 previousDaySessionInfo = {
                                     date: sessionDateStr,
                                     lastEventType: lastEvent.type,
-                                    lastEventTime: new Date(lastEvent.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                                    lastEventTime: new Date(lastEvent.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+                                    firstIn: checkIn,
+                                    lastOut: checkOut,
+                                    firstBreakIn: firstBreakIn,
+                                    lastBreakOut: breakOut,
+                                    workingHours: calculatedWorkingHours
                                 };
                             }
                         }
@@ -932,16 +968,16 @@ export const useAuthStore = create<AuthState>()(
                 }
 
                 set({
-                    isCheckedIn: currentlyCheckedIn || (!isOfficeStaffRole && isSiteOtCheckedIn),
+                    isCheckedIn: isCheckedInNow,
                     isOnBreak: isOnBreak,
-                    lastCheckInTime: checkIn,
-                    lastCheckOutTime: lastEvent?.type === 'punch-out' ? checkOut : null,
-                    firstBreakInTime: firstBreakIn,
-                    lastBreakInTime: lastBreakIn,
-                    lastBreakOutTime: breakOut,
-                    totalBreakDurationToday: breakHours,
-                    totalWorkingDurationToday: workingHours,
-                    breakIntervals: breakIntervals,
+                    lastCheckInTime: finalCheckIn,
+                    lastCheckOutTime: finalCheckOut,
+                    firstBreakInTime: finalFirstBreakIn,
+                    lastBreakInTime: finalLastBreakIn,
+                    lastBreakOutTime: finalLastBreakOut,
+                    totalBreakDurationToday: finalBreakHours,
+                    totalWorkingDurationToday: finalWorkingHours,
+                    breakIntervals: finalBreakIntervals,
                     isAttendanceLoading: false,
                     dailyPunchCount,
                     approvedUnlockCount,

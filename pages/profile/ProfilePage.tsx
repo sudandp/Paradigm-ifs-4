@@ -104,7 +104,7 @@ const ProfilePage: React.FC = () => {
         }
     };
 
-    const handleAutoCheckOut = async () => {
+    const handleAutoCheckOut = async (userReason?: string) => {
         triggerHaptic(ImpactStyle.Medium);
         setIsSubmittingAttendance(true);
         try {
@@ -129,25 +129,57 @@ const ProfilePage: React.FC = () => {
 
             let success = true;
             let errMsg = '';
-            for (const wt of toClose) {
-                const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
-                // Inject the intended session date in brackets so the frontend can properly group it
-                const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
-                const note = wt === 'field'
-                    ? `user clicked for site out${dateTag}`
-                    : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
-                const res = await toggleCheckInStatus(
-                    note,
-                    null,
-                    wt,
-                    undefined,
-                    forcedType,
-                    undefined,
-                    overrideTimestamp
-                );
-                if (!res.success) {
-                    success = false;
-                    errMsg = res.message;
+            if (hasPreviousDayOpenSession && previousDaySessionInfo?.date && user) {
+                try {
+                    const punchInTimeStr = previousDaySessionInfo.firstIn ? previousDaySessionInfo.firstIn.substring(0, 5) : '09:00';
+                    const punchOutTimeStr = '23:59';
+                    
+                    const baseNote = `user clicked for punch out from missed punch-out dialog`;
+                    const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
+                    
+                    const payload = {
+                        userId: user.id,
+                        userName: user.name,
+                        leaveType: 'Correction',
+                        startDate: previousDaySessionInfo.date,
+                        endDate: previousDaySessionInfo.date,
+                        dayOption: 'full',
+                        reason: note,
+                        correctionDetails: {
+                            status: 'Auto-closed Missed Punch-Out',
+                            punchIn: punchInTimeStr,
+                            punchOut: punchOutTimeStr
+                        }
+                    };
+                    
+                    const newReq = await api.submitLeaveRequest(payload as any);
+                    await api.approveLeaveRequest(newReq.id, user.id);
+                } catch (correctionErr: any) {
+                     success = false;
+                     errMsg = correctionErr.message || 'Failed to process Correction for missed punch-out.';
+                }
+            } else {
+                for (const wt of toClose) {
+                    const forcedType = wt === 'field' ? 'site-out' : 'punch-out';
+                    // Inject the intended session date in brackets so the frontend can properly group it
+                    const dateTag = previousDaySessionInfo?.date ? ` [SessionDate: ${previousDaySessionInfo.date}]` : '';
+                    const baseNote = wt === 'field'
+                        ? `user clicked for site out${dateTag}`
+                        : `user clicked for punch out with out applying correction this is the record of punch out${dateTag}`;
+                    const note = userReason ? `${baseNote}. Reason: ${userReason}` : baseNote;
+                    const res = await toggleCheckInStatus(
+                        note,
+                        null,
+                        wt,
+                        undefined,
+                        forcedType,
+                        undefined,
+                        overrideTimestamp
+                    );
+                    if (!res.success) {
+                        success = false;
+                        errMsg = res.message;
+                    }
                 }
             }
 
@@ -161,12 +193,16 @@ const ProfilePage: React.FC = () => {
             setToast({ message: err.message || 'Auto check-out failed.', type: 'error' });
         } finally {
             setIsSubmittingAttendance(false);
+            setIsPunchOutModalOpen(false);
+            setPunchOutReason('');
         }
     };
 
 
     const [isSaving, setIsSaving] = useState(false);
     const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
+    const [isPunchOutModalOpen, setIsPunchOutModalOpen] = useState(false);
+    const [punchOutReason, setPunchOutReason] = useState('');
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
     const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
     const [missingPunchReason, setMissingPunchReason] = useState('');
@@ -1493,7 +1529,7 @@ const ProfilePage: React.FC = () => {
                                                 {!isCheckedIn && (
                                                     <button
                                                         disabled={isSubmittingAttendance}
-                                                        onClick={handleAutoCheckOut}
+                                                        onClick={() => handleAutoCheckOut()}
                                                         className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                                     >
                                                         {isSubmittingAttendance ? (
@@ -1573,7 +1609,7 @@ const ProfilePage: React.FC = () => {
                                                 navigate('/attendance/check-in?workType=office');
                                             }
                                         }}
-                                        disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
+                                        disabled={isOnBreak || isSubmittingAttendance || (isPunchBlocked && unlockRequestStatus === 'pending')}
                                         className={`
                                             relative w-40 h-40 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-2xl overflow-hidden
                                             ${isOnBreak || isSubmittingAttendance ? 'opacity-50 grayscale cursor-not-allowed' : ''}
@@ -2638,25 +2674,25 @@ const ProfilePage: React.FC = () => {
                                         <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> First In
                                         </div>
-                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckInTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(hasPreviousDayOpenSession && previousDaySessionInfo?.firstIn ? previousDaySessionInfo.firstIn : lastCheckInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                         <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Last Out
                                         </div>
-                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastCheckOutTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(hasPreviousDayOpenSession && previousDaySessionInfo?.lastOut ? previousDaySessionInfo.lastOut : lastCheckOutTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                         <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> First B-In
                                         </div>
-                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(firstBreakInTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(hasPreviousDayOpenSession && previousDaySessionInfo?.firstBreakIn ? previousDaySessionInfo.firstBreakIn : firstBreakInTime)}</p>
                                     </div>
                                     <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100 flex flex-col justify-center">
                                         <div className="text-[10px] font-bold text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1.5">
                                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div> Last B-Out
                                         </div>
-                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(lastBreakOutTime)}</p>
+                                        <p className="text-lg font-bold text-gray-900 font-mono tracking-tight">{formatTime(hasPreviousDayOpenSession && previousDaySessionInfo?.lastBreakOut ? previousDaySessionInfo.lastBreakOut : lastBreakOutTime)}</p>
                                     </div>
                                 </div>
 
@@ -2678,14 +2714,14 @@ const ProfilePage: React.FC = () => {
                                                                         Site OT Out
                                                                     </Button>
                                                                 )}
-                                                                {!isCheckedIn && (isFieldCheckedIn) && !isSiteOtCheckedIn && (
+                                                                {!isSiteOtCheckedIn && (
                                                                      <Button 
-                                                                         onClick={handleAutoCheckOut} 
+                                                                         onClick={() => setIsPunchOutModalOpen(true)} 
                                                                          isLoading={isSubmittingAttendance}
                                                                          variant="danger" 
                                                                          className="!h-7 !text-[10px] !px-2.5"
                                                                      >
-                                                                         {isFieldCheckedIn ? 'Site Out' : 'Punch Out'}
+                                                                         {previousDaySessionInfo.lastEventType.includes('site') ? 'Site Out' : 'Punch Out'}
                                                                      </Button>
                                                                  )}
                                                                 <Button onClick={() => navigate(`/leaves/apply?leaveType=Correction&startDate=${previousDaySessionInfo.date}`)} variant="secondary" className="!h-7 !text-[10px] !px-2.5">
@@ -2749,8 +2785,8 @@ const ProfilePage: React.FC = () => {
                                                             variant="primary"
                                                             className={`w-full !h-12 !rounded-2xl transition-all font-black uppercase tracking-widest text-sm shadow-xl shadow-emerald-900/20 ${
                                                                 isPunchBlocked ? '!bg-amber-600' : '!bg-emerald-600 hover:!bg-emerald-700 '
-                                                            } ${(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn) ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
-                                                            disabled={(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') || (hasPreviousDayOpenSession && !effectivelyCheckedIn)}
+                                                            } ${(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending') ? '!bg-gray-100 !text-gray-700 !border-gray-200 pointer-events-none shadow-none' : ''}`}
+                                                            disabled={(isOnBreak && !effectivelyCheckedIn) || isActionInProgress || (isPunchBlocked && unlockRequestStatus === 'pending')}
                                                         >
                                                            {isPunchBlocked ? (
                                                                 unlockRequestStatus === 'pending' 
@@ -3847,6 +3883,35 @@ const ProfilePage: React.FC = () => {
             )}
 
             <HelpTicketModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
+
+            {/* Punch Out Reason Modal */}
+            <Modal
+                isOpen={isPunchOutModalOpen}
+                onClose={() => setIsPunchOutModalOpen(false)}
+                title="Punch Out"
+                confirmButtonText="Confirm Punch Out"
+                confirmButtonVariant="danger"
+                onConfirm={() => handleAutoCheckOut(punchOutReason)}
+                isLoading={isSubmittingAttendance}
+            >
+                <div className="space-y-4">
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
+                        <p className="text-amber-800 text-sm font-bold">You are closing an open session from {previousDaySessionInfo?.date}</p>
+                        <p className="text-amber-700 text-xs mt-1">Calculated Hours: <strong>{previousDaySessionInfo?.workingHours || 0} hrs</strong></p>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Reason for missed punch out / late punch out</label>
+                        <textarea
+                            value={punchOutReason}
+                            onChange={(e) => setPunchOutReason(e.target.value)}
+                            className="w-full form-input rounded-xl text-sm"
+                            rows={3}
+                            placeholder="Please provide a reason..."
+                            required
+                        />
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

@@ -1244,6 +1244,7 @@ const ApplyLeave: React.FC = () => {
                 };
             }
 
+            let submittedId: string | null = null;
             if (isEditMode && editId) {
                 // When editing a request that was previously rejected or cancelled, 
                 // reset its status to start the approval flow again.
@@ -1251,13 +1252,26 @@ const ApplyLeave: React.FC = () => {
                     ...basePayload,
                     status: 'pending_manager_approval'
                 });
+                submittedId = editId;
                 setToast({ message: 'Leave request updated successfully!', type: 'success' });
             } else {
-                await api.submitLeaveRequest(basePayload);
+                const newReq = await api.submitLeaveRequest(basePayload);
+                submittedId = newReq.id;
                 setToast({ 
                     message: isOffline ? 'You are offline. Request saved and will sync later!' : 'Leave request submitted successfully!', 
                     type: 'success' 
                 });
+            }
+
+            // AUTO-APPROVE CORRECTION
+            if (leaveType === 'Correction' && submittedId && !isOffline) {
+                try {
+                    await api.approveLeaveRequest(submittedId, user.id);
+                    setToast({ message: 'Correction auto-approved and attendance updated.', type: 'success' });
+                } catch (approveErr) {
+                    console.error('Failed to auto-approve correction:', approveErr);
+                    setToast({ message: 'Correction submitted but failed to auto-approve.', type: 'error' });
+                }
             }
             
             // Asynchronously sync/refresh check-in status immediately

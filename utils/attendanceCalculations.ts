@@ -356,10 +356,7 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
   // Sort events chronologically
   const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   
-  // Discard previous day's COMPLETED shifts.
-  // The 30-hour lookback can pull in yesterday's completed day shift.
-  // We find the last explicit punch-out that occurred before today's midnight
-  // and discard all events up to and including it.
+  // Discard events prior to target day if they belong to a past date and are not part of an ongoing night shift.
   const targetDate = processingDate || new Date();
   const startOfTargetDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0);
 
@@ -373,15 +370,21 @@ export function processDailyEvents(events: AttendanceEvent[], processingDate?: D
      if (e.type === 'punch-in' || e.type === 'site-ot-in' || e.type === 'site-in') {
          lastPunchInTime = eventTime;
      } else if (e.type === 'punch-out' || e.type === 'site-ot-out' || e.type === 'site-out') {
-         // If we have a punch-out that closes a shift which started BEFORE today,
-         // or if we somehow missed the punch-in (null) but it's a punch-out before today.
          if ((lastPunchInTime && lastPunchInTime < startOfTargetDay) || (!lastPunchInTime && eventTime < startOfTargetDay)) {
              cutoffIndex = i;
          }
      }
   }
   
-  const relevantEvents = cutoffIndex >= 0 ? sortedEvents.slice(cutoffIndex + 1) : sortedEvents;
+  let relevantEvents = cutoffIndex >= 0 ? sortedEvents.slice(cutoffIndex + 1) : sortedEvents;
+
+  // If all remaining events in relevantEvents started before today (i.e., yesterday's session),
+  // they should only be treated as relevant if the shift is still active. If it's a past unclosed session,
+  // do NOT calculate yesterday's timestamps as today's checkIn/break times!
+  const hasTodayEvent = relevantEvents.some(e => new Date(e.timestamp) >= startOfTargetDay);
+  if (!hasTodayEvent) {
+    relevantEvents = [];
+  }
 
   const firstCheckIn = relevantEvents.find(e => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
   const lastCheckOut = [...relevantEvents].reverse().find(e => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
