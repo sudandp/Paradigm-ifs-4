@@ -4622,17 +4622,19 @@ export const api = {
     workDatesSet.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
         
-        // Comp Offs accumulate up to the viewed referenceDate (expiry logic removed per user request)
-        if (date > accrualEndDate) return;
+        // Comp Offs accumulate within active period (rolling 60-day window up to referenceDate)
+        const compOffEarliestDate = startOfMonth(subMonths(referenceDate, 1));
+        if (date < compOffEarliestDate || date > accrualEndDate) return;
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
         if (weeklyOffDays.includes(dayOfWeek) || holidayDates.has(dateStr)) {
-            // Priority 1: Approved Corrections always earn 1.0 CO
+            // Priority 1: Approved Comp Off Corrections earn CO
             const hasCorrection = approvedLeaves.some(l => {
                 const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
                 const lStatus = String(l.status || '').toLowerCase();
-                return lType.includes('correction') && 
+                const isCompCorrection = (lType.includes('comp') || (lType.includes('correction') && String((l as any).reason || '').toLowerCase().includes('comp')));
+                return isCompCorrection && 
                        (lStatus === 'approved' || lStatus === 'correction_made') && 
                        l.start_date === dateStr;
             });
@@ -5021,8 +5023,9 @@ export const api = {
         if (isApproved) balance.maternityUsed += leaveAmount;
         if (isPending) balance.maternityPending += leaveAmount;
       } else if (type.includes('comp') || type === 'co') {
-        // Accumulate used Comp Offs up to the reference date
-        if (leaveStartDateObj <= monthEnd) {
+        // Accumulate used Comp Offs within active period (rolling 60-day window up to referenceDate)
+        const compOffEarliestDate = startOfMonth(subMonths(referenceDate, 1));
+        if (leaveStartDateObj >= compOffEarliestDate && leaveStartDateObj <= monthEnd) {
           if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && leaveStart <= rules.compOffLeavesExpiryDate)) {
             if (isApproved) balance.compOffUsed += leaveAmount;
             if (isPending) balance.compOffPending += leaveAmount;
@@ -5066,7 +5069,8 @@ export const api = {
                         const hasCorrection = approvedLeaves.some(l => {
                             const lType = String(l.leave_type || (l as any).type || '').toLowerCase();
                             const lStatus = String(l.status || '').toLowerCase();
-                            return lType.includes('correction') && 
+                            const isCompCorrection = (lType.includes('comp') || (lType.includes('correction') && String((l as any).reason || '').toLowerCase().includes('comp')));
+                            return isCompCorrection && 
                                    (lStatus === 'approved' || lStatus === 'correction_made') && 
                                    l.start_date === dateStr;
                         });
@@ -5078,18 +5082,22 @@ export const api = {
                             const hasPunch = dayEvents.some(e => ['punch-in', 'site-in', 'check-in', 'site-ot-in'].includes(String(e.type || '').toLowerCase()));
                             if (workingHours >= fullThreshold) earnedThisMonth += 1;
                             else if (workingHours >= halfThreshold) earnedThisMonth += 0.5;
-                            else if (hasPunch) earnedThisMonth += 1;
+                            else if (hasPunch) earnedThisMonth += 0.5;
                         }
                     }
                 }
             });
             
-            // 2. Manual Granted
+            // 2. Manual Granted (deduplicated with dynamic events)
             (compOffData || []).forEach((log: any) => {
                 if (log.status === 'earned') {
-                    const logDate = new Date(log.date_earned || log.dateEarned || log.created_at || log.createdAt);
-                    if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
-                        earnedThisMonth += 1;
+                    const logDateStr = log.date_earned || log.dateEarned;
+                    if (!logDateStr || !workDatesSet.has(logDateStr)) {
+                        const logDate = new Date(logDateStr || log.created_at || log.createdAt);
+                        if (logDate.getMonth() === m && logDate.getFullYear() === currentYear && logDate <= accrualEndDate) {
+                            const val = typeof log.amount === 'number' ? log.amount : (log.day_option === 'half' ? 0.5 : 1);
+                            earnedThisMonth += val;
+                        }
                     }
                 }
             });
