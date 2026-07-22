@@ -104,6 +104,41 @@ const ProfilePage: React.FC = () => {
         }
     };
 
+    // Correction Modal States
+    const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+    const [correctionReason, setCorrectionReason] = useState('');
+    const [usedCorrections, setUsedCorrections] = useState(0);
+
+    // Fetch used corrections
+    const fetchUsedCorrections = useCallback(async () => {
+        if (!user?.id) return;
+        try {
+            const startOfMonth = new Date();
+            startOfMonth.setDate(1);
+            startOfMonth.setHours(0, 0, 0, 0);
+
+            const { data, error } = await supabase
+                .from('leave_requests')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('leave_type', 'Correction')
+                .in('status', ['Approved', 'Auto-Approved'])
+                .gte('start_date', startOfMonth.toISOString().split('T')[0]);
+                
+            if (!error && data) {
+                setUsedCorrections(data.length);
+            }
+        } catch (err) {
+            console.error('Failed to fetch used corrections', err);
+        }
+    }, [user?.id]);
+
+    useEffect(() => {
+        if (hasPreviousDayOpenSession) {
+            fetchUsedCorrections();
+        }
+    }, [hasPreviousDayOpenSession, fetchUsedCorrections]);
+
     const handleAutoCheckOut = async (userReason?: string) => {
         triggerHaptic(ImpactStyle.Medium);
         setIsSubmittingAttendance(true);
@@ -1529,7 +1564,7 @@ const ProfilePage: React.FC = () => {
                                                 {!isCheckedIn && (
                                                     <button
                                                         disabled={isSubmittingAttendance}
-                                                        onClick={() => handleAutoCheckOut()}
+                                                        onClick={() => setShowCorrectionModal(true)}
                                                         className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                                     >
                                                         {isSubmittingAttendance ? (
@@ -2652,6 +2687,74 @@ const ProfilePage: React.FC = () => {
                             </div>
                         </form>
                     </div>
+
+                    {/* Missed Punch-Out Correction Modal */}
+                    {showCorrectionModal && previousDaySessionInfo && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
+                                <div className="p-5 border-b border-gray-100 flex items-center gap-3">
+                                    <div className="p-2 bg-rose-100 rounded-lg">
+                                        <AlertTriangle className="h-5 w-5 text-rose-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-900">Close Previous Session</h3>
+                                        <p className="text-xs text-gray-500">You forgot to punch out on {new Date(previousDaySessionInfo.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}.</p>
+                                    </div>
+                                </div>
+                                <div className="p-5 space-y-4">
+                                    <div className="bg-orange-50 p-3 rounded-xl border border-orange-100 space-y-2">
+                                        <p className="text-sm text-orange-900">
+                                            You checked in at <strong className="font-mono">{previousDaySessionInfo.firstIn}</strong>.
+                                        </p>
+                                        <p className="text-sm text-orange-900">
+                                            By punching out now, your checkout time will be recorded as <strong className="font-mono">23:59</strong>, and you will have worked <strong>{previousDaySessionInfo.workingHours?.toFixed(1) || 0} hours</strong>.
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="bg-blue-50/70 p-3 rounded-xl border border-blue-100">
+                                        <p className="text-xs text-blue-900 font-medium">
+                                            Correction handled by Paradigm AI. You have used <strong className="text-blue-700">{usedCorrections} / {((settingsAttendance as any)?.[user?.role === 'office' ? 'office' : 'field']?.maxCorrectionsPerMonth) ?? 3}</strong> corrections this month.
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">Mention Reason <span className="text-rose-500">*</span></label>
+                                        <input 
+                                            type="text"
+                                            value={correctionReason}
+                                            onChange={(e) => setCorrectionReason(e.target.value)}
+                                            placeholder="e.g., Forgot to punch out"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                                    <button 
+                                        onClick={() => setShowCorrectionModal(false)}
+                                        className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-900 transition-colors"
+                                        disabled={isSubmittingAttendance}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            if (!correctionReason.trim()) {
+                                                setToast({ message: 'Please mention a reason.', type: 'error' });
+                                                return;
+                                            }
+                                            setShowCorrectionModal(false);
+                                            handleAutoCheckOut(correctionReason);
+                                        }}
+                                        disabled={!correctionReason.trim() || isSubmittingAttendance}
+                                        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                        {isSubmittingAttendance && <Loader2 className="h-4 w-4 animate-spin" />}
+                                        Submit & Punch Out
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Work Hours Tracking */}
                     {user.role !== 'management' ? (
