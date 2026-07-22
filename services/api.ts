@@ -4622,9 +4622,8 @@ export const api = {
     workDatesSet.forEach(dateStr => {
         const date = new Date(dateStr.replace(/-/g, '/'));
         
-        // Comp Offs accumulate within active period (rolling 60-day window up to referenceDate)
-        const compOffEarliestDate = startOfMonth(subMonths(referenceDate, 1));
-        if (date < compOffEarliestDate || date > accrualEndDate) return;
+        // Comp Offs accumulate up to accrualEndDate
+        if (date > accrualEndDate) return;
 
         // Comp Off Accrual Check (Week Off or Public/Recurring Holiday)
         const dayOfWeek = date.getDay();
@@ -5023,9 +5022,8 @@ export const api = {
         if (isApproved) balance.maternityUsed += leaveAmount;
         if (isPending) balance.maternityPending += leaveAmount;
       } else if (type.includes('comp') || type === 'co') {
-        // Accumulate used Comp Offs within active period (rolling 60-day window up to referenceDate)
-        const compOffEarliestDate = startOfMonth(subMonths(referenceDate, 1));
-        if (leaveStartDateObj >= compOffEarliestDate && leaveStartDateObj <= monthEnd) {
+        // Accumulate used Comp Offs up to the reference date
+        if (leaveStartDateObj <= monthEnd) {
           if (!expiryStates.compOff || (rules.compOffLeavesExpiryDate && leaveStart <= rules.compOffLeavesExpiryDate)) {
             if (isApproved) balance.compOffUsed += leaveAmount;
             if (isPending) balance.compOffPending += leaveAmount;
@@ -5148,10 +5146,7 @@ export const api = {
             if (simulatedBalance < 0) simulatedBalance = 0;
         }
         
-        balance.compOffTotal -= totalLost;
-        if (balance.compOffTotal < balance.compOffUsed + balance.compOffPending) {
-             balance.compOffTotal = balance.compOffUsed + balance.compOffPending;
-        }
+        balance.compOffTotal = Math.min(4, Math.max(0, simulatedBalance)) + balance.compOffUsed + balance.compOffPending;
     }
 
     balance.debug = {
