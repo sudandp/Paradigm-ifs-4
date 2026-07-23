@@ -14,10 +14,15 @@ interface TrackingPlugin {
     userId: string;
     supabaseUrl: string;
     supabaseKey: string;        // anon key — used as apikey header only
-    supabaseToken: string;     // user JWT — used as Authorization Bearer header
+    supabaseToken: string;     // user JWT access token — used as Authorization Bearer header
+    supabaseRefreshToken?: string; // user JWT refresh token
     intervalMinutes: number;
   }): Promise<void>;
   stopForegroundService(): Promise<void>;
+  updateTokens(options: {
+    supabaseToken: string;
+    supabaseRefreshToken?: string;
+  }): Promise<void>;
 }
 
 
@@ -39,19 +44,19 @@ class RouteTrackingService {
     // so it keeps running even when the WebView JS runtime is paused in background.
     if (Capacitor.getPlatform() === 'android') {
       try {
-        // [AUTH FIX] Read the live JWT access token from the current session.
-        // The anon key is NOT a valid Bearer token — it identifies the project,
-        // not the user. Sending it as Authorization causes 401 on RLS-protected tables.
+        // [AUTH FIX] Read the live JWT access token and refresh token from the current session.
         const { data: { session } } = await supabase.auth.getSession();
-        const accessToken = session?.access_token || supabaseAnonKey || '';
+        const accessToken  = session?.access_token || supabaseAnonKey || '';
+        const refreshToken = session?.refresh_token || '';
 
         await Tracking.startForegroundService({
           title: 'Paradigm Field Ops',
           text:  'Location tracking is active',
           userId,
-          supabaseUrl:   supabaseUrl  || '',
-          supabaseKey:   supabaseAnonKey || '',  // still needed as apikey header
-          supabaseToken: accessToken,             // JWT for Authorization header
+          supabaseUrl:          supabaseUrl  || '',
+          supabaseKey:          supabaseAnonKey || '',  // still needed as apikey header
+          supabaseToken:        accessToken,             // JWT for Authorization header
+          supabaseRefreshToken: refreshToken,            // Refresh token for native auto-renewal
           intervalMinutes,
         });
         console.log('[RouteTracking] Native Android foreground service started — GPS handled natively');
@@ -93,6 +98,17 @@ class RouteTrackingService {
 
     this.isTracking = false;
     this.isRecording = false;
+  }
+
+  public async updateTokens(supabaseToken: string, supabaseRefreshToken?: string) {
+    if (Capacitor.getPlatform() === 'android' && supabaseToken) {
+      try {
+        await Tracking.updateTokens({ supabaseToken, supabaseRefreshToken });
+        console.log('[RouteTracking] Fresh session tokens pushed to Android TrackingService');
+      } catch (err) {
+        console.warn('[RouteTracking] Failed to update tokens on native tracking plugin:', err);
+      }
+    }
   }
 
   public async recordPosition(userId: string, requestId?: string) {

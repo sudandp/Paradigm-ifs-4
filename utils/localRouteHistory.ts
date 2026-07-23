@@ -209,7 +209,14 @@ export async function pushLocalPointsToSupabase(userId: string): Promise<{ succe
         .from('route_history')
         .insert(dbPayload);
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('JWT') || error.message?.includes('401')) {
+          console.warn('[localRouteHistory] Auth/RLS error during sync. Aborting batch sync until session renewed:', error.message);
+          failedCount += (unsynced.length - successCount);
+          break;
+        }
+        throw error;
+      }
 
       successIds.push(point.id);
       successCount++;

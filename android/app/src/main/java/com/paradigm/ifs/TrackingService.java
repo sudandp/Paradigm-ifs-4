@@ -44,6 +44,8 @@ import com.google.android.gms.location.Priority;
 
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -68,12 +70,13 @@ public class TrackingService extends Service implements SensorEventListener {
     private static final String KEY_STEP_BASELINE = "step_baseline";
 
     // Keys passed in via Intent from TrackingPlugin / JS
-    public static final String EXTRA_USER_ID           = "userId";
-    public static final String EXTRA_INTERVAL_MINUTES  = "intervalMinutes";
-    public static final String EXTRA_SUPABASE_URL      = "supabaseUrl";
-    public static final String EXTRA_SUPABASE_KEY      = "supabaseKey";
-    public static final String EXTRA_SUPABASE_TOKEN    = "supabaseToken"; // [AUTH FIX] user JWT
-
+    public static final String EXTRA_USER_ID                = "userId";
+    public static final String EXTRA_INTERVAL_MINUTES       = "intervalMinutes";
+    public static final String EXTRA_SUPABASE_URL           = "supabaseUrl";
+    public static final String EXTRA_SUPABASE_KEY           = "supabaseKey";
+    public static final String EXTRA_SUPABASE_TOKEN         = "supabaseToken"; // user JWT access token
+    public static final String EXTRA_SUPABASE_REFRESH_TOKEN = "supabaseRefreshToken"; // user JWT refresh token
+    public static final String ACTION_UPDATE_TOKENS         = "com.paradigm.ifs.UPDATE_TOKENS";
 
     // ── Step counter ───────────────────────────────────────────────────────
     private SensorManager sensorManager;
@@ -99,11 +102,13 @@ public class TrackingService extends Service implements SensorEventListener {
     private ExecutorService networkExecutor;
 
     // Runtime config (set from Intent or SharedPrefs fallback)
-    private String userId            = null;
-    private String supabaseUrl       = null;
-    private String supabaseAnonKey   = null;
-    private String supabaseAccessToken = null; // [AUTH FIX] JWT Bearer token
-    private int    intervalMinutes   = 15;
+    private String userId               = null;
+    private String supabaseUrl          = null;
+    private String supabaseAnonKey      = null;
+    private String supabaseAccessToken  = null; // JWT Bearer token
+    private String supabaseRefreshToken = null; // Refresh token for auto-renewal
+    private volatile boolean isAuthPaused = false; // Circuit breaker when auth is invalid
+    private int    intervalMinutes      = 15;
 
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -134,29 +139,36 @@ public class TrackingService extends Service implements SensorEventListener {
     public int onStartCommand(Intent intent, int flags, int startId) {
         // ── Read config from Intent ───────────────────────────────────────
         if (intent != null) {
-            if (intent.hasExtra(EXTRA_USER_ID))          userId               = intent.getStringExtra(EXTRA_USER_ID);
-            if (intent.hasExtra(EXTRA_SUPABASE_URL))     supabaseUrl          = intent.getStringExtra(EXTRA_SUPABASE_URL);
-            if (intent.hasExtra(EXTRA_SUPABASE_KEY))     supabaseAnonKey      = intent.getStringExtra(EXTRA_SUPABASE_KEY);
-            if (intent.hasExtra(EXTRA_SUPABASE_TOKEN))   supabaseAccessToken  = intent.getStringExtra(EXTRA_SUPABASE_TOKEN);
-            if (intent.hasExtra(EXTRA_INTERVAL_MINUTES)) intervalMinutes      = intent.getIntExtra(EXTRA_INTERVAL_MINUTES, 15);
+            if (intent.hasExtra(EXTRA_USER_ID))                userId               = intent.getStringExtra(EXTRA_USER_ID);
+            if (intent.hasExtra(EXTRA_SUPABASE_URL))           supabaseUrl          = intent.getStringExtra(EXTRA_SUPABASE_URL);
+            if (intent.hasExtra(EXTRA_SUPABASE_KEY))           supabaseAnonKey      = intent.getStringExtra(EXTRA_SUPABASE_KEY);
+            if (intent.hasExtra(EXTRA_SUPABASE_TOKEN))         supabaseAccessToken  = intent.getStringExtra(EXTRA_SUPABASE_TOKEN);
+            if (intent.hasExtra(EXTRA_SUPABASE_REFRESH_TOKEN)) supabaseRefreshToken = intent.getStringExtra(EXTRA_SUPABASE_REFRESH_TOKEN);
+            if (intent.hasExtra(EXTRA_INTERVAL_MINUTES))       intervalMinutes      = intent.getIntExtra(EXTRA_INTERVAL_MINUTES, 15);
+
+            if (supabaseAccessToken != null && !supabaseAccessToken.isEmpty()) {
+                isAuthPaused = false; // Resume auth network requests when new token is received
+            }
         }
 
         // Persist config so it survives service restart (START_STICKY)
         if (userId != null) {
             prefs.edit()
-                .putString("tracking_user_id",      userId)
-                .putString("tracking_supabase_url", supabaseUrl != null ? supabaseUrl : "")
-                .putString("tracking_supabase_key", supabaseAnonKey != null ? supabaseAnonKey : "")
-                .putString("tracking_supabase_token", supabaseAccessToken != null ? supabaseAccessToken : "")
-                .putInt("tracking_interval_mins",   intervalMinutes)
+                .putString("tracking_user_id",               userId)
+                .putString("tracking_supabase_url",          supabaseUrl != null ? supabaseUrl : "")
+                .putString("tracking_supabase_key",          supabaseAnonKey != null ? supabaseAnonKey : "")
+                .putString("tracking_supabase_token",        supabaseAccessToken != null ? supabaseAccessToken : "")
+                .putString("tracking_supabase_refresh_token",supabaseRefreshToken != null ? supabaseRefreshToken : "")
+                .putInt("tracking_interval_mins",            intervalMinutes)
                 .apply();
         } else {
             // Restore from prefs when service is restarted by OS
-            userId              = prefs.getString("tracking_user_id",        null);
-            supabaseUrl         = prefs.getString("tracking_supabase_url",   null);
-            supabaseAnonKey     = prefs.getString("tracking_supabase_key",   null);
-            supabaseAccessToken = prefs.getString("tracking_supabase_token", null);
-            intervalMinutes     = prefs.getInt("tracking_interval_mins",     15);
+            userId               = prefs.getString("tracking_user_id",               null);
+            supabaseUrl          = prefs.getString("tracking_supabase_url",          null);
+            supabaseAnonKey      = prefs.getString("tracking_supabase_key",          null);
+            supabaseAccessToken  = prefs.getString("tracking_supabase_token",        null);
+            supabaseRefreshToken = prefs.getString("tracking_supabase_refresh_token",null);
+            intervalMinutes      = prefs.getInt("tracking_interval_mins",            15);
         }
 
 
@@ -262,6 +274,11 @@ public class TrackingService extends Service implements SensorEventListener {
     private void uploadLocationToSupabase(Location loc) {
         if (userId == null || supabaseUrl == null || supabaseAnonKey == null) return;
 
+        if (isAuthPaused) {
+            Log.w(TAG, "uploadLocationToSupabase: Auth paused due to invalid token — deferring upload until session refreshed");
+            return;
+        }
+
         final double lat = loc.getLatitude();
         final double lng = loc.getLongitude();
         final float  acc = loc.getAccuracy();
@@ -285,11 +302,10 @@ public class TrackingService extends Service implements SensorEventListener {
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type",  "application/json");
                 conn.setRequestProperty("apikey",        supabaseAnonKey);
-                // [AUTH FIX] Use the user JWT as Bearer — anon key only identifies the project,
-                // not the user. Supabase RLS checks auth.uid() from the JWT, not the anon key.
+
                 String bearer = (supabaseAccessToken != null && !supabaseAccessToken.isEmpty())
                         ? supabaseAccessToken
-                        : supabaseAnonKey; // fallback to anon (will 401 if RLS is strict)
+                        : supabaseAnonKey;
                 conn.setRequestProperty("Authorization", "Bearer " + bearer);
 
                 conn.setRequestProperty("Prefer",        "return=minimal");
@@ -304,6 +320,19 @@ public class TrackingService extends Service implements SensorEventListener {
                 int code = conn.getResponseCode();
                 if (code == 201 || code == 200) {
                     Log.i(TAG, "✅ Location uploaded: " + lat + "," + lng + " at " + ts);
+                    isAuthPaused = false;
+                } else if (code == 401) {
+                    Log.w(TAG, "⚠️ Supabase returned HTTP 401 Unauthorized for route_history — attempting native token refresh");
+                    conn.disconnect();
+                    boolean refreshed = attemptTokenRefresh();
+                    if (refreshed) {
+                        Log.i(TAG, "Token refresh succeeded — retrying location upload");
+                        uploadLocationToSupabase(loc);
+                        return;
+                    } else {
+                        Log.e(TAG, "Token refresh failed. Pausing background auth retries to prevent 401 log spam.");
+                        isAuthPaused = true;
+                    }
                 } else {
                     Log.w(TAG, "⚠️ Supabase returned HTTP " + code + " for location upload");
                 }
@@ -312,6 +341,80 @@ public class TrackingService extends Service implements SensorEventListener {
                 Log.e(TAG, "❌ Failed to upload location", e);
             }
         });
+    }
+
+    /**
+     * Attempts native token refresh via POST ${supabaseUrl}/auth/v1/token?grant_type=refresh_token
+     */
+    private boolean attemptTokenRefresh() {
+        if (supabaseRefreshToken == null || supabaseRefreshToken.isEmpty() || supabaseUrl == null || supabaseAnonKey == null) {
+            Log.w(TAG, "attemptTokenRefresh: Missing refresh token or URL/Key — cannot refresh");
+            return false;
+        }
+
+        try {
+            String refreshEndpoint = supabaseUrl.endsWith("/")
+                    ? supabaseUrl + "auth/v1/token?grant_type=refresh_token"
+                    : supabaseUrl + "/auth/v1/token?grant_type=refresh_token";
+
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("refresh_token", supabaseRefreshToken);
+
+            URL url = new URL(refreshEndpoint);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("apikey", supabaseAnonKey);
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(15_000);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(requestBody.toString().getBytes("UTF-8"));
+            }
+
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                StringBuilder responseBuilder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    responseBuilder.append(line);
+                }
+                reader.close();
+
+                JSONObject responseJson = new JSONObject(responseBuilder.toString());
+                String newAccessToken  = responseJson.optString("access_token", null);
+                String newRefreshToken = responseJson.optString("refresh_token", null);
+
+                if (newAccessToken != null && !newAccessToken.isEmpty()) {
+                    supabaseAccessToken = newAccessToken;
+                    if (newRefreshToken != null && !newRefreshToken.isEmpty()) {
+                        supabaseRefreshToken = newRefreshToken;
+                    }
+                    isAuthPaused = false;
+
+                    // Persist updated tokens in SharedPreferences
+                    if (prefs != null) {
+                        prefs.edit()
+                            .putString("tracking_supabase_token", supabaseAccessToken)
+                            .putString("tracking_supabase_refresh_token", supabaseRefreshToken)
+                            .apply();
+                    }
+
+                    Log.i(TAG, "✅ Native Supabase token refresh successful!");
+                    conn.disconnect();
+                    return true;
+                }
+            } else {
+                Log.w(TAG, "⚠️ Token refresh endpoint returned HTTP " + code);
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed during native token refresh", e);
+        }
+
+        return false;
     }
 
     private static String isoTimestamp() {

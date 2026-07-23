@@ -28,6 +28,7 @@ import { useGateStore } from './store/gateStore';
 import { KioskPlugin } from './plugins/KioskPlugin';
 
 import { pushNotificationService } from './services/pushNotificationService';
+import { routeTrackingService } from './services/routeTrackingService';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { Toaster } from 'react-hot-toast';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -1115,6 +1116,9 @@ const App: React.FC = () => {
         if (session.user.email) {
           secureSet('rememberedEmail', session.user.email).catch(e => console.warn('[App] Prefs auth save failed:', e));
         }
+
+        // Push fresh JWT access & refresh tokens to native Android background tracking service
+        routeTrackingService.updateTokens(session.access_token, session.refresh_token);
       }
 
       // Update global user state based on the session
