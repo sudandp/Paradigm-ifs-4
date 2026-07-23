@@ -43,6 +43,11 @@ const MaintenanceScheduler: React.FC = () => {
       case 'Half-Yearly': d.setMonth(d.getMonth() + 6); break;
       case 'Yearly': d.setFullYear(d.getFullYear() + 1); break;
     }
+
+    // Holiday & Sunday Offset Engine: if calculated date falls on a Sunday for non-daily tasks, move to Monday
+    if (freq !== 'Daily' && d.getDay() === 0) {
+      d.setDate(d.getDate() + 1);
+    }
     return d.toISOString().split('T')[0];
   };
 

@@ -4,8 +4,9 @@ import { useAuthStore } from '../../store/authStore';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Toast from '../../components/ui/Toast';
-import type { OpsTicket, TicketPriority, TicketCategory, TicketStatus } from '../../types/operations';
-import { Plus, Search, AlertCircle, Clock, CheckCircle2, MessageSquare, Loader2 } from 'lucide-react';
+import type { OpsTicket, TicketPriority, TicketCategory, TicketStatus, InventoryItem, OpsTicketMaterial } from '../../types/operations';
+import { Plus, Search, AlertCircle, Clock, CheckCircle2, MessageSquare, Loader2, Package, Wrench, Trash2 } from 'lucide-react';
+import { inventoryApi } from '../../services/inventoryApi';
 
 const PRIORITY_COLORS: Record<TicketPriority, string> = {
   P1: 'bg-red-100 text-red-800 border-red-200',
@@ -42,9 +43,77 @@ const HelpdeskTickets: React.FC = () => {
     entityId: '' // In a real app, this would be a select dropdown of allowed entities
   });
 
+  // Material Usage Modal State
+  const [activeMaterialTicket, setActiveMaterialTicket] = useState<OpsTicket | null>(null);
+  const [ticketMaterials, setTicketMaterials] = useState<OpsTicketMaterial[]>([]);
+  const [availableInventory, setAvailableInventory] = useState<InventoryItem[]>([]);
+  const [selectedInventoryId, setSelectedInventoryId] = useState('');
+  const [materialQty, setMaterialQty] = useState(1);
+  const [materialRemarks, setMaterialRemarks] = useState('');
+  const [isLoggingMaterial, setIsLoggingMaterial] = useState(false);
+
   useEffect(() => {
     fetchTickets();
   }, []);
+
+  const openMaterialModal = async (ticket: OpsTicket) => {
+    setActiveMaterialTicket(ticket);
+    try {
+      const [mats, inv] = await Promise.all([
+        inventoryApi.getTicketMaterials(ticket.id),
+        inventoryApi.getInventoryItems(ticket.entityId)
+      ]);
+      setTicketMaterials(mats);
+      setAvailableInventory(inv);
+      if (inv.length > 0) setSelectedInventoryId(inv[0].id);
+    } catch (e) {
+      console.error(e);
+      setToast({ message: 'Failed to load material data', type: 'error' });
+    }
+  };
+
+  const handleAddMaterial = async () => {
+    if (!activeMaterialTicket || !selectedInventoryId) return;
+    const invItem = availableInventory.find(i => i.id === selectedInventoryId);
+    if (!invItem) return;
+
+    if (materialQty > invItem.currentStock) {
+      setToast({ message: `Insufficient stock! Only ${invItem.currentStock} ${invItem.unitOfMeasure} available.`, type: 'error' });
+      return;
+    }
+
+    setIsLoggingMaterial(true);
+    try {
+      const added = await inventoryApi.addTicketMaterial({
+        ticketId: activeMaterialTicket.id,
+        itemId: selectedInventoryId,
+        quantityUsed: materialQty,
+        unitPrice: invItem.unitCost || 0,
+        remarks: materialRemarks
+      });
+      setTicketMaterials(prev => [...prev, added]);
+      setToast({ message: `Logged ${materialQty} ${invItem.unitOfMeasure} of ${invItem.name}`, type: 'success' });
+      setMaterialQty(1);
+      setMaterialRemarks('');
+      // Refresh inventory list to show updated stock
+      const updatedInv = await inventoryApi.getInventoryItems(activeMaterialTicket.entityId);
+      setAvailableInventory(updatedInv);
+    } catch (e: any) {
+      setToast({ message: e.message || 'Failed to log material', type: 'error' });
+    } finally {
+      setIsLoggingMaterial(false);
+    }
+  };
+
+  const handleDeleteMaterial = async (matId: string) => {
+    try {
+      await inventoryApi.deleteTicketMaterial(matId);
+      setTicketMaterials(prev => prev.filter(m => m.id !== matId));
+      setToast({ message: 'Material log removed', type: 'success' });
+    } catch (e) {
+      setToast({ message: 'Failed to delete material', type: 'error' });
+    }
+  };
 
   const filteredTickets = tickets.filter(t => 
     (statusFilter === 'All' || t.status === statusFilter) &&
@@ -227,6 +296,12 @@ const HelpdeskTickets: React.FC = () => {
                     </div>
                     
                     <div className="flex sm:flex-col justify-end gap-2 shrink-0">
+                      <button
+                        onClick={() => openMaterialModal(ticket)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition flex items-center justify-center gap-1.5"
+                      >
+                        <Wrench className="w-3.5 h-3.5" /> Log Spares
+                      </button>
                       <select 
                         className="form-input text-xs py-1.5 min-w-[120px]"
                         value={ticket.status}
@@ -246,8 +321,136 @@ const HelpdeskTickets: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Material Usage Modal */}
+      {activeMaterialTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                  <Package className="w-5 h-5 text-emerald-600" />
+                  Material Consumption Log
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Ticket: <span className="font-mono font-bold text-gray-700">{activeMaterialTicket.ticketNumber}</span> • {activeMaterialTicket.title}
+                </p>
+              </div>
+              <button onClick={() => setActiveMaterialTicket(null)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Form to log new spare part */}
+              <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-3">
+                <h4 className="text-xs font-bold uppercase text-emerald-800 tracking-wider">Log Spare Part / Consumable</h4>
+                
+                {availableInventory.length === 0 ? (
+                  <p className="text-xs text-gray-500 py-2">
+                    No spare parts in stock for this site. Go to <a href="/operations/inventory" className="text-emerald-600 underline font-bold">Inventory Management</a> to add items.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Select Spare Part</label>
+                        <select
+                          value={selectedInventoryId}
+                          onChange={e => setSelectedInventoryId(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        >
+                          {availableInventory.map(i => (
+                            <option key={i.id} value={i.id}>
+                              {i.name} ({i.itemCode}) — Available: {i.currentStock} {i.unitOfMeasure} @ ₹{i.unitCost}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Qty Used</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={materialQty}
+                          onChange={e => setMaterialQty(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Remarks / Reason for replacement (optional)..."
+                        value={materialRemarks}
+                        onChange={e => setMaterialRemarks(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleAddMaterial}
+                        disabled={isLoggingMaterial}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                      >
+                        {isLoggingMaterial ? 'Adding...' : 'Issue & Deduct'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Logged Materials Table */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Logged Materials ({ticketMaterials.length})</h4>
+                  <span className="text-xs font-bold text-emerald-700">
+                    Total Material Cost: ₹{ticketMaterials.reduce((sum, m) => sum + (m.totalPrice || 0), 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {ticketMaterials.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-gray-400 bg-gray-50 rounded-xl">
+                    No materials logged for this work order yet.
+                  </div>
+                ) : (
+                  <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100">
+                    {ticketMaterials.map(m => (
+                      <div key={m.id} className="p-3 flex items-center justify-between text-xs hover:bg-gray-50/50">
+                        <div>
+                          <p className="font-bold text-gray-900">{m.itemName || 'Spare Part'}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {m.quantityUsed} units @ ₹{m.unitPrice} {m.remarks && `• ${m.remarks}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-gray-900">₹{m.totalPrice?.toLocaleString('en-IN')}</span>
+                          <button
+                            onClick={() => handleDeleteMaterial(m.id)}
+                            className="text-gray-400 hover:text-red-600 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => setActiveMaterialTicket(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 export default HelpdeskTickets;

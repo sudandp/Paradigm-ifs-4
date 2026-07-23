@@ -81,6 +81,8 @@ const TaskManagement: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<'all' | TaskStatus>('all');
     const [priorityFilter, setPriorityFilter] = useState<'all' | TaskPriority>('all');
     const [assignedToFilter, setAssignedToFilter] = useState<'all' | string>('all');
+    const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
+    const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
     const isMobile = useMediaQuery('(max-width: 767px)');
 
     const loadTasks = useCallback(async () => {
@@ -147,6 +149,26 @@ const TaskManagement: React.FC = () => {
             } catch (error) {
                 setToast({ message: 'Failed to delete task.', type: 'error' });
             }
+        }
+    };
+
+    const handleTaskDrop = async (targetStatus: TaskStatus) => {
+        if (!draggedTaskId) return;
+        const taskToUpdate = tasks.find(t => t.id === draggedTaskId);
+        if (!taskToUpdate || taskToUpdate.status === targetStatus) return;
+
+        try {
+            // Optimistic update
+            useTaskStore.setState({
+                tasks: tasks.map(t => t.id === draggedTaskId ? { ...t, status: targetStatus } : t)
+            });
+            await api.updateTask(draggedTaskId, { status: targetStatus });
+            setToast({ message: `Task moved to ${targetStatus}`, type: 'success' });
+        } catch (err) {
+            setToast({ message: 'Failed to update task status', type: 'error' });
+            await loadTasks();
+        } finally {
+            setDraggedTaskId(null);
         }
     };
 
@@ -239,8 +261,29 @@ const TaskManagement: React.FC = () => {
                 Are you sure you want to delete the task "{currentTask?.name}"?
             </Modal>
 
-            <div className="mb-4">
-                <h1 className={`text-xl font-bold ${isMobile || isDark ? 'text-white' : 'text-gray-900'}`}>Task Management</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <div>
+                    <h1 className={`text-xl font-bold ${isMobile || isDark ? 'text-white' : 'text-gray-900'}`}>Task Management</h1>
+                    <p className="text-xs text-gray-400 mt-0.5">Drag & drop cards to transition task status</p>
+                </div>
+                <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/10 p-1 rounded-xl">
+                    <button
+                        onClick={() => setViewMode('kanban')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                            viewMode === 'kanban' ? 'bg-emerald-600 text-white shadow' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
+                        }`}
+                    >
+                        Kanban Board
+                    </button>
+                    <button
+                        onClick={() => setViewMode('table')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                            viewMode === 'table' ? 'bg-emerald-600 text-white shadow' : 'text-gray-600 dark:text-gray-300 hover:text-gray-900'
+                        }`}
+                    >
+                        Table List
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-col md:flex-row gap-4 mb-6 md:items-end justify-between">
@@ -316,6 +359,90 @@ const TaskManagement: React.FC = () => {
 
             {error && <p className="text-red-500 mb-4">{error}</p>}
 
+            {viewMode === 'kanban' ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 min-h-[500px]">
+                    {(['To Do', 'In Progress', 'Done'] as TaskStatus[]).map((colStatus) => {
+                        const colTasks = filteredTasks.filter(t => t.status === colStatus);
+                        const headerColor = colStatus === 'To Do' ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200' :
+                                           colStatus === 'In Progress' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
+                                           'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300';
+                        return (
+                            <div
+                                key={colStatus}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={() => handleTaskDrop(colStatus)}
+                                className={`rounded-2xl p-4 border flex flex-col transition ${
+                                    isDark ? 'bg-[#0b2416] border-white/10' : 'bg-gray-50/80 border-gray-200'
+                                }`}
+                            >
+                                <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-4 font-bold text-xs ${headerColor}`}>
+                                    <span>{colStatus}</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-white/60 dark:bg-black/40 text-[11px]">
+                                        {colTasks.length}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3 flex-1 overflow-y-auto max-h-[600px] pr-1">
+                                    {colTasks.length === 0 ? (
+                                        <div className="h-32 flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-white/10 rounded-xl text-xs text-gray-400">
+                                            Drop task here
+                                        </div>
+                                    ) : (
+                                        colTasks.map((task) => {
+                                            const { date: nextDueDate, isOverdue } = getNextDueDateInfo(task);
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    draggable
+                                                    onDragStart={() => setDraggedTaskId(task.id)}
+                                                    className={`p-4 rounded-xl border shadow-sm cursor-grab active:cursor-grabbing transition-all transform hover:-translate-y-0.5 ${
+                                                        isDark ? 'bg-[#152b1b] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <h4 className="font-bold text-sm line-clamp-2">{task.name}</h4>
+                                                        {getPriorityChip(task.priority)}
+                                                    </div>
+
+                                                    {task.description && (
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">
+                                                            {task.description}
+                                                        </p>
+                                                    )}
+
+                                                    <div className="flex items-center justify-between text-[11px] text-gray-400 border-t border-gray-100 dark:border-white/10 pt-2.5 mt-2">
+                                                        <span>{task.assignedToName || 'Unassigned'}</span>
+                                                        <span className={isOverdue ? 'text-red-500 font-bold' : ''}>
+                                                            {nextDueDate || '-'}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-white/5">
+                                                        <button onClick={() => handleEdit(task)} className="p-1 text-gray-400 hover:text-emerald-500">
+                                                            <Edit className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <button onClick={() => handleDelete(task)} className="p-1 text-gray-400 hover:text-red-500">
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        {task.assignedToId === user?.id && task.status !== 'Done' && (
+                                                            <button
+                                                                onClick={() => handleComplete(task)}
+                                                                className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-[11px] font-bold flex items-center gap-1"
+                                                            >
+                                                                <CheckCircle className="h-3 w-3" /> Done
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
             <div className="overflow-x-auto">
                 <table className="min-w-full responsive-table">
                     <thead className={isMobile ? 'hidden' : (isDark ? 'bg-white/5 text-white' : 'bg-page')}>
@@ -399,6 +526,7 @@ const TaskManagement: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+            )}
 
             <Pagination 
                 currentPage={currentPage}

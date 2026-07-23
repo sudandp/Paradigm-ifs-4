@@ -150,6 +150,30 @@ const QuotationBuilder: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {existingQuotation && (
+            <button
+              onClick={async () => {
+                if (!leadId || !existingQuotation.id) return;
+                if (!window.confirm('Convert this quotation to an active Operational Contract? This will automatically create your contract and trigger initial service tasks.')) return;
+                setIsSaving(true);
+                try {
+                  const res = await crmApi.convertQuoteToContract(existingQuotation.id, leadId);
+                  if (res.success) {
+                    setToast({ message: 'Quotation successfully converted to Contract & Service Tasks auto-generated!', type: 'success' });
+                    setTimeout(() => navigate('/operations/contracts'), 1500);
+                  }
+                } catch (e: any) {
+                  setToast({ message: e.message || 'Conversion failed', type: 'error' });
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-md flex items-center gap-1.5"
+            >
+              <Zap className="w-3.5 h-3.5" /> Convert to Contract
+            </button>
+          )}
           <button onClick={() => handleSave('Draft')} disabled={isSaving} className="px-4 py-2 rounded-lg text-xs font-semibold border border-border text-muted hover:border-accent transition-all flex items-center gap-1.5">
             <Save className="w-3.5 h-3.5" /> Save Draft
           </button>

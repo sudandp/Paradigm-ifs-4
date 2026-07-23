@@ -601,4 +601,76 @@ export const crmApi = {
 
     return suggestions;
   },
+
+  // -------------------------------------------------------------------------
+  // CONVERT QUOTE TO OPERATIONAL CONTRACT
+  // -------------------------------------------------------------------------
+
+  convertQuoteToContract: async (quotationId: string, leadId: string): Promise<{ contractId: string; success: boolean }> => {
+    // 1. Fetch Quotation
+    const { data: quote, error: quoteErr } = await supabase
+      .from('crm_quotations')
+      .select('*')
+      .eq('id', quotationId)
+      .single();
+
+    if (quoteErr || !quote) throw new Error('Quotation not found');
+
+    // 2. Fetch Lead
+    const { data: lead, error: leadErr } = await supabase
+      .from('crm_leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (leadErr || !lead) throw new Error('Lead not found');
+
+    const entityId = lead.converted_entity_id || lead.organization_id || leadId;
+    const clientName = lead.client_name || lead.association_name || 'Client';
+
+    // 3. Insert Ops Contract
+    const startDate = quote.expected_start_date || new Date().toISOString().split('T')[0];
+    const endDate = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0];
+
+    const { data: contract, error: contractErr } = await supabase
+      .from('ops_contracts')
+      .insert({
+        organization_id: lead.organization_id,
+        entity_id: entityId,
+        contract_title: `AMC Service Contract - ${clientName}`,
+        contract_type: 'Client Agreement',
+        start_date: startDate,
+        end_date: endDate,
+        contract_value: quote.annual_cost || quote.monthly_cost * 12 || 0,
+        status: 'Active',
+        renewal_reminder_days: 30,
+        notes: `Converted from Quotation ${quote.quotation_number || quotationId}. Total Monthly: ₹${quote.monthly_cost || 0}`,
+        created_by: quote.created_by
+      })
+      .select()
+      .single();
+
+    if (contractErr) {
+      console.error('[CRM API] Error converting quote to contract:', contractErr);
+      throw contractErr;
+    }
+
+    // 4. Update Quotation Status to Accepted
+    await supabase
+      .from('crm_quotations')
+      .update({ status: 'Accepted', updated_at: new Date().toISOString() })
+      .eq('id', quotationId);
+
+    // 5. Update Lead Status to Won
+    await supabase
+      .from('crm_leads')
+      .update({ status: 'Won', updated_at: new Date().toISOString() })
+      .eq('id', leadId);
+
+    // 6. Log Timeline & Audit
+    await crmApi.notifyTimelineUpdate(leadId, `Converted Quotation ${quote.quotation_number || ''} to Active Operational Contract`);
+
+    return { contractId: contract.id, success: true };
+  },
 };
+

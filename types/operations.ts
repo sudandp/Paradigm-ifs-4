@@ -181,3 +181,52 @@ export interface SnagEntry {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// ============================================================================
+// Inventory & Material Usage
+// ============================================================================
+
+export type InventoryCategory =
+  | 'Electrical'
+  | 'Plumbing'
+  | 'HVAC'
+  | 'Cleaning'
+  | 'Civil'
+  | 'Security'
+  | 'General';
+
+export interface InventoryItem {
+  id: string;
+  organizationId?: string;
+  entityId?: string;
+  entityName?: string;
+  itemCode: string;
+  name: string;
+  category: InventoryCategory;
+  unitOfMeasure: string;
+  unitCost: number;
+  unitSellingPrice: number;
+  currentStock: number;
+  minReorderLevel: number;
+  location?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpsTicketMaterial {
+  id: string;
+  ticketId: string;
+  itemId: string;
+  itemName?: string;
+  itemCode?: string;
+  category?: InventoryCategory;
+  quantityUsed: number;
+  unitPrice: number;
+  totalPrice: number;
+  remarks?: string;
+  issuedBy?: string;
+  issuedByName?: string;
+  createdAt: string;
+}
+
