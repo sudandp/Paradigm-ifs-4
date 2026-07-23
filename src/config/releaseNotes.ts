@@ -1,11 +1,11 @@
 export const RELEASE_NOTES = {
-  version: '18.9.0',
-  date: '2026-07-22',
+  version: '19.0.0',
+  date: '2026-07-23',
   notes: [
-  "feat: implement employee monthly attendance and payroll calculation logic",
-  "feat: implement duration parsing for permission requests and add utility for monthly report calculations with helper scripts for verification",
-  "feat: implement Gemini API key rotation with load balancing and add utility for monthly schedule auditing",
-  "feat: implement Gemini API key rotation service and add support scripts for leave balance verification",
-  "feat: implement Gemini API key rotation logic and add attendance management modals"
+  "feat: implement background location and activity tracking service with Supabase integration",
+  "feat: add script suite for auditing and updating comp off balances for Veerabhadra T M and other employees",
+  "feat: add scripts to audit employee compensatory off balances and attendance records",
+  "feat: implement enterprise facility management modules including CRM lead tracking, inventory management, and task scheduling",
+  "feat: bump application version to 18.9.0 and implement native Android build configuration for background services"
 ]
 };

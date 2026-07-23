@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 99,
-  "latestVersionName": "18.9.0",
+  "latestVersionCode": 100,
+  "latestVersionName": "19.0.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement employee monthly attendance and payroll calculation logic\nfeat: implement duration parsing for permission requests and add utility for monthly report calculations with helper scripts for verification\nfeat: implement Gemini API key rotation with load balancing and add utility for monthly schedule auditing\nfeat: implement Gemini API key rotation service and add support scripts for leave balance verification\nfeat: implement Gemini API key rotation logic and add attendance management modals",
+  "releaseNotes": "feat: implement background location and activity tracking service with Supabase integration\nfeat: add script suite for auditing and updating comp off balances for Veerabhadra T M and other employees\nfeat: add scripts to audit employee compensatory off balances and attendance records\nfeat: implement enterprise facility management modules including CRM lead tracking, inventory management, and task scheduling\nfeat: bump application version to 18.9.0 and implement native Android build configuration for background services",
   "isMandatory": true
 }
