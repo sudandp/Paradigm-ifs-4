@@ -244,18 +244,17 @@ SELECT cron.schedule(
 
 
 -- ----------------------------------------------------------------------------
--- 5. REFRESH COLLATION VERSION TO CLEAR WARNINGS
+-- 5. PERMANENT COLLATION MISMATCH FIX (postgres & template1 via dblink)
 -- ----------------------------------------------------------------------------
-DO $$
-BEGIN
-    ALTER DATABASE template1 REFRESH COLLATION VERSION;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Could not refresh collation version on template1: %', SQLERRM;
-END $$;
+CREATE EXTENSION IF NOT EXISTS dblink;
 
+-- Refresh collation on postgres database (current active database)
+ALTER DATABASE postgres REFRESH COLLATION VERSION;
+
+-- Refresh collation on template1 database via dblink connection to template1
 DO $$
 BEGIN
-    ALTER DATABASE postgres REFRESH COLLATION VERSION;
+    PERFORM dblink_exec('dbname=template1', 'ALTER DATABASE template1 REFRESH COLLATION VERSION;');
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Could not refresh collation version on postgres: %', SQLERRM;
+    RAISE NOTICE 'Could not refresh template1 collation via dblink: %', SQLERRM;
 END $$;
