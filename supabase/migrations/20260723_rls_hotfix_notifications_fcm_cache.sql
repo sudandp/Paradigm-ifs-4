@@ -244,17 +244,6 @@ SELECT cron.schedule(
 
 
 -- ----------------------------------------------------------------------------
--- 5. PERMANENT COLLATION MISMATCH FIX (postgres & template1 via dblink)
+-- 5. REFRESH COLLATION VERSION ON PROJECT DATABASE
 -- ----------------------------------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS dblink;
-
--- Refresh collation on postgres database (current active database)
-ALTER DATABASE postgres REFRESH COLLATION VERSION;
-
--- Refresh collation on template1 database via dblink connection to template1
-DO $$
-BEGIN
-    PERFORM dblink_exec('dbname=template1', 'ALTER DATABASE template1 REFRESH COLLATION VERSION;');
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Could not refresh template1 collation via dblink: %', SQLERRM;
-END $$;
+ALTER DATABASE "postgres" REFRESH COLLATION VERSION;
