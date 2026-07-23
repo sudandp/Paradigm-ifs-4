@@ -1,5 +1,5 @@
 -- ============================================================================
--- RLS HOTFIX PASS: notifications, fcm_tokens, rule_inheritance_cache
+-- RLS HOTFIX PASS: notifications, fcm_tokens, rule_inheritance_cache, cron authorization & collation
 -- Date: 2026-07-23
 -- Fixes active runtime Postgres RLS errors in production logs.
 -- ============================================================================
@@ -7,7 +7,7 @@
 -- ----------------------------------------------------------------------------
 -- 1. FIX public.notifications RLS
 -- Cause: "notifications_policy" checked user_id = auth.uid() on INSERT.
---        When non-admins send notifications to recipient users, INSERT failed.
+--        When non-admins or system cron jobs send notifications to recipient users, INSERT failed.
 -- ----------------------------------------------------------------------------
 ALTER TABLE IF EXISTS public.notifications ENABLE ROW LEVEL SECURITY;
 
@@ -24,10 +24,11 @@ DROP POLICY IF EXISTS "Users can update own notifications" ON public.notificatio
 DROP POLICY IF EXISTS "Users can delete own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Admins can view all notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can manage their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Allow system and users to insert notifications" ON public.notifications;
 
 -- SELECT: Users can view notifications where they are the recipient/user_id, or if Admin/HR
 CREATE POLICY "Users can view own notifications"
-ON public.notifications FOR SELECT TO authenticated
+ON public.notifications FOR SELECT TO public
 USING (
     auth.uid() = user_id OR 
     EXISTS (
@@ -37,14 +38,14 @@ USING (
     )
 );
 
--- INSERT: Allow authenticated users to send/insert notifications to target users
-CREATE POLICY "Allow authenticated users to insert notifications"
-ON public.notifications FOR INSERT TO authenticated
+-- INSERT: Allow authenticated users, service role, and system to send notifications to target users
+CREATE POLICY "Allow system and users to insert notifications"
+ON public.notifications FOR INSERT TO public
 WITH CHECK (true);
 
 -- UPDATE: Users can update their own notifications (mark read / acknowledge)
 CREATE POLICY "Users can update own notifications"
-ON public.notifications FOR UPDATE TO authenticated
+ON public.notifications FOR UPDATE TO public
 USING (
     auth.uid() = user_id OR 
     EXISTS (
@@ -64,7 +65,7 @@ WITH CHECK (
 
 -- DELETE: Users can delete their own notifications
 CREATE POLICY "Users can delete own notifications"
-ON public.notifications FOR DELETE TO authenticated
+ON public.notifications FOR DELETE TO public
 USING (
     auth.uid() = user_id OR 
     EXISTS (
@@ -79,20 +80,24 @@ USING (
 -- 2. FIX public.fcm_tokens RLS
 -- Cause: UPSERT (on conflict token) failed on existing tokens registered under another user_id
 --        because UPDATE USING (auth.uid() = user_id) evaluated false on the target row.
+--        Also background/cron processes running with NULL auth.uid() failed RLS WITH CHECK.
 -- ----------------------------------------------------------------------------
 ALTER TABLE IF EXISTS public.fcm_tokens ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fcm_tokens TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.fcm_tokens TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.fcm_tokens TO anon;
 
 DROP POLICY IF EXISTS "Users can manage their own tokens" ON public.fcm_tokens;
 DROP POLICY IF EXISTS "Users can view their own tokens" ON public.fcm_tokens;
 DROP POLICY IF EXISTS "Users can insert their own tokens" ON public.fcm_tokens;
 DROP POLICY IF EXISTS "Users can update tokens to own them" ON public.fcm_tokens;
 DROP POLICY IF EXISTS "Users can delete their own tokens" ON public.fcm_tokens;
+DROP POLICY IF EXISTS "Allow users and service to insert tokens" ON public.fcm_tokens;
+DROP POLICY IF EXISTS "Allow users and service to update tokens" ON public.fcm_tokens;
 
 CREATE POLICY "Users can view their own tokens"
-ON public.fcm_tokens FOR SELECT TO authenticated
+ON public.fcm_tokens FOR SELECT TO public
 USING (
     auth.uid() = user_id OR 
     EXISTS (
@@ -102,9 +107,10 @@ USING (
     )
 );
 
-CREATE POLICY "Users can insert their own tokens"
-ON public.fcm_tokens FOR INSERT TO authenticated
+CREATE POLICY "Allow users and service to insert tokens"
+ON public.fcm_tokens FOR INSERT TO public
 WITH CHECK (
+    auth.uid() IS NULL OR 
     auth.uid() = user_id OR 
     EXISTS (
         SELECT 1 FROM public.users u 
@@ -114,10 +120,11 @@ WITH CHECK (
 );
 
 -- USING (true) is required so ON CONFLICT DO UPDATE can match existing token rows to reassign user_id
-CREATE POLICY "Users can update tokens to own them"
-ON public.fcm_tokens FOR UPDATE TO authenticated
+CREATE POLICY "Allow users and service to update tokens"
+ON public.fcm_tokens FOR UPDATE TO public
 USING (true)
 WITH CHECK (
+    auth.uid() IS NULL OR 
     auth.uid() = user_id OR 
     EXISTS (
         SELECT 1 FROM public.users u 
@@ -127,7 +134,7 @@ WITH CHECK (
 );
 
 CREATE POLICY "Users can delete their own tokens"
-ON public.fcm_tokens FOR DELETE TO authenticated
+ON public.fcm_tokens FOR DELETE TO public
 USING (
     auth.uid() = user_id OR 
     EXISTS (
@@ -206,3 +213,49 @@ USING (
         AND u.role_id IN ('admin', 'super_admin', 'developer', 'management', 'hr')
     )
 );
+
+
+-- ----------------------------------------------------------------------------
+-- 4. FIX PG_CRON AUTO-CHECKOUT AUTHORIZATION HEADER PLACEHOLDER
+-- Cause: auto-checkout-trigger contained '<YOUR_SUPABASE_ANON_KEY>' placeholder,
+--        causing cron HTTP requests to fail authentication.
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+    PERFORM cron.unschedule('auto-checkout-trigger');
+EXCEPTION WHEN OTHERS THEN
+    -- Ignore if job doesn't exist yet
+END $$;
+
+SELECT cron.schedule(
+    'auto-checkout-trigger',
+    '30 22 * * *', -- 22:30 UTC = 04:00 IST the next day
+    $$
+    SELECT net.http_post(
+        url:='https://fmyafuhxlorbafbacywa.supabase.co/functions/v1/trigger-missed-checkouts',
+        headers:=jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZteWFmdWh4bG9yYmFmYmFjeXdhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjIyODU0NiwiZXhwIjoyMDc3ODA0NTQ2fQ.1wQC3L3gzGpZ2SwwQXMhXliZo_f7ye99vKEO7Q2iC5M'
+        ),
+        body:='{}'::jsonb
+    ) AS request_id;
+    $$
+);
+
+
+-- ----------------------------------------------------------------------------
+-- 5. REFRESH COLLATION VERSION TO CLEAR WARNINGS
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+    ALTER DATABASE template1 REFRESH COLLATION VERSION;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not refresh collation version on template1: %', SQLERRM;
+END $$;
+
+DO $$
+BEGIN
+    ALTER DATABASE postgres REFRESH COLLATION VERSION;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not refresh collation version on postgres: %', SQLERRM;
+END $$;
