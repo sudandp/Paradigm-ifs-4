@@ -1,0 +1,5159 @@
+[
+  {
+    "userId": "9cdc6d31-98d1-40e3-ab0b-0d9e872fe64d",
+    "name": "Akash",
+    "email": "akashvilaspure@gmail.com",
+    "role": "field_staff",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 0,
+    "compOffDaysPending": 1,
+    "netSystemBalance": 0,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 0,
+    "pendingCompOffRequests": 1,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "83310bb6-748b-437d-8083-c91083bf2ad1",
+        "user_id": "9cdc6d31-98d1-40e3-ab0b-0d9e872fe64d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-15",
+        "end_date": "2026-07-15",
+        "reason": "Sorry Sir I forget ",
+        "status": "pending_manager_approval",
+        "day_option": "full",
+        "current_approver_id": "b1788ef5-4df5-44db-8511-f82bb96d408f",
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-07-16T04:36:52.444734+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-16T04:36:52.444734+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "PENDING: 1 pending Comp Off leave request(s) (1d)"
+    ]
+  },
+  {
+    "userId": "d360ab98-6198-4e00-8efb-db7be5b50668",
+    "name": "Anil ",
+    "email": "anil.foe@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 6,
+    "approvedCompOffRequests": 5,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "a34e3434-a002-486c-88f5-0a4b823490f1",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-03",
+        "end_date": "2026-03-03",
+        "reason": "Emergency work.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-05T07:34:05.696Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-02T11:36:40.660524+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "1bd2b935-fa50-411d-b0e7-cb20f9f98d9a",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-20",
+        "end_date": "2026-03-20",
+        "reason": "comp off approved by shilpa",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-14T13:22:25.228Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-14T12:39:12.86375+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T13:22:27.826106+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "039707c8-5511-4fee-aa2b-cf5451cf61ad",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-20",
+        "end_date": "2026-03-20",
+        "reason": "comp off approved by shilpa",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-14T13:27:04.408Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-14T12:37:43.72221+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T13:27:07.01799+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5b3f90b3-0275-443e-94ad-91de4a6423d2",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-27",
+        "end_date": "2026-04-27",
+        "reason": "26 Sunday today I'm working mam tomorrow i need comp off mam",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-27T02:53:59.572Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-26T11:05:41.90943+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-27T02:53:59.719462+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "bf17e281-9a12-4bd3-b8a8-7790c322cc03",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-04",
+        "end_date": "2026-05-04",
+        "reason": "@Shilpa mam I’d like to request a comp off this Monday ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-01T06:40:39.410Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-01T06:40:19.004957+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-01T06:40:39.511535+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "45dfa281-0453-481c-b712-4fe28b144d27",
+        "user_id": "d360ab98-6198-4e00-8efb-db7be5b50668",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-08",
+        "end_date": "2026-06-08",
+        "reason": "Hi Ma'am\n@Shilpa mam ,Due to an emergency, I would like to take a comp-off tomorrow. Kindly approve it. Thank you.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-08T03:11:40.198Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-07T11:48:54.457219+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-08T03:11:40.248062+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "75b2a180-4d5f-413d-b898-1de4a4354f21",
+    "name": "Arun Kumar A V",
+    "email": "landscaping.foe@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 2.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -2.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 3,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "9a632dc2-93ce-44bb-8a78-fba7a77ce98f",
+        "user_id": "75b2a180-4d5f-413d-b898-1de4a4354f21",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-13",
+        "end_date": "2026-06-13",
+        "reason": "due to personal work. kindly need one day leave.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:07.153Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-12T04:58:52.099255+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:08.943969+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "a9064f1a-7195-4d7f-a6e9-807d06e0edd5",
+        "user_id": "75b2a180-4d5f-413d-b898-1de4a4354f21",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-30",
+        "end_date": "2026-05-30",
+        "reason": "Personal work ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-01T13:16:45.957Z",
+            "approver_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+            "approver_name": "Venkatachalam "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-01T08:24:48.549019+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-01T13:16:49.867718+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "583ad8c7-501b-41df-9e9f-8b4f941872be",
+        "user_id": "75b2a180-4d5f-413d-b898-1de4a4354f21",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-25",
+        "end_date": "2026-05-25",
+        "reason": "Personal emergency ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-01T13:16:48.005Z",
+            "approver_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+            "approver_name": "Venkatachalam "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-01T08:25:47.953534+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-01T13:16:51.915964+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 2.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "60d6abab-ef16-4deb-81a5-ebf4ad3a84bf",
+    "name": "Basavaraj HB - Senior Manager Landscaping ",
+    "email": "basavaraj@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 3,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -3,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "1fbb44a9-aaf5-48a4-8723-0e59e220a281",
+        "user_id": "60d6abab-ef16-4deb-81a5-ebf4ad3a84bf",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-14",
+        "end_date": "2026-02-14",
+        "reason": "Sir/Madam. I'm working date - 1st February 2026 ( Sunday )",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:47:49.923Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-14T01:02:25.769337+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "bbd84804-c4c4-4484-b97d-78967a6a4e82",
+        "user_id": "60d6abab-ef16-4deb-81a5-ebf4ad3a84bf",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-14",
+        "end_date": "2026-02-14",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-18T14:19:04.308Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:15:20.949648+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b5604252-2320-4c25-b7f2-acce5d54243e",
+        "user_id": "60d6abab-ef16-4deb-81a5-ebf4ad3a84bf",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-06",
+        "end_date": "2026-05-07",
+        "reason": "Good afternoon all.\n\n@pradeep sir. I request to you i need 2 day's leave from 6/5/2026 to  7/5/2026. Please approve ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-30T13:53:11.627Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-28T09:36:18.346085+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-30T13:53:12.040099+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 3d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+    "name": "Bhimas Bora",
+    "email": "borabhimas12@gmail.com",
+    "role": "field_officer",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 12,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -12,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 12,
+    "approvedCompOffRequests": 12,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "fad87222-aede-49c1-a2fe-e7a41cd57729",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-01",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T11:11:54.262667+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T11:11:54.262667+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b2c91860-8dc0-4ec3-8c96-6b01b3e8cc09",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-01",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-07T10:18:01.659515+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-07T10:18:01.659515+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3ebcfe43-f7f9-4e0e-a82d-1651d9b0a9e3",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-14",
+        "end_date": "2026-01-14",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-07T10:18:05.346863+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-07T10:18:05.346863+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3a72b2da-4f06-493c-8685-cd9326ca2d74",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-14",
+        "end_date": "2026-01-14",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T11:11:55.840617+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T11:11:55.840617+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "c20ac007-c807-4e30-9773-db047b58fbd2",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-01",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T11:14:13.824562+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T11:14:13.824562+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "41731e5e-39b7-4f2e-852a-e1b82bcd9a6e",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-14",
+        "end_date": "2026-01-14",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T11:14:21.719054+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T11:14:21.719054+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "90e644bb-351e-400d-8f97-371e857ac0b1",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-01",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T12:01:26.76424+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T12:01:26.76424+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "ad6563a6-57a6-4d51-9449-da905b909481",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-14",
+        "end_date": "2026-04-14",
+        "reason": "Bulk Monthly Feed Update",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-05-04T12:01:32.614974+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T12:01:32.614974+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "c542b389-8785-4406-8ecd-a74e5d291a87",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-29",
+        "end_date": "2026-05-29",
+        "reason": "C/O adjusted as per the mail request - Manually adjusted by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:38.012Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-13T13:54:05.578094+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:39.789907+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "bac51c2f-b90f-42d4-bc79-4d2c83344ff9",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-26",
+        "end_date": "2026-05-26",
+        "reason": "C/O adjusted as per the mail request - Manually adjusted by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:46.797Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-13T13:53:33.039781+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:48.581855+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "84b84daa-9a35-4853-86a5-818ffb813319",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-25",
+        "end_date": "2026-05-25",
+        "reason": "C/O adjusted as per the mail request - Manually adjusted by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:42.562Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-13T13:53:06.103088+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:44.337316+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "0e5eb7a4-de27-4d0a-ae2a-0a2b72406d02",
+        "user_id": "6b5daefa-4af9-42dc-9e34-452b8a285823",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-13",
+        "end_date": "2026-05-13",
+        "reason": "C/O adjusted as per the mail request - Manually adjusted by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:51.320Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          },
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:16:57.401Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-13T13:52:39.563078+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:59.275392+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 12d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "c7806ce8-8650-4176-aba7-e468f30cf353",
+    "name": "Ganesha C",
+    "email": "ganucnaik@gmail.com",
+    "role": "technical_reliever",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 1,
+    "compOffDaysUsed": 0,
+    "compOffDaysPending": 0,
+    "netSystemBalance": 1,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 0,
+    "approvedCompOffRequests": 0,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 1,
+        "reason": "Worked 9.3h on Holiday"
+      }
+    ],
+    "compOffLeaves": [],
+    "issues": [
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+    "name": "Gowtham Mohan ",
+    "email": "gowtham.tech@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 6.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -6.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 7,
+    "approvedCompOffRequests": 7,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "a8732234-bdbb-4609-af44-0a23fbac418c",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-10",
+        "end_date": "2026-01-10",
+        "reason": "1 comp off adjusted manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-21T14:00:42.938Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:42:44.89695+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-21T14:00:43.888938+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "edcc4fb1-fb13-400c-a63f-f870fd97f3bb",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-24",
+        "end_date": "2026-01-24",
+        "reason": "0.5 comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-21T14:00:39.104Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:44:09.473877+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-21T14:00:40.059687+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2fe3795d-1380-441e-9111-19ed67d1ad11",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-23",
+        "end_date": "2026-04-23",
+        "reason": "To VOTE for Tamilnadu Legislative Assembly Election -2026",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-22T13:11:25.973Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-22T12:57:36.20234+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-22T13:11:26.884877+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "58221890-3baa-4c03-a311-b5313014fa90",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-20",
+        "end_date": "2026-05-20",
+        "reason": "Leave request for my personal commitment and bring my family back to Bangalore.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-20T09:20:47.538Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-19T21:45:17.594109+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-20T09:20:47.842262+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "63a82251-eb2f-421c-8022-0c9018f7c015",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-17",
+        "end_date": "2026-06-17",
+        "reason": "Due to some personal work with family ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-17T04:57:12.373Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-17T01:38:49.619773+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-17T04:57:13.140216+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "7c14a5f7-00ea-48e9-a4b2-2a7a8fddc509",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-18",
+        "end_date": "2026-06-18",
+        "reason": "Applied leave for personal commitment.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-18T07:54:05.965Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-18T00:47:29.817751+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-18T07:54:06.806984+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "1fec267a-2b75-4cda-b0c0-7ca129076d88",
+        "user_id": "64c6a86c-c8f9-4b8f-969c-9e4768854fdb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-02",
+        "end_date": "2026-07-02",
+        "reason": "For personal reasons ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-02T07:40:37.865Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-02T04:10:01.399479+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-02T07:40:38.490658+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 6.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "10c74709-58d5-43d8-a8aa-9233699fc751",
+    "name": "Harish H P ",
+    "email": "harish.hp@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "713261df-5899-4aa7-9df0-42bbd116455c",
+        "user_id": "10c74709-58d5-43d8-a8aa-9233699fc751",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-16",
+        "end_date": "2026-01-19",
+        "reason": "Dear Sudhan 15th January. i worked for New site deployment and 16th January 2026 took CF approved by pradeep sir",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-01T16:15:10.611Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-19T06:17:01.889988+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3bd33703-7615-4e54-915b-2ed5a4c09750",
+        "user_id": "10c74709-58d5-43d8-a8aa-9233699fc751",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-16",
+        "end_date": "2026-01-19",
+        "reason": "Dear Sudhan 15th January. i worked for New site deployment and 16th January 2026 took CF approved by pradeep sir",
+        "status": "cancelled",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-01T16:14:30.222Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          },
+          {
+            "status": "cancelled",
+            "comments": "duplicate",
+            "timestamp": "2026-03-18T14:14:04.756Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-19T06:17:01.049863+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "cca2a4a8-3869-4034-88d2-4d20e891af01",
+        "user_id": "10c74709-58d5-43d8-a8aa-9233699fc751",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-29",
+        "end_date": "2026-06-29",
+        "reason": "Dear pallavi madam \n\nToday I'm taking Comp off kindly approve ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-09T00:49:37.724Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-29T01:49:24.262677+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-09T00:49:37.80982+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+    "name": "Isaac Roy",
+    "email": "isaac.ops@paradigmfms.com",
+    "role": "operation_manager",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0.5,
+    "compOffDaysUsed": 10.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -10,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 11,
+    "approvedCompOffRequests": 10,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 0.5,
+        "reason": "Worked 6.2h on Holiday"
+      }
+    ],
+    "compOffLeaves": [
+      {
+        "id": "36dce3de-375c-4603-b227-c7c5ca307304",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-30",
+        "end_date": "2026-01-30",
+        "reason": "Respected Sir,\n\nGreetings for the day \n\nAs discussed I would like to take comp off tomorrow due to some personal work.\n\nRequired your approval for the same.\n\nThanks with Gratitude \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-01T16:13:14.429Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-29T15:18:46.060199+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "a86b47f1-ebc2-4fe6-986d-10182b97388f",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-02",
+        "end_date": "2026-02-02",
+        "reason": "Respected  Sir,\n\nGreetings for the Day\n\nDue to severe fever and cold i  couldn't able to report to duty.\n\nRequesting your understanding and approval for the same .\n\nThanks with Gratitude \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-03T12:39:50.419Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-02T11:46:05.438117+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "71a3da29-98e9-45ea-9854-d76005dec31f",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-08",
+        "end_date": "2026-02-08",
+        "reason": "Respected Sir,\n\nGreetings for the Day \n\nI'll be taking my comp off tomorrow as I have Doctor appointment for Mother's regular check ups.\n\nKindly request your approval for the same.\n\nThanks with Gratitude \nIsaac Roy ",
+        "status": "withdrawn",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-02-08T11:16:54.677995+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "fdec6c20-644c-4137-8d8d-d30529d6f547",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-09",
+        "end_date": "2026-02-09",
+        "reason": "Respected Sir,\n\nGreetings for the Day \n\nI'll be taking my comp off tomorrow as I have Doctor appointment for Mother's regular check ups.\n\nKindly request your approval for the same.\n\nThanks with Gratitude \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-12T09:34:49.234Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-08T11:16:50.612524+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "28400a87-cf45-48e6-b39e-4660fcb14471",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-27",
+        "end_date": "2026-02-27",
+        "reason": "Respected Boss,\n\nGreetings for the Day \n\nAs part of scheduled Doctor appointment i would like to take comp off today.\n\nRequesting approval for the same.\n\nThanks with Gratitude \nIsaac Roy",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:37:14.900Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-27T02:19:11.765092+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "6683e19e-e4e9-4724-9732-128dd8a27ba5",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-09",
+        "end_date": "2026-01-09",
+        "reason": "1 comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:28.210Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:48:08.952859+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:38.481819+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2e619d37-c689-44a9-a892-720ee7b741b8",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-19",
+        "end_date": "2026-02-19",
+        "reason": "0.5 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:36.386Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:37:12.074168+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:46.672604+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "10854e8f-4e35-44e1-8fb4-fa8684b1dff0",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-14",
+        "end_date": "2026-04-14",
+        "reason": "Respected Sir,\n\nGreetings for the Day \n\nAs discussed I have taken off today which can be considered as a comp off kindly approve the same.\n\nThanks & Regards \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-14T08:34:42.023Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-14T08:15:48.483322+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T08:34:42.1311+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3e5ee479-d750-43f9-b823-423ed3243ab3",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-15",
+        "end_date": "2026-04-15",
+        "reason": "Respected Sir,\n\nGreetings for the Day\n\nAs discussed I was completely down with fever yesterday hince i couldn't able to report to duty .\n\nKindly please consider this as my comp off.\n\nThanks& Regards \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-16T07:48:41.409Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-16T05:51:22.703377+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-16T07:48:47.20773+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "70b1745f-caa1-48aa-bc9f-b77a0928a884",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-05",
+        "end_date": "2026-06-05",
+        "reason": "Dear Sir,\n\nI wanted to use all my comp off.\n\nHence am taking leave kindly approve ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-11T14:23:52.543Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-05T05:56:00.580102+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-11T14:23:52.551418+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "efe35d90-a233-44b5-955f-482c1b1e192b",
+        "user_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-15",
+        "end_date": "2026-07-16",
+        "reason": "Respected Sir,\n\nGreetings for the Day \n\nDue to personal reasons i would like to take 2days leaves with your permission.\n\nThanks with Gratitude \nIsaac Roy ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-17T10:41:39.148Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-15T01:49:16.897326+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-17T10:41:40.755505+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 10.5d > Earned 0.5d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "6172b8cd-337c-4199-9333-2031e1e971f3",
+    "name": "Joy Immanuel",
+    "email": "joy@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 5,
+    "approvedCompOffRequests": 5,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "22a20df6-b020-4edb-9573-be04ef842bea",
+        "user_id": "6172b8cd-337c-4199-9333-2031e1e971f3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-20",
+        "end_date": "2026-01-20",
+        "reason": " Gm sir I am work on   4- 1 - 2026 sunday based on that \nI need a comoff 21 - 1- 2026 pls approval me sir",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-01-29T17:17:25.070Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-20T04:52:07.165196+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "24ace84b-6b5f-4f2e-9613-2f5ac1d4c77d",
+        "user_id": "6172b8cd-337c-4199-9333-2031e1e971f3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-03",
+        "end_date": "2026-03-03",
+        "reason": " Good morning sir i am worked on 1-3-2026 based on pls approval today as a  comoff  tq sir",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-03T03:25:38.791Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-03T03:18:32.658779+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "14d533d1-1a25-4fc2-9b44-36eeb16cb3aa",
+        "user_id": "6172b8cd-337c-4199-9333-2031e1e971f3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-08",
+        "end_date": "2026-06-08",
+        "reason": "Good evening sir i am worked on  7-6-2026\nBased on that today comoff sir pls approval me sir",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-08T16:12:40.900Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-08T13:29:12.691419+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-08T16:12:42.276272+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5e88b0d7-84d8-4315-a706-a96ca45d2219",
+        "user_id": "6172b8cd-337c-4199-9333-2031e1e971f3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-09",
+        "end_date": "2026-06-09",
+        "reason": "Dear Sir ,\n\nAs  discussed kindly consider my leave on 9th June as the EL .",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-17T07:16:20.568Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-17T07:14:47.539186+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-17T07:16:20.944637+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e2019fef-50b5-4133-a368-c0458241d3d3",
+        "user_id": "6172b8cd-337c-4199-9333-2031e1e971f3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-29",
+        "end_date": "2026-06-29",
+        "reason": "Good morning sir \n For information I am worked on 20- 6 2026\nBased on that 29- 6- 2026  I am taking comoff I am uplade in app also please approval me  sir \nTq sir \n",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-29T08:10:39.853Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-29T04:25:33.205569+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-29T08:10:39.961751+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "ef0e7e26-ce43-46ac-9f20-5c128faeae47",
+    "name": "Keshav Murthy",
+    "email": "keshavmani27@gmail.com",
+    "role": "operation_manager",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0.5,
+    "compOffDaysUsed": 3,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -2.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 2,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 0.5,
+        "reason": "Punch present on Holiday"
+      }
+    ],
+    "compOffLeaves": [
+      {
+        "id": "15baf5ed-ae31-4a31-ac68-3172c942bf56",
+        "user_id": "ef0e7e26-ce43-46ac-9f20-5c128faeae47",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-20",
+        "end_date": "2026-07-20",
+        "reason": "Today comp off",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-20T07:07:23.508Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-20T04:33:14.414768+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-20T07:07:23.666061+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "ed4c807a-48c5-4f75-b9cf-7bb9983ddf20",
+        "user_id": "ef0e7e26-ce43-46ac-9f20-5c128faeae47",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-23",
+        "end_date": "2026-06-24",
+        "reason": "Good morning Sir Ji,\nI would like to inform you that I am taking leave for two days comp off ,from 23 June 2026 to 24 June 2026, as my maternal aunt passed away last week in Chittoor District, Andhra Pradesh. Her death ceremony (Thithi) is scheduled during these days.\nKindly approve my leave request.\nYours faithfully,\nKeshav",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-24T00:36:27.135Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-23T02:12:29.275588+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-24T00:36:27.189134+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 3d > Earned 0.5d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "0fe5e1b8-6a53-4f57-a11a-103f72f4419a",
+    "name": "Madhu NH",
+    "email": "madhunh93@gmail.com",
+    "role": "technical_reliever",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0.5,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -0.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 0.5,
+        "reason": "Punch present on Holiday"
+      }
+    ],
+    "compOffLeaves": [
+      {
+        "id": "8bdb2db9-b4a2-44b7-a512-c5c98f8525c4",
+        "user_id": "0fe5e1b8-6a53-4f57-a11a-103f72f4419a",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-26",
+        "end_date": "2026-06-26",
+        "reason": "missed to apply comp off",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-06T07:14:42.591Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-01T09:43:33.893631+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-06T07:14:44.222056+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0.5d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "b74b27d5-10a3-4826-a989-50021cc93d80",
+    "name": "Maibub Paradigm",
+    "email": "maibub@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 4,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -4,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 2,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "38dcb584-8f82-4a07-8657-0acc4624dba4",
+        "user_id": "b74b27d5-10a3-4826-a989-50021cc93d80",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-09",
+        "end_date": "2026-02-10",
+        "reason": "Medical Emergency leave ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-13T08:42:45.035Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-13T07:18:36.057301+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "95a9dfa1-7a24-456b-ab43-b707151a9082",
+        "user_id": "b74b27d5-10a3-4826-a989-50021cc93d80",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-20",
+        "end_date": "2026-05-21",
+        "reason": "Worked on 26th April 2026 Sunday  &  1st  May 2026 . My Younger sister daughter  wedding. ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-22T18:11:56.462Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-19T04:54:58.40228+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-22T18:11:56.610462+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 4d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "6959dbe3-5310-47f3-a0ec-4b20f779500d",
+    "name": "Manojreddy Pundru",
+    "email": "manojreddypundru@gmail.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 0,
+    "compOffDaysPending": 1,
+    "netSystemBalance": 0,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 0,
+    "pendingCompOffRequests": 1,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "a78362ac-e727-474f-ad31-e717c6ed8f6b",
+        "user_id": "6959dbe3-5310-47f3-a0ec-4b20f779500d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-15",
+        "end_date": "2026-06-15",
+        "reason": "Sunday off taken",
+        "status": "pending_manager_approval",
+        "day_option": "full",
+        "current_approver_id": "b1788ef5-4df5-44db-8511-f82bb96d408f",
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-06-17T12:29:49.429111+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-17T12:29:49.429111+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "PENDING: 1 pending Comp Off leave request(s) (1d)"
+    ]
+  },
+  {
+    "userId": "84d4ee16-b60f-401c-9478-584b7cbea26d",
+    "name": "Nakul R Alvar",
+    "email": "nakulalvar@paradigmfms.com",
+    "role": "business_developer",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 2,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -2,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 3,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "78b18aca-12d5-41ac-8202-8ad139a56c90",
+        "user_id": "84d4ee16-b60f-401c-9478-584b7cbea26d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-16",
+        "end_date": "2026-01-16",
+        "reason": "0.5 Comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:20.170Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:53:48.008505+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:30.440212+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e8241b25-9998-46a4-a607-19a6d95d2798",
+        "user_id": "84d4ee16-b60f-401c-9478-584b7cbea26d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-02",
+        "end_date": "2026-05-02",
+        "reason": "Traveling out of station ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-04T14:09:25.636Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-30T14:34:02.340295+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-04T14:09:25.810438+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "f479d67e-3837-4572-8c0a-e32be0bcc99b",
+        "user_id": "84d4ee16-b60f-401c-9478-584b7cbea26d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-27",
+        "end_date": "2026-06-27",
+        "reason": "personal errands ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-29T08:10:55.481Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-27T08:03:05.125318+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-29T08:10:55.592063+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 2d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "8fb818f1-3750-4bd0-83ad-8832550c7fab",
+    "name": "Omkar  ",
+    "email": "omkar@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 6,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -6,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 3,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "1c789cb2-12e1-45c1-9282-516f06283e8c",
+        "user_id": "8fb818f1-3750-4bd0-83ad-8832550c7fab",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-19",
+        "end_date": "2026-01-19",
+        "reason": "1 Comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:22.764Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:51:02.164757+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:33.052402+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "d87defb5-76c4-4f85-833b-f76a0c37e13b",
+        "user_id": "8fb818f1-3750-4bd0-83ad-8832550c7fab",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-01",
+        "end_date": "2026-06-01",
+        "reason": "Due to a personal commitment, I will be taking my pending Comp Off ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-01T17:55:21.585Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-31T17:22:25.836013+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-01T17:55:21.881592+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "50c18549-e9ab-4965-b458-86d46c3cac24",
+        "user_id": "8fb818f1-3750-4bd0-83ad-8832550c7fab",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-22",
+        "end_date": "2026-06-25",
+        "reason": "Stany sir As discussed, I am traveling to my hometown due to personal commitment ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-23T08:47:17.437Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-19T11:09:34.207239+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-23T08:47:18.899327+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 6d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+    "name": "Rajeshwari ",
+    "email": "rajeshwari.foe@paradigmfms.com",
+    "role": "field_staff",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 3.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -3.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 7,
+    "approvedCompOffRequests": 4,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "82b44438-9412-4e48-ac84-3910f2da690e",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-14",
+        "end_date": "2026-03-14",
+        "reason": "Comp off leave ",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-14T04:15:34.123Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-14T04:12:41.949763+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "56ae4330-b13d-4446-8f92-4f4c6a69167f",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-14",
+        "end_date": "2026-03-14",
+        "reason": "Sick  leave ",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-14T04:15:26.030Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-14T03:35:57.896455+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "ddd53b46-8de7-4705-9f7f-729b9d778c88",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-14",
+        "end_date": "2026-03-14",
+        "reason": "Sick  leave ",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-14T04:15:29.555Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-14T03:35:58.657786+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "8f13e954-c962-4344-ab1b-b36ea0618f3d",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-16",
+        "end_date": "2026-01-16",
+        "reason": "1 Comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-21T14:00:36.807Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:52:01.00466+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-21T14:00:37.760226+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b98c2f00-a49d-48e9-83fc-30cbbe83a87d",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-17",
+        "end_date": "2026-01-17",
+        "reason": "0.5 Comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-21T14:00:34.707Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:52:59.035455+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-21T14:00:35.659664+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "eeed3111-78d8-4728-8031-92b14750faa3",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-08",
+        "end_date": "2026-06-08",
+        "reason": " Took Comp Off on 8th June 26.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-10T04:32:15.192Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-09T15:02:45.154095+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-10T04:32:15.496371+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "0cba70a0-bb29-499e-8f60-0913f6498041",
+        "user_id": "a533d5bb-4ecf-417b-8817-3b3832652f55",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-23",
+        "end_date": "2026-06-23",
+        "reason": "Compoff worked on 20/6/2026",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-23T04:12:47.978Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-22T16:17:36.672391+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-23T04:12:48.352818+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 3.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "c9e141f9-0f86-4651-ad4a-93e3c7f3685f",
+    "name": "Ramesh CV",
+    "email": "ramesh@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -1,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "cccfe3e7-b0f5-4dee-abe7-1552f7a007c6",
+        "user_id": "c9e141f9-0f86-4651-ad4a-93e3c7f3685f",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-26",
+        "end_date": "2026-02-26",
+        "reason": "Traveling ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-19T06:34:31.870Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-16T08:19:47.001159+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "171fac2f-d595-4720-a193-86431982a01e",
+    "name": "Ravi DEVA",
+    "email": "ravi@paradigmfms.com",
+    "role": "operation_manager",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 5,
+    "approvedCompOffRequests": 5,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "9da0ea3b-f1a6-429b-8e6e-17387065fe15",
+        "user_id": "171fac2f-d595-4720-a193-86431982a01e",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-11",
+        "end_date": "2026-06-11",
+        "reason": "Personal emergency approved by Pallavi Madam ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-11T14:23:35.348Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-10T18:30:37.388531+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-11T14:23:35.356927+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "d8ba667c-8a6f-4008-a860-aed615de7013",
+        "user_id": "171fac2f-d595-4720-a193-86431982a01e",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-07",
+        "end_date": "2026-02-07",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:28.511Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:07:41.906673+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:31.508368+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "24e5ca18-bbd8-4011-adc9-92ded5507f15",
+        "user_id": "171fac2f-d595-4720-a193-86431982a01e",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-03",
+        "end_date": "2026-06-03",
+        "reason": "Personal work approved by Pallavi Madam ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-04T07:33:44.779Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-03T05:48:36.734286+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-04T07:33:46.079743+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "fe3fa40e-fa48-4c90-9882-6837b16a6218",
+        "user_id": "171fac2f-d595-4720-a193-86431982a01e",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-27",
+        "end_date": "2026-04-27",
+        "reason": "Personal work  - Approved by Pallavi Madam ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-27T13:31:15.669Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-27T00:42:04.522774+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-27T13:31:15.813926+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "40eede55-a327-4b51-bb42-b9c01b1c8f34",
+        "user_id": "171fac2f-d595-4720-a193-86431982a01e",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-07",
+        "end_date": "2026-07-07",
+        "reason": "Personal work  - approved by Pallavi Madam ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-09T00:45:01.269Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-07T02:28:34.231846+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-09T00:45:01.348839+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "f632fc1b-ccfe-4424-946c-670f24582764",
+    "name": "Rinju  P  R (Ops Technical)",
+    "email": "rinju@paradigmfms.in",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 4,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -4,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 4,
+    "approvedCompOffRequests": 4,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "0c28458c-047e-4665-9135-4c701efec2f0",
+        "user_id": "f632fc1b-ccfe-4424-946c-670f24582764",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-15",
+        "end_date": "2026-05-15",
+        "reason": "My Family was come frome native",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-15T13:18:44.846Z",
+            "approver_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+            "approver_name": "Venkatachalam "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-14T11:19:07.262479+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-15T13:18:44.853168+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e000b134-2b6c-4d60-8329-b6748779f4f5",
+        "user_id": "f632fc1b-ccfe-4424-946c-670f24582764",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-14",
+        "end_date": "2026-02-14",
+        "reason": "1 Comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:30.895Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:05:20.281125+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:33.894889+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "76087f83-efaf-41d1-8bd7-ec13d2aecd5c",
+        "user_id": "f632fc1b-ccfe-4424-946c-670f24582764",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-04",
+        "end_date": "2026-04-04",
+        "reason": "Festival  ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-04T07:00:32.755Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-02T10:44:42.612324+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T11:27:05.210195+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "13f6f498-df97-4232-acb8-cd5b098a00ae",
+        "user_id": "f632fc1b-ccfe-4424-946c-670f24582764",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-06",
+        "end_date": "2026-04-06",
+        "reason": "Festival \n",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-04T07:00:22.819Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-02T10:46:09.854607+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T11:26:57.792279+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 4d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "04364421-22db-44e2-b1f1-08bcebc3d562",
+    "name": "Sandeep B ",
+    "email": "sandeep@paradigmfms.com",
+    "role": "operation_manager",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0.5,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 1,
+    "netSystemBalance": -4.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 5,
+    "approvedCompOffRequests": 4,
+    "pendingCompOffRequests": 1,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 0.5,
+        "reason": "Punch present on Holiday"
+      }
+    ],
+    "compOffLeaves": [
+      {
+        "id": "281ed081-9d92-44bc-9576-04f301d85cdc",
+        "user_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-25",
+        "reason": "Shivamogga - Maarikaamba Jatre. ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:38:30.534Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-23T03:17:26.258402+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b9551e58-c529-4795-a863-5b9b31930385",
+        "user_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-22",
+        "end_date": "2026-07-22",
+        "reason": "Personal Work ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-22T12:20:37.563Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-22T00:10:33.9097+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-22T12:20:37.994992+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "4402bb50-7017-4076-a2e4-b43ee1b5df55",
+        "user_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-23",
+        "end_date": "2026-06-23",
+        "reason": "Fever, Migraine, Body Pain ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-24T00:36:19.438Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-23T04:12:37.717691+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-24T00:36:19.488824+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "c63df40b-1314-47ff-b93b-0ba475c1df31",
+        "user_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-22",
+        "end_date": "2026-06-22",
+        "reason": "Fever, Migraine, Body Pain",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-24T00:36:46.464Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-22T03:43:11.401539+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-24T00:36:46.516771+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2c7448b5-c204-4c90-9f19-914032095677",
+        "user_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-23",
+        "end_date": "2026-07-23",
+        "reason": "Personal Work ",
+        "status": "pending_manager_approval",
+        "day_option": "full",
+        "current_approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-07-23T02:04:44.237864+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-23T02:04:44.237864+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0.5d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)",
+      "PENDING: 1 pending Comp Off leave request(s) (1d)"
+    ]
+  },
+  {
+    "userId": "bfd1ca1f-26b9-4f25-8b0d-467327b774a4",
+    "name": "Sandeep Biswas",
+    "email": "sandeep.accounts@paradigmfms.com",
+    "role": "finance",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -1,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "1e67ca41-a9bb-4dc6-a183-112a0722b539",
+        "user_id": "bfd1ca1f-26b9-4f25-8b0d-467327b774a4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-27",
+        "end_date": "2026-04-27",
+        "reason": "I have selected leave on 20-04-2026,due to gst work i came to office worked full day and taking same comp off on 27-04-26.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-30T13:13:32.435Z",
+            "approver_id": "d29b6020-e4ba-436c-adfb-b5fd2cd74990",
+            "approver_name": "Chethan V"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-30T13:11:56.934533+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-30T13:13:42.529676+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "2a82f0cc-effb-4576-917c-72408ea06b45",
+    "name": "Sanjay Ganapati Naik",
+    "email": "fireofficer@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 2,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "156a2e6c-1155-4243-add9-2150d66a7bc1",
+        "user_id": "2a82f0cc-effb-4576-917c-72408ea06b45",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-16",
+        "end_date": "2026-04-17",
+        "reason": "Feeling feverish ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-22T03:39:50.891Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-21T11:49:31.13949+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-22T03:39:50.999939+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "22ff1b65-ba9f-48c8-89d6-7d27810e06ad",
+        "user_id": "2a82f0cc-effb-4576-917c-72408ea06b45",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-22",
+        "end_date": "2026-06-24",
+        "reason": "I am going to my hometown.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-23T08:47:28.035Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-18T08:35:22.038279+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-23T08:47:29.484563+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "b6144e7e-d5e8-4f64-b50f-f15d01739c40",
+    "name": "sashikanta das",
+    "email": "sashikantadas8262@gmail.com",
+    "role": "field_staff",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -1,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "afe2e8d9-b873-4c51-a493-ea702e2bb870",
+        "user_id": "b6144e7e-d5e8-4f64-b50f-f15d01739c40",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-14",
+        "end_date": "2026-05-14",
+        "reason": "As I worked on Sunday month of April 12th '26.\nI'm taking C/O leave.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-25T13:55:02.311Z",
+            "approver_id": "ef0e7e26-ce43-46ac-9f20-5c128faeae47",
+            "approver_name": "Keshav Murthy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-14T01:41:02.719272+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-25T13:55:03.523571+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+    "name": "Shilpa M",
+    "email": "shilpa.ops@paradigmfms.in",
+    "role": "operation_manager",
+    "gender": "Female",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 11.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -11.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 17,
+    "approvedCompOffRequests": 13,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "6f892569-8208-4a7c-95f2-2cabb10342cb",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-21",
+        "end_date": "2026-01-21",
+        "reason": "Personal work",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-01-19T07:44:28.708Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          },
+          {
+            "status": "approved",
+            "comments": "Final approval.",
+            "timestamp": "2026-01-19T08:49:41.405Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-18T14:21:36.184214+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "171efd30-3001-4f6e-8422-7f210393b991",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-02",
+        "end_date": "2026-03-02",
+        "reason": "Travelling to Mantralayam ",
+        "status": "withdrawn",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-02-05T11:02:26.320096+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "90ed7c76-3c71-4f3e-aed9-a2b7debbb287",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-10",
+        "end_date": "2026-02-10",
+        "reason": "Unwell, availing comp off for working on 17th January 2026",
+        "status": "withdrawn",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [],
+        "doctor_certificate": null,
+        "created_at": "2026-02-10T00:38:57.46808+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "19c2c087-60c5-4969-9411-98d6d31535eb",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-10",
+        "end_date": "2026-02-10",
+        "reason": "Unwell, availing comp off for working on 17th January 2026",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-12T09:34:41.762Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-10T00:38:55.360187+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "982137af-5bb1-493e-b300-7f970af8ce93",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-24",
+        "reason": "Comp off requested for My father hospital visit",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:37:48.275Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-22T16:16:11.832066+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "9864b2b3-9fff-4c61-b80d-6e11e63c7fa7",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-29",
+        "end_date": "2026-05-29",
+        "reason": "Requesting for comp off for my father medical emergency",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-29T09:57:51.411Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-28T17:40:29.481655+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-29T09:57:53.434006+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "7497dc26-c763-4542-96d1-04dd0c474ee6",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-24",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-18T14:19:14.641Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:06:39.356994+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "17931a8a-026c-4031-bc05-405304f292f5",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-20",
+        "end_date": "2026-03-20",
+        "reason": "Comp off for working on 15th March",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-04T07:00:53.203Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-01T02:26:36.325969+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-04T07:00:53.431651+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5aa9ab2f-98d5-4935-a0a1-a459bd80d42b",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-15",
+        "end_date": "2026-04-15",
+        "reason": "Comp off requested for working on 12th April. Requesting for heavy head ache.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-14T23:23:17.532Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-14T22:45:39.216204+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T23:23:17.623814+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b5568961-d2b6-4067-bd13-c6289e15dc85",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-28",
+        "end_date": "2026-03-28",
+        "reason": "Request for comp off approval for working on 22nd March being Sunday. App is not taking the comp off request. Hence requesting the approval for correction.",
+        "status": "correction_made",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-09T10:28:10.487Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          },
+          {
+            "status": "correction_made",
+            "comments": "Attendance manually corrected by Admin",
+            "timestamp": "2026-04-15T14:09:48.531Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-09T01:22:38.722372+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-15T14:09:48.97388+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "c55e56a8-3ef6-48a4-a6df-936294dc8dc2",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-28",
+        "end_date": "2026-03-28",
+        "reason": "need comp off i worked on sunday ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-16T08:54:34.432Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-16T08:54:01.780608+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-16T08:54:34.581251+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2d98c405-7067-4cf5-850e-a07fecca39cf",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-23",
+        "end_date": "2026-05-23",
+        "reason": "A comp off was requested for working on Sunday, 16 May, considering that I need to work on the upcoming Sunday at Sherwood as per the client's request. Also needed to relax towards a heavy headache.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-29T09:59:07.640Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-22T18:20:48.710764+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-29T09:59:09.169988+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5e8d2acb-68d5-4518-9b65-d995356859ed",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-27",
+        "end_date": "2026-04-27",
+        "reason": "Requesting comp off for working on 19th April due to emergency hospitalisation to my father.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-27T13:31:10.392Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-27T02:53:09.51593+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-27T13:31:10.647217+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "1c78b27d-5dd8-4314-96e3-fd20c475c2f3",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-08",
+        "end_date": "2026-06-08",
+        "reason": "Requesting an emergency leave for my father’s health issue ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-09T06:44:14.314Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-08T04:42:34.047585+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-09T06:44:14.39964+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "8db28de1-f452-4b2c-b679-e9cc3cd796e3",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-15",
+        "end_date": "2026-06-15",
+        "reason": "Request off for the second half towards doctor visit due to heavy back pain. ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:15:30.076Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-15T06:01:45.575176+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:15:31.83974+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "6e1bdaf9-1ce1-4d48-a3f7-04c2c896ad32",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-29",
+        "end_date": "2026-06-29",
+        "reason": "Requesting half day comp off for severe fever issues as unable to work. ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-09T00:49:01.701Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-29T10:41:52.980869+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-09T00:49:01.787413+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "37a9cb56-b8c1-4153-bcf3-173818a32559",
+        "user_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-20",
+        "end_date": "2026-07-20",
+        "reason": "Half day comp request for personal emergency work ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-22T12:21:18.065Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-19T17:34:09.90236+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-22T12:21:18.500972+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 11.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "182a3fb2-6bb2-4ca1-a3ca-b67f115de387",
+    "name": "Siran jit Mandal",
+    "email": "siranjitmandal4@gmail.com",
+    "role": "security_guard",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -1,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "33c9df06-83d0-4dc7-ba65-15a0496796fc",
+        "user_id": "182a3fb2-6bb2-4ca1-a3ca-b67f115de387",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-26",
+        "end_date": "2026-06-26",
+        "reason": "Toothache - Need to consult Doctor ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-26T13:26:47.133Z",
+            "approver_id": "b53e115f-88e4-410d-b906-f023ebffa0cf",
+            "approver_name": "Ajit Kumar K"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-25T11:26:13.237893+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-26T13:26:47.350491+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "edbda891-191d-4385-b31f-f527f31cc4b4",
+    "name": "Sonjoy Kurmi",
+    "email": "sanjaykurmi2105@gmail.com",
+    "role": "field_staff",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 10,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -10,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 16,
+    "approvedCompOffRequests": 10,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "ef3a9d8a-274b-4298-a02d-86a42ff1dba7",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-06",
+        "end_date": "2026-05-06",
+        "reason": "Sir, I am taking leave today.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-29T10:00:22.551Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-28T11:27:22.55807+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-29T10:00:23.829938+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "c97bdd25-7a6c-47ce-a8dd-afb8804a48dd",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:34.890Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:50.155546+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:35.052722+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3ec96943-e3af-46fe-9709-d7cfa6317199",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:35.716Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:49.988043+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:35.871516+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "0439dddc-4846-4598-9d00-27eefe51cdfb",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:36.433Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:49.843966+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:36.590233+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "919747c9-d6bd-41e8-ad3c-a61d6d80c97f",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:38.098Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:49.765084+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:38.261746+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "131ccd31-54da-4c5d-a749-6ad37102d022",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-20T18:07:29.744Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:50.423283+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:29.9015+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "07984950-1f74-4583-9703-17b16e22a12c",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:33.290Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:50.253221+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:33.459089+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "77214956-975e-4e8c-9aec-3ee8c96cccc8",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-20",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-04-20T18:07:34.062Z",
+            "approver_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+            "approver_name": "Sudhan M"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-19T09:43:50.162832+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-20T18:07:34.218265+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "ed4de7a1-ad46-452f-9810-72701ca459ed",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-24",
+        "end_date": "2026-04-24",
+        "reason": "I worked as a pool operator at Nikoo Homes on April 12th, as the regular operator was on leave.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-25T08:34:52.657Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-24T02:32:36.820405+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-25T08:34:54.660487+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "4a8c7a2a-1126-494d-bdd5-1d94652d2e3c",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-02",
+        "end_date": "2026-06-02",
+        "reason": "Sir, I am taking leave today.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-04T14:53:39.729Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-03T07:48:51.496335+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-04T14:53:41.078183+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5e86c4c4-08e4-4c6f-9909-dc217a8fdadf",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-18",
+        "end_date": "2026-05-18",
+        "reason": "Sir, I am taking leave today.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-28T09:21:53.081Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-18T01:50:14.064851+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-28T09:21:53.772182+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "0a901745-b528-493e-a3fd-bb359c76da39",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-29",
+        "end_date": "2026-05-29",
+        "reason": "Sir, I am taking leave today. Sir, I have some emergency duty tomorrow.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-29T09:57:30.377Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-29T03:02:14.41173+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-29T09:57:32.599291+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "18e62222-399e-4336-9998-d37c2c5b9124",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-15",
+        "end_date": "2026-06-15",
+        "reason": "I took leave today, sir.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-23T08:47:39.114Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-16T04:48:53.271399+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-23T08:47:40.59809+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "6b0aecf1-9816-4a17-a5d4-42192392eae6",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-25",
+        "end_date": "2026-06-25",
+        "reason": "Sir, I took leave today.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-27T04:29:55.823Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-26T01:07:37.980174+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-27T04:29:56.800949+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "8e3882e3-471f-41ba-a60d-3b0a248feb01",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-08",
+        "end_date": "2026-07-08",
+        "reason": "Sir I am taking leave today",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-09T14:52:13.302Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-08T03:30:49.922862+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-09T14:52:14.150669+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "87985741-c7af-4616-9cb0-dba641ae39bb",
+        "user_id": "edbda891-191d-4385-b31f-f527f31cc4b4",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-16",
+        "end_date": "2026-07-16",
+        "reason": "Sir, I had a bike accident. I'm in my room, I can't go to work.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-18T05:25:03.409Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-16T05:19:03.429015+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-18T05:25:05.347469+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 10d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "4a42469a-7de8-44d5-badd-8b5ed5ed65e7",
+    "name": "Srikanth Ks",
+    "email": "srikanthks1999@gmail.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 2,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -2,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 2,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "76ec06b7-a04e-4d66-9d54-e420a07a5e31",
+        "user_id": "4a42469a-7de8-44d5-badd-8b5ed5ed65e7",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-10",
+        "end_date": "2026-03-11",
+        "reason": "Health issues ",
+        "status": "rejected",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "rejected",
+            "comments": "",
+            "timestamp": "2026-03-10T03:53:46.082Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-09T14:29:10.113482+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3c1353a4-1abe-40e2-9981-f79ba1ff4666",
+        "user_id": "4a42469a-7de8-44d5-badd-8b5ed5ed65e7",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-19",
+        "end_date": "2026-01-20",
+        "reason": "2 Comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-21T14:00:31.749Z",
+            "approver_id": "04364421-22db-44e2-b1f1-08bcebc3d562",
+            "approver_name": "Sandeep B"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:59:19.175526+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-21T14:00:32.697394+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 2d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+    "name": "Stany  D Souza ",
+    "email": "stany@paradigmfms.com",
+    "role": "operation_manager",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0.5,
+    "compOffDaysUsed": 1,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -0.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 1,
+    "approvedCompOffRequests": 1,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [
+      {
+        "date": "2026-06-20",
+        "amount": 0.5,
+        "reason": "Punch present on Holiday"
+      }
+    ],
+    "compOffLeaves": [
+      {
+        "id": "c3cc9e3b-0cf4-41ab-96ef-3e436eeca206",
+        "user_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-27",
+        "end_date": "2026-06-27",
+        "reason": "Parsonal problem ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-29T08:11:02.230Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-27T03:31:26.902594+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-29T08:11:02.330579+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 1d > Earned 0.5d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "5321c6f6-578e-4168-9da8-060148e1587b",
+    "name": "Sudhan M",
+    "email": "admin@paradigmfms.com",
+    "role": "admin",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 4,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -4,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 3,
+    "approvedCompOffRequests": 3,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "f752fc31-0485-4915-b7d5-a20d32ebb251",
+        "user_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-21",
+        "end_date": "2026-05-22",
+        "reason": "Worked on 1st of May from home (rectified multitechnician technical delivery role issues day night ) and on 10 th worked for crm and site attendance. So kindly approve 2 days comp off.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-30T11:13:52.419Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-29T11:24:57.007415+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-30T11:13:53.130062+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "1e4ab926-11f7-42cf-9ac9-2651c9f69d0e",
+        "user_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-24",
+        "reason": "1 Comp off adjusted by HR Manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:31.151Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T09:40:48.054564+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:41.433304+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e9747162-a33c-463a-ab2c-4efc3e270cce",
+        "user_id": "5321c6f6-578e-4168-9da8-060148e1587b",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-23",
+        "end_date": "2026-03-23",
+        "reason": "Worked from home, fixed major bugs",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-04T07:01:07.244Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-31T10:27:09.231892+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-04T07:01:07.481526+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 4d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "313c72d8-7236-4fad-b0a4-59374274073a",
+    "name": "Surojit Mondal",
+    "email": "surojitmondal8050@gmail.com",
+    "role": "field_staff",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 4,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -4,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 2,
+    "approvedCompOffRequests": 2,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "9da90d5f-33da-4dd2-afdc-3bb45a6eb369",
+        "user_id": "313c72d8-7236-4fad-b0a4-59374274073a",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-05",
+        "end_date": "2026-02-05",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:23.758Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:09:30.371445+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:26.758176+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5b34d23e-f52e-4dd4-aad0-f894f2cf7205",
+        "user_id": "313c72d8-7236-4fad-b0a4-59374274073a",
+        "leave_type": "Comp Off",
+        "start_date": "2026-04-23",
+        "end_date": "2026-04-25",
+        "reason": "Going to native ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-22T06:57:43.844Z",
+            "approver_id": "171fac2f-d595-4720-a193-86431982a01e",
+            "approver_name": "Ravi (Paradigm)"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-22T06:50:55.141035+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-22T06:57:43.757219+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 4d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "3535b1fa-8055-4d91-b832-3cf492045033",
+    "name": "Uma",
+    "email": "uma.foe@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Female",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 7,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -7,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 5,
+    "approvedCompOffRequests": 5,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "070cfab6-7f9c-4241-8b81-b4b15ebbafc1",
+        "user_id": "3535b1fa-8055-4d91-b832-3cf492045033",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-29",
+        "end_date": "2026-01-29",
+        "reason": "Good morning \nDear sir/madam\n\nSince I am having back pain  .\nI will be taking leave today. Please approve mam",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-01-29T11:44:16.031Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-29T00:35:30.632816+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "fbbc2f9d-2db2-452f-a023-8f62643d3640",
+        "user_id": "3535b1fa-8055-4d91-b832-3cf492045033",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-28",
+        "end_date": "2026-05-29",
+        "reason": "To visit temple ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-29T09:58:20.695Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-26T11:08:26.138094+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-29T09:58:22.824794+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "85785f54-0cda-41ba-95f9-7f7d3a96b4c1",
+        "user_id": "3535b1fa-8055-4d91-b832-3cf492045033",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-06",
+        "end_date": "2026-01-07",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:12.478Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T10:00:37.800078+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:22.742617+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "d4bbbaa4-6e77-4000-9225-2e195a55cc2d",
+        "user_id": "3535b1fa-8055-4d91-b832-3cf492045033",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-06",
+        "end_date": "2026-03-06",
+        "reason": "Compf off for working on 1st March",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-07T11:13:38.971Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-07T11:11:28.371039+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T12:14:06.467418+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5c99ae33-6a3f-4898-9485-a6680e2e98a6",
+        "user_id": "3535b1fa-8055-4d91-b832-3cf492045033",
+        "leave_type": "Comp Off",
+        "start_date": "2026-03-28",
+        "end_date": "2026-03-28",
+        "reason": "Compoff request for working on 15th March",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-04-07T11:15:48.176Z",
+            "approver_id": "94a4f34e-f4d0-42d5-b2c5-7b43419a3325",
+            "approver_name": "Shilpa"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-04-07T11:15:29.98812+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-04-14T12:13:37.864172+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 7d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+    "name": "Veerabhadra T M",
+    "email": "veerabhadra@paradigmfms.com",
+    "role": "field_staff",
+    "gender": "Male",
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 14.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -14.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 16,
+    "approvedCompOffRequests": 16,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "cf6cd922-d081-4453-8fe4-d7141333a3c2",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-30",
+        "end_date": "2026-01-30",
+        "reason": "Family medical emergency. ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-03T12:40:14.125Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-01-30T03:17:59.837725+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2b2e10dd-58dd-431b-95d9-907fdf64a542",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-01",
+        "end_date": "2026-06-01",
+        "reason": "Personal reasons ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-01T16:45:19.864Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-01T02:18:22.508143+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-01T16:45:20.672887+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "152ec957-852f-4ea4-afa9-38668b3279e1",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-02",
+        "end_date": "2026-06-02",
+        "reason": "Personal reasons ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-02T07:09:44.828Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-02T05:06:56.870701+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-02T07:09:44.095317+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e38f756b-cd16-40af-abce-ef2a42449d3d",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-06",
+        "end_date": "2026-01-06",
+        "reason": "1 Comp off adjusted manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T04:31:45.708Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:34:00.214601+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T04:31:47.198459+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "25face4b-672c-4be0-bd77-1104dbd70292",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-19",
+        "end_date": "2026-01-19",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T04:31:45.807Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:37:03.493737+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T04:31:47.31909+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "2f839d6d-43fb-4bbe-b77d-6973b22e009d",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-25",
+        "end_date": "2026-02-25",
+        "reason": "0.5 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:02.192Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:40:31.198941+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:05.193437+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3e073c5e-9649-4d32-9651-17b7f141ae30",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-19",
+        "end_date": "2026-02-19",
+        "reason": "0.5 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:04.856Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:39:54.814606+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:07.862606+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "a8e6603e-3e51-4be7-adb9-6a2f04d3760b",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-10",
+        "end_date": "2026-02-10",
+        "reason": "0.5 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:07.244Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:39:13.315367+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:10.250923+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "02d781ff-f8b2-4256-9779-43c1a9067a91",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-02",
+        "end_date": "2026-02-02",
+        "reason": "0.5 day comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:09.448Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:38:45.782206+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:12.494976+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "cb358813-25aa-442c-8647-0022e7ddbb16",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-30",
+        "end_date": "2026-01-30",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:12.758Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:37:48.651214+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:15.769677+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "4191c714-5ffa-403f-84f8-cfc02d164fb3",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-03",
+        "end_date": "2026-06-03",
+        "reason": "Helth issue.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-03T12:55:37.792Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-03T05:05:40.679792+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-03T12:55:38.85025+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "d9800753-215f-4959-bb3c-a07546d497b2",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-13",
+        "end_date": "2026-06-13",
+        "reason": "Personal work.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:15:58.803Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-13T00:51:48.916159+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:16:00.572464+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "5e847433-5231-43be-8516-f1e9c8cdf15f",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-08",
+        "end_date": "2026-06-08",
+        "reason": "For emergency purpose ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-29T08:59:15.862Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-29T07:36:45.801342+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-29T08:59:16.47502+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "d545c363-c9de-4651-892c-4bfd6d26e289",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-03",
+        "end_date": "2026-07-03",
+        "reason": "Personal reasons ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-11T05:50:44.534Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-10T06:41:30.040971+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-11T05:50:45.745924+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "caf7f57c-64bc-4c55-8e85-bc65f582008c",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-08",
+        "end_date": "2026-07-08",
+        "reason": "Health issues. Emergency purpose.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-11T05:51:01.923Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-10T06:42:17.945917+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-11T05:51:03.222751+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "bf0bd66e-787b-46d6-96c0-351c85e95fbc",
+        "user_id": "216d264d-b20b-45a1-91b5-09cb47c781fb",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-14",
+        "end_date": "2026-07-14",
+        "reason": "Emergency purpose ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-19T14:39:46.643Z",
+            "approver_id": "2a637f75-8829-4572-bdbb-d60f7bb62bd6",
+            "approver_name": "Isaac Roy"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-17T12:27:20.864541+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-19T14:39:47.66771+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 14.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "d515b5f7-0b2b-4bca-b706-2bd0c9d593a3",
+    "name": "Veerabhadraiah S",
+    "email": "veerabhadraiah.stp@paradigmfms.com",
+    "role": "technical_reliever",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 4,
+    "approvedCompOffRequests": 4,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "4ebfe014-d3ca-476a-9f0d-ab059abe12fb",
+        "user_id": "d515b5f7-0b2b-4bca-b706-2bd0c9d593a3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-25",
+        "end_date": "2026-02-25",
+        "reason": "1 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:18.639Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:12:47.541534+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:21.638382+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "b85fd339-3638-4af4-bfa6-21ba6f292718",
+        "user_id": "d515b5f7-0b2b-4bca-b706-2bd0c9d593a3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-11",
+        "end_date": "2026-02-12",
+        "reason": "2 comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-20T07:24:21.120Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-18T14:11:13.899302+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-20T07:24:24.235507+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "09b664c0-6b8b-438f-9940-acd57540276d",
+        "user_id": "d515b5f7-0b2b-4bca-b706-2bd0c9d593a3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-05-15",
+        "end_date": "2026-05-15",
+        "reason": "Mother's medical emergency.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-05-14T08:55:03.968Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-05-14T08:19:06.029947+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-05-14T08:55:04.140632+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "4b54ccbc-6dea-4220-8808-ad6fc8a013ec",
+        "user_id": "d515b5f7-0b2b-4bca-b706-2bd0c9d593a3",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-01",
+        "end_date": "2026-06-01",
+        "reason": "Vactiional.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-01T17:54:42.064Z",
+            "approver_id": "4f62cbdd-6410-4fa3-9d7e-04b05fc41866",
+            "approver_name": "Stany  D Souza "
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-01T02:17:20.498932+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-01T17:54:42.344115+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  },
+  {
+    "userId": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+    "name": "Venkatachalam ",
+    "email": "venkat@paradigmfms.com",
+    "role": "operation_manager",
+    "gender": null,
+    "openingBalance": 0,
+    "dynamicEarnedDays": 0,
+    "compOffDaysUsed": 8.5,
+    "compOffDaysPending": 0,
+    "netSystemBalance": -8.5,
+    "manualLogsEarned": 0,
+    "manualLogsUsed": 0,
+    "totalCompOffRequests": 11,
+    "approvedCompOffRequests": 11,
+    "pendingCompOffRequests": 0,
+    "earnedBreakdown": [],
+    "compOffLeaves": [
+      {
+        "id": "ff7de32c-2673-4de9-8dc5-5ff2eedd911d",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-24",
+        "reason": "Court case",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:38:27.621Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-24T04:32:18.52651+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "cee8ea32-5133-41f8-ad87-6b204a790345",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-18",
+        "end_date": "2026-02-18",
+        "reason": "Court Hearing ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:46:00.855Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-18T03:51:52.706677+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "e3d009f6-671c-46bb-bf0e-291fba4007c0",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-18",
+        "end_date": "2026-02-18",
+        "reason": "Court Hearing ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:46:04.357Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-18T03:51:52.057181+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "8d2e534b-5d60-4a0e-b35b-a70d4947bef8",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-02-24",
+        "end_date": "2026-02-24",
+        "reason": "Court case",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-02-27T15:37:30.647Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-02-24T04:32:19.157839+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-18T14:31:45.225831+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "04adb3e6-8fc4-43ca-9ee8-8ad7182a600d",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-30",
+        "end_date": "2026-01-30",
+        "reason": "1 Comp off adjusted by HR manually",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:07.331Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T10:05:38.103445+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:17.622175+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "f87762ad-f170-43fc-b21e-1304ac994a94",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-07",
+        "end_date": "2026-01-07",
+        "reason": "1 comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:04:55.490Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T10:08:28.255942+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:05.803626+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "cae37bd6-2a14-43eb-ba23-33e7aa77dc6f",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-01-14",
+        "end_date": "2026-01-14",
+        "reason": "0.5 comp off adjusted manually by HR",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-03-26T07:05:03.860Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-03-20T10:06:30.542176+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-03-26T07:05:14.126514+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "54abfd3d-c170-465e-babd-76d8b42b5c48",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-15",
+        "end_date": "2026-06-15",
+        "reason": "Court Case ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-16T10:15:43.067Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-14T11:54:18.141501+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-16T10:15:44.964532+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "51710bda-a35a-4e9f-837f-a200d808dd35",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-18",
+        "end_date": "2026-06-18",
+        "reason": "Dear Sir,\nNeed to travel to my native, health checkup for my mother \n\nRequest you to please approve the leave\n\nThank you.",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-06-20T08:38:51.886Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-18T17:06:23.860444+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-06-20T08:38:58.134369+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "a0b31ccd-c91b-4074-84f4-d40e13995585",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-06-29",
+        "end_date": "2026-06-29",
+        "reason": "Traveling to Tamilnadu for Temple ",
+        "status": "approved",
+        "day_option": "full",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-09T00:49:26.469Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-06-29T10:22:41.947271+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-09T00:49:26.547522+00:00",
+        "correction_details": null
+      },
+      {
+        "id": "3761d4d4-19de-44f8-98fe-d4d071fcc71a",
+        "user_id": "ed8ce87f-1f28-4a3a-a319-4dc502add40d",
+        "leave_type": "Comp Off",
+        "start_date": "2026-07-09",
+        "end_date": "2026-07-09",
+        "reason": "Domestic work ",
+        "status": "approved",
+        "day_option": "half",
+        "current_approver_id": null,
+        "approval_history": [
+          {
+            "status": "approved",
+            "timestamp": "2026-07-10T09:54:33.820Z",
+            "approver_id": "f06f05d9-cf5f-4e4d-a0b4-9534fd2d1e7b",
+            "approver_name": "Pradeepp Gangaiah"
+          }
+        ],
+        "doctor_certificate": null,
+        "created_at": "2026-07-09T03:44:53.093934+00:00",
+        "created_by": null,
+        "created_by_name": null,
+        "created_by_role": null,
+        "updated_at": "2026-07-10T09:54:33.947746+00:00",
+        "correction_details": null
+      }
+    ],
+    "issues": [
+      "CRITICAL: Negative Comp Off Balance (Taken 8.5d > Earned 0d)",
+      "NOTICE: Missing explicit DB comp_off_logs records (Uses dynamic attendance fallback)"
+    ]
+  }
+]

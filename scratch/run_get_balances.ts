@@ -1,17 +1,18 @@
-import { createClient } from '@supabase/supabase-js'
-import dotenv from 'dotenv'
-import { api } from '../services/api'
+import { api } from '../services/api';
+import dotenv from 'dotenv';
 
-dotenv.config({ path: '.env.local' })
+dotenv.config({ path: '.env.local' });
 
-async function main() {
-  const userId = '94a4f34e-f4d0-42d5-b2c5-7b43419a3325' // Shilpa M
-  const balances = await api.getLeaveBalancesForUser(userId)
-  console.log('=== Balances for Shilpa M ===')
-  console.log('compOffTotal:', balances.compOffTotal)
-  console.log('compOffUsed:', balances.compOffUsed)
-  console.log('compOffPending:', balances.compOffPending)
-  console.log('Available Comp Off:', balances.compOffTotal - balances.compOffUsed - balances.compOffPending)
+async function test() {
+  const userId = '5321c6f6-578e-4168-9da8-060148e1587b'; // Sudhan M
+  const balance = await api.getLeaveBalancesForUser(userId, '2026-07-23');
+  console.log("=== API LEAVE BALANCE RESULT FOR SUDHAN M ===");
+  console.log(JSON.stringify({
+    compOffTotal: balance.compOffTotal,
+    compOffUsed: balance.compOffUsed,
+    compOffPending: balance.compOffPending,
+    available: balance.compOffTotal - balance.compOffUsed - (balance.compOffPending || 0)
+  }, null, 2));
 }
 
-main()
+test().catch(console.error);
