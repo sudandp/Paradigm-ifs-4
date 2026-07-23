@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 98,
-  "latestVersionName": "18.8.0",
+  "latestVersionCode": 99,
+  "latestVersionName": "18.9.0",
   "whatsappGroupUrl": "https://chat.whatsapp.com/JCwpUeBwX3NKgOTROhY8MZ",
   "apkDownloadUrl": "https://app.paradigmfms.com",
-  "releaseNotes": "feat: implement native Android foreground service for persistent background location tracking\nfeat: add local storage and synchronization utilities for route history tracking\nfeat: add email scheduling processing logic and attendance report generators\nfeat: add ActivityTimelinePage for tracking daily travel and footsteps and SiteFinanceTracker for managing site expenses.\nfeat: implement user management dashboard and leave dashboard interfaces",
+  "releaseNotes": "feat: implement employee monthly attendance and payroll calculation logic\nfeat: implement duration parsing for permission requests and add utility for monthly report calculations with helper scripts for verification\nfeat: implement Gemini API key rotation with load balancing and add utility for monthly schedule auditing\nfeat: implement Gemini API key rotation service and add support scripts for leave balance verification\nfeat: implement Gemini API key rotation logic and add attendance management modals",
   "isMandatory": true
 }
