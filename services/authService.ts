@@ -10,6 +10,36 @@ import type { Session, User as SupabaseUser, SignUpWithPasswordCredentials } fro
 
 import { api } from './api';
 
+// Module-level flag to avoid duplicate initialization and fix first-tap race condition
+let _socialLoginInitialized = false;
+let _socialLoginInitPromise: Promise<void> | null = null;
+
+/**
+ * Ensures SocialLogin is initialized before attempting login.
+ * Safe to call multiple times — subsequent calls resolve immediately.
+ */
+const ensureSocialLoginInitialized = (): Promise<void> => {
+    if (_socialLoginInitialized) return Promise.resolve();
+    if (_socialLoginInitPromise) return _socialLoginInitPromise;
+
+    const webClientId = GOOGLE_CONFIG.clientId;
+    if (!webClientId || webClientId.includes('your-web-id')) {
+        return Promise.resolve(); // Will be caught by the clientId guard below
+    }
+
+    _socialLoginInitPromise = SocialLogin.initialize({
+        google: { webClientId }
+    }).then(() => {
+        _socialLoginInitialized = true;
+        console.log('[NativeAuth] SocialLogin initialized successfully.');
+    }).catch(err => {
+        console.warn('[NativeAuth] SocialLogin.initialize() failed:', err);
+        _socialLoginInitPromise = null; // Allow retry on next tap
+    });
+
+    return _socialLoginInitPromise;
+};
+
 export const getAppUserProfile = async (supabaseUser: SupabaseUser): Promise<AppUser | null> => {
     try {
         let { data, error } = await supabase
@@ -154,8 +184,12 @@ const signInWithGoogle = async () => {
             return { error: { message: 'Google Sign-In is not configured for this app. Please contact support.' } };
         }
 
-        // Direct interactive sign-in — always show account picker on explicit button click
+        // FIX: Await initialization before calling login() to prevent the
+        // first-tap failure caused by a race condition between initialize() and login().
         try {
+            console.log("[NativeAuth] Ensuring SocialLogin is initialized...");
+            await ensureSocialLoginInitialized();
+
             console.log("[NativeAuth] Initiating interactive Google login...");
             const res = await SocialLogin.login({
                 provider: 'google',

@@ -14,22 +14,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "447552978158-gr21dshgv2qqg2dfsg7ojqs9fcqk4vrq.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.paradigm.ifs",
-            "certificate_hash": "6d3d664106218e4f15940926f11a151c8706bb7a"
-          }
-        },
-        {
-          "client_id": "447552978158-pegm74sk8o21ncf5l9q7ideuid84717c.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.paradigm.ifs",
-            "certificate_hash": "d4c041206c52dff55a34400461f259e4ffa1b15a"
-          }
-        },
-        {
           "client_id": "447552978158-gnvv87s9fhd41v5ci69v8j9irmmh8rl9.apps.googleusercontent.com",
           "client_type": 3
         }
