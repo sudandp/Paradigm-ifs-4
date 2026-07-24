@@ -894,51 +894,37 @@ const App: React.FC = () => {
     }
   }, [user, location.pathname, location.search]);
 
-  // Synchronize badge count when app returns to foreground
+  // Initialize notifications, real-time subscription, and foreground refresh when user is available.
+  // IMPORTANT: This is a single consolidated effect to prevent duplicate fetchNotifications() calls.
+  // Previously two separate effects both called fetchNotifications() and registered appStateChange
+  // listeners on [user], causing the notification store to fetch twice on every user change.
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !user) return;
+    if (!user) return;
 
-    const handler = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) {
-        console.log('[App] App became active, syncing notifications and badge...');
-        useNotificationStore.getState().fetchNotifications();
-      }
-    });
+    console.log('[App] Initializing Notifications for user:', user.id);
+    useNotificationStore.getState().fetchNotifications();
+    const unsubscribe = useNotificationStore.getState().subscribeToNotifications();
+    const authUnsubscribe = useAuthStore.getState().subscribeToAttendance();
+    useAuthStore.getState().fetchGeofencingSettings();
+
+    // Single appStateChange listener — handles both badge sync (native) and notification refresh.
+    const setupAppStateListener = async () => {
+      const { App } = await import('@capacitor/app');
+      return App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          console.log('[App] App returned to foreground, refreshing notifications...');
+          useNotificationStore.getState().fetchNotifications();
+        }
+      });
+    };
+
+    const appStateListenerPromise = setupAppStateListener();
 
     return () => {
-      handler.then(h => h.remove());
+      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof authUnsubscribe === 'function') authUnsubscribe();
+      appStateListenerPromise.then(l => l.remove());
     };
-  }, [user]);
-
-  // Initialize notifications and real-time subscription when user is available
-  useEffect(() => {
-    if (user) {
-      console.log('[App] Initializing Notifications for user:', user.id);
-      useNotificationStore.getState().fetchNotifications();
-      const unsubscribe = useNotificationStore.getState().subscribeToNotifications();
-      
-      const authUnsubscribe = useAuthStore.getState().subscribeToAttendance();
-      useAuthStore.getState().fetchGeofencingSettings();
-
-      // Refresh notifications when app returns to foreground
-      const setupAppStateListener = async () => {
-        const { App } = await import('@capacitor/app');
-        return App.addListener('appStateChange', ({ isActive }) => {
-          if (isActive) {
-            console.log('[App] Resumed, refreshing notifications...');
-            useNotificationStore.getState().fetchNotifications();
-          }
-        });
-      };
-      
-      const appStateListenerPromise = setupAppStateListener();
-      
-      return () => {
-        if (typeof unsubscribe === 'function') unsubscribe();
-        if (typeof authUnsubscribe === 'function') authUnsubscribe();
-        appStateListenerPromise.then(l => l.remove());
-      };
-    }
   }, [user]);
 
   // Android Native Badge Sync (Capacitor)
@@ -1125,10 +1111,14 @@ const App: React.FC = () => {
       if (session?.user) {
         const currentUser = useAuthStore.getState().user;
 
-        // TOKEN_REFRESHED: Supabase silently renewed the token. If we already have a user
-        // in memory, there is nothing to do — the user is still logged in.
-        // Only re-fetch the profile on an actual new SIGNED_IN event or if no user is in state.
-        if (!currentUser || event === 'SIGNED_IN') {
+        // Only re-fetch the profile when:
+        // - No user is in memory (first login), OR
+        // - The session user ID differs from the current in-memory user (account switch).
+        // TOKEN_REFRESHED / SIGNED_IN on the same account: skip the re-fetch to avoid
+        // triggering a redundant setUser() call that would re-run all user-dependent effects
+        // (notifications, attendance, etc.) and cause visible screen flickering.
+        const sessionUserId = session.user.id;
+        if (!currentUser || currentUser.id !== sessionUserId) {
           setTimeout(async () => {
             try {
               const appUser = await withTimeout(
