@@ -145,7 +145,7 @@ export const crmApi = {
       let { data } = await supabase
         .from('users')
         .select('id')
-        .eq('role', 'business_developer')
+        .eq('role_id', 'business_developer')
         .ilike('location', city)
         .limit(1)
         .single();
@@ -156,7 +156,7 @@ export const crmApi = {
           .from('users')
           .select('id')
           .ilike('location', city)
-          .not('role', 'in', '("admin","super_admin","superadmin")')
+          .not('role_id', 'in', '("admin","super_admin","superadmin")')
           .limit(1)
           .single();
         data = fallback as any;

@@ -102,7 +102,7 @@ export const dispatchNotificationFromRules = async (eventType: string, data: Not
                         await runner(data.actor.reportingManagerId);
                     }
                 } else {
-                    const { data: users, error } = await supabase.from('users').select('id').eq('role', rule.recipientRole);
+                    const { data: users, error } = await supabase.from('users').select('id').eq('role_id', rule.recipientRole);
                     if (!error && users) {
                         for (const u of users) await runner(u.id);
                     }

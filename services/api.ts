@@ -9026,9 +9026,10 @@ export const api = {
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
 
     // 1. Get all subordinates
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { data: subordinates, error: subError } = await supabase
       .from('users')
-      .select('id, name, role, reporting_manager_id')
+      .select('id, name, role_id, reporting_manager_id')
       .or(`reporting_manager_id.eq.${managerId},reporting_manager_2_id.eq.${managerId},reporting_manager_3_id.eq.${managerId}`);
 
     if (subError || !subordinates || subordinates.length === 0) return;
@@ -9068,7 +9069,7 @@ export const api = {
             actor: {
               id: sub.id,
               name: sub.name,
-              role: sub.role,
+              role: sub.role_id,
               reportingManagerId: sub.reporting_manager_id
             },
             metadata: {
@@ -9462,7 +9463,7 @@ export const api = {
         let { data } = await supabase
           .from('users')
           .select('id')
-          .eq('role', 'business_developer')
+          .eq('role_id', 'business_developer')
           .ilike('location', leadData.city)
           .limit(1)
           .single();
@@ -9471,7 +9472,7 @@ export const api = {
             .from('users')
             .select('id')
             .ilike('location', leadData.city)
-            .not('role', 'in', '("admin","super_admin","superadmin")')
+            .not('role_id', 'in', '("admin","super_admin","superadmin")')
             .limit(1)
             .single();
           data = fallback as any;

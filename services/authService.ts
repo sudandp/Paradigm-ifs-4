@@ -154,34 +154,9 @@ const signInWithGoogle = async () => {
             return { error: { message: 'Google Sign-In is not configured for this app. Please contact support.' } };
         }
 
-        // STEP 1: Try silent sign-in using a previously authorized account.
-        // This avoids forcing the user to pick an account every time they open the app.
-        // filterByAuthorizedAccounts: true → silently use the last signed-in account.
+        // Direct interactive sign-in — always show account picker on explicit button click
         try {
-            console.log("[NativeAuth] Attempting silent sign-in with previously authorized account...");
-            const silentRes = await SocialLogin.login({
-                provider: 'google',
-                options: {
-                    filterByAuthorizedAccounts: true,
-                    style: 'bottom'
-                }
-            });
-
-            if (silentRes.result?.responseType === 'online' && silentRes.result?.idToken) {
-                console.log("[NativeAuth] Silent sign-in succeeded.");
-                return await supabase.auth.signInWithIdToken({
-                    provider: 'google',
-                    token: silentRes.result.idToken,
-                });
-            }
-        } catch (silentErr: any) {
-            // Silent sign-in fails when no previously authorized account exists — this is expected
-            // on first login. Fall through to the interactive flow.
-            console.log("[NativeAuth] Silent sign-in not available, falling back to interactive flow.", silentErr?.message);
-        }
-
-        // STEP 2: Interactive sign-in — shows account picker only when silent fails.
-        try {
+            console.log("[NativeAuth] Initiating interactive Google login...");
             const res = await SocialLogin.login({
                 provider: 'google',
                 options: {
