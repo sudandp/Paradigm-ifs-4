@@ -1384,6 +1384,18 @@ export const useAuthStore = create<AuthState>()(
                 let isViolation = false;
 
                 try {
+                    // Stage 0: Check direct match with user's registered home location coordinates
+                    if (user.homeLatitude != null && user.homeLongitude != null) {
+                        const homeLat = Number(user.homeLatitude);
+                        const homeLng = Number(user.homeLongitude);
+                        if (!isNaN(homeLat) && !isNaN(homeLng)) {
+                            const distToHome = calculateDistanceMeters(latitude, longitude, homeLat, homeLng);
+                            if (distToHome <= 300) {
+                                locationName = user.name ? `${user.name} Home` : 'Home Location';
+                            }
+                        }
+                    }
+
                     // Stage 1: Always attempt to match against known locations (sites) first
                     // to get a friendly name (e.g., "PIFS Bangalore") regardless of geofencing status.
                     let userLocations: any[] = [];
@@ -1421,11 +1433,35 @@ export const useAuthStore = create<AuthState>()(
                         }
                     }
 
+                    // Helper to check if reverse geocoded address matches home address
+                    const resolveHomeOrAddress = async (lat: number, lon: number) => {
+                        try {
+                            const geoAddr = await reverseGeocode(lat, lon);
+                            if (user.homeAddress) {
+                                const normGeo = geoAddr.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                const normHome = user.homeAddress.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                if (
+                                    normGeo.includes(normHome) || 
+                                    normHome.includes(normGeo) || 
+                                    (normHome.length > 15 && normGeo.includes(normHome.slice(0, 20))) ||
+                                    (normGeo.length > 15 && normHome.includes(normGeo.slice(0, 20)))
+                                ) {
+                                    return user.name ? `${user.name} Home` : 'Home Location';
+                                }
+                            }
+                            return geoAddr;
+                        } catch (err) {
+                            return 'Mobile Punch-in';
+                        }
+                    };
+
                     // Stage 2: Handle Geofencing enforcement (Violations)
                     if (settings.enabled && !locationId) {
                         isViolation = true;
                         try {
-                            locationName = await reverseGeocode(latitude, longitude);
+                            if (!locationName) {
+                                locationName = await resolveHomeOrAddress(latitude, longitude);
+                            }
                         } catch (err) {
                             // If reverse geocoding fails, we might be offline
                             const isOfflineStatus = !(await Network.getStatus()).connected;
@@ -1478,14 +1514,9 @@ export const useAuthStore = create<AuthState>()(
                                 }
                             }
                         );
-                    } else if (!locationId) {
+                    } else if (!locationId && !locationName) {
                         // Geofencing disabled or no enforcement, and no site match:
-                        // Use reverse geocode but try to keep it concise if possible.
-                        try {
-                            locationName = await reverseGeocode(latitude, longitude);
-                        } catch (err) {
-                            locationName = 'Mobile Punch-in';
-                        }
+                        locationName = await resolveHomeOrAddress(latitude, longitude);
                     }
                 } catch (geoErr) {
                     console.warn('Location name resolution failed:', geoErr);

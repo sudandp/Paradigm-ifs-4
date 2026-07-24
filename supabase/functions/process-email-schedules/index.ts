@@ -322,6 +322,9 @@ serve(async (req: Request) => {
         reportData = await generateHRMPayrollSnapshot(supabase, nowIST);
 
       // CRM reports
+      } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
+        console.log(`  Generating CRM BD Daily report...`);
+        reportData = await generateCRMBdDailyReport(supabase, nowIST);
       } else if (rule.report_type === 'crm_daily_pipeline') {
         console.log(`  Generating CRM daily pipeline report...`);
         reportData = await generateCRMDailyPipelineReport(supabase, nowIST);
@@ -348,151 +351,154 @@ serve(async (req: Request) => {
           console.log(`  [WARN] No template found for rule "${rule.name}" (ID: ${rule.template_id})`);
       }
 
-      let subject = template?.subject_template || rule.name;
-      
-      // Use premium template for monthly report if no database template exists
-      let html = template?.body_template;
-      if (!html) {
-        console.log(`  [INFO] Using default premium template for ${rule.report_type}`);
-        html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
-      }
+      const reportDataList: Record<string, string>[] = Array.isArray(reportData) ? reportData : [reportData];
 
-      console.log(`  [DEBUG] reportData keys: ${Object.keys(reportData).join(', ')}`);
+      for (const dataItem of reportDataList) {
+        let subject = template?.subject_template || rule.name;
+        
+        // Use premium template for monthly report if no database template exists
+        let html = template?.body_template;
+        if (!html) {
+          console.log(`  [INFO] Using default premium template for ${rule.report_type}`);
+          html = (rule.report_type === 'attendance_monthly') ? getMonthlyReportPremiumTemplate() : getDefaultPremiumTemplate();
+        }
 
-      // Helper to replace placeholders {Key} or {key}
-      const render = (text: string, data: Record<string, string>) => {
-        if (!text) return '';
-        return text.replace(/\{(\w+)\}/g, (match, key) => {
-          // Flexible key matching: case-insensitive and ignoring underscores/dashes
-          const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
-          const dataKey = Object.keys(data).find(k => {
-              const cleanK = k.toLowerCase().replace(/[_-]/g, '');
-              return cleanK === cleanKey;
-          });
-          
-          if (dataKey) {
-              return data[dataKey];
-          }
-          return match;
-        });
-      };
+        console.log(`  [DEBUG] dataItem keys: ${Object.keys(dataItem).join(', ')}`);
 
-      // Extract and process custom greeting message
-      let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
-
-      // Premium Greeting Logic (Synced with Test logic)
-      if (rule.report_type === 'attendance_monthly') {
-          greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
-      } else if (rule.report_type === 'attendance_daily') {
-          greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
-      }
-
-      // Check for template-specific custom message override
-      if (template?.variables && Array.isArray(template.variables)) {
-        const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
-        if (customMsgObj && customMsgObj.description && customMsgObj.description.trim()) {
-            // First evaluate conditionals in the custom message
-            let evaluatedMsg = evaluateConditionals(customMsgObj.description, reportData || {});
+        // Helper to replace placeholders {Key} or {key}
+        const render = (text: string, data: Record<string, string>) => {
+          if (!text) return '';
+          return text.replace(/\{(\w+)\}/g, (match, key) => {
+            // Flexible key matching: case-insensitive and ignoring underscores/dashes
+            const cleanKey = key.toLowerCase().replace(/[_-]/g, '');
+            const dataKey = Object.keys(data).find(k => {
+                const cleanK = k.toLowerCase().replace(/[_-]/g, '');
+                return cleanK === cleanKey;
+            });
             
-            // Replace newlines with <br/> for proper HTML rendering
-            greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
-        }
-      }
-      
-      // CRITICAL: Render the greeting message itself with available reportData 
-      // This ensures nested placeholders like {attendancePercentage} are replaced
-      greetingMessage = render(greetingMessage, reportData || {});
-      
-      // Inject the greeting into reportData so it can be evaluated in the template
-      // Providing multiple common keys for maximum template compatibility
-      reportData.greetingMessage = greetingMessage;
-      reportData.customGreeting = greetingMessage;
-      reportData.greeting_message = greetingMessage;
-      reportData.custom_greeting = greetingMessage;
-      reportData.summary = greetingMessage;
+            if (dataKey) {
+                return data[dataKey];
+            }
+            return match;
+          });
+        };
 
-      // Force inject greeting if the user has a custom HTML body but didn't include a placeholder
-      const hasGreetingPlaceholder = html.includes('{greetingMessage}') || 
-                                     html.includes('{customGreeting}') || 
-                                     html.includes('{greeting_message}') || 
-                                     html.includes('{custom_greeting}') ||
-                                     html.includes('{summary}');
-                                     
-      if (template?.body_template && !hasGreetingPlaceholder) {
-          const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  {greetingMessage}\n</div>\n`;
-          if (html.match(/<body[^>]*>/i)) {
-              html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
-          } else {
-              html = greetingBlock + html;
+        // Extract and process custom greeting message
+        let greetingMessage = `Here is your automated status update for <strong>{date}</strong>. The data below reflects real-time triggers from the Paradigm system as of <strong>{generatedTime} IST</strong>.`;
+
+        // Premium Greeting Logic (Synced with Test logic)
+        if (rule.report_type === 'attendance_monthly') {
+            greetingMessage = `Dear Management,<br/><br/>This is the consolidated attendance summary for the period of <strong>{date}</strong>. It covers overall employee presence across all <strong>{totalEmployees}</strong> active members of the staff.<br/><br/>Overall attendance stands at <strong>{attendancePercentage}%</strong>. Please review the detailed monthly attendance grid below for any discrepancies.`;
+        } else if (rule.report_type === 'attendance_daily') {
+            greetingMessage = `Dear Team,<br/><br/>Today's attendance stands at <strong>{attendancePercentage}%</strong>. A total of <strong>{totalAbsent}</strong> employees were absent, and <strong>{lateCount}</strong> reported late.<br/><br/>Attendance requires attention.`;
+        } else if (rule.report_type === 'crm_bd_daily' || rule.report_type === 'bd_daily') {
+            greetingMessage = `Dear Management,<br/><br/>Daily Activity Report for <strong>{bd_name}</strong> for <strong>{report_date}</strong>.`;
+        }
+
+        // Check for template-specific custom message override
+        if (template?.variables && Array.isArray(template.variables)) {
+          const customMsgObj = template.variables.find((v: any) => v.key === '_custom_message');
+          if (customMsgObj && customMsgObj.description && customMsgObj.description.trim()) {
+              // First evaluate conditionals in the custom message
+              let evaluatedMsg = evaluateConditionals(customMsgObj.description, dataItem || {});
+              
+              // Replace newlines with <br/> for proper HTML rendering
+              greetingMessage = evaluatedMsg.replace(/\n/g, '<br/>');
           }
-      }
+        }
+        
+        // CRITICAL: Render the greeting message itself with available dataItem 
+        greetingMessage = render(greetingMessage, dataItem || {});
+        
+        // Inject the greeting into dataItem so it can be evaluated in the template
+        dataItem.greetingMessage = greetingMessage;
+        dataItem.customGreeting = greetingMessage;
+        dataItem.greeting_message = greetingMessage;
+        dataItem.custom_greeting = greetingMessage;
+        dataItem.summary = greetingMessage;
 
-      // First pass: conditionals
-      subject = evaluateConditionals(subject, reportData);
-      html = evaluateConditionals(html, reportData || {});
-
-      // Second pass: simple variable replacement
-      subject = render(subject, reportData || {});
-      html = render(html, reportData || {});
-
-      // ── Resolve recipients ──
-      let emails = await resolveRecipients(supabase, rule);
-      
-      // If this is a test and a specific test email was provided, use it
-      if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
-        emails = [testEmail];
-        console.log(`  [TEST MODE] Overriding recipients with ${testEmail}`);
-      }
-
-
-      console.log(`  Recipients resolved: ${emails.length} email(s) → [${emails.join(', ')}]`);
-      
-      if (emails.length === 0) {
-        const reason = 'No recipients found';
-        console.log(`  → SKIPPED: ${reason}`);
-        processingLog.push({ rule: rule.name, status: 'skipped', reason });
-        continue;
-      }
-
-      // ── Send email via HTTP API (Deno Deploy blocks SMTP ports) ──
-      try {
-        await sendEmailViaHTTP(emailConfig, emails, subject, html, rule.id, rule.template_id);
-
-        // Update last_sent_at and log
-        const logTasks = emails.map(email => supabase.from('email_logs').insert({ 
-          rule_id: rule.id, 
-          template_id: rule.template_id, 
-          recipient_email: email, 
-          subject, 
-          status: 'sent',
-          trigger_type: test ? 'manual' : 'automatic'
-        }));
-
-        if (!test) {
-          logTasks.push(supabase.from('email_schedule_rules').update({ 
-            last_sent_at: now.toISOString() 
-          }).eq('id', rule.id));
+        // Force inject greeting if the user has a custom HTML body but didn't include a placeholder
+        const hasGreetingPlaceholder = html.includes('{greetingMessage}') || 
+                                       html.includes('{customGreeting}') || 
+                                       html.includes('{greeting_message}') || 
+                                       html.includes('{custom_greeting}') ||
+                                       html.includes('{summary}');
+                                       
+        if (template?.body_template && !hasGreetingPlaceholder && !rule.report_type.includes('bd_daily')) {
+            const greetingBlock = `\n<div style="font-family: Arial, sans-serif; padding: 0 0 20px 0; color: #333; font-size: 14px; line-height: 1.6; text-align: left;">\n  {greetingMessage}\n</div>\n`;
+            if (html.match(/<body[^>]*>/i)) {
+                html = html.replace(/(<body[^>]*>)/i, `$1${greetingBlock}`);
+            } else {
+                html = greetingBlock + html;
+            }
         }
 
-        await Promise.all(logTasks);
+        // First pass: conditionals
+        subject = evaluateConditionals(subject, dataItem);
+        html = evaluateConditionals(html, dataItem || {});
+
+        // Second pass: simple variable replacement
+        subject = render(subject, dataItem || {});
+        html = render(html, dataItem || {});
+
+        // ── Resolve recipients ──
+        let emails = await resolveRecipients(supabase, rule);
         
-        totalSent += emails.length;
-        console.log(`  ✅ Rule "${rule.name}" completed. Sent to ${emails.length} recipients. ${test ? '(Test Only)' : 'last_sent_at updated.'}`);
-        processingLog.push({ rule: rule.name, status: 'sent', recipients: emails.length });
-      } catch (mailErr) {
-        const errorMsg = mailErr instanceof Error ? mailErr.message : String(mailErr);
-        console.error(`  ❌ MAIL FAILED for "${rule.name}":`, errorMsg);
-        processingLog.push({ rule: rule.name, status: 'failed', error: errorMsg });
+        // If this is a test and a specific test email was provided, use it
+        if (test && typeof testEmail === 'string' && testEmail.includes('@')) {
+          emails = [testEmail];
+          console.log(`  [TEST MODE] Overriding recipients with ${testEmail}`);
+        }
+
+        console.log(`  Recipients resolved: ${emails.length} email(s) → [${emails.join(', ')}]`);
         
-        await Promise.all(emails.map(email => supabase.from('email_logs').insert({ 
-          rule_id: rule.id, 
-          template_id: rule.template_id, 
-          recipient_email: email, 
-          subject, 
-          status: 'failed', 
-          error_message: errorMsg,
-          trigger_type: test ? 'manual' : 'automatic'
-        })));
+        if (emails.length === 0) {
+          const reason = 'No recipients found';
+          console.log(`  → SKIPPED: ${reason}`);
+          processingLog.push({ rule: rule.name, status: 'skipped', reason });
+          continue;
+        }
+
+        // ── Send email via HTTP API (Deno Deploy blocks SMTP ports) ──
+        try {
+          await sendEmailViaHTTP(emailConfig, emails, subject, html, rule.id, rule.template_id);
+
+          // Update last_sent_at and log
+          const logTasks = emails.map(email => supabase.from('email_logs').insert({ 
+            rule_id: rule.id, 
+            template_id: rule.template_id, 
+            recipient_email: email, 
+            subject, 
+            status: 'sent',
+            trigger_type: test ? 'manual' : 'automatic'
+          }));
+
+          if (!test) {
+            logTasks.push(supabase.from('email_schedule_rules').update({ 
+              last_sent_at: now.toISOString() 
+            }).eq('id', rule.id));
+          }
+
+          await Promise.all(logTasks);
+          
+          totalSent += emails.length;
+          console.log(`  ✅ Rule "${rule.name}" completed. Sent to ${emails.length} recipients. ${test ? '(Test Only)' : 'last_sent_at updated.'}`);
+          processingLog.push({ rule: rule.name, status: 'sent', recipients: emails.length });
+        } catch (mailErr) {
+          const errorMsg = mailErr instanceof Error ? mailErr.message : String(mailErr);
+          console.error(`  ❌ MAIL FAILED for "${rule.name}":`, errorMsg);
+          processingLog.push({ rule: rule.name, status: 'failed', error: errorMsg });
+          
+          await Promise.all(emails.map(email => supabase.from('email_logs').insert({ 
+            rule_id: rule.id, 
+            template_id: rule.template_id, 
+            recipient_email: email, 
+            subject, 
+            status: 'failed', 
+            error_message: errorMsg,
+            trigger_type: test ? 'manual' : 'automatic'
+          })));
+        }
       }
     }
 
@@ -1551,6 +1557,279 @@ async function generateHRMPayrollSnapshot(supabase: any, nowIST: Date): Promise<
 // ══════════════════════════════════════════════════════════════════════════════
 // ▌ CRM REPORT GENERATORS
 // ══════════════════════════════════════════════════════════════════════════════
+
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function calculateDailyTravelKm(events: any[]): number {
+  if (!events || events.length === 0) return 0;
+  let savedDistance = 0;
+  let hasNonZeroSavedDistance = false;
+  events.forEach(e => {
+    if (e.travel_distance !== undefined && e.travel_distance !== null && e.travel_distance > 0) {
+      savedDistance += e.travel_distance;
+      hasNonZeroSavedDistance = true;
+    }
+  });
+  if (hasNonZeroSavedDistance) {
+    return Number(savedDistance.toFixed(2));
+  }
+  const sorted = [...events]
+      .filter(e => e.type === 'punch-in' || e.type === 'punch-out' || e.type === 'site-in' || e.type === 'site-out')
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  let totalDist = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      if (current.latitude && current.longitude && next.latitude && next.longitude) {
+          const dist = calculateDistanceMeters(
+              Number(current.latitude), Number(current.longitude),
+              Number(next.latitude), Number(next.longitude)
+          ) / 1000;
+          totalDist += dist;
+      }
+  }
+  return Number(totalDist.toFixed(2));
+}
+
+async function generateCRMBdDailyReport(supabase: ReturnType<typeof createClient>, nowIST: Date): Promise<Record<string, string>[]> {
+  const todayStr = getISTDateString(nowIST);
+  const startOfTodayUTC = startOfDay(new Date(nowIST.getTime() - IST_OFFSET));
+
+  const { data: usersRes } = await supabase.from('users').select('id, name, role:roles(display_name)').eq('is_blocked', false);
+  const bdUsers = ((usersRes || []) as User[]).filter((u: User) => {
+    const roleName = (Array.isArray(u.role) ? u.role[0]?.display_name : u.role?.display_name) || '';
+    return roleName.toLowerCase() === 'business developer' || roleName.toLowerCase() === 'business_developer';
+  });
+
+  if (bdUsers.length === 0) {
+    return [{
+      bd_name: 'All BDs',
+      bdName: 'All BDs',
+      report_date: format(nowIST, 'dd MMM yyyy'),
+      reportDate: format(nowIST, 'dd MMM yyyy'),
+      attendance_status: 'No Active BDs',
+      attendanceStatus: 'No Active BDs',
+      check_in_time: 'N/A',
+      checkInTime: 'N/A',
+      check_out_time: 'N/A',
+      checkOutTime: 'N/A',
+      working_hours: '0h 0m',
+      workingHours: '0h 0m',
+      kms_travelled: '0',
+      kmsTravelled: '0',
+      prospect_calls: '0',
+      prospectCalls: '0',
+      followup_calls: '0',
+      followupCalls: '0',
+      new_leads_count: '0',
+      newLeadsCount: '0',
+      sites_count: '0',
+      sitesCount: '0',
+      sites_visited: 'None',
+      sitesVisited: 'None',
+      new_leads_table: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
+      newLeadsTable: '<div style="padding:16px;text-align:center;color:#64748b;">No active Business Developers found.</div>',
+      metrics_table: '',
+      metricsTable: '',
+      pipeline_snapshot: '',
+      pipelineSnapshot: ''
+    }];
+  }
+
+  const [eventsRes, leadsRes, callsRes] = await Promise.all([
+    supabase.from('attendance_events').select('user_id, type, timestamp, latitude, longitude, travel_distance').gte('timestamp', startOfTodayUTC.toISOString()).order('timestamp', { ascending: true }),
+    supabase.from('crm_leads').select('id, created_by, assigned_to, company_name, contact_person, status, created_at').gte('created_at', startOfTodayUTC.toISOString()),
+    supabase.from('crm_followups').select('created_by, type, lead_id, created_at').gte('created_at', startOfTodayUTC.toISOString())
+  ]);
+
+  const events = eventsRes.data || [];
+  const leads = leadsRes.data || [];
+  const calls = callsRes.data || [];
+
+  const { data: allActiveLeads } = await supabase.from('crm_leads')
+    .select('assigned_to, created_by, status')
+    .neq('status', 'Won')
+    .neq('status', 'Lost');
+
+  const reports: Record<string, string>[] = [];
+
+  for (const bd of bdUsers) {
+    const bdEvents = [...events.filter((e: any) => e.user_id === bd.id)].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    let attendance_status = bdEvents.length > 0 ? 'Present' : 'Absent';
+    let check_in_time = 'N/A';
+    let check_out_time = 'N/A';
+    let working_hours = '0h 0m';
+    
+    const punchesIn = bdEvents.filter((e: any) => e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in');
+    const punchesOut = bdEvents.filter((e: any) => e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out');
+    
+    if (punchesIn.length > 0) {
+      check_in_time = format(new Date(new Date(punchesIn[0].timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+    }
+    if (punchesOut.length > 0) {
+      check_out_time = format(new Date(new Date(punchesOut[punchesOut.length - 1].timestamp).getTime() + IST_OFFSET), 'hh:mm a');
+    }
+  
+    let netWorkMinutes = 0;
+    let isOnBreak = false;
+    let lastTime: Date | null = null;
+    let isPunchedIn = false;
+
+    bdEvents.forEach((e: any) => {
+      const evTime = new Date(e.timestamp);
+      if (lastTime) {
+        const elapsed = (evTime.getTime() - lastTime.getTime()) / 60000;
+        if (isPunchedIn && !isOnBreak && elapsed > 0 && elapsed < 30 * 60) {
+          netWorkMinutes += elapsed;
+        }
+      }
+      
+      if (e.type === 'punch-in' || e.type === 'site-in' || e.type === 'site-ot-in') {
+        isPunchedIn = true;
+      } else if (e.type === 'punch-out' || e.type === 'site-out' || e.type === 'site-ot-out') {
+        isPunchedIn = false;
+        isOnBreak = false;
+      } else if (e.type === 'break-in') {
+        isOnBreak = true;
+      } else if (e.type === 'break-out') {
+        isOnBreak = false;
+      }
+      lastTime = evTime;
+    });
+
+    if (netWorkMinutes > 0) {
+      const hrs = Math.floor(netWorkMinutes / 60);
+      const mins = Math.floor(netWorkMinutes % 60);
+      working_hours = `${hrs}h ${mins}m`;
+    }
+
+    const newLeadsToday = leads.filter((l: any) => l.created_by === bd.id || l.assigned_to === bd.id);
+    const newLeadsIds = new Set(newLeadsToday.map((l: any) => l.id));
+    
+    const prospect_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && newLeadsIds.has(c.lead_id)).length;
+    const followup_calls = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Call' && !newLeadsIds.has(c.lead_id)).length;
+    
+    const new_leads_count = newLeadsToday.length;
+    const sites_count = calls.filter((c: any) => c.created_by === bd.id && c.type === 'Site Visit').length;
+    const sites_visited = 'Not applicable (Automated Schedule)';
+    let kms_travelled = calculateDailyTravelKm(bdEvents).toString();
+
+    let new_leads_table = `<div style="padding:16px;text-align:center;color:#64748b;font-style:italic;">No new leads added today.</div>`;
+    if (newLeadsToday.length > 0) {
+      new_leads_table = `<table width="100%" style="border-collapse:collapse;">
+        <thead><tr style="background:#f8fafc;">
+          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Company</th>
+          <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Contact</th>
+          <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Status</th>
+        </tr></thead><tbody>`;
+      newLeadsToday.forEach((lead: any, i: number) => {
+        const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+        new_leads_table += `<tr style="background:${bg};">
+          <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:600;border-top:1px solid #f1f5f9;">${lead.company_name}</td>
+          <td style="padding:12px 14px;font-size:12px;color:#475569;border-top:1px solid #f1f5f9;">${lead.contact_person || '-'}</td>
+          <td style="padding:12px 14px;text-align:center;border-top:1px solid #f1f5f9;">
+            <span style="background:#e0e7ff;color:#4338ca;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;">${lead.status}</span>
+          </td>
+        </tr>`;
+      });
+      new_leads_table += `</tbody></table>`;
+    }
+
+    let metrics_table = `<table width="100%" style="border-collapse:collapse;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Metric</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Target</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Actual</th>
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Remarks</th>
+      </tr></thead><tbody>`;
+    
+    const metricsData = [
+      { metric: 'Outbound Calls (New Prospects)', target: '-', actual: prospect_calls, remarks: '' },
+      { metric: 'Follow-up Calls / Emails', target: '-', actual: followup_calls, remarks: '' },
+      { metric: 'Site Visits Conducted', target: '-', actual: sites_count, remarks: 'Automated' },
+      { metric: 'Proposals Submitted', target: '-', actual: 0, remarks: 'Automated' },
+      { metric: 'New Leads Added', target: '-', actual: new_leads_count, remarks: '' }
+    ];
+
+    metricsData.forEach((row, i) => {
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      metrics_table += `<tr style="background:${bg};">
+        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${row.metric}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;color:#64748b;border-top:1px solid #f1f5f9;">${row.target}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:600;color:#0f172a;border-top:1px solid #f1f5f9;">${row.actual}</td>
+        <td style="padding:12px 14px;font-size:11px;color:#64748b;font-style:italic;border-top:1px solid #f1f5f9;">${row.remarks || '-'}</td>
+      </tr>`;
+    });
+    metrics_table += `</tbody></table>`;
+
+    const myActiveLeads = (allActiveLeads || []).filter((l: any) => l.assigned_to === bd.id || l.created_by === bd.id);
+    const statuses = ['New Lead', 'Contacted', 'Site Visit Planned', 'Survey Completed', 'Proposal Sent', 'Negotiation', 'Won', 'Lost'];
+    let pipeline_snapshot = `<table width="100%" style="border-collapse:collapse;">
+      <thead><tr style="background:#f8fafc;">
+        <th style="padding:10px 14px;text-align:left;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Stage</th>
+        <th style="padding:10px 14px;text-align:center;font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Count</th>
+      </tr></thead><tbody>`;
+    
+    let activeTotal = 0;
+    statuses.forEach((stage, i) => {
+      const count = myActiveLeads.filter((l: any) => l.status === stage).length;
+      activeTotal += count;
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      pipeline_snapshot += `<tr style="background:${bg};">
+        <td style="padding:12px 14px;font-size:12px;color:#1e293b;font-weight:500;border-top:1px solid #f1f5f9;">${stage}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:12px;font-weight:700;color:#3b82f6;border-top:1px solid #f1f5f9;">${count}</td>
+      </tr>`;
+    });
+    pipeline_snapshot += `</tbody></table>
+    <div style="margin-top:8px;text-align:right;font-size:11px;color:#94a3b8;padding:8px;">Total active pipeline: ${activeTotal} leads</div>`;
+
+    reports.push({
+      date: format(nowIST, 'dd MMM yyyy'),
+      bd_name: bd.name || 'BD',
+      bdName: bd.name || 'BD',
+      report_date: format(nowIST, 'dd MMM yyyy'),
+      reportDate: format(nowIST, 'dd MMM yyyy'),
+      attendance_status,
+      attendanceStatus: attendance_status,
+      check_in_time,
+      checkInTime: check_in_time,
+      check_out_time,
+      checkOutTime: check_out_time,
+      working_hours,
+      workingHours: working_hours,
+      kms_travelled,
+      kmsTravelled: kms_travelled,
+      prospect_calls: String(prospect_calls),
+      prospectCalls: String(prospect_calls),
+      followup_calls: String(followup_calls),
+      followupCalls: String(followup_calls),
+      new_leads_count: String(new_leads_count),
+      newLeadsCount: String(new_leads_count),
+      sites_count: String(sites_count),
+      sitesCount: String(sites_count),
+      sites_visited,
+      sitesVisited: sites_visited,
+      new_leads_table,
+      newLeadsTable: new_leads_table,
+      metrics_table,
+      metricsTable: metrics_table,
+      pipeline_snapshot,
+      pipelineSnapshot: pipeline_snapshot
+    });
+  }
+
+  return reports;
+}
 
 async function generateCRMDailyPipelineReport(supabase: any, nowIST: Date): Promise<Record<string, string>> {
   const todayStr = format(nowIST, 'yyyy-MM-dd');

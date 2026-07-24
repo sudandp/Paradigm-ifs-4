@@ -2,41 +2,39 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../services/api';
 import type { AttendanceEvent } from '../../types';
-import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Loader2, MapPin, Clock, Calendar, ChevronLeft, ChevronRight, Trash2, AlertTriangle, Home } from 'lucide-react';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { processDailyEvents } from '../../utils/attendanceCalculations';
 import LoadingScreen from '../../components/ui/LoadingScreen';
-import { reverseGeocode } from '../../utils/locationUtils';
+import { reverseGeocode, resolveLocationName, findRegisteredSiteDistance } from '../../utils/locationUtils';
 import { buildAttendanceDayKeyByEventId } from '../../utils/attendanceDayGrouping';
 import { isAdmin } from '../../utils/auth';
 
-const AddressResolver: React.FC<{ lat: number; lng: number; fallback?: string | null }> = ({ lat, lng, fallback }) => {
+const AddressResolver: React.FC<{ lat?: number; lng?: number; fallback?: string | null }> = ({ lat, lng, fallback }) => {
     const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const { user } = useAuthStore();
 
     useEffect(() => {
         const resolve = async () => {
-            if (!lat || !lng) {
-                setResolvedAddress(fallback || null);
-                return;
-            }
             try {
                 setLoading(true);
-                const address = await reverseGeocode(lat, lng);
-                setResolvedAddress(address);
+                const name = await resolveLocationName(lat, lng, fallback, user);
+                setResolvedAddress(name);
             } catch (err) {
-                setResolvedAddress(fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+                setResolvedAddress(fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : null));
             } finally {
                 setLoading(false);
             }
         };
         resolve();
-    }, [lat, lng, fallback]);
+    }, [lat, lng, fallback, user]);
 
     if (loading) return <span className="animate-pulse text-indigo-400 font-medium">Resolving address...</span>;
-    return <span>{resolvedAddress || fallback || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}</span>;
+    return <span>{resolvedAddress || fallback || (lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : '')}</span>;
 };
+
 
 type TimeRange = 'day' | 'week' | 'month';
 
@@ -62,6 +60,20 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
     const isMobile = useMediaQuery('(max-width: 767px)');
     const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
     const canDelete = user && isAdmin(user.role);
+    const [userLocations, setUserLocations] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        api.getUserLocations(user.id).then(locs => {
+            if (locs && locs.length > 0) {
+                setUserLocations(locs);
+            } else {
+                api.getLocations().then(all => setUserLocations(all || [])).catch(() => {});
+            }
+        }).catch(() => {
+            api.getLocations().then(all => setUserLocations(all || [])).catch(() => {});
+        });
+    }, [user?.id]);
 
     const fetchAttendanceEvents = async () => {
         if (!user) return;
@@ -393,7 +405,16 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                             <div className="p-4 space-y-3">
                                 {group.events
                                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                                    .map((event, index) => (
+                                    .map((event, index) => {
+                                        const distInfo = findRegisteredSiteDistance(
+                                            event.latitude,
+                                            event.longitude,
+                                            group.events,
+                                            userLocations,
+                                            user
+                                        );
+
+                                        return (
                                         <div
                                             key={`${event.timestamp}-${index}`}
                                             className={`p-3 rounded-lg border-l-4 ${
@@ -404,87 +425,128 @@ const EmployeeLog: React.FC<EmployeeLogProps> = ({ initialEvents = [] }) => {
                                                 'bg-sky-50 border-sky-500'
                                             }`}
                                         >
-                                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div
-                                                        className={`p-2 rounded-lg ${
-                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-100 text-emerald-700' :
-                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-100 text-rose-700' :
-                                                            event.type === 'break-in' ? 'bg-amber-100 text-amber-700' :
-                                                            event.type.includes('site-ot') ? 'bg-indigo-100 text-indigo-700' :
-                                                            'bg-sky-100 text-sky-700'
-                                                        }`}
-                                                    >
-                                                        <Clock className="h-4 w-4" />
-                                                    </div>
-                                                    <div>
-                                                        <div className={`font-semibold capitalize ${
-                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-900' :
-                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-900' :
-                                                            event.type === 'break-in' ? 'text-amber-900' :
-                                                            event.type.includes('site-ot') ? 'text-indigo-900' :
-                                                            'text-sky-900'
-                                                        }`}>
-                                                            {event.type === 'punch-in' ? (event.workType === 'field' ? 'Site Check In' : 'Punch In') :
-                                                             event.type === 'punch-out' ? (event.workType === 'field' ? 'Site Check Out' : 'Punch Out') :
-                                                             event.type === 'site-ot-in' ? 'Site OT In' :
-                                                             event.type === 'site-ot-out' ? 'Site OT Out' :
-                                                             event.type.replace('-', ' ')}
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+
+                                                {/* Row 1 (Mobile) / Col 1 (Desktop): Punch In & Time */}
+                                                <div className="flex items-center justify-between md:justify-start gap-3 flex-shrink-0 md:w-[180px]">
+                                                    <div className="flex items-center gap-3">
+                                                        <div
+                                                            className={`p-2 rounded-lg flex-shrink-0 ${
+                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'bg-emerald-100 text-emerald-700' :
+                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'bg-rose-100 text-rose-700' :
+                                                                event.type === 'break-in' ? 'bg-amber-100 text-amber-700' :
+                                                                event.type.includes('site-ot') ? 'bg-indigo-100 text-indigo-700' :
+                                                                'bg-sky-100 text-sky-700'
+                                                            }`}
+                                                        >
+                                                            <Clock className="h-4 w-4" />
                                                         </div>
-                                                        <div className={`text-sm font-medium ${
-                                                            (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700' :
-                                                            (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700' :
-                                                            event.type === 'break-in' ? 'text-amber-700' :
-                                                            event.type.includes('site-ot') ? 'text-indigo-700' :
-                                                            'text-sky-700'
-                                                        }`}>
-                                                            {format(new Date(event.timestamp), 'hh:mm a')}
-                                                        </div>
-                                                        {event.checkoutNote && (
-                                                            <div className="text-[11px] font-medium text-slate-500 italic mt-1 max-w-[280px] leading-tight">
-                                                                Note: "{event.checkoutNote.replace(/\[SessionDate:\s*[^\]]+\]/g, '').trim()}"
+                                                        <div>
+                                                            <div className={`font-semibold capitalize text-sm md:text-sm ${
+                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-900 max-md:text-emerald-300' :
+                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-900 max-md:text-rose-300' :
+                                                                event.type === 'break-in' ? 'text-amber-900 max-md:text-amber-300' :
+                                                                event.type.includes('site-ot') ? 'text-indigo-900 max-md:text-indigo-300' :
+                                                                'text-sky-900 max-md:text-sky-300'
+                                                            }`}>
+                                                                {event.type === 'punch-in' ? (event.workType === 'field' ? 'Site Check In' : 'Punch In') :
+                                                                 event.type === 'punch-out' ? (event.workType === 'field' ? 'Site Check Out' : 'Punch Out') :
+                                                                 event.type === 'site-ot-in' ? 'Site OT In' :
+                                                                 event.type === 'site-ot-out' ? 'Site OT Out' :
+                                                                 event.type.replace('-', ' ')}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                {(event.locationName || (event.latitude && event.longitude)) && (
-                                                    <div className="flex items-start gap-2 text-sm bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 max-w-md">
-                                                        <MapPin className="h-4 w-4 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
-                                                        <span className="text-xs break-words text-gray-700 max-md:text-gray-200">
-                                                            {event.locationName ? (
-                                                                event.locationName
-                                                            ) : (
-                                                                <AddressResolver 
-                                                                    lat={event.latitude!} 
-                                                                    lng={event.longitude!} 
-                                                                />
+                                                            <div className={`text-xs md:text-sm font-medium ${
+                                                                (event.type === 'punch-in' || event.type === 'site-ot-in') ? 'text-emerald-700 max-md:text-emerald-400' :
+                                                                (event.type === 'punch-out' || event.type === 'site-ot-out') ? 'text-rose-700 max-md:text-rose-400' :
+                                                                event.type === 'break-in' ? 'text-amber-700 max-md:text-amber-400' :
+                                                                event.type.includes('site-ot') ? 'text-indigo-700 max-md:text-indigo-400' :
+                                                                'text-sky-700 max-md:text-sky-400'
+                                                            }`}>
+                                                                {format(new Date(event.timestamp), 'hh:mm a')}
+                                                            </div>
+                                                            {event.checkoutNote && (
+                                                                <div className="text-[11px] font-medium text-slate-500 italic mt-0.5 max-w-[200px] leading-tight">
+                                                                    Note: "{event.checkoutNote.replace(/\[SessionDate:\s*[^\]]+\]/g, '').trim()}"
+                                                                </div>
                                                             )}
-                                                        </span>
+                                                        </div>
                                                     </div>
-                                                )}
-                                                {event.source === 'auto_system' && (
-                                                    <div className="flex items-start gap-2 text-sm bg-rose-50 max-md:bg-[#2c0e15] px-3 py-1.5 rounded-lg border border-rose-200 max-md:border-rose-900/50 max-w-md mt-2 md:mt-0">
-                                                        <Clock className="h-4 w-4 text-rose-400 max-md:text-rose-500 md:text-rose-600 flex-shrink-0 mt-0.5" />
-                                                        <span className="text-xs break-words text-rose-700 max-md:text-rose-300 font-medium">
-                                                            Auto punched out By Paradigm AI Agent
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {canDelete && (
-                                                    <button
-                                                        onClick={() => handleDeleteEvent(event.id)}
-                                                        disabled={deletingEventId === event.id}
-                                                        title="Delete this record"
-                                                        className="ml-auto flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
-                                                    >
-                                                        {deletingEventId === event.id
-                                                            ? <Loader2 className="h-4 w-4 animate-spin" />
-                                                            : <Trash2 className="h-4 w-4" />}
-                                                    </button>
-                                                )}
+
+                                                    {canDelete && (
+                                                        <button
+                                                            onClick={() => handleDeleteEvent(event.id)}
+                                                            disabled={deletingEventId === event.id}
+                                                            title="Delete this record"
+                                                            className="md:hidden flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {deletingEventId === event.id
+                                                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                                : <Trash2 className="h-4 w-4" />}
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Row 2 (Mobile) / Col 2 (Desktop): Centered Distance Badge */}
+                                                <div className="flex-1 flex items-center justify-center my-1 md:my-0">
+                                                    {distInfo.isUnregistered && (
+                                                         <div className="flex items-center gap-1.5 bg-amber-50 max-md:bg-[#2c1d06] px-3 py-1.5 rounded-lg border border-amber-300 max-md:border-amber-700/60 shadow-sm w-fit max-w-full">
+                                                             {distInfo.isHome ? (
+                                                                 <Home className="h-3.5 w-3.5 text-amber-600 max-md:text-amber-400 flex-shrink-0" />
+                                                             ) : (
+                                                                 <AlertTriangle className="h-3.5 w-3.5 text-amber-600 max-md:text-amber-400 flex-shrink-0" />
+                                                             )}
+                                                             <div className="flex flex-col text-center md:text-left">
+                                                                 <span className="text-xs font-bold text-amber-900 max-md:text-amber-200 leading-tight">
+                                                                     {distInfo.distanceKm} km · ~{distInfo.durationMin} min drive
+                                                                 </span>
+                                                                 <span className="text-[10px] font-medium text-amber-700 max-md:text-amber-400 leading-tight">
+                                                                     from {distInfo.targetSiteName || 'registered location'}
+                                                                 </span>
+                                                             </div>
+                                                         </div>
+                                                     )}
+                                                    {event.source === 'auto_system' && (
+                                                        <div className="flex items-center gap-1.5 bg-rose-50 max-md:bg-[#2c0e15] px-3 py-1.5 rounded-lg border border-rose-200 max-md:border-rose-900/50 w-fit max-w-full">
+                                                            <Clock className="h-3.5 w-3.5 text-rose-400 max-md:text-rose-500 md:text-rose-600 flex-shrink-0" />
+                                                            <span className="text-xs text-rose-700 max-md:text-rose-300 font-medium">
+                                                                Auto punched out By Paradigm AI Agent
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Row 3 (Mobile) / Col 3 (Desktop): Full Address Tag */}
+                                                <div className="flex items-center gap-2 justify-start md:justify-end flex-shrink-0 md:w-[220px]">
+                                                    {(event.locationName || (event.latitude && event.longitude)) && (
+                                                        <div className="flex items-start gap-1.5 bg-white max-md:bg-[#041b0f] px-3 py-1.5 rounded-lg border border-gray-200 max-md:border-white/10 w-full md:max-w-[210px]">
+                                                            <MapPin className="h-3.5 w-3.5 text-indigo-400 max-md:text-emerald-400 md:text-indigo-600 flex-shrink-0 mt-0.5" />
+                                                            <span className="text-xs text-gray-700 max-md:text-gray-200 leading-tight break-words">
+                                                                <AddressResolver
+                                                                    lat={event.latitude!}
+                                                                    lng={event.longitude!}
+                                                                    fallback={event.locationName}
+                                                                />
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {canDelete && (
+                                                        <button
+                                                            onClick={() => handleDeleteEvent(event.id)}
+                                                            disabled={deletingEventId === event.id}
+                                                            title="Delete this record"
+                                                            className="hidden md:block flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {deletingEventId === event.id
+                                                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                                : <Trash2 className="h-4 w-4" />}
+                                                        </button>
+                                                    )}
+                                                </div>
+
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                             </div>
 
                             {/* Summary Footer */}

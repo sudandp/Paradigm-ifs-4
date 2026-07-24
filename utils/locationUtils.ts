@@ -46,7 +46,9 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
         building, amenity, shop, office, 
         park, garden,
         road, residential, neighbourhood, suburb, city_district,
-        city, village, town, county, state, postcode, country
+        city, village, town, state, postcode
+        // NOTE: 'county' (e.g. "Bengaluru South City Corporation") and 'country' ("India") are intentionally excluded
+        // because Nominatim returns these as redundant noise for Indian addresses
       } = data.address;
       
       // Get the most descriptive "name" of the place first
@@ -59,25 +61,36 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
                       building || amenity || shop || office || 
                       park || garden;
       
-      const parts = [
+      // Build a deduped, clean parts list.
+      // We skip 'county' (municipal corporation) and 'country' entirely.
+      // For city/village/town: only include if it doesn't duplicate suburb/neighbourhood already included.
+      const placeName = city || village || town || null;
+      const suburbOrNeighbourhood = suburb || neighbourhood || null;
+      
+      // Only include city if it's distinct from what we already have in suburb/neighbourhood/city_district
+      const shouldIncludeCity = placeName && 
+        placeName !== suburbOrNeighbourhood && 
+        placeName !== city_district &&
+        placeName !== road;
+
+      const rawParts = [
         house_number, 
         road, 
         residential,
         neighbourhood,
         suburb, 
         city_district,
-        city || village || town, 
-        county,
+        shouldIncludeCity ? placeName : null,
         state, 
         postcode,
-        country
-      ].filter(Boolean);
+      ].filter(Boolean) as string[];
+
+      // Deduplicate consecutive identical values (e.g. suburb === city)
+      const parts = rawParts.filter((part, i) => i === 0 || part !== rawParts[i - 1]);
       
       const shortAddress = parts.join(', ');
       
       if (poiName) {
-        // If poiName is just a generic category and shortAddress already contains it, don't duplicate
-        // But usually Nominatim provides the specific name of the building here.
         return `${poiName} - ${shortAddress || data.display_name}`;
       }
       
@@ -85,7 +98,12 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
     }
     
     if (data.display_name) {
-      return data.display_name as string;
+      // Fallback: strip country and county from display_name as a best-effort clean
+      const cleaned = (data.display_name as string)
+        .split(', ')
+        .filter(p => !/(India|South City Corporation|Municipal Corporation|Corporation|District)/i.test(p))
+        .join(', ');
+      return cleaned || data.display_name;
     }
     return fallback;
   } catch (err) {
@@ -93,6 +111,185 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string> 
     return fallback;
   }
 }
+
+/**
+ * Resolves a coordinate or raw address to a friendly location name if it matches
+ * the user's registered home location or saved locations.
+ */
+export async function resolveLocationName(
+  lat?: number | null,
+  lon?: number | null,
+  rawAddress?: string | null,
+  user?: any,
+  userLocations?: any[]
+): Promise<string> {
+  const homeLocName = user?.name ? `${user.name} Home` : 'Home Location';
+
+  // 1. Check direct distance match to user's registered Home Location coordinates
+  if (lat != null && lon != null && user?.homeLatitude != null && user?.homeLongitude != null) {
+    const homeLat = Number(user.homeLatitude);
+    const homeLng = Number(user.homeLongitude);
+    if (!isNaN(homeLat) && !isNaN(homeLng)) {
+      const dist = calculateDistanceMeters(lat, lon, homeLat, homeLng);
+      if (dist <= 300) { // 300m radius threshold for home location
+        return homeLocName;
+      }
+    }
+  }
+
+  // 2. Check user's assigned locations list (sites / home geofences)
+  if (lat != null && lon != null && Array.isArray(userLocations) && userLocations.length > 0) {
+    for (const loc of userLocations) {
+      if (loc.latitude != null && loc.longitude != null) {
+        const dist = calculateDistanceMeters(lat, lon, Number(loc.latitude), Number(loc.longitude));
+        const radius = loc.radius || 200;
+        if (dist <= radius) {
+          return loc.name || homeLocName;
+        }
+      }
+    }
+  }
+
+  // 3. Check address string match if reverse geocode address or raw address is available
+  const addressToCheck = rawAddress || (lat != null && lon != null ? await reverseGeocode(lat, lon) : null);
+  if (addressToCheck) {
+    if (user?.homeAddress) {
+      const normAddress = addressToCheck.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normHome = user.homeAddress.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      if (
+        normAddress.includes(normHome) ||
+        normHome.includes(normAddress) ||
+        (normHome.length > 15 && normAddress.includes(normHome.slice(0, 20))) ||
+        (normAddress.length > 15 && normHome.includes(normAddress.slice(0, 20)))
+      ) {
+        return homeLocName;
+      }
+    }
+    return addressToCheck;
+  }
+
+  return rawAddress || (lat != null && lon != null ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : 'Unknown Location');
+}
+
+export interface SiteDistanceInfo {
+  isUnregistered: boolean;
+  distanceKm: number;
+  durationMin: number;
+  targetSiteName: string | null;
+  isHome?: boolean;
+}
+
+/**
+ * Calculates estimated road distance and drive time from a punch location
+ * to the NEAREST registered location (Home or Work Site).
+ */
+export function findRegisteredSiteDistance(
+  lat?: number | null,
+  lon?: number | null,
+  sameDayEvents?: any[],
+  userLocations?: any[],
+  user?: any
+): SiteDistanceInfo {
+  const empty: SiteDistanceInfo = { isUnregistered: false, distanceKm: 0, durationMin: 0, targetSiteName: null, isHome: false };
+
+  if (lat == null || lon == null || isNaN(Number(lat)) || isNaN(Number(lon))) return empty;
+
+  const punchLat = Number(lat);
+  const punchLon = Number(lon);
+
+  const ROAD_FACTOR = 1.6;
+  const AVG_SPEED_KMH = 26;
+
+  const candidates: Array<{ name: string; lat: number; lon: number; isHome: boolean; radius: number }> = [];
+
+  // 1. Add User Registered Home location if present
+  if (user?.homeLatitude != null && user?.homeLongitude != null) {
+    const hLat = Number(user.homeLatitude);
+    const hLon = Number(user.homeLongitude);
+    if (!isNaN(hLat) && !isNaN(hLon)) {
+      candidates.push({
+        name: user.name ? `${user.name} Home` : 'Home',
+        lat: hLat,
+        lon: hLon,
+        isHome: true,
+        radius: 300
+      });
+    }
+  }
+
+  // 2. Add User DB Locations (Sites / Geofences)
+  const dbLocs = Array.isArray(userLocations) ? userLocations : [];
+  for (const loc of dbLocs) {
+    if (loc.latitude != null && loc.longitude != null) {
+      const lLat = Number(loc.latitude);
+      const lLon = Number(loc.longitude);
+      if (!isNaN(lLat) && !isNaN(lLon)) {
+        const isHomeType = loc.type === 'home' || loc.name?.toLowerCase().includes('home');
+        candidates.push({
+          name: loc.name || (isHomeType ? 'Home' : 'Registered Site'),
+          lat: lLat,
+          lon: lLon,
+          isHome: isHomeType,
+          radius: loc.radius || 300
+        });
+      }
+    }
+  }
+
+  // 3. Fallback: Check Same-Day Site Check In events for site coordinates/names
+  if (Array.isArray(sameDayEvents)) {
+    sameDayEvents.forEach(e => {
+      const isSite = e.type === 'site-check-in' || e.type === 'site-in' || e.type === 'check-in' || (e.type === 'punch-in' && e.workType === 'field');
+      if (isSite && e.latitude != null && e.longitude != null) {
+        const eLat = Number(e.latitude);
+        const eLon = Number(e.longitude);
+        if (!isNaN(eLat) && !isNaN(eLon)) {
+          const isHomeType = e.locationName?.toLowerCase().includes('home');
+          candidates.push({
+            name: e.locationName || 'Site Location',
+            lat: eLat,
+            lon: eLon,
+            isHome: isHomeType,
+            radius: 300
+          });
+        }
+      }
+    });
+  }
+
+  if (candidates.length === 0) return empty;
+
+  // Find nearest candidate
+  let nearestCandidate: typeof candidates[0] | null = null;
+  let nearestDistMeters = Infinity;
+
+  for (const cand of candidates) {
+    const dist = calculateDistanceMeters(punchLat, punchLon, cand.lat, cand.lon);
+    if (dist < nearestDistMeters) {
+      nearestDistMeters = dist;
+      nearestCandidate = cand;
+    }
+  }
+
+  if (!nearestCandidate || nearestDistMeters === Infinity) return empty;
+
+  // Inside geofence radius — no alert
+  if (nearestDistMeters <= nearestCandidate.radius) return empty;
+
+  const roadDistKm = Number(((nearestDistMeters / 1000) * ROAD_FACTOR).toFixed(1));
+  const durationMin = Math.max(5, Math.round((roadDistKm / AVG_SPEED_KMH) * 60));
+
+  return {
+    isUnregistered: true,
+    distanceKm: roadDistKm,
+    durationMin,
+    targetSiteName: nearestCandidate.name,
+    isHome: nearestCandidate.isHome
+  };
+}
+
+
 
 /**
  * Attempt to obtain a high‑accuracy geolocation fix with multi-stage fallbacks.
