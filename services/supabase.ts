@@ -71,6 +71,9 @@ export const supabase = createClient(resolvedUrl, resolvedAnonKey, {
         detectSessionInUrl: true,
         // PKCE flow is recommended for mobile apps
         flowType: 'pkce',
+        // Bypass navigator.locks to prevent orphaned lock warnings (5000ms timeouts)
+        // during React re-renders, visibility changes, and concurrent getSession calls.
+        lock: async (_name, _acquireTimeout, fn) => await fn(),
     },
     // Disable multi‑tab broadcast.  Supabase uses BroadcastChannel internally to synchronize
     // sessions across multiple tabs; however, this feature has been unstable in some client
