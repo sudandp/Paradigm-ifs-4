@@ -1185,7 +1185,7 @@ const LeaveDashboard: React.FC = () => {
                                                                 <Loader2 className="h-4 w-4 animate-spin text-accent" />
                                                             ) : (
                                                                 <>
-                                                                    <button onClick={() => navigate(`/leaves/edit/${req.id}`)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
+                                                                    <button onClick={() => navigate(`/leaves/apply?edit=${req.id}`)} className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-full transition-colors" title="Edit Request">
                                                                         <Edit className="h-4 w-4" />
                                                                     </button>
                                                                     {req.status === 'pending_manager_approval' ? (

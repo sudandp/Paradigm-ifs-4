@@ -441,7 +441,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <User className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Full name</label>
+                                    <span className="block font-bold text-gray-900">Full name</span>
                                     <p className="text-green-500">{scannedData.name}</p>
                                 </div>
                             </div>
@@ -450,7 +450,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <CreditCard className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Aadhaar Number</label>
+                                    <span className="block font-bold text-gray-900">Aadhaar Number</span>
                                     <p className="text-green-500 tracking-wider font-mono">
                                         {scannedData.aadhaarNumber.length === 12 
                                             ? scannedData.aadhaarNumber.replace(/(.{4})/g, '$1 ').trim() 
@@ -463,7 +463,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <UserCheck className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Age Above 18</label>
+                                    <span className="block font-bold text-gray-900">Age Above 18</span>
                                     <p className="text-green-500">{isAgeAbove18(scannedData.dob)}</p>
                                 </div>
                             </div>
@@ -472,7 +472,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <Calendar className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Date of Birth</label>
+                                    <span className="block font-bold text-gray-900">Date of Birth</span>
                                     <p className="text-green-500">{scannedData.dob}</p>
                                 </div>
                             </div>
@@ -482,7 +482,7 @@ const AadhaarScannerPage: React.FC = () => {
                                 <div className="flex gap-4 border-b border-gray-100 pb-4">
                                     <Calendar className="h-6 w-6 text-green-500 mt-0.5" />
                                     <div>
-                                        <label className="block font-bold text-gray-900">Enrollment Date</label>
+                                        <span className="block font-bold text-gray-900">Enrollment Date</span>
                                         <p className="text-green-500">{scannedData.enrollmentDate.split('T')[0]}</p>
                                     </div>
                                 </div>
@@ -492,7 +492,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <User className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Gender</label>
+                                    <span className="block font-bold text-gray-900">Gender</span>
                                     <p className="text-green-500 uppercase">{scannedData.gender}</p>
                                 </div>
                             </div>
@@ -501,7 +501,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <Users className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Care of / Guardian</label>
+                                    <span className="block font-bold text-gray-900">Care of / Guardian</span>
                                     <p className="text-green-500 capitalize">{scannedData.careOf || 'N/A'}</p>
                                 </div>
                             </div>
@@ -510,7 +510,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <MapPin className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Address</label>
+                                    <span className="block font-bold text-gray-900">Address</span>
                                     <p className="text-green-500 text-sm leading-relaxed">
                                         {scannedData.address.line1}
                                         {scannedData.address.line1 ? ', ' : ''}
@@ -523,7 +523,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 border-b border-gray-100 pb-4">
                                 <Phone className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Mobile Number</label>
+                                    <span className="block font-bold text-gray-900">Mobile Number</span>
                                     <p className="text-green-500 text-sm font-medium">
                                         {scannedData.mobile || 'N/A'}
                                     </p>
@@ -534,7 +534,7 @@ const AadhaarScannerPage: React.FC = () => {
                             <div className="flex gap-4 pb-2">
                                 <Mail className="h-6 w-6 text-green-500 mt-0.5" />
                                 <div>
-                                    <label className="block font-bold text-gray-900">Email</label>
+                                    <span className="block font-bold text-gray-900">Email</span>
                                     <p className="text-green-500 text-sm break-all">
                                         {scannedData.email || 'N/A'}
                                     </p>
